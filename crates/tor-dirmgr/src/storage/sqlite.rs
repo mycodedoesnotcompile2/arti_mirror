@@ -9,7 +9,9 @@ use crate::err::ReadOnlyStorageError;
 use crate::storage::{InputString, Store};
 use crate::{Error, Result};
 
+#[cfg(not(target_arch = "wasm32"))]
 use fs_mistrust::CheckedDir;
+#[cfg(not(target_arch = "wasm32"))]
 use tor_basic_utils::PathExt as _;
 use tor_error::{into_internal, warn_report};
 use tor_netdoc::doc::authcert::AuthCertKeyIds;
@@ -21,16 +23,102 @@ use tor_netdoc::doc::routerdesc::RdDigest;
 #[cfg(feature = "bridge-client")]
 pub(crate) use {crate::storage::CachedBridgeDescriptor, tor_guardmgr::bridge::BridgeConfig};
 
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::result::Result as StdResult;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use rusqlite::{OpenFlags, OptionalExtension, Transaction, params};
+#[cfg(not(target_arch = "wasm32"))]
+use rusqlite::OpenFlags;
+use rusqlite::{OptionalExtension, Transaction, params};
 use time::OffsetDateTime;
 use tracing::{trace, warn};
+
+#[cfg(not(target_arch = "wasm32"))]
+/// Lock-file handle used by the native filesystem-backed store.
+type LockFile = fslock::LockFile;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[derive(Debug)]
+struct LockFile {
+    storage: Option<crate::storage_adapter::StorageAdapterHandle>,
+    path: String,
+    holds_lock: bool,
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl LockFile {
+    /// Open a lock file handle backed by the configured storage adapter.
+    fn open(
+        storage: Option<crate::storage_adapter::StorageAdapterHandle>,
+        path: &str,
+    ) -> std::io::Result<Self> {
+        Ok(Self {
+            storage,
+            path: path.to_owned(),
+            holds_lock: false,
+        })
+    }
+
+    /// Attempt to acquire the lock.
+    fn try_lock(&mut self) -> std::io::Result<bool> {
+        if self.holds_lock {
+            return Ok(true);
+        }
+        if let Some(storage) = &self.storage {
+            let acquired = storage
+                .try_lock(self.path.as_str())
+                .map_err(std::io::Error::other)?;
+            self.holds_lock = acquired;
+            return Ok(acquired);
+        }
+        self.holds_lock = true;
+        Ok(true)
+    }
+
+    /// Report lock ownership.
+    fn owns_lock(&self) -> bool {
+        self.holds_lock
+    }
+
+    /// Release the lock.
+    fn unlock(&mut self) -> std::io::Result<()> {
+        if !self.holds_lock {
+            return Ok(());
+        }
+        if let Some(storage) = &self.storage {
+            storage
+                .unlock(self.path.as_str())
+                .map_err(std::io::Error::other)?;
+        }
+        self.holds_lock = false;
+        Ok(())
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn storage_blob_error(action: &'static str, err: String) -> Error {
+    Error::CacheFile {
+        action,
+        fname: PathBuf::from("storage://arti_dir_storage"),
+        error: Arc::new(std::io::Error::other(err)),
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+const BLOB_DIR_PATH: &str = "dir_blobs";
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+const LOCK_FILE_PATH: &str = "dir.lock";
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn blob_path(name: &str) -> String {
+    format!("{BLOB_DIR_PATH}/{name}")
+}
 
 /// Local directory cache using a Sqlite3 connection.
 pub(crate) struct SqliteStore {
@@ -39,7 +127,14 @@ pub(crate) struct SqliteStore {
     /// Location for the sqlite3 database; used to reopen it.
     sql_path: Option<PathBuf>,
     /// Location to store blob files.
+    #[cfg(not(target_arch = "wasm32"))]
     blob_dir: CheckedDir,
+    /// Optional adapter-backed blob storage for runtimes without filesystem APIs.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    blob_store: Option<crate::storage_adapter::StorageAdapterHandle>,
+    /// In-memory fallback when no external storage adapter is configured.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    in_memory_blobs: RefCell<HashMap<String, Vec<u8>>>,
     /// Lockfile to prevent concurrent write attempts from different
     /// processes.
     ///
@@ -47,7 +142,7 @@ pub(crate) struct SqliteStore {
     ///
     /// (sqlite supports that with connection locking, but we want to
     /// be a little more coarse-grained here)
-    lockfile: Option<fslock::LockFile>,
+    lockfile: Option<LockFile>,
 }
 
 /// # Some notes on blob consistency, and the lack thereof.
@@ -159,49 +254,79 @@ impl SqliteStore {
     pub(crate) fn from_path_and_mistrust<P: AsRef<Path>>(
         path: P,
         mistrust: &fs_mistrust::Mistrust,
-        mut readonly: bool,
+        readonly: bool,
     ) -> Result<Self> {
-        let path = path.as_ref();
-        let sqlpath = path.join("dir.sqlite3");
-        let blobpath = path.join("dir_blobs/");
-        let lockpath = path.join("dir.lock");
+        Self::from_path_and_mistrust_with_storage_adapter(path, mistrust, readonly, None)
+    }
 
-        let verifier = mistrust.verifier().permit_readable().check_content();
-
-        let blob_dir = if readonly {
-            verifier.secure_dir(blobpath)?
-        } else {
-            verifier.make_secure_dir(blobpath)?
-        };
-
-        // Check permissions on the sqlite and lock files; don't require them to
-        // exist.
-        for p in [&lockpath, &sqlpath] {
-            match mistrust
-                .verifier()
-                .permit_readable()
-                .require_file()
-                .check(p)
-            {
-                Ok(()) | Err(fs_mistrust::Error::NotFound(_)) => {}
-                Err(e) => return Err(e.into()),
+    /// Construct or open a new SqliteStore, optionally using an external storage adapter.
+    pub(crate) fn from_path_and_mistrust_with_storage_adapter<P: AsRef<Path>>(
+        path: P,
+        mistrust: &fs_mistrust::Mistrust,
+        readonly: bool,
+        storage_adapter: Option<crate::storage_adapter::StorageAdapterHandle>,
+    ) -> Result<Self> {
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            let _ = (path, mistrust);
+            let mut readonly = readonly;
+            let mut lockfile = LockFile::open(storage_adapter.clone(), LOCK_FILE_PATH)
+                .map_err(Error::from_lockfile)?;
+            if !readonly && !lockfile.try_lock().map_err(Error::from_lockfile)? {
+                readonly = true; // we couldn't get the lock
             }
+            let conn = rusqlite::Connection::open_in_memory()?;
+            let mut store = SqliteStore::from_conn_internal(conn, readonly, storage_adapter)?;
+            store.lockfile = Some(lockfile);
+            return Ok(store);
         }
 
-        let mut lockfile = fslock::LockFile::open(&lockpath).map_err(Error::from_lockfile)?;
-        if !readonly && !lockfile.try_lock().map_err(Error::from_lockfile)? {
-            readonly = true; // we couldn't get the lock!
-        };
-        let flags = if readonly {
-            OpenFlags::SQLITE_OPEN_READ_ONLY
-        } else {
-            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE
-        };
-        let conn = rusqlite::Connection::open_with_flags(&sqlpath, flags)?;
-        let mut store = SqliteStore::from_conn_internal(conn, blob_dir, readonly)?;
-        store.sql_path = Some(sqlpath);
-        store.lockfile = Some(lockfile);
-        Ok(store)
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            drop(storage_adapter);
+            let mut readonly = readonly;
+            let path = path.as_ref();
+            let sqlpath = path.join("dir.sqlite3");
+            let blobpath = path.join("dir_blobs/");
+            let lockpath = path.join("dir.lock");
+
+            let verifier = mistrust.verifier().permit_readable().check_content();
+
+            let blob_dir = if readonly {
+                verifier.secure_dir(blobpath)?
+            } else {
+                verifier.make_secure_dir(blobpath)?
+            };
+
+            // Check permissions on the sqlite and lock files; don't require them to
+            // exist.
+            for p in [&lockpath, &sqlpath] {
+                match mistrust
+                    .verifier()
+                    .permit_readable()
+                    .require_file()
+                    .check(p)
+                {
+                    Ok(()) | Err(fs_mistrust::Error::NotFound(_)) => {}
+                    Err(e) => return Err(e.into()),
+                }
+            }
+
+            let mut lockfile = LockFile::open(&lockpath).map_err(Error::from_lockfile)?;
+            if !readonly && !lockfile.try_lock().map_err(Error::from_lockfile)? {
+                readonly = true; // we couldn't get the lock!
+            };
+            let flags = if readonly {
+                OpenFlags::SQLITE_OPEN_READ_ONLY
+            } else {
+                OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE
+            };
+            let conn = rusqlite::Connection::open_with_flags(&sqlpath, flags)?;
+            let mut store = SqliteStore::from_conn_internal(conn, blob_dir, readonly)?;
+            store.sql_path = Some(sqlpath);
+            store.lockfile = Some(lockfile);
+            Ok(store)
+        }
     }
 
     /// Construct a new SqliteStore from a database connection and a location
@@ -211,7 +336,7 @@ impl SqliteStore {
     ///
     /// Note: `blob_dir` must not be used for anything other than storing the blobs associated with
     /// this database, since we will freely remove unreferenced files from this directory.
-    #[cfg(test)]
+    #[cfg(all(test, not(target_arch = "wasm32")))]
     fn from_conn(conn: rusqlite::Connection, blob_dir: CheckedDir) -> Result<Self> {
         Self::from_conn_internal(conn, blob_dir, false)
     }
@@ -220,6 +345,7 @@ impl SqliteStore {
     /// for blob files.
     ///
     /// The `readonly` argument specifies whether the database connection should be read-only.
+    #[cfg(not(target_arch = "wasm32"))]
     fn from_conn_internal(
         conn: rusqlite::Connection,
         blob_dir: CheckedDir,
@@ -239,6 +365,151 @@ impl SqliteStore {
         result.check_schema(readonly)?;
 
         Ok(result)
+    }
+
+    /// Construct a new SqliteStore from a database connection on wasm targets.
+    ///
+    /// On wasm targets, filesystem-backed blobs are unavailable.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn from_conn_internal(
+        conn: rusqlite::Connection,
+        readonly: bool,
+        storage_adapter: Option<crate::storage_adapter::StorageAdapterHandle>,
+    ) -> Result<Self> {
+        #[cfg(target_os = "unknown")]
+        if storage_adapter.is_none() {
+            return Err(tor_error::bad_api_usage!(
+                "On wasm32-unknown-unknown, tor-dirmgr requires \
+                 a user-provided storage adapter"
+            )
+            .into());
+        }
+
+        let conn = conn;
+
+        // sqlite (as of Jun 2024) does not enforce foreign keys automatically unless you set this
+        // pragma on the connection.
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+
+        let mut result = SqliteStore {
+            conn,
+            blob_store: storage_adapter,
+            in_memory_blobs: RefCell::new(HashMap::new()),
+            lockfile: None,
+            sql_path: None,
+        };
+
+        result.check_schema(readonly)?;
+
+        Ok(result)
+    }
+
+    /// Read a blob from external storage.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn read_storage_blob(
+        storage: &crate::storage_adapter::StorageAdapterHandle,
+        fname: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        let path = blob_path(fname);
+        storage
+            .read_file(path.as_str())
+            .map_err(|e| storage_blob_error("loading", e))
+    }
+
+    /// Write a blob into external storage.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn write_storage_blob(
+        storage: &crate::storage_adapter::StorageAdapterHandle,
+        fname: &str,
+        contents: &[u8],
+    ) -> Result<()> {
+        let path = blob_path(fname);
+        storage
+            .write_and_replace_file(path.as_str(), contents)
+            .map_err(|e| storage_blob_error("saving", e))?;
+        Ok(())
+    }
+
+    /// Delete one blob from external storage.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn delete_storage_blob(
+        storage: &crate::storage_adapter::StorageAdapterHandle,
+        fname: &str,
+    ) -> Result<()> {
+        let path = blob_path(fname);
+        storage
+            .remove_file(path.as_str())
+            .map_err(|e| storage_blob_error("removing", e))?;
+        Ok(())
+    }
+
+    /// List blob names known to external storage.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn list_storage_blob_names(
+        blob_store: &crate::storage_adapter::StorageAdapterHandle,
+    ) -> Result<Vec<String>> {
+        blob_store
+            .list_dir(BLOB_DIR_PATH)
+            .map_err(|e| storage_blob_error("listing", e))
+    }
+
+    /// Read a blob from whichever wasm blob backend is active.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn read_blob_bytes(&self, fname: &str) -> Result<Option<Vec<u8>>> {
+        if let Some(storage) = &self.blob_store {
+            return Self::read_storage_blob(storage, fname);
+        }
+
+        Ok(self.in_memory_blobs.borrow().get(fname).cloned())
+    }
+
+    /// Persist a blob into whichever wasm blob backend is active.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn store_blob_bytes(&self, fname: &str, contents: &[u8]) -> Result<()> {
+        if let Some(storage) = &self.blob_store {
+            return Self::write_storage_blob(storage, fname, contents);
+        }
+
+        self.in_memory_blobs
+            .borrow_mut()
+            .insert(fname.to_owned(), contents.to_vec());
+        Ok(())
+    }
+
+    /// Remove a blob from whichever wasm blob backend is active.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn delete_blob_bytes(&self, fname: &str) -> Result<()> {
+        if let Some(storage) = &self.blob_store {
+            return Self::delete_storage_blob(storage, fname);
+        }
+
+        self.in_memory_blobs.borrow_mut().remove(fname);
+        Ok(())
+    }
+
+    /// List blob names from whichever wasm blob backend is active.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn blob_names(&self) -> Result<Vec<String>> {
+        if let Some(storage) = &self.blob_store {
+            return Self::list_storage_blob_names(storage);
+        }
+
+        Ok(self.in_memory_blobs.borrow().keys().cloned().collect())
+    }
+
+    /// Compute the set of blob names present in the active wasm blob backend.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn present_blob_names(
+        blob_store: &Option<crate::storage_adapter::StorageAdapterHandle>,
+        in_memory_blobs: &RefCell<HashMap<String, Vec<u8>>>,
+    ) -> Result<HashSet<String>> {
+        if let Some(storage) = blob_store {
+            return Ok(Self::list_storage_blob_names(storage)?
+                .into_iter()
+                .collect());
+        }
+
+        Ok(in_memory_blobs.borrow().keys().cloned().collect())
     }
 
     /// Check whether this database has a schema format we can read, and
@@ -318,25 +589,41 @@ impl SqliteStore {
     ///
     /// (See [`blob_consistency`] for information on why the blob might be absent.)
     fn read_blob(&self, path: &str) -> Result<StdResult<InputString, AbsentBlob>> {
-        let file = match self.blob_dir.open(path, OpenOptions::new().read(true)) {
-            Ok(file) => file,
-            Err(fs_mistrust::Error::NotFound(_)) => {
-                warn!(
-                    "{:?} was listed in the database, but its corresponding file had been deleted",
-                    path
-                );
-                return Ok(Err(AbsentBlob::VanishedFile));
-            }
-            Err(e) => return Err(e.into()),
-        };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let file = match self.blob_dir.open(path, OpenOptions::new().read(true)) {
+                Ok(file) => file,
+                Err(fs_mistrust::Error::NotFound(_)) => {
+                    warn!(
+                        "{:?} was listed in the database, but its corresponding file had been deleted",
+                        path
+                    );
+                    return Ok(Err(AbsentBlob::VanishedFile));
+                }
+                Err(e) => return Err(e.into()),
+            };
 
-        InputString::load(file)
-            .map_err(|err| Error::CacheFile {
-                action: "loading",
-                fname: PathBuf::from(path),
-                error: Arc::new(err),
-            })
-            .map(Ok)
+            InputString::load(file)
+                .map_err(|err| Error::CacheFile {
+                    action: "loading",
+                    fname: PathBuf::from(path),
+                    error: Arc::new(err),
+                })
+                .map(Ok)
+        }
+
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            if let Some(contents) = self.read_blob_bytes(path)? {
+                return Ok(Ok(InputString::from(contents)));
+            }
+
+            warn!(
+                "{:?} was listed in the database, but its corresponding blob was absent",
+                path
+            );
+            Ok(Err(AbsentBlob::VanishedFile))
+        }
     }
 
     /// Write a file to disk as a blob, and record it in the ExtDocs table.
@@ -357,18 +644,28 @@ impl SqliteStore {
         let digeststr = format!("{}-{}", digest_type, digest);
         let fname = format!("{}_{}", doctype, digeststr);
 
-        let full_path = self.blob_dir.join(&fname)?;
-        let unlinker = blob_handle::Unlinker::new(&full_path);
-        self.blob_dir
-            .write_and_replace(&fname, contents)
-            .map_err(|e| match e {
-                fs_mistrust::Error::Io { err, .. } => Error::CacheFile {
-                    action: "saving",
-                    fname: full_path,
-                    error: err,
-                },
-                err => err.into(),
-            })?;
+        #[cfg(not(target_arch = "wasm32"))]
+        let unlinker = {
+            let full_path = self.blob_dir.join(&fname)?;
+            let unlinker = blob_handle::Unlinker::new(&full_path);
+            self.blob_dir
+                .write_and_replace(&fname, contents)
+                .map_err(|e| match e {
+                    fs_mistrust::Error::Io { err, .. } => Error::CacheFile {
+                        action: "saving",
+                        fname: full_path,
+                        error: err,
+                    },
+                    err => err.into(),
+                })?;
+            unlinker
+        };
+
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        let unlinker = {
+            self.store_blob_bytes(&fname, contents)?;
+            blob_handle::Unlinker::noop()
+        };
 
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(INSERT_EXTDOC, params![digeststr, expires, doctype, fname])?;
@@ -439,9 +736,23 @@ impl SqliteStore {
     /// See [`blob_consistency`]: we should call this only having first ensured
     /// that the blob is removed from the ExtDocs table.
     fn remove_blob_or_warn<P: AsRef<Path>>(&self, fname: P) {
-        let fname = fname.as_ref();
-        if let Err(e) = self.blob_dir.remove_file(fname) {
-            warn_report!(e, "Unable to remove {}", fname.display_lossy());
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let fname = fname.as_ref();
+            if let Err(e) = self.blob_dir.remove_file(fname) {
+                warn_report!(e, "Unable to remove {}", fname.display_lossy());
+            }
+        }
+
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            let fname = fname.as_ref().to_string_lossy().to_string();
+            if let Err(e) = self.delete_blob_bytes(&fname) {
+                warn!(
+                    "Unable to remove {} from external blob storage: {}",
+                    fname, e
+                );
+            }
         }
     }
 
@@ -454,54 +765,74 @@ impl SqliteStore {
         now: OffsetDateTime,
         expiration: &ExpirationConfig,
     ) -> Result<()> {
-        // Now, look for any unreferenced blobs that are a bit old.
-        for ent in self.blob_dir.read_directory(".")?.flatten() {
-            let md_error = |io_error| Error::CacheFile {
-                action: "getting metadata",
-                fname: ent.file_name().into(),
-                error: Arc::new(io_error),
-            };
-            if ent
-                .metadata()
-                .map_err(md_error)?
-                .modified()
-                .map_err(md_error)?
-                + expiration.consensuses
-                >= now
-            {
-                // this file is sufficiently recent that we should not remove it, just to be cautious.
-                continue;
-            }
-            let filename = match ent.file_name().into_string() {
-                Ok(s) => s,
-                Err(os_str) => {
-                    // This filename wasn't utf-8.  We will never create one of these.
-                    warn!(
-                        "Removing bizarre file '{}' from blob store.",
-                        os_str.to_string_lossy()
-                    );
-                    self.remove_blob_or_warn(ent.file_name());
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // Now, look for any unreferenced blobs that are a bit old.
+            for ent in self.blob_dir.read_directory(".")?.flatten() {
+                let md_error = |io_error| Error::CacheFile {
+                    action: "getting metadata",
+                    fname: ent.file_name().into(),
+                    error: Arc::new(io_error),
+                };
+                if ent
+                    .metadata()
+                    .map_err(md_error)?
+                    .modified()
+                    .map_err(md_error)?
+                    + expiration.consensuses
+                    >= now
+                {
+                    // this file is sufficiently recent that we should not remove it, just to be cautious.
                     continue;
                 }
-            };
-            let found: (u32,) =
-                self.conn
-                    .query_row(COUNT_EXTDOC_BY_PATH, params![&filename], |row| {
-                        row.try_into()
-                    })?;
-            if found == (0,) {
-                warn!("Removing unreferenced file '{}' from blob store", &filename);
-                self.remove_blob_or_warn(ent.file_name());
+                let filename = match ent.file_name().into_string() {
+                    Ok(s) => s,
+                    Err(os_str) => {
+                        // This filename wasn't utf-8.  We will never create one of these.
+                        warn!(
+                            "Removing bizarre file '{}' from blob store.",
+                            os_str.to_string_lossy()
+                        );
+                        self.remove_blob_or_warn(ent.file_name());
+                        continue;
+                    }
+                };
+                let found: (u32,) =
+                    self.conn
+                        .query_row(COUNT_EXTDOC_BY_PATH, params![&filename], |row| {
+                            row.try_into()
+                        })?;
+                if found == (0,) {
+                    warn!("Removing unreferenced file '{}' from blob store", &filename);
+                    self.remove_blob_or_warn(ent.file_name());
+                }
             }
+
+            Ok(())
         }
 
-        Ok(())
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            let _ = (now, expiration);
+            for filename in self.blob_names()? {
+                let found: (u32,) =
+                    self.conn
+                        .query_row(COUNT_EXTDOC_BY_PATH, params![&filename], |row| {
+                            row.try_into()
+                        })?;
+                if found == (0,) {
+                    self.delete_blob_bytes(&filename)?;
+                }
+            }
+            Ok(())
+        }
     }
 
     /// Remove any entry in the ExtDocs table for which a blob file is vanished.
     ///
     /// This method is `O(n)` in the size of the ExtDocs table and the size of the directory.
     /// It doesn't take self, to avoid problems with the borrow checker.
+    #[cfg(not(target_arch = "wasm32"))]
     fn remove_entries_for_vanished_blobs<'a>(
         blob_dir: &CheckedDir,
         tx: &Transaction<'a>,
@@ -526,6 +857,30 @@ impl SqliteStore {
             n_removed += tx.execute(DELETE_EXTDOC_BY_FILENAME, [fname])?;
         }
 
+        Ok(n_removed)
+    }
+
+    /// Remove any entry in the ExtDocs table for which the blob is absent.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn remove_entries_for_vanished_blobs<'a>(
+        blob_store: &Option<crate::storage_adapter::StorageAdapterHandle>,
+        in_memory_blobs: &RefCell<HashMap<String, Vec<u8>>>,
+        tx: &Transaction<'a>,
+    ) -> Result<usize> {
+        let present = Self::present_blob_names(blob_store, in_memory_blobs)?;
+
+        let in_db: Vec<String> = tx
+            .prepare(FIND_ALL_EXTDOC_FILENAMES)?
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<StdResult<Vec<String>, _>>()?;
+
+        let mut n_removed = 0;
+        for fname in in_db {
+            if present.contains(&fname) {
+                continue;
+            }
+            n_removed += tx.execute(DELETE_EXTDOC_BY_FILENAME, [fname])?;
+        }
         Ok(n_removed)
     }
 }
@@ -621,16 +976,26 @@ impl Store for SqliteStore {
         let mut remove_blob_files: HashSet<_> = expired_blobs.iter().collect();
         remove_blob_files.extend(remove_consensus_blobs.iter());
 
-        for name in remove_blob_files {
-            let fname = self.blob_dir.join(name);
-            if let Ok(fname) = fname {
-                if let Err(e) = std::fs::remove_file(&fname) {
-                    warn_report!(
-                        e,
-                        "Couldn't remove orphaned blob file {}",
-                        fname.display_lossy()
-                    );
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            for name in remove_blob_files {
+                let fname = self.blob_dir.join(name);
+                if let Ok(fname) = fname {
+                    if let Err(e) = std::fs::remove_file(&fname) {
+                        warn_report!(
+                            e,
+                            "Couldn't remove orphaned blob file {}",
+                            fname.display_lossy()
+                        );
+                    }
                 }
+            }
+        }
+
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            for name in remove_blob_files {
+                self.remove_blob_or_warn(name);
             }
         }
 
@@ -668,7 +1033,10 @@ impl Store for SqliteStore {
         // or we could add a mutex,
         // or we could just not use a transaction object.
         let tx = self.conn.unchecked_transaction()?;
+        #[cfg(not(target_arch = "wasm32"))]
         Self::remove_entries_for_vanished_blobs(&self.blob_dir, &tx)?;
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        Self::remove_entries_for_vanished_blobs(&self.blob_store, &self.in_memory_blobs, &tx)?;
         tx.commit()?;
 
         match self.latest_consensus_internal(flavor, pending)? {
@@ -1081,6 +1449,11 @@ mod blob_handle {
             Unlinker {
                 p: Some(p.as_ref().to_path_buf()),
             }
+        }
+        /// Make a no-op unlinker.
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        pub(super) fn noop() -> Self {
+            Unlinker { p: None }
         }
         /// Forget about this unlinker, so that the corresponding file won't
         /// get dropped.

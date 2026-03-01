@@ -13,24 +13,28 @@ use crate::address::{IntoTorAddr, ResolveInstructions, StreamInstructions};
 use crate::config::{
     ClientAddrConfig, SoftwareStatusOverrideConfig, StreamTimeoutConfig, TorClientConfig,
 };
-use safelog::{Sensitive, sensitive};
+use safelog::{sensitive, Sensitive};
 use tor_async_utils::{DropNotifyWatchSender, PostageWatchSenderExt};
 use tor_chanmgr::ChanMgrConfig;
-use tor_circmgr::ClientDataTunnel;
 use tor_circmgr::isolation::{Isolation, StreamIsolation};
-use tor_circmgr::{IsolationToken, TargetPort, isolation::StreamIsolationBuilder};
+use tor_circmgr::ClientDataTunnel;
+use tor_circmgr::{isolation::StreamIsolationBuilder, IsolationToken, TargetPort};
 use tor_config::MutCfg;
 #[cfg(feature = "bridge-client")]
 use tor_dirmgr::bridgedesc::BridgeDescMgr;
 use tor_dirmgr::{DirMgrStore, Timeliness};
-use tor_error::{Bug, error_report, internal};
+use tor_error::{error_report, internal, Bug};
 use tor_guardmgr::{GuardMgr, RetireCircuits};
 use tor_keymgr::Keystore;
 use tor_memquota::MemoryQuotaTracker;
-use tor_netdir::{NetDirProvider, params::NetParameters};
+use tor_netdir::{params::NetParameters, NetDirProvider};
 #[cfg(feature = "onion-service-service")]
 use tor_persist::state_dir::StateDirectory;
-use tor_persist::{FsStateMgr, StateMgr};
+#[cfg(not(target_arch = "wasm32"))]
+use tor_persist::FsStateMgr;
+use tor_persist::StateMgr;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use tor_persist::TestingStateMgr;
 use tor_proto::client::stream::{DataStream, IpVersionPreference, StreamParameters};
 #[cfg(all(
     any(feature = "native-tls", feature = "rustls"),
@@ -51,7 +55,7 @@ use tor_hsservice::HsIdKeypairSpecifier;
 #[cfg(all(feature = "onion-service-client", feature = "experimental-api"))]
 use {tor_hscrypto::pk::HsId, tor_hscrypto::pk::HsIdKeypair, tor_keymgr::KeystoreSelector};
 
-use tor_keymgr::{ArtiNativeKeystore, KeyMgr, KeyMgrBuilder, config::ArtiKeystoreKind};
+use tor_keymgr::{config::ArtiKeystoreKind, ArtiNativeKeystore, KeyMgr, KeyMgrBuilder};
 
 #[cfg(feature = "ephemeral-keystore")]
 use tor_keymgr::ArtiEphemeralKeystore;
@@ -59,19 +63,283 @@ use tor_keymgr::ArtiEphemeralKeystore;
 #[cfg(feature = "ctor-keystore")]
 use tor_keymgr::{CTorClientKeystore, CTorServiceKeystore};
 
-use futures::StreamExt as _;
 use futures::lock::Mutex as AsyncMutex;
+use futures::StreamExt as _;
 use std::net::IpAddr;
 use std::result::Result as StdResult;
 use std::sync::{Arc, Mutex};
 use tor_rtcompat::SpawnExt;
 
 use crate::err::ErrorDetail;
-use crate::{TorClientBuilder, status, util};
+use crate::{status, util, TorClientBuilder};
 #[cfg(feature = "geoip")]
 use tor_geoip::CountryCode;
 use tor_rtcompat::scheduler::TaskHandle;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use tracing::warn;
 use tracing::{debug, info, instrument};
+
+#[cfg(not(target_arch = "wasm32"))]
+/// Filesystem-backed state manager used on native targets.
+type ClientStateMgr = FsStateMgr;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+type ClientStorageAdapter = crate::storage_adapter::StorageAdapterHandle;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[derive(Clone, Debug)]
+struct ClientStateMgr {
+    /// In-memory state manager used on wasm targets.
+    inner: TestingStateMgr,
+    /// Synthetic state directory path used for reconfiguration checks.
+    path: std::path::PathBuf,
+    /// Optional storage adapter used for persisting key/value state.
+    storage_adapter: Option<ClientStorageAdapter>,
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+struct StateRestoreLock<'a> {
+    /// State manager that should be unlocked when the guard is dropped.
+    inner: &'a TestingStateMgr,
+    /// Whether this guard is responsible for unlocking `inner`.
+    should_unlock: bool,
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl Drop for StateRestoreLock<'_> {
+    fn drop(&mut self) {
+        if self.should_unlock {
+            let _ignore_err = self.inner.unlock();
+        }
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl ClientStateMgr {
+    /// Directory containing state JSON documents.
+    const STATE_DIR_PATH: &'static str = "state";
+    /// Suffix for state JSON documents.
+    const STATE_FILE_SUFFIX: &'static str = ".json";
+
+    /// Construct a wasm state manager.
+    fn from_path_and_mistrust(
+        path: &std::path::Path,
+        _mistrust: &fs_mistrust::Mistrust,
+        storage_adapter: Option<ClientStorageAdapter>,
+    ) -> StdResult<Self, tor_persist::Error> {
+        let mgr = Self {
+            inner: TestingStateMgr::new(),
+            path: path.to_path_buf(),
+            storage_adapter,
+        };
+
+        mgr.restore_from_storage_adapter();
+        Ok(mgr)
+    }
+
+    /// Convert a key into a filesystem-safe file name.
+    fn state_entry_name_for_key(key: &str) -> String {
+        use std::fmt::Write as _;
+
+        let mut encoded = String::with_capacity(key.len() * 2 + Self::STATE_FILE_SUFFIX.len());
+        for byte in key.bytes() {
+            write!(&mut encoded, "{byte:02x}").expect("writing to String cannot fail");
+        }
+        encoded.push_str(Self::STATE_FILE_SUFFIX);
+        encoded
+    }
+
+    /// Decode a key from a state file name.
+    fn key_from_state_entry_name(name: &str) -> Option<String> {
+        let hex = name.strip_suffix(Self::STATE_FILE_SUFFIX)?;
+        if hex.len() % 2 != 0 {
+            return None;
+        }
+
+        let bytes = (0..hex.len())
+            .step_by(2)
+            .map(|idx| {
+                hex.get(idx..idx + 2)
+                    .and_then(|part| u8::from_str_radix(part, 16).ok())
+            })
+            .collect::<Option<Vec<_>>>()?;
+
+        String::from_utf8(bytes).ok()
+    }
+
+    /// Build the storage-adapter path for a persisted state entry.
+    fn state_entry_path(entry_name: &str) -> String {
+        format!("{}/{}", Self::STATE_DIR_PATH, entry_name)
+    }
+
+    /// Acquire the temporary lock needed while repopulating the in-memory state map.
+    fn lock_for_restore(&self) -> Option<StateRestoreLock<'_>> {
+        let lock_status = match self.inner.try_lock() {
+            Ok(lock_status) => lock_status,
+            Err(err) => {
+                warn!("Unable to lock wasm state manager for restore: {err}");
+                return None;
+            }
+        };
+        let lock = StateRestoreLock {
+            inner: &self.inner,
+            should_unlock: matches!(lock_status, tor_persist::LockStatus::NewlyAcquired),
+        };
+
+        if !self.inner.can_store() {
+            warn!("Wasm state manager was not writable while restoring state");
+            return None;
+        }
+
+        Some(lock)
+    }
+
+    /// Load one persisted state entry from the storage adapter.
+    fn load_persisted_state_value(
+        &self,
+        storage_adapter: &ClientStorageAdapter,
+        entry_name: &str,
+        key: &str,
+    ) -> Option<tor_persist::JsonValue> {
+        let path = Self::state_entry_path(entry_name);
+        let value_json = match storage_adapter.read_file(path.as_str()) {
+            Ok(Some(bytes)) => match String::from_utf8(bytes) {
+                Ok(value_json) => value_json,
+                Err(err) => {
+                    warn!("Skipping non-utf8 state value for key {key:?}: {err}");
+                    return None;
+                }
+            },
+            Ok(None) => return None,
+            Err(err) => {
+                warn!("Unable to load persisted state entry for key {key:?}: {err}");
+                return None;
+            }
+        };
+
+        match serde_json::from_str(&value_json) {
+            Ok(json_value) => Some(json_value),
+            Err(err) => {
+                warn!("Skipping invalid state value for key {key:?}: {err}");
+                None
+            }
+        }
+    }
+
+    /// Load one state value from the in-memory manager and serialize it for persistence.
+    fn serialized_state_value_for_key(&self, key: &str) -> Option<String> {
+        let value = match self.inner.load::<tor_persist::JsonValue>(key) {
+            Ok(value) => value,
+            Err(err) => {
+                warn!("Unable to read state value for key {key:?}: {err}");
+                return None;
+            }
+        };
+
+        let Some(value) = value else {
+            return None;
+        };
+
+        match serde_json::to_string(&value) {
+            Ok(value_json) => Some(value_json),
+            Err(err) => {
+                warn!("Unable to serialize state value for key {key:?}: {err}");
+                None
+            }
+        }
+    }
+
+    /// Restore the in-memory map from the configured storage adapter.
+    fn restore_from_storage_adapter(&self) {
+        let Some(storage_adapter) = &self.storage_adapter else {
+            return;
+        };
+        let Some(_restore_lock) = self.lock_for_restore() else {
+            return;
+        };
+
+        let entries = match storage_adapter.list_dir(Self::STATE_DIR_PATH) {
+            Ok(entries) => entries,
+            Err(err) => {
+                warn!("Unable to list persisted state entries from storage adapter: {err}");
+                return;
+            }
+        };
+
+        for entry in entries {
+            let Some(key) = Self::key_from_state_entry_name(entry.as_str()) else {
+                continue;
+            };
+            let Some(json_value) =
+                self.load_persisted_state_value(storage_adapter, entry.as_str(), &key)
+            else {
+                continue;
+            };
+
+            if let Err(err) = self.inner.store(&key, &json_value) {
+                warn!("Unable to restore state entry for key {key:?}: {err}");
+            }
+        }
+    }
+
+    /// Persist one state key, if a storage adapter is configured.
+    fn persist_key_to_storage_adapter(&self, key: &str) {
+        let Some(storage_adapter) = &self.storage_adapter else {
+            return;
+        };
+        let Some(value_json) = self.serialized_state_value_for_key(key) else {
+            return;
+        };
+        let path = Self::state_entry_path(&Self::state_entry_name_for_key(key));
+
+        if let Err(err) =
+            storage_adapter.write_and_replace_file(path.as_str(), value_json.as_bytes())
+        {
+            warn!("Unable to persist state value for key {key:?}: {err}");
+        }
+    }
+
+    /// Return the configured state path.
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+
+    /// Return a future that resolves when the manager is unlocked.
+    fn wait_for_unlock(&self) -> impl futures::Future<Output = ()> + Send + Sync + 'static {
+        futures::future::ready(())
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl StateMgr for ClientStateMgr {
+    fn load<D>(&self, key: &str) -> StdResult<Option<D>, tor_persist::Error>
+    where
+        D: serde::de::DeserializeOwned,
+    {
+        self.inner.load(key)
+    }
+
+    fn store<S>(&self, key: &str, val: &S) -> StdResult<(), tor_persist::Error>
+    where
+        S: serde::Serialize,
+    {
+        self.inner.store(key, val)?;
+        self.persist_key_to_storage_adapter(key);
+        Ok(())
+    }
+
+    fn can_store(&self) -> bool {
+        self.inner.can_store()
+    }
+
+    fn try_lock(&self) -> StdResult<tor_persist::LockStatus, tor_persist::Error> {
+        self.inner.try_lock()
+    }
+
+    fn unlock(&self) -> StdResult<(), tor_persist::Error> {
+        self.inner.unlock()
+    }
+}
 
 /// An active client session on the Tor network.
 ///
@@ -166,7 +434,7 @@ pub struct TorClient<R: Runtime> {
     #[cfg(feature = "onion-service-service")]
     state_directory: StateDirectory,
     /// Location on disk where we store persistent data (cooked state manager).
-    statemgr: FsStateMgr,
+    statemgr: ClientStateMgr,
     /// Client address configuration
     addrcfg: Arc<MutCfg<ClientAddrConfig>>,
     /// Client DNS configuration
@@ -870,7 +1138,17 @@ impl<R: Runtime> TorClient<R> {
         autobootstrap: BootstrapBehavior,
         dirmgr_builder: &dyn crate::builder::DirProviderBuilder<R>,
         dirmgr_extensions: tor_dirmgr::config::DirMgrExtensions,
+        storage_adapter: Option<crate::storage_adapter::StorageAdapterHandle>,
     ) -> StdResult<Self, ErrorDetail> {
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        if storage_adapter.is_none() {
+            return Err(tor_error::bad_api_usage!(
+                "On wasm32-unknown-unknown, TorClient requires \
+                     a user-provided storage adapter"
+            )
+            .into());
+        }
+
         if crate::util::running_as_setuid() {
             return Err(tor_error::bad_api_usage!(
                 "Arti does not support running in a setuid or setgid context."
@@ -893,8 +1171,14 @@ impl<R: Runtime> TorClient<R> {
             c.extensions = dirmgr_extensions;
             c
         };
-        let statemgr = FsStateMgr::from_path_and_mistrust(&state_dir, mistrust)
+        #[cfg(not(target_arch = "wasm32"))]
+        let statemgr = ClientStateMgr::from_path_and_mistrust(&state_dir, mistrust)
             .map_err(ErrorDetail::StateMgrSetup)?;
+
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        let statemgr =
+            ClientStateMgr::from_path_and_mistrust(&state_dir, mistrust, storage_adapter.clone())
+                .map_err(ErrorDetail::StateMgrSetup)?;
         // Try to take state ownership early, so we'll know if we have it.
         // Note that this `try_lock()` may return `Ok` even if we can't acquire the lock.
         // (At this point we don't yet care if we have it.)
@@ -949,8 +1233,13 @@ impl<R: Runtime> TorClient<R> {
 
         let timeout_cfg = config.stream_timeouts.clone();
 
-        let dirmgr_store =
-            DirMgrStore::new(&dir_cfg, runtime.clone(), false).map_err(ErrorDetail::DirMgrSetup)?;
+        let dirmgr_store = DirMgrStore::new_with_storage_adapter(
+            &dir_cfg,
+            runtime.clone(),
+            false,
+            storage_adapter,
+        )
+        .map_err(ErrorDetail::DirMgrSetup)?;
         let dirmgr = dirmgr_builder
             .build(
                 runtime.clone(),

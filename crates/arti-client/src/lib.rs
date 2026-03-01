@@ -56,6 +56,7 @@ mod protostatus;
 mod release_date;
 #[cfg(feature = "rpc")]
 pub mod rpc;
+pub mod storage_adapter;
 mod util;
 
 pub mod config;

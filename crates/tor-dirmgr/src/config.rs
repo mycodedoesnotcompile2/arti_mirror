@@ -102,6 +102,25 @@ impl DirMgrConfig {
         ))
     }
 
+    /// Create a store from this configuration with an optional storage adapter.
+    ///
+    /// Note that each time this is called, a new store object will be
+    /// created: you probably only want to call this once.
+    pub(crate) fn open_store_with_storage_adapter(
+        &self,
+        readonly: bool,
+        storage_adapter: Option<crate::storage_adapter::StorageAdapterHandle>,
+    ) -> Result<DynStore> {
+        Ok(Box::new(
+            crate::storage::SqliteStore::from_path_and_mistrust_with_storage_adapter(
+                &self.cache_dir,
+                &self.cache_trust,
+                readonly,
+                storage_adapter,
+            )?,
+        ))
+    }
+
     /// Return a slice of the configured authorities
     pub fn authorities(&self) -> &AuthorityContacts {
         self.network.authorities()

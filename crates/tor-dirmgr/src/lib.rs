@@ -60,6 +60,7 @@ mod event;
 mod shared_ref;
 mod state;
 mod storage;
+pub mod storage_adapter;
 
 #[cfg(feature = "bridge-client")]
 pub mod bridgedesc;
@@ -133,6 +134,21 @@ impl<R: Runtime> DirMgrStore<R> {
     /// Open the storage, according to the specified configuration
     pub fn new(config: &DirMgrConfig, runtime: R, offline: bool) -> Result<Self> {
         let store = Arc::new(Mutex::new(config.open_store(offline)?));
+        drop(runtime);
+        let runtime = PhantomData;
+        Ok(DirMgrStore { store, runtime })
+    }
+
+    /// Open the storage with an optional external storage adapter.
+    pub fn new_with_storage_adapter(
+        config: &DirMgrConfig,
+        runtime: R,
+        offline: bool,
+        storage_adapter: Option<storage_adapter::StorageAdapterHandle>,
+    ) -> Result<Self> {
+        let store = Arc::new(Mutex::new(
+            config.open_store_with_storage_adapter(offline, storage_adapter)?,
+        ));
         drop(runtime);
         let runtime = PhantomData;
         Ok(DirMgrStore { store, runtime })
