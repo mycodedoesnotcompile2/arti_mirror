@@ -13,28 +13,28 @@ use crate::address::{IntoTorAddr, ResolveInstructions, StreamInstructions};
 use crate::config::{
     ClientAddrConfig, SoftwareStatusOverrideConfig, StreamTimeoutConfig, TorClientConfig,
 };
-use safelog::{sensitive, Sensitive};
+use safelog::{Sensitive, sensitive};
 use tor_async_utils::{DropNotifyWatchSender, PostageWatchSenderExt};
 use tor_chanmgr::ChanMgrConfig;
-use tor_circmgr::isolation::{Isolation, StreamIsolation};
 use tor_circmgr::ClientDataTunnel;
-use tor_circmgr::{isolation::StreamIsolationBuilder, IsolationToken, TargetPort};
+use tor_circmgr::isolation::{Isolation, StreamIsolation};
+use tor_circmgr::{IsolationToken, TargetPort, isolation::StreamIsolationBuilder};
 use tor_config::MutCfg;
 #[cfg(feature = "bridge-client")]
 use tor_dirmgr::bridgedesc::BridgeDescMgr;
 use tor_dirmgr::{DirMgrStore, Timeliness};
-use tor_error::{error_report, internal, Bug};
+use tor_error::{Bug, error_report, internal};
 use tor_guardmgr::{GuardMgr, RetireCircuits};
 use tor_keymgr::Keystore;
 use tor_memquota::MemoryQuotaTracker;
-use tor_netdir::{params::NetParameters, NetDirProvider};
-#[cfg(feature = "onion-service-service")]
-use tor_persist::state_dir::StateDirectory;
+use tor_netdir::{NetDirProvider, params::NetParameters};
 #[cfg(not(target_arch = "wasm32"))]
 use tor_persist::FsStateMgr;
 use tor_persist::StateMgr;
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use tor_persist::TestingStateMgr;
+#[cfg(feature = "onion-service-service")]
+use tor_persist::state_dir::StateDirectory;
 use tor_proto::client::stream::{DataStream, IpVersionPreference, StreamParameters};
 #[cfg(all(
     any(feature = "native-tls", feature = "rustls"),
@@ -55,7 +55,7 @@ use tor_hsservice::HsIdKeypairSpecifier;
 #[cfg(all(feature = "onion-service-client", feature = "experimental-api"))]
 use {tor_hscrypto::pk::HsId, tor_hscrypto::pk::HsIdKeypair, tor_keymgr::KeystoreSelector};
 
-use tor_keymgr::{config::ArtiKeystoreKind, ArtiNativeKeystore, KeyMgr, KeyMgrBuilder};
+use tor_keymgr::{ArtiNativeKeystore, KeyMgr, KeyMgrBuilder, config::ArtiKeystoreKind};
 
 #[cfg(feature = "ephemeral-keystore")]
 use tor_keymgr::ArtiEphemeralKeystore;
@@ -63,15 +63,15 @@ use tor_keymgr::ArtiEphemeralKeystore;
 #[cfg(feature = "ctor-keystore")]
 use tor_keymgr::{CTorClientKeystore, CTorServiceKeystore};
 
-use futures::lock::Mutex as AsyncMutex;
 use futures::StreamExt as _;
+use futures::lock::Mutex as AsyncMutex;
 use std::net::IpAddr;
 use std::result::Result as StdResult;
 use std::sync::{Arc, Mutex};
 use tor_rtcompat::SpawnExt;
 
 use crate::err::ErrorDetail;
-use crate::{status, util, TorClientBuilder};
+use crate::{TorClientBuilder, status, util};
 #[cfg(feature = "geoip")]
 use tor_geoip::CountryCode;
 use tor_rtcompat::scheduler::TaskHandle;
@@ -409,9 +409,11 @@ pub struct TorClient<R: Runtime> {
     // which we can't do when the Arc is inside.
     #[cfg(feature = "bridge-client")]
     bridge_desc_mgr: Arc<Mutex<Option<Arc<BridgeDescMgr<R>>>>>,
-    /// Pluggable transport manager.
+    /// Process-based pluggable transport manager.
+    ///
+    /// This is present when process PT support is configured for this client.
     #[cfg(feature = "pt-client")]
-    pt_mgr: Arc<tor_ptmgr::PtMgr<R>>,
+    process_pt_mgr: Option<Arc<tor_ptmgr::PtMgr<R>>>,
     /// HS client connector
     #[cfg(feature = "onion-service-client")]
     hsclient: HsClientConnector<R>,
@@ -1139,6 +1141,9 @@ impl<R: Runtime> TorClient<R> {
         dirmgr_builder: &dyn crate::builder::DirProviderBuilder<R>,
         dirmgr_extensions: tor_dirmgr::config::DirMgrExtensions,
         storage_adapter: Option<crate::storage_adapter::StorageAdapterHandle>,
+        #[cfg(feature = "pt-client")] user_pt_mgr: Option<
+            Arc<dyn tor_chanmgr::factory::AbstractPtMgr + 'static>,
+        >,
     ) -> StdResult<Self, ErrorDetail> {
         #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
         if storage_adapter.is_none() {
@@ -1154,6 +1159,17 @@ impl<R: Runtime> TorClient<R> {
                 "Arti does not support running in a setuid or setgid context."
             )
             .into());
+        }
+
+        #[cfg(feature = "pt-client")]
+        if config.bridges.transports.is_empty()
+            && user_pt_mgr.is_none()
+            && config.bridges_require_pluggable_transport()
+        {
+            return Err(ErrorDetail::Configuration(tor_config::ConfigBuildError::Inconsistent {
+                fields: vec!["bridges.bridges".into(), "bridges.transports".into()],
+                problem: "Pluggable bridges are configured, but no corresponding transports are configured in `[bridges.transports]` and no programmatic transport manager was provided via `TorClientBuilder::pluggable_transport_manager(...)`.".into(),
+            }));
         }
 
         let memquota = MemoryQuotaTracker::new(&runtime, config.system.memory.clone())?;
@@ -1204,21 +1220,46 @@ impl<R: Runtime> TorClient<R> {
             .map_err(ErrorDetail::GuardMgrSetup)?;
 
         #[cfg(feature = "pt-client")]
-        let pt_mgr = {
-            let pt_state_dir = state_dir.as_path().join("pt_state");
-            config.storage.permissions().make_directory(&pt_state_dir)?;
+        let process_pt_mgr = {
+            #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+            {
+                if user_pt_mgr.is_none() {
+                    let pt_state_dir = state_dir.as_path().join("pt_state");
+                    config.storage.permissions().make_directory(&pt_state_dir)?;
 
-            let mgr = Arc::new(tor_ptmgr::PtMgr::new(
-                config.bridges.transports.clone(),
-                pt_state_dir,
-                Arc::clone(&path_resolver),
-                runtime.clone(),
-            )?);
+                    let mgr = Arc::new(tor_ptmgr::PtMgr::new(
+                        config.bridges.transports.clone(),
+                        pt_state_dir,
+                        Arc::clone(&path_resolver),
+                        runtime.clone(),
+                    )?);
+                    Some(mgr)
+                } else {
+                    None
+                }
+            }
 
-            chanmgr.set_pt_mgr(mgr.clone());
-
-            mgr
+            #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+            {
+                None
+            }
         };
+
+        #[cfg(feature = "pt-client")]
+        {
+            let effective_mgr: Option<Arc<dyn tor_chanmgr::factory::AbstractPtMgr + 'static>> =
+                if let Some(mgr) = user_pt_mgr {
+                    Some(mgr)
+                } else {
+                    process_pt_mgr
+                        .clone()
+                        .map(|mgr| mgr as Arc<dyn tor_chanmgr::factory::AbstractPtMgr + 'static>)
+                };
+
+            if let Some(mgr) = effective_mgr {
+                chanmgr.set_pt_mgr(mgr);
+            }
+        }
 
         let circmgr = Arc::new(
             tor_circmgr::CircMgr::new(
@@ -1355,7 +1396,7 @@ impl<R: Runtime> TorClient<R> {
             #[cfg(feature = "bridge-client")]
             bridge_desc_mgr,
             #[cfg(feature = "pt-client")]
-            pt_mgr,
+            process_pt_mgr,
             #[cfg(feature = "onion-service-client")]
             hsclient,
             #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
@@ -1601,9 +1642,11 @@ impl<R: Runtime> TorClient<R> {
             .map_err(wrap_err)?;
 
         #[cfg(feature = "pt-client")]
-        self.pt_mgr
-            .reconfigure(how, new_config.bridges.transports.clone())
-            .map_err(wrap_err)?;
+        if let Some(process_pt_mgr) = self.process_pt_mgr.as_ref() {
+            process_pt_mgr
+                .reconfigure(how, new_config.bridges.transports.clone())
+                .map_err(wrap_err)?;
+        }
 
         if how == tor_config::Reconfigure::CheckAllOrNothing {
             return Ok(());
@@ -2484,6 +2527,8 @@ mod test {
     use tor_config::Reconfigure;
 
     use super::*;
+    #[cfg(feature = "pt-client")]
+    use crate::config::BoolOrAuto;
     use crate::config::TorClientConfigBuilder;
     use crate::{ErrorKind, HasKind};
 
@@ -2513,6 +2558,73 @@ mod test {
                 .create_unbootstrapped_async()
                 .await
                 .unwrap();
+        });
+    }
+
+    #[test]
+    #[cfg(feature = "pt-client")]
+    fn pluggable_bridge_requires_transport_source() {
+        tor_rtcompat::test_with_one_runtime!(|rt| async {
+            let state_dir = tempfile::tempdir().unwrap();
+            let cache_dir = tempfile::tempdir().unwrap();
+            let mut cfg = TorClientConfigBuilder::from_directories(state_dir, cache_dir);
+            cfg.bridges().enabled(BoolOrAuto::Explicit(true));
+            cfg.bridges().bridges().push(
+                "obfs4 bridge.example.net:80 \
+                 $0bac39417268b69b9f514e7f63fa6fba1a788958 \
+                 ed25519:dGhpcyBpcyBbpmNyZWRpYmx5IHNpbGx5ISEhISEhISA iat-mode=1"
+                    .parse()
+                    .unwrap(),
+            );
+            let cfg = cfg.build().unwrap();
+
+            let err = TorClient::with_runtime(rt)
+                .config(cfg)
+                .bootstrap_behavior(BootstrapBehavior::Manual)
+                .create_unbootstrapped()
+                .err()
+                .expect("expected create_unbootstrapped to fail");
+
+            assert_eq!(err.kind(), ErrorKind::InvalidConfig);
+        });
+    }
+
+    #[test]
+    #[cfg(feature = "pt-client")]
+    fn mixed_bridges_do_not_require_transport_source() {
+        tor_rtcompat::test_with_one_runtime!(|rt| async {
+            let state_dir = tempfile::tempdir().unwrap();
+            let cache_dir = tempfile::tempdir().unwrap();
+            let mut cfg = TorClientConfigBuilder::from_directories(state_dir, cache_dir);
+            cfg.bridges().enabled(BoolOrAuto::Explicit(true));
+            cfg.bridges().bridges().push(
+                "Bridge 192.0.2.3:443 \
+                     2B280B23E1107BB62ABFC40DDCC8824814F80A72"
+                    .parse()
+                    .unwrap(),
+            );
+            cfg.bridges().bridges().push(
+                "Bridge snowflake 192.0.2.3:80 \
+                 2B280B23E1107BB62ABFC40DDCC8824814F80A72 \
+                 fingerprint=2B280B23E1107BB62ABFC40DDCC8824814F80A72 \
+                 url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ \
+                 front=cdn.sstatic.net \
+                 ice=stun:stun.l.google.com:19302,stun:stun.antisip.com:3478,\
+                 stun:stun.bluesip.net:3478,stun:stun.dus.net:3478,\
+                 stun:stun.epygi.com:3478,stun:stun.sonetel.com:3478,\
+                 stun:stun.uls.co.za:3478,stun:stun.voipgate.com:3478,\
+                 stun:stun.voys.nl:3478 \
+                 utls-imitate=hellorandomizedalpn"
+                    .parse()
+                    .unwrap(),
+            );
+            let cfg = cfg.build().unwrap();
+
+            let _client = TorClient::with_runtime(rt)
+                .config(cfg)
+                .bootstrap_behavior(BootstrapBehavior::Manual)
+                .create_unbootstrapped()
+                .expect("mixed direct+pluggable bridges should be accepted without PT manager");
         });
     }
 

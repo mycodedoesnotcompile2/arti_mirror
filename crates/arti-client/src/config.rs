@@ -52,9 +52,11 @@ pub mod dir {
     pub use tor_dirmgr::{DirMgrConfig, FallbackDir, FallbackDirBuilder};
 }
 
-/// Types for configuring pluggable transports.
 #[cfg(feature = "pt-client")]
 pub mod pt {
+    pub use tor_chanmgr::factory::{
+        AbstractPtError, AbstractPtMgr, InlinePtConnector, InlinePtMgr,
+    };
     pub use tor_ptmgr::config::{TransportConfig, TransportConfigBuilder};
 }
 
@@ -435,13 +437,19 @@ fn validate_pt_config(bridges: &BridgesConfigBuilder) -> Result<(), ConfigBuildE
     use std::collections::HashSet;
     use std::str::FromStr;
 
+    let transportlist = bridges.opt_transports().as_deref().unwrap_or_default();
+    // Allow bridge/PT config to be completed programmatically at runtime via
+    // TorClientBuilder::pluggable_transport_manager(...), without requiring
+    // placeholder entries in `[bridges.transports]`.
+    if transportlist.is_empty() {
+        return Ok(());
+    }
+
     // These are all the protocols that the user has defined
     let mut protocols_defined: HashSet<PtTransportName> = HashSet::new();
-    if let Some(transportlist) = bridges.opt_transports() {
-        for protocols in transportlist.iter() {
-            for protocol in protocols.get_protocols() {
-                protocols_defined.insert(protocol.clone());
-            }
+    for protocols in transportlist.iter() {
+        for protocol in protocols.get_protocols() {
+            protocols_defined.insert(protocol.clone());
         }
     }
 
@@ -826,6 +834,19 @@ impl TorClientConfig {
         Ok((state_dir, mistrust))
     }
 
+    /// Return true if bridges are enabled and all configured bridges require a
+    /// pluggable transport.
+    #[cfg(feature = "pt-client")]
+    pub(crate) fn bridges_require_pluggable_transport(&self) -> bool {
+        self.bridges.bridges_enabled()
+            && !self.bridges.bridges.is_empty()
+            && self
+                .bridges
+                .bridges
+                .iter()
+                .all(|bridge| matches!(bridge.chan_method(), ChannelMethod::Pluggable(_)))
+    }
+
     /// Access the `tor_memquota` configuration
     ///
     /// Ad-hoc accessor for testing purposes.
@@ -1169,7 +1190,7 @@ mod test {
                         "obfs4 bridge.example.net:80 $0bac39417268b69b9f514e7f63fa6fba1a788958 ed25519:dGhpcyBpcyBbpmNyZWRpYmx5IHNpbGx5ISEhISEhISA iat-mode=1",
                     ]
                 "#,
-                Err("all bridges unusable due to lack of corresponding pluggable transport"),
+                Ok(()),
             ),
             (
                 r#"

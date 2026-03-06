@@ -73,6 +73,12 @@ pub struct TorClientBuilder<R: Runtime> {
     local_resource_timeout: Option<Duration>,
     /// Optional external adapter for persisted client state and directory storage.
     storage_adapter: Option<StorageAdapterHandle>,
+    /// Optional programmatic pluggable transport manager.
+    ///
+    /// This is primarily useful for inline PT implementations (for example in
+    /// browser or other process-restricted environments).
+    #[cfg(feature = "pt-client")]
+    pt_mgr: Option<Arc<dyn tor_chanmgr::factory::AbstractPtMgr + 'static>>,
     /// Whether networking has been explicitly provided by the caller.
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     custom_network_provider_configured: bool,
@@ -104,6 +110,8 @@ impl<R: Runtime> TorClientBuilder<R> {
             dirmgr_builder: Arc::new(DirMgrBuilder {}),
             local_resource_timeout: None,
             storage_adapter: None,
+            #[cfg(feature = "pt-client")]
+            pt_mgr: None,
             #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
             custom_network_provider_configured: false,
             #[cfg(feature = "dirfilter")]
@@ -152,6 +160,24 @@ impl<R: Runtime> TorClientBuilder<R> {
     /// If this is not configured, Arti uses its default filesystem-backed storage.
     pub fn storage_adapter(mut self, storage_adapter: StorageAdapterHandle) -> Self {
         self.storage_adapter = Some(storage_adapter);
+        self
+    }
+
+    /// Configure a pluggable transport manager for programmatic PT handling.
+    ///
+    /// When set, this manager is consulted before process-based PT handling.
+    /// This enables inline, in-process PT integrations that do not rely on
+    /// launching helper binaries.
+    ///
+    /// With a programmatic PT manager, you may omit `[bridges.transports]`
+    /// entries from your `TorClientConfig` and satisfy bridge transports
+    /// entirely through this manager.
+    #[cfg(feature = "pt-client")]
+    pub fn pluggable_transport_manager(
+        mut self,
+        pt_mgr: Arc<dyn tor_chanmgr::factory::AbstractPtMgr + 'static>,
+    ) -> Self {
+        self.pt_mgr = Some(pt_mgr);
         self
     }
 
@@ -311,6 +337,8 @@ impl<R: Runtime> TorClientBuilder<R> {
             self.dirmgr_builder.as_ref(),
             dirmgr_extensions,
             self.storage_adapter.clone(),
+            #[cfg(feature = "pt-client")]
+            self.pt_mgr.clone(),
         )
         .map_err(ErrorDetail::into);
 
@@ -397,6 +425,8 @@ impl<R: Runtime> TorClientBuilder<R> {
             dirmgr_builder: Arc::new(DirMgrBuilder {}),
             local_resource_timeout: self.local_resource_timeout,
             storage_adapter: self.storage_adapter,
+            #[cfg(feature = "pt-client")]
+            pt_mgr: self.pt_mgr,
             #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
             custom_network_provider_configured: true,
             #[cfg(feature = "dirfilter")]

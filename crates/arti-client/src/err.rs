@@ -268,7 +268,7 @@ enum ErrorDetail {
     Reconfigure(#[from] tor_config::ReconfigureError),
 
     /// Problem creating or launching a pluggable transport.
-    #[cfg(feature="pt-client")]
+    #[cfg(feature = "pt-client")]
     #[error("Problem with a pluggable transport")]
     PluggableTransport(#[from] tor_ptmgr::err::PtError),
 
