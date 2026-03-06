@@ -5060,6 +5060,7 @@ name = "retry-error"
 version = "0.11.0"
 dependencies = [
  "anyhow",
+ "coarsetime",
  "derive_more",
  "humantime",
  "thiserror 2.0.18",
@@ -6730,6 +6731,7 @@ dependencies = [
 name = "tor-checkable"
 version = "0.40.0"
 dependencies = [
+ "coarsetime",
  "humantime",
  "signature",
  "thiserror 2.0.18",

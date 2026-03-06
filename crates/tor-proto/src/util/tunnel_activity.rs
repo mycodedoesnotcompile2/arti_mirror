@@ -132,7 +132,7 @@ impl TunnelActivity {
             *n_open_streams = new_value;
         } else {
             self.inner = Inner::Disused {
-                since: Instant::now(),
+                since: tor_rtcompat::instant_now(),
             };
         }
     }

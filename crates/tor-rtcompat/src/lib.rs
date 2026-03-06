@@ -79,6 +79,49 @@ pub use coarse_time::{CoarseDuration, CoarseInstant, RealCoarseTimeProvider};
 pub use dyn_time::DynTimeProvider;
 pub use timer::{SleepProviderExt, Timeout, TimeoutError};
 
+/// Return the current instant.
+///
+/// On `wasm32-unknown-unknown`, `std::time::Instant::now()` panics.
+/// This function provides a wasm-safe replacement.
+pub fn instant_now() -> std::time::Instant {
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        let monotonic: std::time::Duration =
+            coarsetime::Duration::from_u64(coarsetime::Instant::now().as_u64()).into();
+
+        // SAFETY:
+        // On `wasm32-unknown-unknown`, `std` represents `Instant` as nested
+        // newtypes over a duration-like counter, while only `Instant::now()`
+        // itself is unsupported.
+        //
+        // We construct an `Instant` from a monotonic timestamp so callers can
+        // continue using `Instant` arithmetic.
+        unsafe { std::mem::transmute::<std::time::Duration, std::time::Instant>(monotonic) }
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    {
+        std::time::Instant::now()
+    }
+}
+
+/// Return the current wall-clock time.
+///
+/// On `wasm32-unknown-unknown`, `std::time::SystemTime::now()` panics.
+/// This function provides a wasm-safe replacement.
+pub fn system_time_now() -> std::time::SystemTime {
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        std::time::SystemTime::UNIX_EPOCH
+            + std::time::Duration::from(coarsetime::Clock::now_since_epoch())
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    {
+        std::time::SystemTime::now()
+    }
+}
+
 /// Traits used to describe TLS connections and objects that can
 /// create them.
 pub mod tls {

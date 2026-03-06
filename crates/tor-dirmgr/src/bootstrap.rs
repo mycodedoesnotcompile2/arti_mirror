@@ -751,7 +751,7 @@ mod test {
 
     #[test]
     fn week() {
-        let now = SystemTime::now();
+        let now = tor_rtcompat::system_time_now();
         let one_day = Duration::new(86400, 0);
 
         assert_eq!(no_more_than_a_week_from(now, None), now + one_day * 7);

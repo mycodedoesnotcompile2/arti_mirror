@@ -67,7 +67,7 @@ use tor_linkspec::IntoOwnedChanTarget;
 
 use futures::StreamExt;
 use std::sync::{Arc, Mutex, Weak};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tor_rtcompat::SpawnExt;
 use tracing::{debug, info, instrument, trace, warn};
 
@@ -574,7 +574,7 @@ impl<B: AbstractTunnelBuilder<R> + 'static, R: Runtime> CircMgrInner<B, R> {
         #[cfg(feature = "geoip")] country_code: Option<CountryCode>,
     ) -> Result<Arc<B::Tunnel>> {
         self.expire_circuits().await;
-        let time = Instant::now();
+        let time = tor_rtcompat::instant_now();
         {
             let mut predictive = self.predictor.lock().expect("preemptive lock poisoned");
             if ports.is_empty() {

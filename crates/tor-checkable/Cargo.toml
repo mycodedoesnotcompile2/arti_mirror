@@ -18,6 +18,7 @@ full = ["tor-llcrypto/full"]
 __is_experimental = []
 
 [dependencies]
+coarsetime = "0.1.37"
 humantime = "2"
 signature = "2"
 thiserror = "2"

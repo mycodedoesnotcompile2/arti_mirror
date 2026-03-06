@@ -80,7 +80,7 @@ mod test {
 
     #[test]
     fn test_randomize_time() {
-        let now = SystemTime::now();
+        let now = tor_rtcompat::system_time_now();
         let one_hour = humantime::parse_duration("1hr").unwrap();
         let ten_sec = humantime::parse_duration("10s").unwrap();
         let mut rng = testing_rng();

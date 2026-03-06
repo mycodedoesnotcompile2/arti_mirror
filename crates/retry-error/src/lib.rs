@@ -51,6 +51,37 @@ use std::fmt::{self, Debug, Display, Error as FmtError, Formatter};
 use std::iter;
 use std::time::{Duration, Instant, SystemTime};
 
+/// Return a monotonic instant in a way that is safe on wasm32-unknown-unknown.
+#[inline]
+fn instant_now() -> Instant {
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        let duration: Duration =
+            coarsetime::Duration::from_u64(coarsetime::Instant::now().as_u64()).into();
+        // SAFETY: `std::time::Instant` on Rust's wasm targets is implemented as
+        // a newtype over a duration-like counter.
+        unsafe { std::mem::transmute::<Duration, Instant>(duration) }
+    }
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    {
+        Instant::now()
+    }
+}
+
+/// Return wall-clock time in a way that is safe on wasm32-unknown-unknown.
+#[inline]
+fn system_time_now() -> SystemTime {
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        let since_epoch: Duration = coarsetime::Clock::now_since_epoch().into();
+        SystemTime::UNIX_EPOCH + since_epoch
+    }
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    {
+        SystemTime::now()
+    }
+}
+
 /// An error type for use when we're going to do something a few times,
 /// and they might all fail.
 ///
@@ -169,7 +200,7 @@ impl<E> RetryError<E> {
     where
         T: Into<E>,
     {
-        self.push_timed(err, Instant::now(), Some(SystemTime::now()));
+        self.push_timed(err, instant_now(), Some(system_time_now()));
     }
 
     /// Return an iterator over all of the reasons that the attempt

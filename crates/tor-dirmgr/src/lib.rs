@@ -90,7 +90,7 @@ use futures::stream::BoxStream;
 use oneshot_fused_workaround as oneshot;
 use tor_netdoc::doc::netstatus::ProtoStatuses;
 use tor_rtcompat::scheduler::{TaskHandle, TaskSchedule};
-use tor_rtcompat::{Runtime, SpawnExt};
+use tor_rtcompat::{Runtime, SpawnExt, system_time_now};
 use tracing::{debug, info, instrument, trace, warn};
 
 use std::marker::PhantomData;
@@ -198,7 +198,7 @@ impl<R: Runtime> NetDirProvider for DirMgr<R> {
                 .extend_lifetime(netdir.lifetime()),
             Timeliness::Unchecked => return Ok(netdir),
         };
-        let now = SystemTime::now();
+        let now = system_time_now();
         if lifetime.valid_after() > now {
             Err(NetDirError::DirNotYetValid)
         } else if lifetime.valid_until() < now {

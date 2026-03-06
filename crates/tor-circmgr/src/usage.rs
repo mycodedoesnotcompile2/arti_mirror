@@ -956,7 +956,7 @@ pub(crate) mod test {
                 tor_guardmgr::GuardMgr::new(rt.clone(), statemgr.clone(), &TestConfig::default())
                     .unwrap();
             guards.install_test_netdir(&netdir);
-            let now = SystemTime::now();
+            let now = tor_rtcompat::system_time_now();
 
             // Only doing basic tests for now.  We'll test the path
             // building code a lot more closely in the tests for TorPath
@@ -1071,7 +1071,7 @@ pub(crate) mod test {
                 tor_guardmgr::GuardMgr::new(rt.clone(), statemgr.clone(), &TestConfig::default())
                     .unwrap();
             guards.install_test_netdir(&netdir);
-            let now = SystemTime::now();
+            let now = tor_rtcompat::system_time_now();
 
             #[cfg(all(feature = "vanguards", feature = "hs-common"))]
             let vanguards =
