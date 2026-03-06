@@ -449,6 +449,9 @@ impl<R: Runtime> GuardMgr<R> {
             let mut inner = self.inner.lock().expect("Poisoned lock");
             assert!(inner.bridge_desc_provider.is_none());
             inner.bridge_desc_provider = Some(weak_provider.clone());
+            // Kick descriptor demand update immediately so the provider sees
+            // our requested bridge set without waiting for a later event cycle.
+            inner.update(self.runtime.wallclock(), self.runtime.now());
         }
 
         let weak_inner = Arc::downgrade(&self.inner);
@@ -1078,6 +1081,14 @@ impl GuardMgrInner {
                 .flat_map(|guard| bridge_set.bridge_by_guard(guard))
                 .cloned()
                 .collect();
+            let desired = if desired.is_empty() {
+                // On initial bridge startup we may not yet have a sampled
+                // descriptor demand list; request all configured bridges once
+                // to seed bridge descriptor fetching.
+                bridge_set.configured_bridges().to_vec()
+            } else {
+                desired
+            };
 
             provider.set_bridges(&desired);
         }
@@ -1509,6 +1520,18 @@ impl GuardMgrInner {
             return self.select_fallback(now);
         }
 
+        // In bridge mode, if one-hop directory guard selection failed, fall
+        // back to any configured bridge line directly (without requiring an
+        // available bridge descriptor).
+        #[cfg(feature = "bridge-client")]
+        if usage.kind == GuardUsageKind::OneHopDirectory
+            && self.guards.active_set.universe_type() == UniverseType::BridgeSet
+        {
+            if let Ok(res) = self.select_configured_bridge_onehop() {
+                return Ok(res);
+            }
+        }
+
         // Couldn't extend the sample or use a fallback; return the original error.
         Err(first_error)
     }
@@ -1562,6 +1585,32 @@ impl GuardMgrInner {
         };
         let fallback = filt.modify_hop(fallback)?;
         Ok((sample::ListKind::Fallback, fallback))
+    }
+
+    /// Helper: in bridge mode, select a one-hop directory bridge directly from
+    /// the configured bridge lines.
+    #[cfg(feature = "bridge-client")]
+    fn select_configured_bridge_onehop(
+        &self,
+    ) -> Result<(sample::ListKind, FirstHop), PickGuardError> {
+        let filt = self.guards.active_guards().filter();
+        let bridges = self.latest_bridge_set().ok_or_else(|| {
+            PickGuardError::Internal(internal!(
+                "No bridge set available, even though this is the Bridges sample"
+            ))
+        })?;
+
+        for bridge in bridges.configured_bridges() {
+            let first_hop = FirstHop {
+                sample: Some(self.guards.active_set.clone()),
+                inner: FirstHopInner::Chan(OwnedChanTarget::from_chan_target(bridge)),
+            };
+            if let Ok(first_hop) = filt.modify_hop(first_hop) {
+                return Ok((sample::ListKind::Fallback, first_hop));
+            }
+        }
+
+        Err(PickGuardError::NoCandidatesAvailable)
     }
 }
 
@@ -1972,9 +2021,40 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
-    use tor_linkspec::{HasAddrs, HasRelayIds};
+    #[cfg(feature = "bridge-client")]
+    use futures::stream::pending;
+    #[cfg(feature = "bridge-client")]
+    use std::collections::HashMap;
+    #[cfg(feature = "bridge-client")]
+    use std::sync::Arc;
+    use tor_linkspec::{HasAddrs, HasChanMethod, HasRelayIds};
     use tor_persist::TestingStateMgr;
+    use tor_rtcompat::SleepProvider;
     use tor_rtcompat::test_with_all_runtimes;
+
+    #[cfg(feature = "bridge-client")]
+    #[derive(Clone, Debug, Default)]
+    struct RecordingBridgeDescProvider {
+        calls: Arc<Mutex<Vec<Vec<bridge::BridgeConfig>>>>,
+    }
+
+    #[cfg(feature = "bridge-client")]
+    impl bridge::BridgeDescProvider for RecordingBridgeDescProvider {
+        fn bridges(&self) -> Arc<bridge::BridgeDescList> {
+            Arc::new(HashMap::new())
+        }
+
+        fn events(&self) -> futures::stream::BoxStream<'static, bridge::BridgeDescEvent> {
+            Box::pin(pending())
+        }
+
+        fn set_bridges(&self, bridges: &[bridge::BridgeConfig]) {
+            self.calls
+                .lock()
+                .expect("lock poisoned")
+                .push(bridges.to_vec());
+        }
+    }
 
     #[test]
     fn guard_param_defaults() {
@@ -2011,6 +2091,25 @@ mod test {
         let netdir = netdir.unwrap_if_sufficient().unwrap();
 
         (guardmgr, statemgr, netdir)
+    }
+
+    #[cfg(feature = "bridge-client")]
+    fn init_bridges<R: Runtime>(rt: R, bridges: Vec<bridge::BridgeConfig>) -> GuardMgr<R> {
+        let statemgr = TestingStateMgr::new();
+        let have_lock = statemgr.try_lock().expect("state lock");
+        assert!(have_lock.held());
+        let cfg = TestConfig {
+            bridges,
+            ..Default::default()
+        };
+        GuardMgr::new(rt, statemgr, &cfg).expect("guardmgr with bridges")
+    }
+
+    #[cfg(feature = "pt-client")]
+    fn snowflake_bridge() -> bridge::BridgeConfig {
+        // Same bridge format as the arti-client snowflake example.
+        const BRIDGE: &str = "Bridge snowflake 192.0.2.3:80 2B280B23E1107BB62ABFC40DDCC8824814F80A72 fingerprint=2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ front=cdn.sstatic.net ice=stun:stun.l.google.com:19302,stun:stun.antisip.com:3478,stun:stun.bluesip.net:3478,stun:stun.dus.net:3478,stun:stun.epygi.com:3478,stun:stun.sonetel.com:3478,stun:stun.uls.co.za:3478,stun:stun.voipgate.com:3478,stun:stun.voys.nl:3478 utls-imitate=hellorandomizedalpn";
+        BRIDGE.parse().expect("valid snowflake bridge line")
     }
 
     #[test]
@@ -2154,6 +2253,80 @@ mod test {
             // Now that the guard is working as a cache, asking for it should get us the same guard.
             let (g4, _mon, _usable) = guardmgr.select_guard(dir_usage).unwrap();
             assert_eq!(g4.ed_identity(), guard.ed_identity());
+        });
+    }
+
+    #[cfg(feature = "pt-client")]
+    #[test]
+    fn bridge_onehop_directory_returns_pluggable_first_hop() {
+        test_with_all_runtimes!(|rt| async move {
+            let guardmgr = init_bridges(rt, vec![snowflake_bridge()]);
+            let usage = GuardUsageBuilder::new()
+                .kind(GuardUsageKind::OneHopDirectory)
+                .build()
+                .unwrap();
+            let (hop, _mon, _usable) = guardmgr.select_guard(usage).unwrap();
+            assert!(matches!(
+                hop.chan_method(),
+                tor_linkspec::ChannelMethod::Pluggable(_)
+            ));
+        });
+    }
+
+    #[cfg(feature = "pt-client")]
+    #[test]
+    fn bridge_onehop_directory_falls_back_to_configured_bridge() {
+        test_with_all_runtimes!(|rt| async move {
+            let guardmgr = init_bridges(rt.clone(), vec![snowflake_bridge()]);
+            let usage = GuardUsageBuilder::new()
+                .kind(GuardUsageKind::OneHopDirectory)
+                .build()
+                .unwrap();
+
+            let mut inner = guardmgr.inner.lock().expect("lock poisoned");
+            let now = rt.now();
+            let wallclock = rt.wallclock();
+            let (_origin, first_hop) = inner
+                .select_guard_with_expand(&usage, now, wallclock)
+                .unwrap();
+            let guard_id = ids::GuardId::from_relay_ids(&first_hop);
+            inner
+                .guards
+                .active_guards_mut()
+                .record_failure(&guard_id, None, now);
+
+            let (origin, hop) = inner
+                .select_guard_with_expand(&usage, now, wallclock)
+                .unwrap();
+            assert_eq!(origin, sample::ListKind::Fallback);
+            assert!(matches!(
+                hop.chan_method(),
+                tor_linkspec::ChannelMethod::Pluggable(_)
+            ));
+        });
+    }
+
+    #[cfg(feature = "bridge-client")]
+    #[test]
+    fn install_bridge_desc_provider_requests_descriptors_immediately() {
+        test_with_all_runtimes!(|rt| async move {
+            #[cfg(feature = "pt-client")]
+            let bridge: bridge::BridgeConfig = snowflake_bridge();
+            #[cfg(not(feature = "pt-client"))]
+            let bridge: bridge::BridgeConfig = "Bridge 192.0.2.3:443".parse().unwrap();
+
+            let guardmgr = init_bridges(rt, vec![bridge.clone()]);
+            let provider = Arc::new(RecordingBridgeDescProvider::default());
+            let provider_obj: Arc<dyn bridge::BridgeDescProvider> = provider.clone();
+
+            guardmgr
+                .install_bridge_desc_provider(&provider_obj)
+                .expect("install provider");
+
+            let calls = provider.calls.lock().expect("lock poisoned");
+            assert!(!calls.is_empty());
+            assert!(!calls[0].is_empty());
+            assert!(calls[0].contains(&bridge));
         });
     }
 

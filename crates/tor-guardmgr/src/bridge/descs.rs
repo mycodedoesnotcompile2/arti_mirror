@@ -155,6 +155,11 @@ impl BridgeSet {
         Self { config, descs }
     }
 
+    /// Return all currently configured bridges.
+    pub(crate) fn configured_bridges(&self) -> &[BridgeConfig] {
+        self.config.as_ref()
+    }
+
     /// Returns the bridge that best matches a given guard.
     ///
     /// Note that since the guard may have more identities than the bridge the

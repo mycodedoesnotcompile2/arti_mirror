@@ -811,9 +811,10 @@ impl GuardSet {
         // _rather_ use are either down, or have had their circuit
         // attempts pending for too long.
 
-        let cutoff = now
-            .checked_sub(params.np_connect_timeout)
-            .expect("Can't subtract connect timeout from now.");
+        // On very fresh runtimes (notably wasm), `now` can be earlier than
+        // `np_connect_timeout`. Treat that as "no historical cutoff yet"
+        // instead of panicking.
+        let cutoff = now.checked_sub(params.np_connect_timeout).unwrap_or(now);
 
         for (src, guard) in self.preference_order() {
             if guard.guard_id() == guard_id {
