@@ -78,16 +78,32 @@ impl WriteHandle {
     /// Queue an outgoing message for a nonblocking stream.
     pub(crate) fn send_valid(&self, msg: &ValidatedRequest) -> io::Result<()> {
         let mut w = self.inner.lock().expect("Poisoned lock");
-        let was_empty = w.write_buf.is_empty();
+        let was_writing = w.wants_to_write();
         w.write_buf.extend_from_slice(msg.as_ref().as_bytes());
 
         // See TOCTOU note on `WriteHandleImpl`:
         // we need to change our interest while we are holding the
         // above mutex.
-        if was_empty {
+        if !was_writing {
             w.event_loop.start_writing()?;
         }
         Ok(())
+    }
+
+    /// Return true if this write handle has queued data, or if it has written data but not flushed
+    /// it.
+    fn wants_to_write(&self) -> bool {
+        let w = self.inner.lock().expect("Poisoned lock");
+        w.wants_to_write()
+    }
+}
+
+impl WriteHandleImpl {
+    /// Return true if this write handle has queued data, or if it has written data but not flushed
+    /// it.
+    fn wants_to_write(&self) -> bool {
+        let has_data = !self.write_buf.is_empty();
+        has_data || self.unflushed_data
     }
 }
 
@@ -124,6 +140,9 @@ struct WriteHandleImpl {
     // TODO: Consider using a VecDeque or BytesMut or such.
     write_buf: Vec<u8>,
 
+    /// True if we have written data that is not yet flushed.
+    unflushed_data: bool,
+
     /// The handle to use to wake the polling loop.
     #[debug(ignore)]
     event_loop: Box<dyn EventLoop>,
@@ -136,6 +155,7 @@ impl NonblockingConnection {
             write_handle: WriteHandle {
                 inner: Arc::new(Mutex::new(WriteHandleImpl {
                     write_buf: Default::default(),
+                    unflushed_data: false,
                     event_loop,
                 })),
             },
@@ -190,7 +210,7 @@ impl NonblockingConnection {
     /// [`RpcPoll::wants_to_write`]: crate::RpcPoll::wants_to_write
     /// [`EventLoop`]: crate::EventLoop
     pub(crate) fn wants_to_write(&self) -> bool {
-        self.has_data_to_write()
+        self.write_handle.wants_to_write()
     }
 
     /// Try to exchange messages with the RPC server.
@@ -246,14 +266,6 @@ impl NonblockingConnection {
         }
     }
 
-    /// Internal helper: Return true if there is any outgoing data queued to be written.
-    fn has_data_to_write(&self) -> bool {
-        let w = self.write_handle.inner.lock().expect("Lock poisoned");
-        // See TOCTOU note on WriteHandleImpl: Our rule is to check whether we have data to write
-        // within the same lock used to hold the waker, so that we can't lose any data.
-        !w.write_buf.is_empty()
-    }
-
     /// Helper: Try to get a message, reading into our read_buf as needed.
     ///
     /// (We don't use a BufReader here because
@@ -288,22 +300,27 @@ impl NonblockingConnection {
     fn flush_queue(&mut self) -> io::Result<()> {
         let mut w = self.write_handle.inner.lock().expect("Poisoned lock.");
 
-        loop {
-            if w.write_buf.is_empty() {
-                return Ok(());
-            }
+        let was_writing = w.wants_to_write();
 
+        while !w.write_buf.is_empty() {
             let n = retry_eintr(|| self.stream.write(&w.write_buf[..]))?;
             vec_pop_from_front(&mut w.write_buf, n);
+            w.unflushed_data = true;
+        }
 
-            if w.write_buf.is_empty() {
-                w.event_loop.stop_writing()?;
-            }
-
+        if w.unflushed_data {
             // This is a no-op for the streams we support so far, but it could be necessary if
             // we support more kinds in the future.
             let () = retry_eintr(|| self.stream.flush())?;
+
+            w.unflushed_data = false;
         }
+
+        if was_writing && !w.wants_to_write() {
+            w.event_loop.stop_writing()?;
+        }
+
+        Ok(())
     }
 }
 
