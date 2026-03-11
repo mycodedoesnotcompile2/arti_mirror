@@ -148,11 +148,15 @@ pub trait AbstractPtError:
 /// Implement this trait when your application wants to supply PT handling
 /// directly instead of relying on `tor-ptmgr`.
 ///
+/// Applications using `arti-client` typically pass an implementation of this
+/// trait to `TorClientBuilder::pluggable_transport_manager`.
+///
 /// `factory_for_transport()` is called with the transport name from a bridge
 /// line:
 ///
 /// - return `Ok(Some(factory))` to handle the transport
-/// - return `Ok(None)` to indicate that this manager does not provide it
+/// - return `Ok(None)` to indicate that this manager does not provide it, so a
+///   higher-level caller can fall back to process-managed PT configuration
 /// - return `Err(...)` when the manager knows the transport but could not make
 ///   it available
 #[async_trait]
@@ -272,6 +276,9 @@ where
 ///
 /// This manager is suitable for environments where process spawning is
 /// unavailable (for example `wasm32-unknown-unknown` in browsers).
+/// When used through `arti-client`, registering every transport named in your
+/// bridge lines lets you omit `[bridges.transports]` from the client
+/// configuration.
 ///
 /// Typical usage:
 ///

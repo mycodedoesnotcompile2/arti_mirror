@@ -96,6 +96,25 @@ let tor_client = TorClient::builder()
     .create_unbootstrapped()?;
 ```
 
+### Custom storage and networking
+
+Applications that embed Arti in a browser, sandbox, or other environment
+without a normal filesystem or socket stack can provide those pieces
+themselves.
+
+- Use [`TorClientBuilder::storage_adapter`] to supply a filesystem-like
+  backend for persistent client state and directory-manager blobs.
+- Use [`TorClientBuilder::tcp_provider`] or
+  `TorClientBuilder::custom_network_provider` to tell Arti which network
+  implementation it should use.
+
+On `wasm32-unknown-unknown`, both pieces are required before creating a
+client.
+
+See [`storage_adapter`], [`TorClient::with_runtime`],
+`examples/storage-adapter.rs`, and the [`tor_rtcompat`] docs for the full
+embedded setup.
+
 ### Using the client
 
 A client can then be used to make connections over Tor with
@@ -160,6 +179,21 @@ configured through [`config::BridgesConfig`]. You will need to enable the featur
 separately and that Arti does not provide them on its own. You can read more about
 PTs in [TB manual](https://tb-manual.torproject.org/circumvention/).
 
+When bridges are enabled, Arti bootstraps bridge mode directly from the
+configured bridge list.
+
+There are two PT integration styles:
+
+- process-managed PTs configured in `[bridges.transports]`
+- programmatic PTs supplied in-process with
+  [`TorClientBuilder::pluggable_transport_manager`]
+
+If every pluggable bridge is handled programmatically, you can leave
+`[bridges.transports]` empty.
+
+See [`config::pt`], `examples/snowflake.rs`, and `examples/inline-pt.rs` for
+complete bridge/PT setups.
+
 ### More advanced usage
 
 This version of Arti includes basic support for "stream isolation": the
@@ -189,6 +223,8 @@ The backend Arti uses for TCP connections ([`tor_rtcompat::NetStreamProvider`])
 and for creating TLS sessions ([`tor_rtcompat::TlsProvider`]) is also
 configurable using this crate. This can be used to embed Arti in custom
 environments where you want lots of control over how it uses the network.
+It is also the networking hook used together with
+[`TorClientBuilder::storage_adapter`] for embedded and wasm integrations.
 
 [**View the `tor_rtcompat` crate documentation**](tor_rtcompat) for more
 about these features.

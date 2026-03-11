@@ -408,7 +408,15 @@ impl StorageConfig {
 /// A [`BridgesConfig`] configuration has the following pieces:
 ///    * A [`BridgeList`] of [`BridgeConfig`]s, which describes one or more bridges.
 ///    * An `enabled` boolean to say whether or not to use the listed bridges.
-///    * A list of [`pt::TransportConfig`]s.
+///    * A list of [`pt::TransportConfig`]s for process-managed pluggable transports.
+///
+/// When bridges are enabled, Arti bootstraps bridge mode directly from the
+/// configured bridges listed here.
+///
+/// The transport list is only needed for process-managed PTs. Applications
+/// that install an in-process PT manager with
+/// [`crate::TorClientBuilder::pluggable_transport_manager`] may leave it
+/// empty.
 ///
 /// # Example
 ///
@@ -463,6 +471,11 @@ impl StorageConfig {
 /// // Now you can pass `config` to TorClient::create!
 /// # Ok(())}
 /// ```
+/// This example uses process-managed PTs. If your application supplies PT
+/// handling in-process with
+/// [`crate::TorClientBuilder::pluggable_transport_manager`], you may omit the
+/// `transports` list instead; see [`pt`] and `examples/inline-pt.rs`.
+///
 /// You can also find an example based on snowflake in arti-client example folder.
 //
 // We leave this as an empty struct even when bridge support is disabled,
@@ -488,7 +501,11 @@ pub struct BridgesConfig {
     #[deftly(tor_config(no_magic, sub_builder, setter(skip)))]
     bridges: BridgeList,
 
-    /// Configured list of pluggable transports.
+    /// Configured list of pluggable transports for process-managed PTs.
+    ///
+    /// Leave this empty when your application provides PT handling
+    /// programmatically via
+    /// [`crate::TorClientBuilder::pluggable_transport_manager`].
     #[cfg(feature = "pt-client")] // NOTE: Could use tor_config(cfg)
     #[deftly(tor_config(
         list(element(build), listtype = "TransportConfigList"),

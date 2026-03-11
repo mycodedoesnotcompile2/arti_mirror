@@ -121,7 +121,9 @@ pub struct ChanMgr<R: Runtime> {
     ///   * A `dyn` [`factory::AbstractPtMgr`] that can provide a `dyn`
     ///     [`factory::ChannelFactory`] for each supported pluggable transport.
     ///     This starts out as `None`, but can be replaced with [`ChanMgr::set_pt_mgr`].
-    ///     The `TorClient` code currently sets this using `tor_ptmgr::PtMgr`.
+    ///     The `TorClient` code can set this using either `tor_ptmgr::PtMgr`
+    ///     for process-managed transports or a programmatic manager such as
+    ///     [`factory::InlinePtMgr`].
     ///     `PtMgr` currently returns `ChannelFactory` implementations that are
     ///     built using [`transport::proxied::ExternalProxyPlugin`], which implements
     ///     [`transport::TransportImplHelper`], which in turn is wrapped into a

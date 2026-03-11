@@ -146,6 +146,10 @@ impl<R: Runtime> DirMgrStore<R> {
     ///
     /// On non-wasm targets, storage remains filesystem-backed and the adapter
     /// is currently ignored.
+    ///
+    /// Most applications should configure this through `arti-client`'s
+    /// `TorClientBuilder::storage_adapter`; this constructor is for lower-level
+    /// integrations that use `tor-dirmgr` directly.
     pub fn new_with_storage_adapter(
         config: &DirMgrConfig,
         runtime: R,
