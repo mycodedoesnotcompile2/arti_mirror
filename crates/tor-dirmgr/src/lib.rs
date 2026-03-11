@@ -140,6 +140,12 @@ impl<R: Runtime> DirMgrStore<R> {
     }
 
     /// Open the storage with an optional external storage adapter.
+    ///
+    /// On `wasm32-unknown-unknown`, the adapter is used for directory-manager
+    /// lock and blob storage and is required by the wasm storage backend.
+    ///
+    /// On non-wasm targets, storage remains filesystem-backed and the adapter
+    /// is currently ignored.
     pub fn new_with_storage_adapter(
         config: &DirMgrConfig,
         runtime: R,

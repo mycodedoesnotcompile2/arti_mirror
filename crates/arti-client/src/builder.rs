@@ -4,7 +4,7 @@
 
 use crate::storage_adapter::StorageAdapterHandle;
 use crate::{
-    err::ErrorDetail, BootstrapBehavior, InertTorClient, Result, TorClient, TorClientConfig,
+    BootstrapBehavior, InertTorClient, Result, TorClient, TorClientConfig, err::ErrorDetail,
 };
 use std::{
     result::Result as StdResult,
@@ -155,9 +155,16 @@ impl<R: Runtime> TorClientBuilder<R> {
         self
     }
 
-    /// Configure a storage adapter used for state persistence and directory cache blobs.
+    /// Configure an external storage backend.
     ///
-    /// If this is not configured, Arti uses its default filesystem-backed storage.
+    /// On `wasm32-unknown-unknown`, this is required. The adapter is used for
+    /// persistent client state plus directory-manager blobs and lock files.
+    ///
+    /// On non-wasm targets, Arti currently continues to use its
+    /// filesystem-backed storage and ignores this setting.
+    ///
+    /// See [`crate::storage_adapter`] for the adapter contract and a minimal
+    /// in-memory example.
     pub fn storage_adapter(mut self, storage_adapter: StorageAdapterHandle) -> Self {
         self.storage_adapter = Some(storage_adapter);
         self
@@ -165,13 +172,28 @@ impl<R: Runtime> TorClientBuilder<R> {
 
     /// Configure a pluggable transport manager for programmatic PT handling.
     ///
-    /// When set, this manager is consulted before process-based PT handling.
-    /// This enables inline, in-process PT integrations that do not rely on
-    /// launching helper binaries.
+    /// This manager is consulted before process-based PT handling from
+    /// `[bridges.transports]`.
     ///
-    /// With a programmatic PT manager, you may omit `[bridges.transports]`
-    /// entries from your `TorClientConfig` and satisfy bridge transports
-    /// entirely through this manager.
+    /// Returning `Ok(Some(...))` from the manager handles the transport
+    /// in-process. Returning `Ok(None)` falls back to the configured
+    /// process-managed PT setup.
+    ///
+    /// This is the right API when your PT implementation already lives in the
+    /// current process, such as browser, mobile, or sandboxed embeddings.
+    ///
+    /// Typical setup:
+    ///
+    /// - create an [`crate::config::pt::InlinePtMgr`] or your own
+    ///   [`crate::config::pt::AbstractPtMgr`]
+    /// - register one handler per transport name used in your bridge lines
+    /// - pass the manager here
+    ///
+    /// When every pluggable bridge is handled programmatically, you may omit
+    /// `[bridges.transports]` entries from [`TorClientConfig`].
+    ///
+    /// See [`crate::config::pt`] and `examples/inline-pt.rs` for an end-to-end
+    /// example.
     #[cfg(feature = "pt-client")]
     pub fn pluggable_transport_manager(
         mut self,
@@ -183,9 +205,14 @@ impl<R: Runtime> TorClientBuilder<R> {
 
     /// Mark this builder as using a user-provided network implementation.
     ///
-    /// This is primarily useful on `wasm32-unknown-unknown` when a custom
-    /// runtime already embeds caller-provided networking and `tcp_provider()`
-    /// is not used.
+    /// Use this when you built the client with [`TorClient::with_runtime`] and
+    /// that runtime already includes the TCP implementation Arti should use.
+    ///
+    /// If you call [`tcp_provider`](Self::tcp_provider), you do not need this
+    /// method; `tcp_provider` already marks networking as configured.
+    ///
+    /// On `wasm32-unknown-unknown`, either `tcp_provider(...)` or this method
+    /// is required before client creation.
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     pub fn custom_network_provider(mut self) -> Self {
         self.custom_network_provider_configured = true;
@@ -409,6 +436,9 @@ impl<R: Runtime> TorClientBuilder<R> {
     ///
     /// This is useful on platforms where the default runtime cannot create TCP
     /// sockets directly and a custom transport adapter is required.
+    ///
+    /// On `wasm32-unknown-unknown`, calling this also satisfies the requirement
+    /// that the builder use caller-provided networking.
     pub fn tcp_provider<T>(
         self,
         tcp_provider: T,

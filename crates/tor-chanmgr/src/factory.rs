@@ -15,7 +15,7 @@ use crate::transport::TransportImplHelper;
 use async_trait::async_trait;
 #[cfg(feature = "pt-client")]
 use futures::{AsyncRead, AsyncWrite};
-use tor_error::{internal, HasKind, HasRetryTime};
+use tor_error::{HasKind, HasRetryTime, internal};
 #[cfg(feature = "pt-client")]
 use tor_linkspec::{ChannelMethod, PtTarget};
 use tor_linkspec::{HasChanMethod, OwnedChanTarget, PtTransportName};
@@ -54,8 +54,7 @@ impl BootstrapReporter {
 /// construct all of its channels.
 ///
 /// A `ChannelFactory` can be implemented in terms of a
-/// [`TransportImplHelper`](crate::transport::TransportImplHelper), by wrapping it in a
-/// `ChanBuilder`.
+/// [`TransportImplHelper`], by wrapping it in a `ChanBuilder`.
 ///
 // FIXME(eta): Rectify the below situation.
 /// (In fact, as of the time of writing, this is the *only* way to implement this trait
@@ -134,6 +133,8 @@ where
 }
 
 /// The error type returned by a pluggable transport manager.
+///
+/// Errors of this type surface as [`crate::Error::Pt`].
 pub trait AbstractPtError:
     std::error::Error + HasKind + HasRetryTime + Send + Sync + std::fmt::Debug
 {
@@ -143,6 +144,17 @@ pub trait AbstractPtError:
 ///
 /// We can't directly reference the `PtMgr` type from `tor-ptmgr`, because of dependency resolution
 /// constraints, so this defines the interface for what one should look like.
+///
+/// Implement this trait when your application wants to supply PT handling
+/// directly instead of relying on `tor-ptmgr`.
+///
+/// `factory_for_transport()` is called with the transport name from a bridge
+/// line:
+///
+/// - return `Ok(Some(factory))` to handle the transport
+/// - return `Ok(None)` to indicate that this manager does not provide it
+/// - return `Err(...)` when the manager knows the transport but could not make
+///   it available
 #[async_trait]
 pub trait AbstractPtMgr: Send + Sync {
     /// Get a `ChannelFactory` for the provided `PtTransportName`.
@@ -181,6 +193,13 @@ type ChannelFactoryHandle = Arc<dyn ChannelFactory + Send + Sync>;
 /// Unlike process-managed PTs, an inline PT receives the parsed [`PtTarget`]
 /// directly, including all `k=v` bridge settings, and returns a stream to be
 /// used by the normal TLS/channel stack.
+///
+/// Implementors should:
+///
+/// - interpret the target address and settings for one transport
+/// - open the underlying stream to the bridge
+/// - return the [`PeerAddr`] that identifies the connection together with the
+///   stream Arti should wrap in TLS
 #[cfg(feature = "pt-client")]
 #[async_trait]
 pub trait InlinePtConnector<S>: Send + Sync
@@ -253,6 +272,14 @@ where
 ///
 /// This manager is suitable for environments where process spawning is
 /// unavailable (for example `wasm32-unknown-unknown` in browsers).
+///
+/// Typical usage:
+///
+/// - construct the manager with the runtime that should build channels
+/// - call [`register_transport`](Self::register_transport) for each transport
+///   name used in your bridge lines
+/// - hand the manager to `arti-client` via
+///   `TorClientBuilder::pluggable_transport_manager`
 #[cfg(feature = "pt-client")]
 #[derive(Clone)]
 pub struct InlinePtMgr<R, S>
@@ -273,6 +300,9 @@ where
     S: AsyncRead + AsyncWrite + StreamOps + Send + Sync + 'static,
 {
     /// Construct an empty inline PT manager.
+    ///
+    /// The runtime must be able to build TLS channels over the stream type
+    /// returned by the connectors you register.
     pub fn new(runtime: R) -> Self {
         Self {
             runtime,
@@ -299,6 +329,9 @@ where
     }
 
     /// Register or replace a connector for `transport`.
+    ///
+    /// `transport` must match the transport name used in the corresponding
+    /// bridge lines.
     ///
     /// Returns the previously registered connector, if any.
     pub fn register_transport(

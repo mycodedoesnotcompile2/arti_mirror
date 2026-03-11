@@ -54,6 +54,74 @@ pub mod dir {
 
 #[cfg(feature = "pt-client")]
 pub mod pt {
+    //! Types for configuring pluggable transports.
+    //!
+    //! Arti supports two PT integration styles:
+    //!
+    //! - process-managed PTs, configured with `TransportConfig` entries in
+    //!   `[bridges.transports]`
+    //! - programmatic PTs, provided directly by the application through
+    //!   [`crate::TorClientBuilder::pluggable_transport_manager`]
+    //!
+    //! Use process-managed PTs when Arti can launch helper binaries itself.
+    //! Use programmatic PTs when the transport already lives in your process or
+    //! when process spawning is unavailable.
+    //!
+    //! `InlinePtMgr` is the simplest programmatic path: register an
+    //! `InlinePtConnector` for each transport name that appears in your bridge
+    //! configuration, then pass the manager to the client builder.
+    //!
+    //! When you supply all required transports programmatically, you may omit
+    //! `[bridges.transports]` entries from the client configuration.
+    //!
+    //! ```no_run
+    //! use arti_client::config::pt::{InlinePtConnector, InlinePtMgr};
+    //! use arti_client::config::{BoolOrAuto, BridgeConfigBuilder, TorClientConfigBuilder};
+    //! use arti_client::TorClient;
+    //! use async_trait::async_trait;
+    //! use std::sync::Arc;
+    //! use tor_linkspec::PtTarget;
+    //! use tor_proto::peer::PeerAddr;
+    //! use tor_rtcompat::{NetStreamProvider, PreferredRuntime};
+    //!
+    //! type Stream = <PreferredRuntime as NetStreamProvider>::Stream;
+    //!
+    //! #[derive(Clone)]
+    //! struct Connector;
+    //!
+    //! #[async_trait]
+    //! impl InlinePtConnector<Stream> for Connector {
+    //!     async fn connect(&self, _target: &PtTarget) -> tor_chanmgr::Result<(PeerAddr, Stream)> {
+    //!         unimplemented!("connect to the bridge here")
+    //!     }
+    //! }
+    //!
+    //! let state_dir = tempfile::tempdir()?;
+    //! let cache_dir = tempfile::tempdir()?;
+    //! let mut config = TorClientConfigBuilder::from_directories(state_dir.path(), cache_dir.path());
+    //! config.bridges().enabled(BoolOrAuto::Explicit(true));
+    //!
+    //! let mut bridge = BridgeConfigBuilder::default();
+    //! bridge.transport("passthrough");
+    //! bridge.set_addrs(vec!["198.51.100.7:443".parse()?]);
+    //! bridge.set_ids(vec!["0123456789ABCDEF0123456789ABCDEF01234567".parse()?]);
+    //! config.bridges().bridges().push(bridge);
+    //! let config = config.build()?;
+    //!
+    //! let runtime = PreferredRuntime::current()?;
+    //! let inline_pt = InlinePtMgr::new(runtime.clone());
+    //! inline_pt.register_transport("passthrough".parse()?, Arc::new(Connector));
+    //!
+    //! let client = TorClient::with_runtime(runtime)
+    //!     .config(config)
+    //!     .pluggable_transport_manager(Arc::new(inline_pt))
+    //!     .create_unbootstrapped()?;
+    //! # let _ = client;
+    //! # Ok::<(), Box<dyn std::error::Error>>(())
+    //! ```
+    //!
+    //! See `examples/snowflake.rs` for process-managed PT configuration and
+    //! `examples/inline-pt.rs` for end-to-end programmatic PT wiring.
     pub use tor_chanmgr::factory::{
         AbstractPtError, AbstractPtMgr, InlinePtConnector, InlinePtMgr,
     };
