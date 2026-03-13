@@ -97,6 +97,8 @@ struct PtSharedState {
     managed_cmethods: HashMap<PtTransportName, PtClientMethod>,
     /// Current configured set of pluggable transports.
     configured: HashMap<PtTransportName, TransportOptions>,
+    /// The global Tor outbound proxy, if any.
+    outbound_proxy: Option<String>,
 }
 
 /// A pluggable transport manager knows how to make different
@@ -145,11 +147,13 @@ impl<R: Runtime> PtMgr<R> {
         transports: Vec<TransportConfig>,
         #[allow(unused)] state_dir: PathBuf,
         path_resolver: Arc<CfgPathResolver>,
+        outbound_proxy: Option<String>,
         rt: R,
     ) -> Result<Self, PtError> {
         let state = PtSharedState {
             managed_cmethods: Default::default(),
             configured: Self::transform_config(transports)?,
+            outbound_proxy,
         };
         let state = Arc::new(RwLock::new(state));
 
@@ -190,6 +194,7 @@ impl<R: Runtime> PtMgr<R> {
         &self,
         how: tor_config::Reconfigure,
         transports: Vec<TransportConfig>,
+        outbound_proxy: Option<String>,
     ) -> Result<(), tor_config::ReconfigureError> {
         let configured = Self::transform_config(transports)?;
         if how == tor_config::Reconfigure::CheckAllOrNothing {
@@ -198,6 +203,7 @@ impl<R: Runtime> PtMgr<R> {
         {
             let mut inner = self.state.write().expect("ptmgr poisoned");
             inner.configured = configured;
+            inner.outbound_proxy = outbound_proxy;
         }
         // We don't have any way of propagating this sanely; the caller will find out the reactor
         // has died later on anyway.
