@@ -81,7 +81,7 @@ mod test {
 
     #[test]
     fn status_basics() {
-        let now = Instant::now();
+        let now = tor_rtcompat::instant_now();
 
         /// floor to use for testing.
         const FLOOR: Duration = Duration::from_secs(99);

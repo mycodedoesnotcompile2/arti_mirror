@@ -1,14 +1,30 @@
 //! Traits and code to define different mechanisms for building Channels to
 //! different kinds of targets.
 
+#[cfg(feature = "pt-client")]
+use std::collections::HashMap;
+#[cfg(feature = "pt-client")]
+use std::sync::RwLock;
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "pt-client")]
+use crate::builder::ChanBuilder;
 use crate::event::ChanMgrEventSender;
+#[cfg(feature = "pt-client")]
+use crate::transport::TransportImplHelper;
 use async_trait::async_trait;
+#[cfg(feature = "pt-client")]
+use futures::{AsyncRead, AsyncWrite};
 use tor_error::{HasKind, HasRetryTime, internal};
+#[cfg(feature = "pt-client")]
+use tor_linkspec::{ChannelMethod, PtTarget};
 use tor_linkspec::{HasChanMethod, OwnedChanTarget, PtTransportName};
 use tor_proto::channel::Channel;
 use tor_proto::memquota::ChannelAccount;
+#[cfg(feature = "pt-client")]
+use tor_proto::peer::PeerAddr;
+#[cfg(feature = "pt-client")]
+use tor_rtcompat::{Runtime, StreamOps, TlsProvider};
 use tracing::{debug, instrument};
 
 #[cfg(feature = "relay")]
@@ -38,8 +54,7 @@ impl BootstrapReporter {
 /// construct all of its channels.
 ///
 /// A `ChannelFactory` can be implemented in terms of a
-/// [`TransportImplHelper`](crate::transport::TransportImplHelper), by wrapping it in a
-/// `ChanBuilder`.
+/// [`TransportImplHelper`], by wrapping it in a `ChanBuilder`.
 ///
 // FIXME(eta): Rectify the below situation.
 /// (In fact, as of the time of writing, this is the *only* way to implement this trait
@@ -118,6 +133,8 @@ where
 }
 
 /// The error type returned by a pluggable transport manager.
+///
+/// Errors of this type surface as [`crate::Error::Pt`].
 pub trait AbstractPtError:
     std::error::Error + HasKind + HasRetryTime + Send + Sync + std::fmt::Debug
 {
@@ -127,6 +144,21 @@ pub trait AbstractPtError:
 ///
 /// We can't directly reference the `PtMgr` type from `tor-ptmgr`, because of dependency resolution
 /// constraints, so this defines the interface for what one should look like.
+///
+/// Implement this trait when your application wants to supply PT handling
+/// directly instead of relying on `tor-ptmgr`.
+///
+/// Applications using `arti-client` typically pass an implementation of this
+/// trait to `TorClientBuilder::pluggable_transport_manager`.
+///
+/// `factory_for_transport()` is called with the transport name from a bridge
+/// line:
+///
+/// - return `Ok(Some(factory))` to handle the transport
+/// - return `Ok(None)` to indicate that this manager does not provide it, so a
+///   higher-level caller can fall back to process-managed PT configuration
+/// - return `Err(...)` when the manager knows the transport but could not make
+///   it available
 #[async_trait]
 pub trait AbstractPtMgr: Send + Sync {
     /// Get a `ChannelFactory` for the provided `PtTransportName`.
@@ -149,6 +181,211 @@ where
             Some(mgr) => mgr.factory_for_transport(transport).await,
             None => Ok(None),
         }
+    }
+}
+
+#[cfg(feature = "pt-client")]
+/// Shared connector handle used by the inline PT manager internals.
+type InlineConnectorHandle<S> = Arc<dyn InlinePtConnector<S> + 'static>;
+
+#[cfg(feature = "pt-client")]
+/// Shared channel-factory handle cached for one inline transport.
+type ChannelFactoryHandle = Arc<dyn ChannelFactory + Send + Sync>;
+
+/// Connector API for inline (in-process) pluggable transports.
+///
+/// Unlike process-managed PTs, an inline PT receives the parsed [`PtTarget`]
+/// directly, including all `k=v` bridge settings, and returns a stream to be
+/// used by the normal TLS/channel stack.
+///
+/// Implementors should:
+///
+/// - interpret the target address and settings for one transport
+/// - open the underlying stream to the bridge
+/// - return the [`PeerAddr`] that identifies the connection together with the
+///   stream Arti should wrap in TLS
+#[cfg(feature = "pt-client")]
+#[async_trait]
+pub trait InlinePtConnector<S>: Send + Sync
+where
+    S: AsyncRead + AsyncWrite + StreamOps + Send + Sync + 'static,
+{
+    /// Connect to `target` using the inline transport implementation.
+    async fn connect(&self, target: &PtTarget) -> crate::Result<(PeerAddr, S)>;
+}
+
+/// Transport adapter used by [`InlinePtMgr`].
+#[cfg(feature = "pt-client")]
+#[derive(Clone)]
+struct InlinePtTransport<S>
+where
+    S: AsyncRead + AsyncWrite + StreamOps + Send + Sync + 'static,
+{
+    /// Name of the transport this adapter handles.
+    transport: PtTransportName,
+    /// Connector implementation.
+    connector: InlineConnectorHandle<S>,
+}
+
+#[cfg(feature = "pt-client")]
+impl<S> InlinePtTransport<S>
+where
+    S: AsyncRead + AsyncWrite + StreamOps + Send + Sync + 'static,
+{
+    /// Extract the pluggable-target settings that belong to this transport.
+    fn pluggable_target(&self, target: &OwnedChanTarget) -> crate::Result<PtTarget> {
+        match target.chan_method() {
+            ChannelMethod::Pluggable(pt_target) if pt_target.transport() == &self.transport => {
+                Ok(pt_target)
+            }
+            ChannelMethod::Pluggable(pt_target) => Err(crate::Error::NoSuchTransport(
+                pt_target.transport().clone().into(),
+            )),
+            _ => Err(crate::Error::NoSuchTransport(self.transport.clone().into())),
+        }
+    }
+}
+
+#[cfg(feature = "pt-client")]
+#[async_trait]
+impl<S> TransportImplHelper for InlinePtTransport<S>
+where
+    S: AsyncRead + AsyncWrite + StreamOps + Send + Sync + 'static,
+{
+    type Stream = S;
+
+    async fn connect(&self, target: &OwnedChanTarget) -> crate::Result<(PeerAddr, Self::Stream)> {
+        let pt_target = self.pluggable_target(target)?;
+        self.connector.connect(&pt_target).await
+    }
+}
+
+/// Cached registration entry for a single inline transport.
+#[cfg(feature = "pt-client")]
+struct InlinePtRegistration<S>
+where
+    S: AsyncRead + AsyncWrite + StreamOps + Send + Sync + 'static,
+{
+    /// Connector implementation.
+    connector: InlineConnectorHandle<S>,
+    /// Prebuilt channel factory for this transport.
+    factory: ChannelFactoryHandle,
+}
+
+/// A pluggable transport manager backed by in-process connector implementations.
+///
+/// This manager is suitable for environments where process spawning is
+/// unavailable (for example `wasm32-unknown-unknown` in browsers).
+/// When used through `arti-client`, registering every transport named in your
+/// bridge lines lets you omit `[bridges.transports]` from the client
+/// configuration.
+///
+/// Typical usage:
+///
+/// - construct the manager with the runtime that should build channels
+/// - call [`register_transport`](Self::register_transport) for each transport
+///   name used in your bridge lines
+/// - hand the manager to `arti-client` via
+///   `TorClientBuilder::pluggable_transport_manager`
+#[cfg(feature = "pt-client")]
+#[derive(Clone)]
+pub struct InlinePtMgr<R, S>
+where
+    R: Runtime + TlsProvider<S>,
+    S: AsyncRead + AsyncWrite + StreamOps + Send + Sync + 'static,
+{
+    /// Runtime used to build channel factories.
+    runtime: R,
+    /// Registered transport connectors and cached factories.
+    registrations: Arc<RwLock<HashMap<PtTransportName, InlinePtRegistration<S>>>>,
+}
+
+#[cfg(feature = "pt-client")]
+impl<R, S> InlinePtMgr<R, S>
+where
+    R: Runtime + TlsProvider<S>,
+    S: AsyncRead + AsyncWrite + StreamOps + Send + Sync + 'static,
+{
+    /// Construct an empty inline PT manager.
+    ///
+    /// The runtime must be able to build TLS channels over the stream type
+    /// returned by the connectors you register.
+    pub fn new(runtime: R) -> Self {
+        Self {
+            runtime,
+            registrations: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Build the cached registration entry for one transport.
+    fn build_registration(
+        &self,
+        transport: PtTransportName,
+        connector: InlineConnectorHandle<S>,
+    ) -> InlinePtRegistration<S> {
+        let transport_impl = InlinePtTransport {
+            transport,
+            connector: connector.clone(),
+        };
+        let factory: ChannelFactoryHandle = Arc::new(ChanBuilder::new_client(
+            self.runtime.clone(),
+            transport_impl,
+        ));
+
+        InlinePtRegistration { connector, factory }
+    }
+
+    /// Register or replace a connector for `transport`.
+    ///
+    /// `transport` must match the transport name used in the corresponding
+    /// bridge lines.
+    ///
+    /// Returns the previously registered connector, if any.
+    pub fn register_transport(
+        &self,
+        transport: PtTransportName,
+        connector: InlineConnectorHandle<S>,
+    ) -> Option<InlineConnectorHandle<S>> {
+        let registration = self.build_registration(transport.clone(), connector);
+
+        self.registrations
+            .write()
+            .expect("inline pt manager lock poisoned")
+            .insert(transport, registration)
+            .map(|old| old.connector)
+    }
+
+    /// Remove the connector for `transport`.
+    pub fn remove_transport(
+        &self,
+        transport: &PtTransportName,
+    ) -> Option<InlineConnectorHandle<S>> {
+        self.registrations
+            .write()
+            .expect("inline pt manager lock poisoned")
+            .remove(transport)
+            .map(|old| old.connector)
+    }
+}
+
+#[cfg(feature = "pt-client")]
+#[async_trait]
+impl<R, S> AbstractPtMgr for InlinePtMgr<R, S>
+where
+    R: Runtime + TlsProvider<S> + Send + Sync + 'static,
+    S: AsyncRead + AsyncWrite + StreamOps + Send + Sync + 'static,
+{
+    async fn factory_for_transport(
+        &self,
+        transport: &PtTransportName,
+    ) -> Result<Option<ChannelFactoryHandle>, Arc<dyn AbstractPtError>> {
+        let factory = self
+            .registrations
+            .read()
+            .expect("inline pt manager lock poisoned")
+            .get(transport)
+            .map(|registration| registration.factory.clone());
+        Ok(factory)
     }
 }
 

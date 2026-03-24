@@ -327,7 +327,7 @@ mod test {
     #[test]
     fn estimate_with_no_data() {
         // zero inputs -> output is none.
-        let now = Instant::now();
+        let now = tor_rtcompat::instant_now();
         let est = SkewEstimate::estimate_skew([].iter(), now);
         assert!(est.is_none());
 
@@ -365,7 +365,7 @@ mod test {
         mins.iter()
             .map(|m| SkewObservation {
                 skew: ClockSkew::from_secs_f64(m * 60.0).unwrap(),
-                when: Instant::now(),
+                when: tor_rtcompat::instant_now(),
             })
             .collect()
     }
@@ -383,7 +383,7 @@ mod test {
         // confidence.
         let obs = from_minutes(&[-20.0, -10.0, -20.0, -25.0, 0.0, -18.0, -22.0, -22.0]);
 
-        let est = SkewEstimate::estimate_skew(obs.iter(), Instant::now()).unwrap();
+        let est = SkewEstimate::estimate_skew(obs.iter(), tor_rtcompat::instant_now()).unwrap();
         assert_eq!(
             est.to_string(),
             "slow by around 17m 7s (based on 8 recent observations, with some confidence)"
@@ -401,7 +401,7 @@ mod test {
             -100.0, 100.0, -3.0, -2.0, 0.0, 1.0, 0.5, 6.0, 3.0, 0.5, 99.0,
         ]);
 
-        let est = SkewEstimate::estimate_skew(obs.iter(), Instant::now()).unwrap();
+        let est = SkewEstimate::estimate_skew(obs.iter(), tor_rtcompat::instant_now()).unwrap();
         assert_eq!(
             est.to_string(),
             "not skewed by more than 15m (based on 8 recent observations, with high confidence)"

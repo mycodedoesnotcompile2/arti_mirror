@@ -811,9 +811,10 @@ impl GuardSet {
         // _rather_ use are either down, or have had their circuit
         // attempts pending for too long.
 
-        let cutoff = now
-            .checked_sub(params.np_connect_timeout)
-            .expect("Can't subtract connect timeout from now.");
+        // On very fresh runtimes (notably wasm), `now` can be earlier than
+        // `np_connect_timeout`. Treat that as "no historical cutoff yet"
+        // instead of panicking.
+        let cutoff = now.checked_sub(params.np_connect_timeout).unwrap_or(now);
 
         for (src, guard) in self.preference_order() {
             if guard.guard_id() == guard_id {
@@ -1093,7 +1094,7 @@ mod test {
         let mut samples: Vec<HashSet<GuardId>> = Vec::new();
         for _ in 0..3 {
             let mut guards = GuardSet::default();
-            guards.extend_sample_as_needed(SystemTime::now(), &params, &netdir);
+            guards.extend_sample_as_needed(tor_rtcompat::system_time_now(), &params, &netdir);
             assert_eq!(guards.guards.len(), params.min_filtered_sample_size);
             assert_eq!(guards.confirmed.len(), 0);
             assert_eq!(guards.primary.len(), 0);
@@ -1107,12 +1108,12 @@ mod test {
                 assert!(relay.low_level_details().is_dir_cache());
                 assert!(guards.guards.by_all_ids(&relay).is_some());
                 {
-                    assert!(!guard.is_expired(&params, SystemTime::now()));
+                    assert!(!guard.is_expired(&params, tor_rtcompat::system_time_now()));
                 }
             }
 
             // Make sure that the sample doesn't expand any further.
-            guards.extend_sample_as_needed(SystemTime::now(), &params, &netdir);
+            guards.extend_sample_as_needed(tor_rtcompat::system_time_now(), &params, &netdir);
             assert_eq!(guards.guards.len(), params.min_filtered_sample_size);
             guards.assert_consistency();
 
@@ -1132,7 +1133,7 @@ mod test {
             ..GuardParams::default()
         };
 
-        let t1 = SystemTime::now();
+        let t1 = tor_rtcompat::system_time_now();
         let t2 = t1 + Duration::from_secs(20);
 
         let mut guards = GuardSet::default();
@@ -1176,7 +1177,7 @@ mod test {
             n_primary: 4,
             ..GuardParams::default()
         };
-        let t1 = SystemTime::now();
+        let t1 = tor_rtcompat::system_time_now();
         let t2 = t1 + Duration::from_secs(20);
         let t3 = t2 + Duration::from_secs(30);
 
@@ -1222,7 +1223,7 @@ mod test {
     fn expiration() {
         let netdir = netdir();
         let params = GuardParams::default();
-        let t1 = SystemTime::now();
+        let t1 = tor_rtcompat::system_time_now();
 
         let mut guards = GuardSet::default();
         guards.extend_sample_as_needed(t1, &params, &netdir);
@@ -1256,8 +1257,8 @@ mod test {
             n_primary: 2,
             ..GuardParams::default()
         };
-        let st1 = SystemTime::now();
-        let i1 = Instant::now();
+        let st1 = tor_rtcompat::system_time_now();
+        let i1 = tor_rtcompat::instant_now();
         let sec = Duration::from_secs(1);
 
         let mut guards = GuardSet::default();
@@ -1383,8 +1384,8 @@ mod test {
             max_sample_bw_fraction: 1.0,
             ..GuardParams::default()
         };
-        let mut st = SystemTime::now();
-        let mut inst = Instant::now();
+        let mut st = tor_rtcompat::system_time_now();
+        let mut inst = tor_rtcompat::instant_now();
         let sec = Duration::from_secs(1);
         let usage = crate::GuardUsageBuilder::default().build().unwrap();
 
@@ -1425,7 +1426,7 @@ mod test {
 
         let mut guards = GuardSet::default();
 
-        guards.extend_sample_as_needed(SystemTime::now(), &params, &netdir);
+        guards.extend_sample_as_needed(tor_rtcompat::system_time_now(), &params, &netdir);
         guards.select_primary_guards(&params);
 
         assert_eq!(guards.primary.len(), 2);
@@ -1433,25 +1434,25 @@ mod test {
 
         // Let one primary guard fail.
         let (kind, p_id1) = guards
-            .pick_guard_id(&usage, &params, Instant::now())
+            .pick_guard_id(&usage, &params, tor_rtcompat::instant_now())
             .unwrap();
         assert_eq!(kind, ListKind::Primary);
-        guards.record_failure(&p_id1, None, Instant::now());
+        guards.record_failure(&p_id1, None, tor_rtcompat::instant_now());
         assert!(!guards.all_primary_guards_are_unreachable());
 
         // Now let the other one fail.
         let (kind, p_id2) = guards
-            .pick_guard_id(&usage, &params, Instant::now())
+            .pick_guard_id(&usage, &params, tor_rtcompat::instant_now())
             .unwrap();
         assert_eq!(kind, ListKind::Primary);
-        guards.record_failure(&p_id2, None, Instant::now());
+        guards.record_failure(&p_id2, None, tor_rtcompat::instant_now());
         assert!(guards.all_primary_guards_are_unreachable());
 
         // Now mark the guards retriable.
         guards.mark_primary_guards_retriable();
         assert!(!guards.all_primary_guards_are_unreachable());
         let (kind, p_id3) = guards
-            .pick_guard_id(&usage, &params, Instant::now())
+            .pick_guard_id(&usage, &params, tor_rtcompat::instant_now())
             .unwrap();
         assert_eq!(kind, ListKind::Primary);
         assert_eq!(p_id3, p_id1);
@@ -1468,14 +1469,14 @@ mod test {
         };
         let usage = crate::GuardUsageBuilder::default().build().unwrap();
         let mut guards = GuardSet::default();
-        guards.extend_sample_as_needed(SystemTime::now(), &params, &netdir);
+        guards.extend_sample_as_needed(tor_rtcompat::system_time_now(), &params, &netdir);
         guards.select_primary_guards(&params);
         assert_eq!(guards.primary.len(), 2);
 
         let (_kind, p_id1) = guards
-            .pick_guard_id(&usage, &params, Instant::now())
+            .pick_guard_id(&usage, &params, tor_rtcompat::instant_now())
             .unwrap();
-        guards.record_success(&p_id1, &params, None, SystemTime::now());
+        guards.record_success(&p_id1, &params, None, tor_rtcompat::system_time_now());
         assert_eq!(guards.n_primary_without_id_info_in(&netdir), 0);
 
         use tor_netdir::testnet;
@@ -1502,17 +1503,17 @@ mod test {
             ..GuardParams::default()
         };
         let mut guards1 = GuardSet::default();
-        guards1.extend_sample_as_needed(SystemTime::now(), &params, &netdir);
+        guards1.extend_sample_as_needed(tor_rtcompat::system_time_now(), &params, &netdir);
         guards1.select_primary_guards(&params);
         let mut guards2 = guards1.clone();
 
         // Make a persistent change in guards1, and a different persistent change in guards2.
         let id1 = guards1.primary[0].clone();
         let id2 = guards1.primary[1].clone();
-        guards1.record_success(&id1, &params, None, SystemTime::now());
-        guards2.record_success(&id2, &params, None, SystemTime::now());
+        guards1.record_success(&id1, &params, None, tor_rtcompat::system_time_now());
+        guards2.record_success(&id2, &params, None, tor_rtcompat::system_time_now());
         // Make a non-persistent change in guards2.
-        guards2.record_failure(&id2, None, Instant::now());
+        guards2.record_failure(&id2, None, tor_rtcompat::instant_now());
 
         // Copy status: make sure non-persistent status changed, and  persistent didn't.
         guards1.copy_ephemeral_status_into_newly_loaded_state(guards2);
@@ -1537,7 +1538,7 @@ mod test {
         for _ in 0..4 {
             // There is roughly a 1-in-5000 chance of getting the same set
             // twice, so we loop until that doesn't happen.
-            guards3.extend_sample_as_needed(SystemTime::now(), &params, &netdir);
+            guards3.extend_sample_as_needed(tor_rtcompat::system_time_now(), &params, &netdir);
             guards3.select_primary_guards(&params);
             g3_set = guards3
                 .guards

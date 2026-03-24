@@ -2,6 +2,7 @@
 
 #![allow(missing_docs, clippy::missing_docs_in_private_items)]
 
+use crate::storage_adapter::StorageAdapterHandle;
 use crate::{
     BootstrapBehavior, InertTorClient, Result, TorClient, TorClientConfig, err::ErrorDetail,
 };
@@ -12,7 +13,7 @@ use std::{
 };
 use tor_dirmgr::{DirMgrConfig, DirMgrStore};
 use tor_error::{ErrorKind, HasKind as _};
-use tor_rtcompat::Runtime;
+use tor_rtcompat::{CompoundRuntime, NetStreamProvider, Runtime, RuntimeSubstExt};
 use tracing::instrument;
 
 /// An object that knows how to construct some kind of DirProvider.
@@ -70,6 +71,17 @@ pub struct TorClientBuilder<R: Runtime> {
     /// If present, an amount of time to wait when trying to acquire the filesystem locks for our
     /// storage.
     local_resource_timeout: Option<Duration>,
+    /// Optional external adapter for persisted client state and directory storage.
+    storage_adapter: Option<StorageAdapterHandle>,
+    /// Optional programmatic pluggable transport manager.
+    ///
+    /// This is primarily useful for inline PT implementations (for example in
+    /// browser or other process-restricted environments).
+    #[cfg(feature = "pt-client")]
+    pt_mgr: Option<Arc<dyn tor_chanmgr::factory::AbstractPtMgr + 'static>>,
+    /// Whether networking has been explicitly provided by the caller.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    custom_network_provider_configured: bool,
     /// Optional directory filter to install for testing purposes.
     ///
     /// Only available when `arti-client` is built with the `dirfilter` and `experimental-api` features.
@@ -97,6 +109,11 @@ impl<R: Runtime> TorClientBuilder<R> {
             bootstrap_behavior: BootstrapBehavior::default(),
             dirmgr_builder: Arc::new(DirMgrBuilder {}),
             local_resource_timeout: None,
+            storage_adapter: None,
+            #[cfg(feature = "pt-client")]
+            pt_mgr: None,
+            #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+            custom_network_provider_configured: false,
             #[cfg(feature = "dirfilter")]
             dirfilter: None,
         }
@@ -136,6 +153,93 @@ impl<R: Runtime> TorClientBuilder<R> {
     pub fn local_resource_timeout(mut self, timeout: Duration) -> Self {
         self.local_resource_timeout = Some(timeout);
         self
+    }
+
+    /// Configure an external storage backend.
+    ///
+    /// On `wasm32-unknown-unknown`, this is required. The adapter is used for
+    /// persistent client state plus directory-manager blobs and lock files.
+    ///
+    /// On non-wasm targets, Arti currently continues to use its
+    /// filesystem-backed storage and ignores this setting.
+    ///
+    /// See [`crate::storage_adapter`] for the adapter contract and a minimal
+    /// in-memory example.
+    pub fn storage_adapter(mut self, storage_adapter: StorageAdapterHandle) -> Self {
+        self.storage_adapter = Some(storage_adapter);
+        self
+    }
+
+    /// Configure a pluggable transport manager for programmatic PT handling.
+    ///
+    /// This manager is consulted before process-based PT handling from
+    /// `[bridges.transports]`.
+    ///
+    /// Returning `Ok(Some(...))` from the manager handles the transport
+    /// in-process. Returning `Ok(None)` falls back to the configured
+    /// process-managed PT setup.
+    ///
+    /// This is the right API when your PT implementation already lives in the
+    /// current process, such as browser, mobile, or sandboxed embeddings.
+    ///
+    /// Typical setup:
+    ///
+    /// - create an [`crate::config::pt::InlinePtMgr`] or your own
+    ///   [`crate::config::pt::AbstractPtMgr`]
+    /// - register one handler per transport name used in your bridge lines
+    /// - pass the manager here
+    ///
+    /// When every pluggable bridge is handled programmatically, you may omit
+    /// `[bridges.transports]` entries from [`TorClientConfig`].
+    ///
+    /// See [`crate::config::pt`] and `examples/inline-pt.rs` for an end-to-end
+    /// example.
+    #[cfg(feature = "pt-client")]
+    pub fn pluggable_transport_manager(
+        mut self,
+        pt_mgr: Arc<dyn tor_chanmgr::factory::AbstractPtMgr + 'static>,
+    ) -> Self {
+        self.pt_mgr = Some(pt_mgr);
+        self
+    }
+
+    /// Mark this builder as using a user-provided network implementation.
+    ///
+    /// Use this when you built the client with [`TorClient::with_runtime`] and
+    /// that runtime already includes the TCP implementation Arti should use.
+    ///
+    /// If you call [`tcp_provider`](Self::tcp_provider), you do not need this
+    /// method; `tcp_provider` already marks networking as configured.
+    ///
+    /// On `wasm32-unknown-unknown`, either `tcp_provider(...)` or this method
+    /// is required before client creation.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    pub fn custom_network_provider(mut self) -> Self {
+        self.custom_network_provider_configured = true;
+        self
+    }
+
+    /// Ensure that a wasm client builder has the non-default components it requires.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn validate_wasm_configuration(&self) -> Result<()> {
+        if self.storage_adapter.is_none() {
+            return Err(ErrorDetail::Bug(tor_error::bad_api_usage!(
+                "On wasm32-unknown-unknown, TorClientBuilder requires \
+                     a user-provided storage adapter; call storage_adapter(...)"
+            ))
+            .into());
+        }
+
+        if !self.custom_network_provider_configured {
+            return Err(ErrorDetail::Bug(tor_error::bad_api_usage!(
+                "On wasm32-unknown-unknown, TorClientBuilder requires \
+                     user-provided networking; call tcp_provider(...) or \
+                     custom_network_provider() with a custom runtime"
+            ))
+            .into());
+        }
+
+        Ok(())
     }
 
     /// Override the default function used to construct the directory provider.
@@ -241,6 +345,11 @@ impl<R: Runtime> TorClientBuilder<R> {
     where
         F: FnOnce() -> Instant,
     {
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        if let Err(err) = self.validate_wasm_configuration() {
+            return Ok(Err(err));
+        }
+
         #[allow(unused_mut)]
         let mut dirmgr_extensions = tor_dirmgr::config::DirMgrExtensions::default();
         #[cfg(feature = "dirfilter")]
@@ -254,6 +363,9 @@ impl<R: Runtime> TorClientBuilder<R> {
             self.bootstrap_behavior,
             self.dirmgr_builder.as_ref(),
             dirmgr_extensions,
+            self.storage_adapter.clone(),
+            #[cfg(feature = "pt-client")]
+            self.pt_mgr.clone(),
         )
         .map_err(ErrorDetail::into);
 
@@ -316,6 +428,40 @@ impl<R: Runtime> TorClientBuilder<R> {
     #[allow(clippy::unnecessary_wraps)]
     pub fn create_inert(&self) -> Result<InertTorClient> {
         Ok(InertTorClient::new(&self.config)?)
+    }
+}
+
+impl<R: Runtime> TorClientBuilder<R> {
+    /// Return a new builder with a substituted TCP provider.
+    ///
+    /// This is useful on platforms where the default runtime cannot create TCP
+    /// sockets directly and a custom transport adapter is required.
+    ///
+    /// On `wasm32-unknown-unknown`, calling this also satisfies the requirement
+    /// that the builder use caller-provided networking.
+    pub fn tcp_provider<T>(
+        self,
+        tcp_provider: T,
+    ) -> TorClientBuilder<CompoundRuntime<R, R, R, T, R, R, R>>
+    where
+        T: Clone + Send + Sync + std::fmt::Debug + 'static,
+        T: NetStreamProvider<std::net::SocketAddr>,
+        R: tor_rtcompat::TlsProvider<<T as NetStreamProvider<std::net::SocketAddr>>::Stream>,
+    {
+        TorClientBuilder {
+            runtime: self.runtime.with_tcp_provider(tcp_provider),
+            config: self.config,
+            bootstrap_behavior: self.bootstrap_behavior,
+            dirmgr_builder: Arc::new(DirMgrBuilder {}),
+            local_resource_timeout: self.local_resource_timeout,
+            storage_adapter: self.storage_adapter,
+            #[cfg(feature = "pt-client")]
+            pt_mgr: self.pt_mgr,
+            #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+            custom_network_provider_configured: true,
+            #[cfg(feature = "dirfilter")]
+            dirfilter: self.dirfilter,
+        }
     }
 }
 

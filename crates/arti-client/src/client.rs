@@ -28,9 +28,13 @@ use tor_guardmgr::{GuardMgr, RetireCircuits};
 use tor_keymgr::Keystore;
 use tor_memquota::MemoryQuotaTracker;
 use tor_netdir::{NetDirProvider, params::NetParameters};
+#[cfg(not(target_arch = "wasm32"))]
+use tor_persist::FsStateMgr;
+use tor_persist::StateMgr;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use tor_persist::TestingStateMgr;
 #[cfg(feature = "onion-service-service")]
 use tor_persist::state_dir::StateDirectory;
-use tor_persist::{FsStateMgr, StateMgr};
 use tor_proto::client::stream::{DataStream, IpVersionPreference, StreamParameters};
 #[cfg(all(
     any(feature = "native-tls", feature = "rustls"),
@@ -71,7 +75,271 @@ use crate::{TorClientBuilder, status, util};
 #[cfg(feature = "geoip")]
 use tor_geoip::CountryCode;
 use tor_rtcompat::scheduler::TaskHandle;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use tracing::warn;
 use tracing::{debug, info, instrument};
+
+#[cfg(not(target_arch = "wasm32"))]
+/// Filesystem-backed state manager used on native targets.
+type ClientStateMgr = FsStateMgr;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+type ClientStorageAdapter = crate::storage_adapter::StorageAdapterHandle;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[derive(Clone, Debug)]
+struct ClientStateMgr {
+    /// In-memory state manager used on wasm targets.
+    inner: TestingStateMgr,
+    /// Synthetic state directory path used for reconfiguration checks.
+    path: std::path::PathBuf,
+    /// Optional storage adapter used for persisting key/value state.
+    storage_adapter: Option<ClientStorageAdapter>,
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+struct StateRestoreLock<'a> {
+    /// State manager that should be unlocked when the guard is dropped.
+    inner: &'a TestingStateMgr,
+    /// Whether this guard is responsible for unlocking `inner`.
+    should_unlock: bool,
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl Drop for StateRestoreLock<'_> {
+    fn drop(&mut self) {
+        if self.should_unlock {
+            let _ignore_err = self.inner.unlock();
+        }
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl ClientStateMgr {
+    /// Directory containing state JSON documents.
+    const STATE_DIR_PATH: &'static str = "state";
+    /// Suffix for state JSON documents.
+    const STATE_FILE_SUFFIX: &'static str = ".json";
+
+    /// Construct a wasm state manager.
+    fn from_path_and_mistrust(
+        path: &std::path::Path,
+        _mistrust: &fs_mistrust::Mistrust,
+        storage_adapter: Option<ClientStorageAdapter>,
+    ) -> StdResult<Self, tor_persist::Error> {
+        let mgr = Self {
+            inner: TestingStateMgr::new(),
+            path: path.to_path_buf(),
+            storage_adapter,
+        };
+
+        mgr.restore_from_storage_adapter();
+        Ok(mgr)
+    }
+
+    /// Convert a key into a filesystem-safe file name.
+    fn state_entry_name_for_key(key: &str) -> String {
+        use std::fmt::Write as _;
+
+        let mut encoded = String::with_capacity(key.len() * 2 + Self::STATE_FILE_SUFFIX.len());
+        for byte in key.bytes() {
+            write!(&mut encoded, "{byte:02x}").expect("writing to String cannot fail");
+        }
+        encoded.push_str(Self::STATE_FILE_SUFFIX);
+        encoded
+    }
+
+    /// Decode a key from a state file name.
+    fn key_from_state_entry_name(name: &str) -> Option<String> {
+        let hex = name.strip_suffix(Self::STATE_FILE_SUFFIX)?;
+        if hex.len() % 2 != 0 {
+            return None;
+        }
+
+        let bytes = (0..hex.len())
+            .step_by(2)
+            .map(|idx| {
+                hex.get(idx..idx + 2)
+                    .and_then(|part| u8::from_str_radix(part, 16).ok())
+            })
+            .collect::<Option<Vec<_>>>()?;
+
+        String::from_utf8(bytes).ok()
+    }
+
+    /// Build the storage-adapter path for a persisted state entry.
+    fn state_entry_path(entry_name: &str) -> String {
+        format!("{}/{}", Self::STATE_DIR_PATH, entry_name)
+    }
+
+    /// Acquire the temporary lock needed while repopulating the in-memory state map.
+    fn lock_for_restore(&self) -> Option<StateRestoreLock<'_>> {
+        let lock_status = match self.inner.try_lock() {
+            Ok(lock_status) => lock_status,
+            Err(err) => {
+                warn!("Unable to lock wasm state manager for restore: {err}");
+                return None;
+            }
+        };
+        let lock = StateRestoreLock {
+            inner: &self.inner,
+            should_unlock: matches!(lock_status, tor_persist::LockStatus::NewlyAcquired),
+        };
+
+        if !self.inner.can_store() {
+            warn!("Wasm state manager was not writable while restoring state");
+            return None;
+        }
+
+        Some(lock)
+    }
+
+    /// Load one persisted state entry from the storage adapter.
+    fn load_persisted_state_value(
+        &self,
+        storage_adapter: &ClientStorageAdapter,
+        entry_name: &str,
+        key: &str,
+    ) -> Option<tor_persist::JsonValue> {
+        let path = Self::state_entry_path(entry_name);
+        let value_json = match storage_adapter.read_file(path.as_str()) {
+            Ok(Some(bytes)) => match String::from_utf8(bytes) {
+                Ok(value_json) => value_json,
+                Err(err) => {
+                    warn!("Skipping non-utf8 state value for key {key:?}: {err}");
+                    return None;
+                }
+            },
+            Ok(None) => return None,
+            Err(err) => {
+                warn!("Unable to load persisted state entry for key {key:?}: {err}");
+                return None;
+            }
+        };
+
+        match serde_json::from_str(&value_json) {
+            Ok(json_value) => Some(json_value),
+            Err(err) => {
+                warn!("Skipping invalid state value for key {key:?}: {err}");
+                None
+            }
+        }
+    }
+
+    /// Load one state value from the in-memory manager and serialize it for persistence.
+    fn serialized_state_value_for_key(&self, key: &str) -> Option<String> {
+        let value = match self.inner.load::<tor_persist::JsonValue>(key) {
+            Ok(value) => value,
+            Err(err) => {
+                warn!("Unable to read state value for key {key:?}: {err}");
+                return None;
+            }
+        };
+
+        let Some(value) = value else {
+            return None;
+        };
+
+        match serde_json::to_string(&value) {
+            Ok(value_json) => Some(value_json),
+            Err(err) => {
+                warn!("Unable to serialize state value for key {key:?}: {err}");
+                None
+            }
+        }
+    }
+
+    /// Restore the in-memory map from the configured storage adapter.
+    fn restore_from_storage_adapter(&self) {
+        let Some(storage_adapter) = &self.storage_adapter else {
+            return;
+        };
+        let Some(_restore_lock) = self.lock_for_restore() else {
+            return;
+        };
+
+        let entries = match storage_adapter.list_dir(Self::STATE_DIR_PATH) {
+            Ok(entries) => entries,
+            Err(err) => {
+                warn!("Unable to list persisted state entries from storage adapter: {err}");
+                return;
+            }
+        };
+
+        for entry in entries {
+            let Some(key) = Self::key_from_state_entry_name(entry.as_str()) else {
+                continue;
+            };
+            let Some(json_value) =
+                self.load_persisted_state_value(storage_adapter, entry.as_str(), &key)
+            else {
+                continue;
+            };
+
+            if let Err(err) = self.inner.store(&key, &json_value) {
+                warn!("Unable to restore state entry for key {key:?}: {err}");
+            }
+        }
+    }
+
+    /// Persist one state key, if a storage adapter is configured.
+    fn persist_key_to_storage_adapter(&self, key: &str) {
+        let Some(storage_adapter) = &self.storage_adapter else {
+            return;
+        };
+        let Some(value_json) = self.serialized_state_value_for_key(key) else {
+            return;
+        };
+        let path = Self::state_entry_path(&Self::state_entry_name_for_key(key));
+
+        if let Err(err) =
+            storage_adapter.write_and_replace_file(path.as_str(), value_json.as_bytes())
+        {
+            warn!("Unable to persist state value for key {key:?}: {err}");
+        }
+    }
+
+    /// Return the configured state path.
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+
+    /// Return a future that resolves when the manager is unlocked.
+    fn wait_for_unlock(&self) -> impl futures::Future<Output = ()> + Send + Sync + 'static {
+        futures::future::ready(())
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl StateMgr for ClientStateMgr {
+    fn load<D>(&self, key: &str) -> StdResult<Option<D>, tor_persist::Error>
+    where
+        D: serde::de::DeserializeOwned,
+    {
+        self.inner.load(key)
+    }
+
+    fn store<S>(&self, key: &str, val: &S) -> StdResult<(), tor_persist::Error>
+    where
+        S: serde::Serialize,
+    {
+        self.inner.store(key, val)?;
+        self.persist_key_to_storage_adapter(key);
+        Ok(())
+    }
+
+    fn can_store(&self) -> bool {
+        self.inner.can_store()
+    }
+
+    fn try_lock(&self) -> StdResult<tor_persist::LockStatus, tor_persist::Error> {
+        self.inner.try_lock()
+    }
+
+    fn unlock(&self) -> StdResult<(), tor_persist::Error> {
+        self.inner.unlock()
+    }
+}
 
 /// An active client session on the Tor network.
 ///
@@ -141,9 +409,11 @@ pub struct TorClient<R: Runtime> {
     // which we can't do when the Arc is inside.
     #[cfg(feature = "bridge-client")]
     bridge_desc_mgr: Arc<Mutex<Option<Arc<BridgeDescMgr<R>>>>>,
-    /// Pluggable transport manager.
+    /// Process-based pluggable transport manager.
+    ///
+    /// This is present when process PT support is configured for this client.
     #[cfg(feature = "pt-client")]
-    pt_mgr: Arc<tor_ptmgr::PtMgr<R>>,
+    process_pt_mgr: Option<Arc<tor_ptmgr::PtMgr<R>>>,
     /// HS client connector
     #[cfg(feature = "onion-service-client")]
     hsclient: HsClientConnector<R>,
@@ -166,7 +436,7 @@ pub struct TorClient<R: Runtime> {
     #[cfg(feature = "onion-service-service")]
     state_directory: StateDirectory,
     /// Location on disk where we store persistent data (cooked state manager).
-    statemgr: FsStateMgr,
+    statemgr: ClientStateMgr,
     /// Client address configuration
     addrcfg: Arc<MutCfg<ClientAddrConfig>>,
     /// Client DNS configuration
@@ -870,12 +1140,36 @@ impl<R: Runtime> TorClient<R> {
         autobootstrap: BootstrapBehavior,
         dirmgr_builder: &dyn crate::builder::DirProviderBuilder<R>,
         dirmgr_extensions: tor_dirmgr::config::DirMgrExtensions,
+        storage_adapter: Option<crate::storage_adapter::StorageAdapterHandle>,
+        #[cfg(feature = "pt-client")] user_pt_mgr: Option<
+            Arc<dyn tor_chanmgr::factory::AbstractPtMgr + 'static>,
+        >,
     ) -> StdResult<Self, ErrorDetail> {
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        if storage_adapter.is_none() {
+            return Err(tor_error::bad_api_usage!(
+                "On wasm32-unknown-unknown, TorClient requires \
+                     a user-provided storage adapter"
+            )
+            .into());
+        }
+
         if crate::util::running_as_setuid() {
             return Err(tor_error::bad_api_usage!(
                 "Arti does not support running in a setuid or setgid context."
             )
             .into());
+        }
+
+        #[cfg(feature = "pt-client")]
+        if config.bridges.transports.is_empty()
+            && user_pt_mgr.is_none()
+            && config.bridges_require_pluggable_transport()
+        {
+            return Err(ErrorDetail::Configuration(tor_config::ConfigBuildError::Inconsistent {
+                fields: vec!["bridges.bridges".into(), "bridges.transports".into()],
+                problem: "Pluggable bridges are configured, but no corresponding transports are configured in `[bridges.transports]` and no programmatic transport manager was provided via `TorClientBuilder::pluggable_transport_manager(...)`.".into(),
+            }));
         }
 
         let memquota = MemoryQuotaTracker::new(&runtime, config.system.memory.clone())?;
@@ -893,8 +1187,14 @@ impl<R: Runtime> TorClient<R> {
             c.extensions = dirmgr_extensions;
             c
         };
-        let statemgr = FsStateMgr::from_path_and_mistrust(&state_dir, mistrust)
+        #[cfg(not(target_arch = "wasm32"))]
+        let statemgr = ClientStateMgr::from_path_and_mistrust(&state_dir, mistrust)
             .map_err(ErrorDetail::StateMgrSetup)?;
+
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        let statemgr =
+            ClientStateMgr::from_path_and_mistrust(&state_dir, mistrust, storage_adapter.clone())
+                .map_err(ErrorDetail::StateMgrSetup)?;
         // Try to take state ownership early, so we'll know if we have it.
         // Note that this `try_lock()` may return `Ok` even if we can't acquire the lock.
         // (At this point we don't yet care if we have it.)
@@ -920,21 +1220,46 @@ impl<R: Runtime> TorClient<R> {
             .map_err(ErrorDetail::GuardMgrSetup)?;
 
         #[cfg(feature = "pt-client")]
-        let pt_mgr = {
-            let pt_state_dir = state_dir.as_path().join("pt_state");
-            config.storage.permissions().make_directory(&pt_state_dir)?;
+        let process_pt_mgr = {
+            #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+            {
+                if user_pt_mgr.is_none() {
+                    let pt_state_dir = state_dir.as_path().join("pt_state");
+                    config.storage.permissions().make_directory(&pt_state_dir)?;
 
-            let mgr = Arc::new(tor_ptmgr::PtMgr::new(
-                config.bridges.transports.clone(),
-                pt_state_dir,
-                Arc::clone(&path_resolver),
-                runtime.clone(),
-            )?);
+                    let mgr = Arc::new(tor_ptmgr::PtMgr::new(
+                        config.bridges.transports.clone(),
+                        pt_state_dir,
+                        Arc::clone(&path_resolver),
+                        runtime.clone(),
+                    )?);
+                    Some(mgr)
+                } else {
+                    None
+                }
+            }
 
-            chanmgr.set_pt_mgr(mgr.clone());
-
-            mgr
+            #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+            {
+                None
+            }
         };
+
+        #[cfg(feature = "pt-client")]
+        {
+            let effective_mgr: Option<Arc<dyn tor_chanmgr::factory::AbstractPtMgr + 'static>> =
+                if let Some(mgr) = user_pt_mgr {
+                    Some(mgr)
+                } else {
+                    process_pt_mgr
+                        .clone()
+                        .map(|mgr| mgr as Arc<dyn tor_chanmgr::factory::AbstractPtMgr + 'static>)
+                };
+
+            if let Some(mgr) = effective_mgr {
+                chanmgr.set_pt_mgr(mgr);
+            }
+        }
 
         let circmgr = Arc::new(
             tor_circmgr::CircMgr::new(
@@ -949,8 +1274,13 @@ impl<R: Runtime> TorClient<R> {
 
         let timeout_cfg = config.stream_timeouts.clone();
 
-        let dirmgr_store =
-            DirMgrStore::new(&dir_cfg, runtime.clone(), false).map_err(ErrorDetail::DirMgrSetup)?;
+        let dirmgr_store = DirMgrStore::new_with_storage_adapter(
+            &dir_cfg,
+            runtime.clone(),
+            false,
+            storage_adapter,
+        )
+        .map_err(ErrorDetail::DirMgrSetup)?;
         let dirmgr = dirmgr_builder
             .build(
                 runtime.clone(),
@@ -1066,7 +1396,7 @@ impl<R: Runtime> TorClient<R> {
             #[cfg(feature = "bridge-client")]
             bridge_desc_mgr,
             #[cfg(feature = "pt-client")]
-            pt_mgr,
+            process_pt_mgr,
             #[cfg(feature = "onion-service-client")]
             hsclient,
             #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
@@ -1312,9 +1642,11 @@ impl<R: Runtime> TorClient<R> {
             .map_err(wrap_err)?;
 
         #[cfg(feature = "pt-client")]
-        self.pt_mgr
-            .reconfigure(how, new_config.bridges.transports.clone())
-            .map_err(wrap_err)?;
+        if let Some(process_pt_mgr) = self.process_pt_mgr.as_ref() {
+            process_pt_mgr
+                .reconfigure(how, new_config.bridges.transports.clone())
+                .map_err(wrap_err)?;
+        }
 
         if how == tor_config::Reconfigure::CheckAllOrNothing {
             return Ok(());
@@ -2195,6 +2527,8 @@ mod test {
     use tor_config::Reconfigure;
 
     use super::*;
+    #[cfg(feature = "pt-client")]
+    use crate::config::BoolOrAuto;
     use crate::config::TorClientConfigBuilder;
     use crate::{ErrorKind, HasKind};
 
@@ -2224,6 +2558,73 @@ mod test {
                 .create_unbootstrapped_async()
                 .await
                 .unwrap();
+        });
+    }
+
+    #[test]
+    #[cfg(feature = "pt-client")]
+    fn pluggable_bridge_requires_transport_source() {
+        tor_rtcompat::test_with_one_runtime!(|rt| async {
+            let state_dir = tempfile::tempdir().unwrap();
+            let cache_dir = tempfile::tempdir().unwrap();
+            let mut cfg = TorClientConfigBuilder::from_directories(state_dir, cache_dir);
+            cfg.bridges().enabled(BoolOrAuto::Explicit(true));
+            cfg.bridges().bridges().push(
+                "obfs4 bridge.example.net:80 \
+                 $0bac39417268b69b9f514e7f63fa6fba1a788958 \
+                 ed25519:dGhpcyBpcyBbpmNyZWRpYmx5IHNpbGx5ISEhISEhISA iat-mode=1"
+                    .parse()
+                    .unwrap(),
+            );
+            let cfg = cfg.build().unwrap();
+
+            let err = TorClient::with_runtime(rt)
+                .config(cfg)
+                .bootstrap_behavior(BootstrapBehavior::Manual)
+                .create_unbootstrapped()
+                .err()
+                .expect("expected create_unbootstrapped to fail");
+
+            assert_eq!(err.kind(), ErrorKind::InvalidConfig);
+        });
+    }
+
+    #[test]
+    #[cfg(feature = "pt-client")]
+    fn mixed_bridges_do_not_require_transport_source() {
+        tor_rtcompat::test_with_one_runtime!(|rt| async {
+            let state_dir = tempfile::tempdir().unwrap();
+            let cache_dir = tempfile::tempdir().unwrap();
+            let mut cfg = TorClientConfigBuilder::from_directories(state_dir, cache_dir);
+            cfg.bridges().enabled(BoolOrAuto::Explicit(true));
+            cfg.bridges().bridges().push(
+                "Bridge 192.0.2.3:443 \
+                     2B280B23E1107BB62ABFC40DDCC8824814F80A72"
+                    .parse()
+                    .unwrap(),
+            );
+            cfg.bridges().bridges().push(
+                "Bridge snowflake 192.0.2.3:80 \
+                 2B280B23E1107BB62ABFC40DDCC8824814F80A72 \
+                 fingerprint=2B280B23E1107BB62ABFC40DDCC8824814F80A72 \
+                 url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ \
+                 front=cdn.sstatic.net \
+                 ice=stun:stun.l.google.com:19302,stun:stun.antisip.com:3478,\
+                 stun:stun.bluesip.net:3478,stun:stun.dus.net:3478,\
+                 stun:stun.epygi.com:3478,stun:stun.sonetel.com:3478,\
+                 stun:stun.uls.co.za:3478,stun:stun.voipgate.com:3478,\
+                 stun:stun.voys.nl:3478 \
+                 utls-imitate=hellorandomizedalpn"
+                    .parse()
+                    .unwrap(),
+            );
+            let cfg = cfg.build().unwrap();
+
+            let _client = TorClient::with_runtime(rt)
+                .config(cfg)
+                .bootstrap_behavior(BootstrapBehavior::Manual)
+                .create_unbootstrapped()
+                .expect("mixed direct+pluggable bridges should be accepted without PT manager");
         });
     }
 

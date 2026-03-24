@@ -60,6 +60,7 @@ mod event;
 mod shared_ref;
 mod state;
 mod storage;
+pub mod storage_adapter;
 
 #[cfg(feature = "bridge-client")]
 pub mod bridgedesc;
@@ -89,7 +90,7 @@ use futures::stream::BoxStream;
 use oneshot_fused_workaround as oneshot;
 use tor_netdoc::doc::netstatus::ProtoStatuses;
 use tor_rtcompat::scheduler::{TaskHandle, TaskSchedule};
-use tor_rtcompat::{Runtime, SpawnExt};
+use tor_rtcompat::{Runtime, SpawnExt, system_time_now};
 use tracing::{debug, info, instrument, trace, warn};
 
 use std::marker::PhantomData;
@@ -133,6 +134,31 @@ impl<R: Runtime> DirMgrStore<R> {
     /// Open the storage, according to the specified configuration
     pub fn new(config: &DirMgrConfig, runtime: R, offline: bool) -> Result<Self> {
         let store = Arc::new(Mutex::new(config.open_store(offline)?));
+        drop(runtime);
+        let runtime = PhantomData;
+        Ok(DirMgrStore { store, runtime })
+    }
+
+    /// Open the storage with an optional external storage adapter.
+    ///
+    /// On `wasm32-unknown-unknown`, the adapter is used for directory-manager
+    /// lock and blob storage and is required by the wasm storage backend.
+    ///
+    /// On non-wasm targets, storage remains filesystem-backed and the adapter
+    /// is currently ignored.
+    ///
+    /// Most applications should configure this through `arti-client`'s
+    /// `TorClientBuilder::storage_adapter`; this constructor is for lower-level
+    /// integrations that use `tor-dirmgr` directly.
+    pub fn new_with_storage_adapter(
+        config: &DirMgrConfig,
+        runtime: R,
+        offline: bool,
+        storage_adapter: Option<storage_adapter::StorageAdapterHandle>,
+    ) -> Result<Self> {
+        let store = Arc::new(Mutex::new(
+            config.open_store_with_storage_adapter(offline, storage_adapter)?,
+        ));
         drop(runtime);
         let runtime = PhantomData;
         Ok(DirMgrStore { store, runtime })
@@ -182,7 +208,7 @@ impl<R: Runtime> NetDirProvider for DirMgr<R> {
                 .extend_lifetime(netdir.lifetime()),
             Timeliness::Unchecked => return Ok(netdir),
         };
-        let now = SystemTime::now();
+        let now = system_time_now();
         if lifetime.valid_after() > now {
             Err(NetDirError::DirNotYetValid)
         } else if lifetime.valid_until() < now {

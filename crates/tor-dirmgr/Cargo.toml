@@ -68,7 +68,6 @@ digest = "0.10.0"
 educe = "0.4.22"
 event-listener = "5"
 fs-mistrust = { path = "../fs-mistrust", version = "0.14.0" }
-fslock = { version = "0.2.0" }
 futures = "0.3.14"
 hex = "0.4"
 humantime = "2"
@@ -125,3 +124,6 @@ tor-rtmock = { path = "../tor-rtmock", version = "0.40.0" }
 tracing-test = "0.2.4"
 [package.metadata.docs.rs]
 all-features = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+fslock = { version = "0.2.0" }

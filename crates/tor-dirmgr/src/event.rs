@@ -965,7 +965,7 @@ mod test {
 
     #[test]
     fn dir_status_basics() {
-        let now = SystemTime::now();
+        let now = tor_rtcompat::system_time_now();
         let hour = Duration::new(3600, 0);
 
         let nothing = DirStatus {

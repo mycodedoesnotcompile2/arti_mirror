@@ -93,7 +93,7 @@ pub trait Timebound<T>: Sized {
 
     /// Unwrap this Timebound object if it is valid now.
     fn check_valid_now(self) -> Result<T, Self::Error> {
-        self.check_valid_at(&time::SystemTime::now())
+        self.check_valid_at(&system_time_now())
     }
 
     /// Unwrap this object if it is valid at the provided time t.
@@ -103,6 +103,22 @@ pub trait Timebound<T>: Sized {
             Some(when) => self.check_valid_at(&when),
             None => self.check_valid_now(),
         }
+    }
+}
+
+/// Return the current wall-clock time.
+///
+/// On `wasm32-unknown-unknown`, `std::time::SystemTime::now()` is unsupported.
+fn system_time_now() -> time::SystemTime {
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        time::SystemTime::UNIX_EPOCH
+            + std::time::Duration::from(coarsetime::Clock::now_since_epoch())
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    {
+        time::SystemTime::now()
     }
 }
 

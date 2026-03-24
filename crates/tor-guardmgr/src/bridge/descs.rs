@@ -5,7 +5,6 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use crate::{
     bridge::BridgeConfig,
@@ -156,6 +155,11 @@ impl BridgeSet {
         Self { config, descs }
     }
 
+    /// Return all currently configured bridges.
+    pub(crate) fn configured_bridges(&self) -> &[BridgeConfig] {
+        self.config.as_ref()
+    }
+
     /// Returns the bridge that best matches a given guard.
     ///
     /// Note that since the guard may have more identities than the bridge the
@@ -245,7 +249,7 @@ impl Universe for BridgeSet {
         // anything listed in the guard set is treated as listed right up to this
         // moment, and anything unlisted is treated as unlisted right up to this
         // moment.
-        SystemTime::now()
+        tor_rtcompat::system_time_now()
     }
 
     /// Note that for a BridgeSet, we always treat the current weight as 0 and

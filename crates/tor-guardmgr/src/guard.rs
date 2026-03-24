@@ -448,7 +448,7 @@ impl Guard {
                     Some(retry_at) => warn!(
                         "Could not connect to guard {}. Retrying in {:?}.",
                         self,
-                        humantime::format_duration(retry_at - Instant::now()),
+                        humantime::format_duration(retry_at - tor_rtcompat::instant_now()),
                     ),
                     None => warn!(
                         "Could not connect to guard {}. Next retry time unknown.",
@@ -965,7 +965,7 @@ mod test {
     fn basic_guard() -> Guard {
         let id = basic_id();
         let ports = vec!["127.0.0.7:7777".parse().unwrap()];
-        let added = SystemTime::now();
+        let added = tor_rtcompat::system_time_now();
         Guard::new(id, ports, None, added)
     }
 
@@ -1055,9 +1055,9 @@ mod test {
 
     #[test]
     fn record_attempt() {
-        let t1 = Instant::now() - Duration::from_secs(10);
-        let t2 = Instant::now() - Duration::from_secs(5);
-        let t3 = Instant::now();
+        let t1 = tor_rtcompat::instant_now() - Duration::from_secs(10);
+        let t2 = tor_rtcompat::instant_now() - Duration::from_secs(5);
+        let t3 = tor_rtcompat::instant_now();
 
         let mut g = basic_guard();
 
@@ -1072,8 +1072,8 @@ mod test {
 
     #[test]
     fn record_failure() {
-        let t1 = Instant::now() - Duration::from_secs(10);
-        let t2 = Instant::now();
+        let t1 = tor_rtcompat::instant_now() - Duration::from_secs(10);
+        let t2 = tor_rtcompat::instant_now();
 
         let mut g = basic_guard();
         g.record_failure(t1, true);
@@ -1090,11 +1090,11 @@ mod test {
 
     #[test]
     fn record_success() {
-        let t1 = Instant::now() - Duration::from_secs(10);
+        let t1 = tor_rtcompat::instant_now() - Duration::from_secs(10);
         // has to be in the future, since the guard's "added_at" time is based on now.
-        let now = SystemTime::now();
+        let now = tor_rtcompat::system_time_now();
         let t2 = now + Duration::from_secs(300 * 86400);
-        let t3 = Instant::now() + Duration::from_secs(310 * 86400);
+        let t3 = tor_rtcompat::instant_now() + Duration::from_secs(310 * 86400);
         let t4 = now + Duration::from_secs(320 * 86400);
 
         let mut g = basic_guard();
@@ -1121,7 +1121,7 @@ mod test {
 
     #[test]
     fn retry() {
-        let t1 = Instant::now();
+        let t1 = tor_rtcompat::instant_now();
         let mut g = basic_guard();
 
         g.record_failure(t1, true);
@@ -1148,7 +1148,7 @@ mod test {
     fn expiration() {
         const DAY: Duration = Duration::from_secs(24 * 60 * 60);
         let params = GuardParams::default();
-        let now = SystemTime::now();
+        let now = tor_rtcompat::system_time_now();
 
         let g = basic_guard();
         assert!(!g.is_expired(&params, now));
@@ -1176,7 +1176,7 @@ mod test {
         use tor_netdir::testnet;
         let netdir = testnet::construct_netdir().unwrap_if_sufficient().unwrap();
         let params = GuardParams::default();
-        let now = SystemTime::now();
+        let now = tor_rtcompat::system_time_now();
 
         // Construct a guard from a relay from the netdir.
         let relay22 = netdir.by_id(&Ed25519Identity::from([22; 32])).unwrap();
@@ -1226,7 +1226,7 @@ mod test {
         .unwrap();
 
         //let params = GuardParams::default();
-        let now = SystemTime::now();
+        let now = tor_rtcompat::system_time_now();
 
         // Try a guard that isn't in the netdir at all.
         let mut guard255 = Guard::new(
@@ -1283,7 +1283,7 @@ mod test {
     #[test]
     fn pending() {
         let mut g = basic_guard();
-        let t1 = Instant::now();
+        let t1 = tor_rtcompat::instant_now();
         let t2 = t1 + Duration::from_secs(100);
         let t3 = t1 + Duration::from_secs(200);
 
@@ -1320,7 +1320,7 @@ mod test {
         let mut g = basic_guard();
         let params = GuardParams::default();
 
-        let now = SystemTime::now();
+        let now = tor_rtcompat::system_time_now();
 
         let _ignore = g.record_success(now, &params);
         for _ in 0..13 {
@@ -1374,8 +1374,8 @@ mod test {
 
         use crate::GuardUsageBuilder;
         let mut g = basic_guard();
-        let inst = Instant::now();
-        let st = SystemTime::now();
+        let inst = tor_rtcompat::instant_now();
+        let st = tor_rtcompat::system_time_now();
         let sec = Duration::from_secs(1);
         let params = GuardParams::default();
         let dir_usage = GuardUsageBuilder::new()

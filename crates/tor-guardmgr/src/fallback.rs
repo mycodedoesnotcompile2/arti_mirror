@@ -297,7 +297,7 @@ mod test {
         let filter = crate::GuardFilter::unfiltered();
 
         let mut counts = [0_usize; 4];
-        let now = Instant::now();
+        let now = tor_rtcompat::instant_now();
         dbg!("A");
         fn lookup_idx(set: &FallbackState, id: &impl HasRelayIds) -> Option<usize> {
             set.fallbacks
@@ -365,7 +365,7 @@ mod test {
             .map(|ent| FallbackId::from_relay_ids(&ent.fallback))
             .collect();
 
-        let now = Instant::now();
+        let now = tor_rtcompat::instant_now();
 
         // There's no "next retry time" when everybody's up.
         assert!(set.next_retry().is_none());

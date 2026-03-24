@@ -2432,7 +2432,7 @@ mod test {
         let (ep_none, ep_web, ep_full) = get_exit_policies();
         let fake_circ = FakeCirc { id: FakeId::next() };
         let expiration = ExpirationInfo::Unused {
-            created: Instant::now(),
+            created: tor_rtcompat::instant_now(),
         };
 
         let mut entry_none = OpenEntry::new(

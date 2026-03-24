@@ -52,9 +52,79 @@ pub mod dir {
     pub use tor_dirmgr::{DirMgrConfig, FallbackDir, FallbackDirBuilder};
 }
 
-/// Types for configuring pluggable transports.
 #[cfg(feature = "pt-client")]
 pub mod pt {
+    //! Types for configuring pluggable transports.
+    //!
+    //! Arti supports two PT integration styles:
+    //!
+    //! - process-managed PTs, configured with `TransportConfig` entries in
+    //!   `[bridges.transports]`
+    //! - programmatic PTs, provided directly by the application through
+    //!   [`crate::TorClientBuilder::pluggable_transport_manager`]
+    //!
+    //! Use process-managed PTs when Arti can launch helper binaries itself.
+    //! Use programmatic PTs when the transport already lives in your process or
+    //! when process spawning is unavailable.
+    //!
+    //! `InlinePtMgr` is the simplest programmatic path: register an
+    //! `InlinePtConnector` for each transport name that appears in your bridge
+    //! configuration, then pass the manager to the client builder.
+    //!
+    //! When you supply all required transports programmatically, you may omit
+    //! `[bridges.transports]` entries from the client configuration.
+    //!
+    //! ```no_run
+    //! use arti_client::config::pt::{InlinePtConnector, InlinePtMgr};
+    //! use arti_client::config::{BoolOrAuto, BridgeConfigBuilder, TorClientConfigBuilder};
+    //! use arti_client::TorClient;
+    //! use async_trait::async_trait;
+    //! use std::sync::Arc;
+    //! use tor_linkspec::PtTarget;
+    //! use tor_proto::peer::PeerAddr;
+    //! use tor_rtcompat::{NetStreamProvider, PreferredRuntime};
+    //!
+    //! type Stream = <PreferredRuntime as NetStreamProvider>::Stream;
+    //!
+    //! #[derive(Clone)]
+    //! struct Connector;
+    //!
+    //! #[async_trait]
+    //! impl InlinePtConnector<Stream> for Connector {
+    //!     async fn connect(&self, _target: &PtTarget) -> tor_chanmgr::Result<(PeerAddr, Stream)> {
+    //!         unimplemented!("connect to the bridge here")
+    //!     }
+    //! }
+    //!
+    //! let state_dir = tempfile::tempdir()?;
+    //! let cache_dir = tempfile::tempdir()?;
+    //! let mut config = TorClientConfigBuilder::from_directories(state_dir.path(), cache_dir.path());
+    //! config.bridges().enabled(BoolOrAuto::Explicit(true));
+    //!
+    //! let mut bridge = BridgeConfigBuilder::default();
+    //! bridge.transport("passthrough");
+    //! bridge.set_addrs(vec!["198.51.100.7:443".parse()?]);
+    //! bridge.set_ids(vec!["0123456789ABCDEF0123456789ABCDEF01234567".parse()?]);
+    //! config.bridges().bridges().push(bridge);
+    //! let config = config.build()?;
+    //!
+    //! let runtime = PreferredRuntime::current()?;
+    //! let inline_pt = InlinePtMgr::new(runtime.clone());
+    //! inline_pt.register_transport("passthrough".parse()?, Arc::new(Connector));
+    //!
+    //! let client = TorClient::with_runtime(runtime)
+    //!     .config(config)
+    //!     .pluggable_transport_manager(Arc::new(inline_pt))
+    //!     .create_unbootstrapped()?;
+    //! # let _ = client;
+    //! # Ok::<(), Box<dyn std::error::Error>>(())
+    //! ```
+    //!
+    //! See `examples/snowflake.rs` for process-managed PT configuration and
+    //! `examples/inline-pt.rs` for end-to-end programmatic PT wiring.
+    pub use tor_chanmgr::factory::{
+        AbstractPtError, AbstractPtMgr, InlinePtConnector, InlinePtMgr,
+    };
     pub use tor_ptmgr::config::{TransportConfig, TransportConfigBuilder};
 }
 
@@ -338,7 +408,15 @@ impl StorageConfig {
 /// A [`BridgesConfig`] configuration has the following pieces:
 ///    * A [`BridgeList`] of [`BridgeConfig`]s, which describes one or more bridges.
 ///    * An `enabled` boolean to say whether or not to use the listed bridges.
-///    * A list of [`pt::TransportConfig`]s.
+///    * A list of [`pt::TransportConfig`]s for process-managed pluggable transports.
+///
+/// When bridges are enabled, Arti bootstraps bridge mode directly from the
+/// configured bridges listed here.
+///
+/// The transport list is only needed for process-managed PTs. Applications
+/// that install an in-process PT manager with
+/// [`crate::TorClientBuilder::pluggable_transport_manager`] may leave it
+/// empty.
 ///
 /// # Example
 ///
@@ -393,6 +471,11 @@ impl StorageConfig {
 /// // Now you can pass `config` to TorClient::create!
 /// # Ok(())}
 /// ```
+/// This example uses process-managed PTs. If your application supplies PT
+/// handling in-process with
+/// [`crate::TorClientBuilder::pluggable_transport_manager`], you may omit the
+/// `transports` list instead; see [`pt`] and `examples/inline-pt.rs`.
+///
 /// You can also find an example based on snowflake in arti-client example folder.
 //
 // We leave this as an empty struct even when bridge support is disabled,
@@ -418,7 +501,11 @@ pub struct BridgesConfig {
     #[deftly(tor_config(no_magic, sub_builder, setter(skip)))]
     bridges: BridgeList,
 
-    /// Configured list of pluggable transports.
+    /// Configured list of pluggable transports for process-managed PTs.
+    ///
+    /// Leave this empty when your application provides PT handling
+    /// programmatically via
+    /// [`crate::TorClientBuilder::pluggable_transport_manager`].
     #[cfg(feature = "pt-client")] // NOTE: Could use tor_config(cfg)
     #[deftly(tor_config(
         list(element(build), listtype = "TransportConfigList"),
@@ -435,13 +522,19 @@ fn validate_pt_config(bridges: &BridgesConfigBuilder) -> Result<(), ConfigBuildE
     use std::collections::HashSet;
     use std::str::FromStr;
 
+    let transportlist = bridges.opt_transports().as_deref().unwrap_or_default();
+    // Allow bridge/PT config to be completed programmatically at runtime via
+    // TorClientBuilder::pluggable_transport_manager(...), without requiring
+    // placeholder entries in `[bridges.transports]`.
+    if transportlist.is_empty() {
+        return Ok(());
+    }
+
     // These are all the protocols that the user has defined
     let mut protocols_defined: HashSet<PtTransportName> = HashSet::new();
-    if let Some(transportlist) = bridges.opt_transports() {
-        for protocols in transportlist.iter() {
-            for protocol in protocols.get_protocols() {
-                protocols_defined.insert(protocol.clone());
-            }
+    for protocols in transportlist.iter() {
+        for protocol in protocols.get_protocols() {
+            protocols_defined.insert(protocol.clone());
         }
     }
 
@@ -826,6 +919,19 @@ impl TorClientConfig {
         Ok((state_dir, mistrust))
     }
 
+    /// Return true if bridges are enabled and all configured bridges require a
+    /// pluggable transport.
+    #[cfg(feature = "pt-client")]
+    pub(crate) fn bridges_require_pluggable_transport(&self) -> bool {
+        self.bridges.bridges_enabled()
+            && !self.bridges.bridges.is_empty()
+            && self
+                .bridges
+                .bridges
+                .iter()
+                .all(|bridge| matches!(bridge.chan_method(), ChannelMethod::Pluggable(_)))
+    }
+
     /// Access the `tor_memquota` configuration
     ///
     /// Ad-hoc accessor for testing purposes.
@@ -1169,7 +1275,7 @@ mod test {
                         "obfs4 bridge.example.net:80 $0bac39417268b69b9f514e7f63fa6fba1a788958 ed25519:dGhpcyBpcyBbpmNyZWRpYmx5IHNpbGx5ISEhISEhISA iat-mode=1",
                     ]
                 "#,
-                Err("all bridges unusable due to lack of corresponding pluggable transport"),
+                Ok(()),
             ),
             (
                 r#"
