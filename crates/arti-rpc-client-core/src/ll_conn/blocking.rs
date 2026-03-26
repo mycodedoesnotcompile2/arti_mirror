@@ -6,10 +6,11 @@
 use mio::Interest;
 
 use crate::msgs::response::UnparsedResponse;
+use std::any::Any;
 use std::io;
 
 use super::nonblocking::{EventLoop, NonblockingConnection, PollStatus, WriteHandle};
-use super::{MioStream, retry_eintr};
+use super::{MioStream, Stream, retry_eintr};
 
 /// An IO connection to Arti, along with any supporting logic necessary to check it for readiness.
 ///
@@ -109,11 +110,12 @@ impl BlockingConnection {
         // We register the stream here, since we want to use it exclusively with `reregister`
         // later on.  We do not deregister the stream until `Drop::drop` is called.
         cio.poll.registry().register(
-            cio.nbconn
-                .as_mut()
-                .expect("Logic error: stream not present")
-                .as_mio_source()
-                .expect("logic error: not a mio stream."),
+            nbconn_source(
+                cio.nbconn
+                    .as_mut()
+                    .expect("Logic error: stream not present"),
+            )
+            .expect("logic error: not a mio stream."),
             STREAM_TOKEN,
             Interest::READABLE,
         )?;
@@ -175,9 +177,7 @@ impl BlockingConnection {
                 Interest::READABLE
             };
             self.poll.registry().reregister(
-                nbconn
-                    .as_mio_source()
-                    .expect("logic error: not a mio stream!"),
+                nbconn_source(nbconn).expect("logic error: not a mio stream!"),
                 STREAM_TOKEN,
                 interests,
             )?;
@@ -198,7 +198,7 @@ impl BlockingConnection {
         let mut nb_conn = self
             .deregister_and_take_nb_conn()
             .expect("logic error: stream not present!");
-        nb_conn.downgrade_source();
+        nb_conn.map_stream(remove_mio_layer);
         nb_conn
     }
 
@@ -211,9 +211,7 @@ impl BlockingConnection {
     fn deregister_and_take_nb_conn(&mut self) -> Option<NonblockingConnection> {
         // IO SAFETY: See "IO Safety" note in documentation for BlockingConnection.
         let mut nbconn = self.nbconn.take()?;
-        let s: &mut _ = nbconn
-            .as_mio_source()
-            .expect("Logic error: Stream was not a MIO stream.");
+        let s = nbconn_source(&mut nbconn).expect("Logic error: Stream was not a MIO stream.");
         self.poll
             .registry()
             .deregister(s)
@@ -236,6 +234,46 @@ impl EventLoop for MioWaker {
     fn stop_writing(&mut self) -> io::Result<()> {
         Ok(())
     }
+}
+
+/// Helper: given a nonblocking connection, try to downcast it into a mio::event::Source.
+///
+/// Returns an error if the
+fn nbconn_source(nb_conn: &mut NonblockingConnection) -> io::Result<&mut dyn mio::event::Source> {
+    let stream = nb_conn.stream() as &mut dyn Any;
+    // (We need to use `is` here rather than` if let Some(x) = .downcast_mut()` because of NLL problem
+    // case 3.)
+    if stream.is::<mio::net::TcpStream>() {
+        return Ok(stream
+            .downcast_mut::<mio::net::TcpStream>()
+            .expect("Logic error: Any::is did not agree with Any::downcast_mut"));
+    }
+    #[cfg(unix)]
+    if stream.is::<mio::net::UnixStream>() {
+        return Ok(stream
+            .downcast_mut::<mio::net::UnixStream>()
+            .expect("Logic error: Any::is did not agree with Any::downcast_mut"));
+    }
+
+    Err(io::ErrorKind::Other.into())
+}
+
+/// Helper: Given a Box<dyn Stream>, if the stream is a mio::net::{TcpStream, UnixStream},
+/// remove the mio wrappings from that stream and return it.
+///
+/// If the stream was _not_ a mio stream, return it as-is.
+fn remove_mio_layer(stream: Box<dyn Stream>) -> Box<dyn Stream> {
+    let stream = match stream.downcast::<mio::net::TcpStream>() {
+        Ok(mio_stream) => return Box::new(std::net::TcpStream::from(*mio_stream)),
+        Err(s) => s,
+    };
+    #[cfg(unix)]
+    let stream = match stream.downcast::<mio::net::UnixStream>() {
+        Ok(mio_stream) => return Box::new(std::os::unix::net::UnixStream::from(*mio_stream)),
+        Err(s) => s,
+    };
+
+    stream
 }
 
 // TODO: It would be good to have additional tests for this code.

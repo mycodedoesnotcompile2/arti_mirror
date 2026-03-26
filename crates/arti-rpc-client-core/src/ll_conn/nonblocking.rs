@@ -144,22 +144,24 @@ impl NonblockingConnection {
         }
     }
 
-    /// Return a reference to this connection as a mio source.
-    ///
-    /// Returns None if this is was not constructed with a mio stream,
-    /// or if `downgrade_source` has been called.
-    pub(super) fn as_mio_source(&mut self) -> Option<&mut dyn mio::event::Source> {
-        self.stream.as_mut().as_mio_source()
+    /// Return a reference to this connection's underlying stream.
+    pub(super) fn stream(&mut self) -> &mut dyn Stream {
+        self.stream.as_mut()
     }
 
-    /// Remove any mio wrappers from this connection.
-    pub(super) fn downgrade_source(&mut self) {
-        // We need this rigamarole because `self.stream = self.stream.remove_mio()`
+    /// Apply a function to the stream in this connection.
+    ///
+    /// (Used by `blockingConnection` to remove std::mio from stream when it's ready.)
+    pub(super) fn map_stream<F>(&mut self, func: F)
+    where
+        F: FnOnce(Box<dyn Stream>) -> Box<dyn Stream>,
+    {
+        // We need this rigamarole because `self.stream = func(self.stream)`
         // gives a "can't move out of self.stream, which is behind a mutable reference"
         // error.
         let mut s: Box<dyn Stream> = Box::new(std::io::empty());
         mem::swap(&mut s, &mut self.stream);
-        self.stream = s.remove_mio();
+        self.stream = func(s);
     }
 
     /// Return a new [`WriteHandle`] that can be used to queue messages to be sent via this connection.
@@ -591,12 +593,6 @@ mod test {
         }
     }
     impl Stream for TestStream {
-        fn as_mio_source(&mut self) -> Option<&mut dyn mio::event::Source> {
-            None
-        }
-        fn remove_mio(self: Box<Self>) -> Box<dyn Stream> {
-            self
-        }
         fn try_as_handle(&self) -> io::Result<BorrowedOsHandle<'_>> {
             Err(io::Error::from(io::ErrorKind::Other))
         }
