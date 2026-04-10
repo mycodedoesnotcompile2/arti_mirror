@@ -483,7 +483,7 @@ dependencies = [
  "tor-rtmock",
  "tracing",
  "typetag",
- "weak-table",
+ "weak-table2",
  "zeroize",
 ]
 
@@ -6724,7 +6724,7 @@ dependencies = [
  "slab",
  "smallvec",
  "thiserror 2.0.18",
- "weak-table",
+ "weak-table2",
  "web-time-compat",
 ]
 
@@ -6924,7 +6924,7 @@ dependencies = [
  "tracing",
  "visibility",
  "void",
- "weak-table",
+ "weak-table2",
  "web-time-compat",
 ]
 
@@ -7151,7 +7151,7 @@ dependencies = [
  "tor-netdoc",
  "tor-rtcompat",
  "tracing",
- "weak-table",
+ "weak-table2",
  "zstd",
 ]
 
@@ -7590,7 +7590,7 @@ dependencies = [
  "tor-error",
  "tor-rtcompat",
  "tracing",
- "weak-table",
+ "weak-table2",
  "web-time-compat",
 ]
 
@@ -8654,10 +8654,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "weak-table"
-version = "0.3.2"
+name = "weak-table2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "323f4da9523e9a669e1eaf9c6e763892769b1d38c623913647bfdc1532fe4549"
+checksum = "5682865c8ed3c11f4d38df75276af32307f86ecd2734ee64a9e063a9e7d8e9c0"
+dependencies = [
+ "hashbrown 0.16.1",
+]
 
 [[package]]
 name = "web-sys"
