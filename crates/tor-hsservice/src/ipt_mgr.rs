@@ -488,7 +488,10 @@ impl Ipt {
                             Ok(()) => {}
                             Err::<_, mpsc::SendError>(e) => {
                                 // Not using trace_report because SendError isn't HasKind
-                                trace!("HS service IPT status task: manager went away: {e}");
+                                trace!(
+                                    "HS service IPT status task: manager went away: {}",
+                                    e.report(),
+                                );
                                 break;
                             }
                         }

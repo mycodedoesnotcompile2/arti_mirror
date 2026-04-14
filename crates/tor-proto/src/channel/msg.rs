@@ -8,6 +8,7 @@
 
 use bytes::BytesMut;
 use tor_cell::chancell::{AnyChanCell, ChanCell, ChanMsg, codec, msg::AnyChanMsg};
+use tor_error::ErrorReport;
 
 use crate::{Error, channel::ChannelType};
 
@@ -410,7 +411,7 @@ where
                 ChanCell::new(circid, msg.into())
             })
         })
-        .map_err(|e| stage.to_err(format!("Decoding cell error: {e}")))
+        .map_err(|e| stage.to_err(format!("Decoding cell error: {}", e.report())))
 }
 
 /// Helper function to encode an AnyChanCell cell that is within a restricted msg set R.
@@ -432,9 +433,9 @@ where
             let rcell: ChanCell<R> = ChanCell::new(circ_id, rmsg);
             codec
                 .write_cell(rcell, dst)
-                .map_err(|e| stage.to_err(format!("Encoding cell error: {e}")))
+                .map_err(|e| stage.to_err(format!("Encoding cell error: {}", e.report())))
         }
-        Err(m) => Err(stage.to_err(format!("Disallowed cell command {}", m.cmd(),))),
+        Err(m) => Err(stage.to_err(format!("Disallowed cell command {}", m.cmd()))),
     }
 }
 

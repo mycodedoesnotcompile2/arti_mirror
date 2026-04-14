@@ -11,6 +11,7 @@ use tor_rtcompat::Runtime;
 #[cfg(feature = "onion-service-cli-extra")]
 use {
     std::collections::{HashMap, hash_map::Entry},
+    tor_error::ErrorReport,
     tor_hsclient::HsClientDescEncKeypairSpecifier,
     tor_hscrypto::pk::HsClientDescEncKeypair,
     tor_keymgr::{CTorPath, KeyPath, KeystoreEntry, KeystoreEntryResult, KeystoreId},
@@ -347,8 +348,9 @@ fn migrate_ctor_keys(args: &CTorMigrateArgs, client: &InertTorClient) -> Result<
                 );
                 if let Err(e) = res {
                     eprintln!(
-                        "Failed to insert key for service {}: {e}",
-                        hsid.display_redacted()
+                        "Failed to insert key for service {}: {}",
+                        hsid.display_redacted(),
+                        e.report(),
                     );
                 }
             }

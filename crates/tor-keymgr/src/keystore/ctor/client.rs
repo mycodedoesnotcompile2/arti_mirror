@@ -21,7 +21,7 @@ use crate::{
 use fs_mistrust::Mistrust;
 use itertools::Itertools as _;
 use tor_basic_utils::PathExt;
-use tor_error::debug_report;
+use tor_error::{ErrorReport, debug_report};
 use tor_hscrypto::pk::{HsClientDescEncKeypair, HsId};
 use tor_key_forge::{KeyType, KeystoreItemType};
 use tor_llcrypto::pk::curve25519;
@@ -159,7 +159,7 @@ impl CTorClientKeystore {
                     //
                     // We have an io::Error here, which has an io::ErrorKind,
                     // and thus can't be used with debug_report.
-                    debug!("cannot access key entry: {e}");
+                    debug!("cannot access key entry: {}", e.report());
                 })
                 .ok()?;
 

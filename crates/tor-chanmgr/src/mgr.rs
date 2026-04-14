@@ -11,7 +11,7 @@ use oneshot_fused_workaround as oneshot;
 use std::result::Result as StdResult;
 use std::sync::Arc;
 use std::time::Duration;
-use tor_error::{error_report, internal};
+use tor_error::{ErrorReport as _, error_report, internal};
 use tor_linkspec::{HasChanMethod, HasRelayIds};
 use tor_netdir::params::NetParameters;
 use tor_proto::channel::kist::KistParams;
@@ -338,7 +338,7 @@ impl<CF: AbstractChannelFactory + Clone> AbstractChanMgr<CF> {
                             // failure).
                             #[allow(clippy::missing_docs_in_private_items)]
                             const MSG: &str = "Unable to remove the pending channel";
-                            error_report!(internal!("{e}"), "{}", MSG);
+                            error_report!(internal!("{}", e.report()), "{}", MSG);
                         }
                     });
 

@@ -13,6 +13,7 @@ use anyhow::anyhow;
 use arti_client::{InertTorClient, TorClientConfig};
 use clap::{ArgMatches, Args, FromArgMatches, Parser, Subcommand, ValueEnum};
 use safelog::DisplayRedacted;
+use tor_error::ErrorReport;
 use tor_hsservice::{HsId, HsNickname, OnionService};
 use tor_rtcompat::Runtime;
 
@@ -346,7 +347,11 @@ fn find_ctor_keystore(client_config: &TorClientConfig, args: &CommonArgs) -> Res
 fn remove_arti_entries(keymgr: &KeyMgr, arti_entries: &Vec<KeystoreEntry<'_>>) {
     for entry in arti_entries {
         if let Err(e) = keymgr.remove_entry(entry) {
-            eprintln!("Failed to remove entry {} ({e})", entry.key_path(),);
+            eprintln!(
+                "Failed to remove entry {}: {}",
+                entry.key_path(),
+                e.report(),
+            );
         }
     }
 }
