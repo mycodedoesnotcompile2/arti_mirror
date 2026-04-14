@@ -30,7 +30,7 @@ use tor_error::{debug_report, warn_report};
 use tor_rtcompat::{NetStreamListener, Runtime};
 use tor_socksproto::SocksAuth;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context as _, Result, anyhow};
 
 /// Placeholder type when RPC is disabled at compile time.
 #[cfg(not(feature = "rpc"))]
@@ -413,8 +413,8 @@ pub(crate) async fn bind_proxy<R: Runtime>(
                         Err(ref e) if e.raw_os_error() == Some(libc::EAFNOSUPPORT) => {
                             warn_report!(e, "Address family not supported {}", addr);
                         }
-                        Err(ref e) => {
-                            return Err(anyhow!("Can't listen on {}: {e}", addr));
+                        Err(e) => {
+                            return Err(e).with_context(|| format!("Can't listen on {addr}"))?;
                         }
                     }
                 }

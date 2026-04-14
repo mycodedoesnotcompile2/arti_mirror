@@ -78,7 +78,7 @@ async fn serve<R: Rng, F: Fn() -> Timestamp>(
             Err(e) => {
                 // Check whether the error is fatal.
                 if e.is_fatal() {
-                    panic!("fatal error: {e}");
+                    panic!("fatal error: {e:?}");
                 }
 
                 // Non-fatal error means we should wait and try again.

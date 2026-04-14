@@ -73,7 +73,7 @@ use tracing::warn;
 use {
     crate::managed::{PtReactor, PtReactorMessage},
     futures::channel::mpsc::{self, UnboundedSender},
-    tor_error::error_report,
+    tor_error::{error_report, warn_report},
     tor_rtcompat::SpawnExt,
 };
 #[cfg(feature = "tor-channel-factory")]
@@ -309,7 +309,7 @@ impl<R: Runtime> PtMgr<R> {
                 )));
             }
             Ok(Err(e)) => {
-                warn!("PT for {transport} failed to launch: {e}");
+                warn_report!(e, "PT for {transport} failed to launch");
                 return Err(e);
             }
             Ok(Ok(method)) => method,

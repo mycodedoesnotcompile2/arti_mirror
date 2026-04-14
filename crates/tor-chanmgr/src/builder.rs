@@ -13,7 +13,7 @@ use crate::{Error, event::ChanMgrEventSender};
 
 use safelog::MaybeSensitive;
 use tor_basic_utils::rand_hostname;
-use tor_error::internal;
+use tor_error::{internal, into_internal};
 use tor_linkspec::{ChanTarget, HasChanMethod, IntoOwnedChanTarget, OwnedChanTarget};
 use tor_proto::channel::ChannelType;
 use tor_proto::channel::kist::KistParams;
@@ -236,7 +236,9 @@ where
         let target_no_ids = OwnedChanTargetBuilder::default()
             .addrs(vec![peer.into_inner()])
             .build()
-            .map_err(|e| internal!("Unable to build chan target from peer sockaddr: {e}"))?;
+            .map_err(into_internal!(
+                "Unable to build chan target from peer sockaddr"
+            ))?;
         // Convert into a PeerAddr but keep it sensitive, this can be a client/bridge.
         let peer_addr: MaybeSensitive<PeerAddr> =
             MaybeSensitive::sensitive(peer.into_inner().into());

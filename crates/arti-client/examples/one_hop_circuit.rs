@@ -8,6 +8,7 @@ use tokio_crate as tokio;
 use tracing_subscriber::{filter, prelude::*};
 
 use arti_client::{TorClient, TorClientConfig};
+use tor_error::ErrorReport;
 use tor_netdir::{NetDir, Relay};
 use tor_relay_selection::{RelayExclusion, RelaySelector, RelayUsage};
 use tor_rtcompat::Runtime;
@@ -38,7 +39,7 @@ async fn launch_one_hop_dir_circ<R: Runtime>(
         let circuit = arti_client.circmgr().deref();
         let one_hop_circ = circuit.get_or_launch_dir_specific(&relay).await;
         match one_hop_circ {
-            Err(e) => println!("[-] Unable to launch one-hop circuit: {e}"),
+            Err(e) => println!("[-] Unable to launch one-hop circuit: {}", e.report()),
             Ok(_) => println!("[+] Successful one-hop circuit to: {fp:?}"),
         };
     } else {

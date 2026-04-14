@@ -22,7 +22,7 @@ use tor_cell::chancell::msg;
 use tor_cert::EncodedEd25519Cert;
 use tor_cert::rsa::EncodedRsaCrosscert;
 use tor_cert::x509::TlsKeyAndCert;
-use tor_error::internal;
+use tor_error::into_internal;
 use tor_linkspec::{HasRelayIds, OwnedChanTarget, RelayIdRef, RelayIdType};
 use tor_llcrypto as ll;
 use tor_llcrypto::pk::{
@@ -437,9 +437,9 @@ where
     let timestamp = sleep_prov
         .wallclock()
         .duration_since(UNIX_EPOCH)
-        .map_err(|e| internal!("Wallclock may have gone backwards: {e}"))?
+        .map_err(into_internal!("Wallclock may have gone backwards"))?
         .as_secs()
         .try_into()
-        .map_err(|e| internal!("Wallclock secs fail to convert to 32bit: {e}"))?;
+        .map_err(into_internal!("Wallclock secs fail to convert to 32bit"))?;
     Ok(msg::Netinfo::from_relay(timestamp, peer_ip, my_addrs))
 }

@@ -23,7 +23,7 @@ use tor_config::Listen;
 use tor_error::{error_report, warn_report};
 use tor_rtcompat::{Runtime, UdpSocket};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context as _, Result, anyhow};
 
 use crate::proxy::port_info;
 
@@ -284,8 +284,8 @@ pub(crate) async fn bind_dns_resolver<R: Runtime>(
                         Err(ref e) if e.raw_os_error() == Some(libc::EAFNOSUPPORT) => {
                             warn_report!(e, "Address family not supported {}", addr);
                         }
-                        Err(ref e) => {
-                            return Err(anyhow!("Can't listen on {}: {e}", addr));
+                        Err(e) => {
+                            return Err(e).with_context(|| format!("Can't listen on {addr}"));
                         }
                     }
                 }

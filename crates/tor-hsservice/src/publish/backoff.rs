@@ -96,9 +96,10 @@ impl<B: BackoffSchedule, R: Runtime> Runner<B, R> {
                             // The operation failed: check if we can retry it.
                             let should_retry = e.should_retry();
 
+                            // We can't use `ErrorReport` here because it requires 'static.
                             debug!(
                                 attempt=(retry_count + 1), can_retry=should_retry,
-                                "failed to {}: {e}", self.doing
+                                "failed to {}: {e:?}", self.doing,
                             );
 
                             errors.push_timed(e.clone(), self.runtime.now(), None);

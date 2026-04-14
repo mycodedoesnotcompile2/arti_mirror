@@ -39,7 +39,7 @@
 use ssh_key::Algorithm;
 use ssh_key::private::KeypairData;
 use ssh_key::public::KeyData;
-use tor_error::{Bug, bad_api_usage, internal};
+use tor_error::{Bug, bad_api_usage, internal, into_internal};
 
 use crate::Result;
 use crate::ssh::{ED25519_EXPANDED_ALGORITHM_NAME, X25519_ALGORITHM_NAME};
@@ -264,7 +264,7 @@ impl KeyType {
     ///
     /// Returns an error if the [`KeypairData`] is of an unsupported type.
     pub(crate) fn try_from_keypair_data(key: &KeypairData) -> Result<KeyType> {
-        let algo = key.algorithm().map_err(|e| internal!("invalid algr {e}"))?;
+        let algo = key.algorithm().map_err(into_internal!("invalid algr"))?;
         match algo {
             Algorithm::Ed25519 => Ok(KeyType::Ed25519Keypair),
             Algorithm::Rsa { hash: _ } => Ok(KeyType::RsaKeypair),

@@ -13,6 +13,7 @@ use subtle::ConstantTimeEq;
 use tracing::instrument;
 
 use tor_cell::chancell::msg;
+use tor_error::ErrorReport;
 use tor_linkspec::{HasRelayIds, OwnedChanTarget, RelayIds};
 use tor_llcrypto as ll;
 use tor_llcrypto::pk::ed25519::Ed25519Identity;
@@ -217,9 +218,12 @@ where
 
         // CRITICAL: This if is what authenticates a channel on the responder side. We compare
         // what we expected to what we received.
-        let peer_auth_cell_body_no_rand = peer_auth_cell
-            .body_no_rand()
-            .map_err(|e| Error::ChanProto(format!("AUTHENTICATE body_no_rand malformed: {e}")))?;
+        let peer_auth_cell_body_no_rand = peer_auth_cell.body_no_rand().map_err(|e| {
+            Error::ChanProto(format!(
+                "AUTHENTICATE body_no_rand malformed: {}",
+                e.report(),
+            ))
+        })?;
         // This equality is in constant-time to avoid timing attack oracle.
         if peer_auth_cell_body_no_rand
             .ct_eq(&expected_auth_body)
@@ -236,15 +240,18 @@ where
             .expect("Peer KP_link_ed fails to convert to PublicKey");
         let peer_auth_cell_sig =
             tor_llcrypto::pk::ed25519::Signature::from_bytes(peer_auth_cell.sig().map_err(
-                |e| Error::ChanProto(format!("AUTHENTICATE sig field is invalid: {e}")),
+                |e| Error::ChanProto(format!("AUTHENTICATE sig field is invalid: {}", e.report())),
             )?);
-        let peer_body = peer_auth_cell
-            .body()
-            .map_err(|e| Error::ChanProto(format!("AUTHENTICATE body malformed: {e}")))?;
+        let peer_body = peer_auth_cell.body().map_err(|e| {
+            Error::ChanProto(format!("AUTHENTICATE body malformed: {}", e.report()))
+        })?;
         peer_link_ed_pubkey
             .verify(peer_body, &peer_auth_cell_sig)
             .map_err(|e| {
-                Error::ChanProto(format!("AUTHENTICATE cell signature failed to verify: {e}"))
+                Error::ChanProto(format!(
+                    "AUTHENTICATE cell signature failed to verify: {}",
+                    e.report(),
+                ))
             })?;
 
         // Transform our inner into a verified channel now that we are verified.
