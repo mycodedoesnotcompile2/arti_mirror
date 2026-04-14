@@ -113,7 +113,7 @@ macro_rules! rel_path_if_supported {
         match $res {
             Ok(path) => path,
             Err(ArtiPathUnavailable) => return $ret,
-            Err(e) => return Err(tor_error::internal!("invalid ArtiPath: {e}").into()),
+            Err(e) => return Err(tor_error::into_internal!("invalid ArtiPath")(e).into()),
         }
     }};
 }

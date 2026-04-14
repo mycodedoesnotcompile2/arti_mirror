@@ -1345,7 +1345,8 @@ mod tests {
 
             impl KeySpecifier for $name {
                 fn arti_path(&self) -> StdResult<ArtiPath, ArtiPathUnavailableError> {
-                    Ok(ArtiPath::new($id.into()).map_err(|e| tor_error::internal!("{e}"))?)
+                    Ok(ArtiPath::new($id.into())
+                        .map_err(tor_error::into_internal!("key specifier arti path error"))?)
                 }
 
                 fn ctor_path(&self) -> Option<crate::CTorPath> {

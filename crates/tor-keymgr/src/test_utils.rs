@@ -212,7 +212,7 @@ mod specifier {
     impl KeySpecifier for TestSpecifier {
         fn arti_path(&self) -> Result<ArtiPath, ArtiPathUnavailableError> {
             Ok(ArtiPath::new(format!("{TEST_SPECIFIER_PATH}{}", self.0))
-                .map_err(|e| tor_error::internal!("{e}"))?)
+                .map_err(tor_error::into_internal!("key specifier arti path error"))?)
         }
 
         fn ctor_path(&self) -> Option<CTorPath> {
