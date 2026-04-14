@@ -728,7 +728,7 @@ mod test {
             let _auth_material = match try_generate_keys(&runtime, &keymgr) {
                 Ok(a) => a,
                 Err(e) => {
-                    panic!("Unable to bootstrap keys and generate RelayChannelAuthMaterial: {e}");
+                    panic!("Unable to bootstrap keys and generate RelayChannelAuthMaterial: {e:?}");
                 }
             };
         });
