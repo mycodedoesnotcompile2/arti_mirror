@@ -8,7 +8,7 @@ use futures::Stream;
 use pin_project::pin_project;
 use tor_async_utils::peekable_stream::UnobtrusivePeekableStream;
 use tor_cell::relaycell::{RelayCmd, UnparsedRelayMsg};
-use tracing::debug;
+use tor_error::debug_report;
 
 use crate::congestion::sendme;
 use crate::stream::StreamTarget;
@@ -84,7 +84,7 @@ impl StreamReceiver {
                     // But this is okay. We still want the user to be able to continue reading the
                     // remaining queued data for this stream, and if the tunnel has closed it
                     // wouldn't make sense to send a SENDME message anyways.
-                    debug!("Failed to send stream-level SENDME. Ignoring: {e}");
+                    debug_report!(e, "Failed to send stream-level SENDME. Ignoring.");
                 } else {
                     // This error is unexpected. Let's return it to the user.
                     return Err(e);

@@ -3,7 +3,7 @@
 use std::sync::LazyLock;
 
 use sysinfo::{MemoryRefreshKind, System};
-use tracing::warn;
+use tor_error::warn_report;
 
 use crate::internal_prelude::*;
 
@@ -227,7 +227,10 @@ fn compute_max_from_total_system_mem(mem: Result<usize, MemQueryError>) -> Qty {
     let mem = match mem {
         Ok(x) => x,
         Err(e) => {
-            warn!("Unable to get the total available memory. Using a constant max instead: {e}");
+            warn_report!(
+                e,
+                "Unable to get the total available memory. Using a constant max instead",
+            );
 
             // Can't get the total available memory,
             // so we return a max depending on whether the architecture is 32-bit or 64-bit.
