@@ -37,8 +37,13 @@ def make_network(config: config_module.Config) -> chutney.TorNet.Network:
     # Exits. We don't need many since authorities also function as exits,
     # but let's have at least 1 non-authority exit relay.
     configs += NodeConfig(
-        tag="r", relay=True, exit=True, launch_phase=LAUNCH_PHASE_RELAYS
+        tag="re", relay=True, exit=True, launch_phase=LAUNCH_PHASE_RELAYS
     ).getN(2)
+    # Additional relays.
+    # We need some additional relays to consistently handle e.g. vanguards +
+    # conflux. (We could increase the quantity of authorities or exits, but it's
+    # also worth exercising the presence of this category of relay).
+    configs += NodeConfig(tag="r", relay=True, launch_phase=LAUNCH_PHASE_RELAYS).getN(4)
     # Simple tor client. Useful as a baseline check for "chutney verify",
     # and used in arti-bench for comparison.
     configs += NodeConfig(
