@@ -1,5 +1,7 @@
 //! Key rotation tasks of the relay.
 
+mod views;
+
 use anyhow::Context;
 use std::{
     sync::Arc,
