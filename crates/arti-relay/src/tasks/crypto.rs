@@ -22,12 +22,15 @@ use tor_proto::RelayChannelAuthMaterial;
 use tor_proto::relay::CreateRequestHandler;
 use tor_relay_crypto::{RelaySigningKeyCert, gen_link_cert, gen_signing_cert, gen_tls_cert};
 
-use crate::keys::{
-    RelayIdentityKeypairSpecifier, RelayIdentityRsaKeypairSpecifier,
-    RelayLinkSigningKeypairSpecifier, RelayLinkSigningKeypairSpecifierPattern,
-    RelayNtorKeypairSpecifier, RelayNtorKeypairSpecifierPattern, RelaySigningKeyCertSpecifier,
-    RelaySigningKeyCertSpecifierPattern, RelaySigningKeypairSpecifier,
-    RelaySigningKeypairSpecifierPattern, RelaySigningPublicKeySpecifier, Timestamp,
+use crate::{
+    keys::{
+        RelayIdentityKeypairSpecifier, RelayIdentityRsaKeypairSpecifier,
+        RelayLinkSigningKeypairSpecifier, RelayLinkSigningKeypairSpecifierPattern,
+        RelayNtorKeypairSpecifier, RelayNtorKeypairSpecifierPattern, RelaySigningKeyCertSpecifier,
+        RelaySigningKeyCertSpecifierPattern, RelaySigningKeypairSpecifier,
+        RelaySigningKeypairSpecifierPattern, RelaySigningPublicKeySpecifier, Timestamp,
+    },
+    tasks::crypto::views::FullKeyView,
 };
 use tor_relay_crypto::pk::{
     RelayIdentityKeypair, RelayIdentityRsaKeypair, RelayLinkSigningKeypair, RelayNtorKeypair,
@@ -666,34 +669,71 @@ pub(crate) async fn rotate_keys_task<R: Runtime>(
 }
 
 /// Reactor object handling the rotation of relay crypto keys.
-#[expect(unused)] // TODO(relay)
 pub(crate) struct Reactor<R: Runtime> {
     /// Underlying runtime for a time provider.
     runtime: R,
     /// Reference to the arti-relay channel manager [`ChanMgr`]
     chanmgr: Arc<ChanMgr<R>>,
-    // TODO(relay): A key state object holding the KeyMgr.
+    /// Reference to the create request handler so we can update it.
+    create_request_handler: Arc<CreateRequestHandler>,
+    /// Full key view.
+    view: Arc<FullKeyView>,
     // TODO(relay): Add the net provider for consesus params update.
 }
 
 #[expect(unused)] // TODO(relay)
 impl<R: Runtime> Reactor<R> {
     /// Constructor.
-    pub(crate) fn new(runtime: R, chanmgr: Arc<ChanMgr<R>>) -> Self {
-        Self { runtime, chanmgr }
+    pub(crate) fn new(
+        runtime: R,
+        chanmgr: Arc<ChanMgr<R>>,
+        create_request_handler: Arc<CreateRequestHandler>,
+        view: Arc<FullKeyView>,
+    ) -> Self {
+        Self {
+            runtime,
+            chanmgr,
+            create_request_handler,
+            view,
+        }
     }
 
     /// Launch the reactor, and run until an error is encountered.
     pub(crate) async fn run(mut self) -> anyhow::Result<void::Void> {
         trace!("Starting crypto reactor task");
         loop {
-            self.run_once().await?;
+            // TODO(relay): There will be a select here once net provider shows up.
+            let next_wake = self.run_once()?;
+            self.runtime.sleep_until_wallclock(next_wake).await;
         }
     }
 
     /// Helper: run the once to handle a single action.
-    async fn run_once(&mut self) -> anyhow::Result<()> {
-        todo!()
+    fn run_once(&mut self) -> anyhow::Result<SystemTime> {
+        let keymgr = self.view.keymgr();
+        let now = self.runtime.wallclock();
+        // Attempt a rotation of all keys.
+        let (have_rotated, next_expiry) = try_rotate_keys(now, keymgr)?;
+        if have_rotated.chan_auth {
+            let auth_material = build_proto_relay_auth_material(now, keymgr)?;
+            self.chanmgr
+                .set_relay_auth_material(Arc::new(auth_material))
+                .context("Failed to set relay auth material on ChanMgr")?;
+        }
+
+        if have_rotated.ntor {
+            // Any keys left in the keystore at this point are considered to be usable
+            // (either because they are newly generated, or because they are still
+            // within the grace period).
+            let ntor_keys = get_ntor_keys(keymgr)?;
+            self.create_request_handler.update_ntor_keys(ntor_keys);
+        }
+
+        // Sleep until the earliest key expiry minus buffer so we rotate before it expires.
+        // If the subtraction would underflow, wake up immediately to rotate the expired key.
+        Ok(next_expiry
+            .checked_sub(KEY_ROTATION_EXPIRE_BUFFER)
+            .unwrap_or(now))
     }
 }
 
