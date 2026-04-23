@@ -653,16 +653,18 @@ mod test {
     }
 
     /// Initialize test basics that is runtime and a KeyMgr.
-    fn new_keymgr() -> KeyMgr {
+    fn new_keymgr() -> Arc<KeyMgr> {
         let store = Box::new(ArtiEphemeralKeystore::new("test".to_string()));
-        KeyMgrBuilder::default()
-            .primary_store(store)
-            .build()
-            .unwrap()
+        Arc::new(
+            KeyMgrBuilder::default()
+                .primary_store(store)
+                .build()
+                .unwrap(),
+        )
     }
 
     /// Initial setup of a test. Build a mock runtime, key manager and setup identity keys.
-    fn setup() -> KeyMgr {
+    fn setup() -> Arc<KeyMgr> {
         let keymgr = new_keymgr();
         setup_identity_keys(&keymgr);
         keymgr
@@ -705,9 +707,9 @@ mod test {
     #[test]
     fn test_bootstrap() {
         MockRuntime::test_with_various(|runtime| async move {
-            let keymgr = new_keymgr();
+            let key_view = FullKeyView::new(new_keymgr());
 
-            let _auth_material = match try_generate_keys(&runtime, &keymgr) {
+            let _auth_material = match try_generate_keys(&runtime, &key_view) {
                 Ok(a) => a,
                 Err(e) => {
                     panic!("Unable to bootstrap keys and generate RelayChannelAuthMaterial: {e}");
@@ -724,12 +726,8 @@ mod test {
             let keymgr = setup();
             let now = runtime.wallclock();
 
-            let (rotated, next_expiry) = try_rotate_keys_no_lock(now, &keymgr).unwrap();
+            let next_expiry = try_rotate_keys_no_lock(now, &keymgr).unwrap();
 
-            assert!(
-                rotated.chan_auth && rotated.ntor,
-                "keys should be reported as generated on first rotation"
-            );
             assert_eq!(count_link_keys(&keymgr), 1, "expected one link key");
             assert_eq!(count_signing_keys(&keymgr), 1, "expected one signing key");
             assert_eq!(count_ntor_keys(&keymgr), 1, "expected one ntor key");
@@ -749,17 +747,13 @@ mod test {
         MockRuntime::test_with_various(|runtime| async move {
             let keymgr = setup();
             let now = runtime.wallclock();
-            try_rotate_keys_no_lock(now, &keymgr).unwrap();
+            let _expiry = try_rotate_keys_no_lock(now, &keymgr).unwrap();
 
             // Advance by 1 hour (inside 2 days of link key).
             runtime.advance_by(Duration::from_secs(60 * 60)).await;
 
-            let (rotated, _) = try_rotate_keys_no_lock(now, &keymgr).unwrap();
+            let _expiry = try_rotate_keys_no_lock(now, &keymgr).unwrap();
 
-            assert!(
-                !rotated.chan_auth && !rotated.ntor,
-                "fresh keys must not trigger a rotation"
-            );
             assert_eq!(count_link_keys(&keymgr), 1, "expected one link key");
             assert_eq!(count_signing_keys(&keymgr), 1, "expected one signing key");
             assert_eq!(count_ntor_keys(&keymgr), 1, "expected one ntor key");
@@ -780,27 +774,16 @@ mod test {
                 LINK_CERT_LIFETIME - KEY_ROTATION_EXPIRE_BUFFER - Duration::from_secs(1);
             runtime.advance_by(just_before).await;
 
-            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
+            let first_expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
 
-            assert!(
-                !rotated.chan_auth,
-                "link key MUST NOT rotate before the expiry buffer threshold"
-            );
-            assert!(
-                !rotated.ntor,
-                "ntor key MUST NOT rotate before the expiry buffer threshold"
-            );
             assert_eq!(count_link_keys(&keymgr), 1, "expected one link key");
             assert_eq!(count_signing_keys(&keymgr), 1, "expected one signing key");
 
             // Move it just after the expiry buffer and expect a rotation.
             runtime.advance_by(Duration::from_secs(1)).await;
 
-            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
-            assert!(
-                rotated.chan_auth,
-                "link key should rotate inside the expiry buffer threshold"
-            );
+            let second_expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
+            assert_ne!(first_expiry, second_expiry);
         });
     }
 
@@ -832,8 +815,7 @@ mod test {
                 SIGNING_KEY_CERT_LIFETIME - KEY_ROTATION_EXPIRE_BUFFER - Duration::from_secs(1);
             runtime.advance_by(just_before).await;
 
-            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
-            assert!(rotated.chan_auth, "Rotation must happen after 30 days");
+            let _expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
 
             let spec = get_key_spec();
             assert_eq!(
@@ -850,9 +832,7 @@ mod test {
             // Move it just after the expiry buffer and expect a rotation.
             runtime.advance_by(Duration::from_secs(1)).await;
 
-            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
-            assert!(rotated.chan_auth, "Rotation must happen after 30 days");
-
+            let _expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
             let spec = get_key_spec();
             assert_eq!(
                 spec.valid_until,
@@ -876,23 +856,13 @@ mod test {
                 NTOR_KEY_LIFETIME - KEY_ROTATION_EXPIRE_BUFFER - Duration::from_secs(1);
             runtime.advance_by(just_before).await;
 
-            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
-
-            assert!(
-                !rotated.ntor,
-                "Ntor key MUST NOT rotate before the expiry buffer threshold"
-            );
+            let _expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
             assert_eq!(count_ntor_keys(&keymgr), 1, "expected one ntor key");
 
             // Move it just after the expiry buffer and expect a rotation.
             runtime.advance_by(Duration::from_secs(1)).await;
 
-            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
-            assert!(
-                rotated.ntor,
-                "ntor key should rotate inside the expiry buffer threshold"
-            );
-
+            let _expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
             assert_eq!(
                 count_ntor_keys(&keymgr),
                 2,
@@ -901,12 +871,7 @@ mod test {
 
             runtime.advance_by(NTOR_KEY_GRACE_PERIOD).await;
 
-            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
-            assert!(
-                rotated.ntor,
-                "ntor key should rotate after the grace period"
-            );
-
+            let _expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
             assert_eq!(
                 count_ntor_keys(&keymgr),
                 1,
