@@ -157,13 +157,6 @@ impl FullKeyView {
         }
     }
 
-    /// Return a reference to the [`KeyMgr`]
-    // TODO(relay): Remove this as this is only for the code transition of the crypto task rewrite.
-    // The keymgr is behind the write lock once all this is done.
-    pub(super) fn keymgr(&self) -> &KeyMgr {
-        &self.keymgr
-    }
-
     /// Get the valid_until value from the cache for the given key type.
     fn get_valid_until(&self, ty: ExpirableKeyType) -> Result<Option<Timestamp>> {
         let guard = self
