@@ -7,6 +7,8 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
+use tracing::trace;
+
 use tor_basic_utils::rand_hostname;
 use tor_cert::x509::TlsKeyAndCert;
 use tor_chanmgr::ChanMgr;
@@ -660,6 +662,38 @@ pub(crate) async fn rotate_keys_task<R: Runtime>(
             .checked_sub(KEY_ROTATION_EXPIRE_BUFFER)
             .unwrap_or(now);
         runtime.sleep_until_wallclock(next_wake).await;
+    }
+}
+
+/// Reactor object handling the rotation of relay crypto keys.
+#[expect(unused)] // TODO(relay)
+pub(crate) struct Reactor<R: Runtime> {
+    /// Underlying runtime for a time provider.
+    runtime: R,
+    /// Reference to the arti-relay channel manager [`ChanMgr`]
+    chanmgr: Arc<ChanMgr<R>>,
+    // TODO(relay): A key state object holding the KeyMgr.
+    // TODO(relay): Add the net provider for consesus params update.
+}
+
+#[expect(unused)] // TODO(relay)
+impl<R: Runtime> Reactor<R> {
+    /// Constructor.
+    pub(crate) fn new(runtime: R, chanmgr: Arc<ChanMgr<R>>) -> Self {
+        Self { runtime, chanmgr }
+    }
+
+    /// Launch the reactor, and run until an error is encountered.
+    pub(crate) async fn run(mut self) -> anyhow::Result<void::Void> {
+        trace!("Starting crypto reactor task");
+        loop {
+            self.run_once().await?;
+        }
+    }
+
+    /// Helper: run the once to handle a single action.
+    async fn run_once(&mut self) -> anyhow::Result<()> {
+        todo!()
     }
 }
 
