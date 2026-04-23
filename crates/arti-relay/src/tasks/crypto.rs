@@ -3,6 +3,7 @@
 mod views;
 
 use anyhow::Context;
+use futures::StreamExt as _;
 use std::{
     collections::HashSet,
     sync::Arc,
@@ -19,6 +20,7 @@ use tor_keymgr::{
     CertSpecifierPattern, KeyCertificateSpecifier, KeyMgr, KeyPath, KeySpecifier,
     KeySpecifierPattern, Keygen, KeystoreEntry, KeystoreSelector, ToEncodableKey,
 };
+use tor_netdir::{DirEvent, NetDirProvider};
 use tor_proto::RelayChannelAuthMaterial;
 use tor_proto::relay::CreateRequestHandler;
 use tor_relay_crypto::{RelaySigningKeyCert, gen_link_cert, gen_signing_cert, gen_tls_cert};
@@ -54,20 +56,27 @@ const LINK_CERT_LIFETIME: Duration = Duration::from_secs(2 * 24 * 60 * 60);
 const SIGNING_KEY_CERT_LIFETIME: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 /// Lifetime of the RSA identity key certificate.
 const RSA_CROSSCERT_LIFETIME: Duration = Duration::from_secs(6 * 30 * 24 * 60 * 60);
-/// Lifetime of the ntor circuit extension key (KP_ntor).
-///
-// TODO(relay): we should be using the "onion-key-rotation-days" consensus param
-// instead of this hard-coded value.
-const NTOR_KEY_LIFETIME: Duration = Duration::from_secs(28 * 24 * 60 * 60);
 
-/// Default grace period for acceptance of an onion key (KP_ntor).
-///
-/// This represents the amount of time we are still willing to use this key
-/// after it expires.
-///
-// TODO(relay): we should be using the "onion-key-grace-period-days" consensus param
-// instead of this hard-coded value.
-const NTOR_KEY_GRACE_PERIOD: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+/// Key rotation parameters derived from the consensus.
+#[derive(Copy, Clone, Debug)]
+struct KeyRotationParams {
+    /// How long a newly generated ntor key is valid.
+    ntor_lifetime: Duration,
+    /// How long after expiry the ntor key is still accepted for incoming circuits.
+    ntor_grace_period: Duration,
+}
+
+impl From<&tor_netdir::params::NetParameters> for KeyRotationParams {
+    fn from(params: &tor_netdir::params::NetParameters) -> Self {
+        let rotation_days = params.onion_key_rotation_days.get() as u64;
+        // Grace period is clamped to [1, rotation_days] per the spec.
+        let grace_days = (params.onion_key_grace_period_days.get() as u64).min(rotation_days);
+        Self {
+            ntor_lifetime: Duration::from_secs(rotation_days * 24 * 60 * 60),
+            ntor_grace_period: Duration::from_secs(grace_days * 24 * 60 * 60),
+        }
+    }
+}
 
 /// Build a fresh [`RelayChannelAuthMaterial`] object using a [`KeyMgr`].
 ///
@@ -257,7 +266,11 @@ where
 /// rotation as those identity keys never rotate.
 ///
 /// Returns the minimum `valid_until` across newly generated keys, or `None` if nothing was generated.
-fn try_generate_all(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<Option<SystemTime>> {
+fn try_generate_all(
+    now: SystemTime,
+    keymgr: &KeyMgr,
+    params: KeyRotationParams,
+) -> anyhow::Result<Option<SystemTime>> {
     let link_expiry = now + LINK_CERT_LIFETIME;
     let link_spec = RelayLinkSigningKeypairSpecifier::new(Timestamp::from(link_expiry));
     let link_generated =
@@ -292,7 +305,7 @@ fn try_generate_all(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<Option<S
         make_signing_cert,
     )?;
 
-    let ntor_expiry = now + NTOR_KEY_LIFETIME;
+    let ntor_expiry = now + params.ntor_lifetime;
     let ntor_spec = RelayNtorKeypairSpecifier::new(Timestamp::from(ntor_expiry));
 
     // We generate a new ntor key if all existing keys are expired `now`
@@ -340,7 +353,11 @@ fn try_generate_all(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<Option<S
 /// Return (`removed`, `next_expiry`) where the `removed` indicates if at least one key has been
 /// removed because it was expired. The `next_expiry` is the minimum value of all valid_until which
 /// indicates the next closest expiry time.
-fn remove_expired_keys(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<Option<SystemTime>> {
+fn remove_expired_keys(
+    now: SystemTime,
+    keymgr: &KeyMgr,
+    params: KeyRotationParams,
+) -> anyhow::Result<Option<SystemTime>> {
     let is_expired_with_buffer = |valid_until: &Timestamp, now| {
         *valid_until <= Timestamp::from(now + KEY_ROTATION_EXPIRE_BUFFER)
     };
@@ -391,7 +408,7 @@ fn remove_expired_keys(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<Optio
         // I don't think we should be using this buffer for the ntor keys,
         // because they have a grace period and don't get removed immediately
         // anyway
-        *valid_until <= Timestamp::from(now - NTOR_KEY_GRACE_PERIOD + KEY_ROTATION_EXPIRE_BUFFER)
+        *valid_until <= Timestamp::from(now - params.ntor_grace_period + KEY_ROTATION_EXPIRE_BUFFER)
     };
 
     let ntor_key_expiry = remove_expired(
@@ -454,7 +471,7 @@ fn remove_expired_keys(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<Optio
             // now = valid_until, we will keep waking up the main loop of the
             // key rotation task, and then not actually removing the key because
             // it's still within the grace period).
-            Some(valid_until + NTOR_KEY_GRACE_PERIOD)
+            Some(valid_until + params.ntor_grace_period)
         }
     };
 
@@ -474,11 +491,15 @@ fn remove_expired_keys(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<Optio
 /// Attempt to rotate all keys except identity keys.
 ///
 /// Returns the earliest expiry time across all keys.
-fn try_rotate_keys_no_lock(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<SystemTime> {
-    let min_expiry = remove_expired_keys(now, keymgr)?;
+fn try_rotate_keys_no_lock(
+    now: SystemTime,
+    keymgr: &KeyMgr,
+    params: KeyRotationParams,
+) -> anyhow::Result<SystemTime> {
+    let min_expiry = remove_expired_keys(now, keymgr, params)?;
     // Then attempt to generate keys. If at least one was generated, we'll get the min expiry time
     // which we need to consider "rotated" so the caller can know that a new key appeared.
-    let gen_min_expiry = try_generate_all(now, keymgr)?;
+    let gen_min_expiry = try_generate_all(now, keymgr, params)?;
 
     // We should never get no expiry time.
     Ok([min_expiry, gen_min_expiry]
@@ -512,8 +533,13 @@ pub(crate) fn try_generate_keys<R: Runtime>(
     generate_key::<RelayIdentityKeypair>(keymgr, &RelayIdentityKeypairSpecifier::new())?;
     generate_key::<RelayIdentityRsaKeypair>(keymgr, &RelayIdentityRsaKeypairSpecifier::new())?;
 
-    // Attempt to rotate the keys. Any missing keys (and cert) will be generated.
-    let _ = try_rotate_keys_no_lock(now, keymgr)?;
+    // Attempt to rotate the keys. Any missing keys (and cert) will be generated. At bootstrap
+    // there is no consensus yet, so we have to use the default parameters.
+    let _ = try_rotate_keys_no_lock(
+        now,
+        keymgr,
+        KeyRotationParams::from(&tor_netdir::params::NetParameters::default()),
+    )?;
     // Reconcile caches essentially writing a new one.
     guard.reconcile()?;
     // We are done with writing.
@@ -533,7 +559,8 @@ pub(crate) struct Reactor<R: Runtime> {
     create_request_handler: Arc<CreateRequestHandler>,
     /// Full key view.
     view: Arc<FullKeyView>,
-    // TODO(relay): Add the net provider for consesus params update.
+    /// Net directory provider used to watch for consensus changes.
+    netdir: Arc<dyn NetDirProvider>,
 }
 
 impl<R: Runtime> Reactor<R> {
@@ -543,22 +570,39 @@ impl<R: Runtime> Reactor<R> {
         chanmgr: Arc<ChanMgr<R>>,
         create_request_handler: Arc<CreateRequestHandler>,
         view: Arc<FullKeyView>,
+        netdir: Arc<dyn NetDirProvider>,
     ) -> Self {
         Self {
             runtime,
             chanmgr,
             create_request_handler,
             view,
+            netdir,
         }
     }
 
     /// Launch the reactor, and run until an error is encountered.
     pub(crate) async fn run(mut self) -> anyhow::Result<void::Void> {
         trace!("Starting crypto reactor task");
+
+        // Subscribe before the first run_once() so we don't miss any events that arrive
+        // between startup and entering the select loop.
+        let mut consensus_events = self
+            .netdir
+            .events()
+            .filter(|ev| std::future::ready(matches!(ev, DirEvent::NewConsensus)));
+
         loop {
-            // TODO(relay): There will be a select here once net provider shows up.
             let next_wake = self.run_once()?;
-            self.runtime.sleep_until_wallclock(next_wake).await;
+            tokio::select! {
+                // Sleep until next wake up.
+                _ = self.runtime.sleep_until_wallclock(next_wake) => {}
+                // New consensus arrived, might be new parameters. Run the loop, it will pickup the
+                // latest.
+                ev = consensus_events.next() => {
+                    ev.context("NetDir event stream ended unexpectedly")?;
+                }
+            }
         }
     }
 
@@ -611,7 +655,8 @@ impl<R: Runtime> Reactor<R> {
         let mut view_guard = self.view.lock()?;
         let keymgr = view_guard.keymgr();
 
-        let next_expiry = try_rotate_keys_no_lock(now, keymgr)?;
+        let rotation_params = KeyRotationParams::from(self.netdir.params().as_ref().as_ref());
+        let next_expiry = try_rotate_keys_no_lock(now, keymgr, rotation_params)?;
         let changed = view_guard.reconcile()?;
         Ok((changed, next_expiry))
     }
@@ -679,6 +724,15 @@ mod test {
         Timestamp::from(UNIX_EPOCH + Duration::from_secs(seconds))
     }
 
+    /// Call [`try_rotate_keys_no_lock`] with default consensus parameters.
+    fn rotate_keys(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<SystemTime> {
+        try_rotate_keys_no_lock(
+            now,
+            keymgr,
+            KeyRotationParams::from(&tor_netdir::params::NetParameters::default()),
+        )
+    }
+
     /// Return the number of keys matching the specified pattern
     fn count_keys(keymgr: &KeyMgr, pat: &dyn KeySpecifierPattern) -> usize {
         keymgr
@@ -726,7 +780,7 @@ mod test {
             let keymgr = setup();
             let now = runtime.wallclock();
 
-            let next_expiry = try_rotate_keys_no_lock(now, &keymgr).unwrap();
+            let next_expiry = rotate_keys(now, &keymgr).unwrap();
 
             assert_eq!(count_link_keys(&keymgr), 1, "expected one link key");
             assert_eq!(count_signing_keys(&keymgr), 1, "expected one signing key");
@@ -747,12 +801,12 @@ mod test {
         MockRuntime::test_with_various(|runtime| async move {
             let keymgr = setup();
             let now = runtime.wallclock();
-            let _expiry = try_rotate_keys_no_lock(now, &keymgr).unwrap();
+            let _expiry = rotate_keys(now, &keymgr).unwrap();
 
             // Advance by 1 hour (inside 2 days of link key).
             runtime.advance_by(Duration::from_secs(60 * 60)).await;
 
-            let _expiry = try_rotate_keys_no_lock(now, &keymgr).unwrap();
+            let _expiry = rotate_keys(now, &keymgr).unwrap();
 
             assert_eq!(count_link_keys(&keymgr), 1, "expected one link key");
             assert_eq!(count_signing_keys(&keymgr), 1, "expected one signing key");
@@ -766,7 +820,7 @@ mod test {
         MockRuntime::test_with_various(|runtime| async move {
             let keymgr = setup();
             // First rotation creates the keys.
-            try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
+            rotate_keys(runtime.wallclock(), &keymgr).unwrap();
 
             // Advance to 1 second _before_ the rotation-buffer threshold. We should not rotate
             // with this.
@@ -774,7 +828,7 @@ mod test {
                 LINK_CERT_LIFETIME - KEY_ROTATION_EXPIRE_BUFFER - Duration::from_secs(1);
             runtime.advance_by(just_before).await;
 
-            let first_expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
+            let first_expiry = rotate_keys(runtime.wallclock(), &keymgr).unwrap();
 
             assert_eq!(count_link_keys(&keymgr), 1, "expected one link key");
             assert_eq!(count_signing_keys(&keymgr), 1, "expected one signing key");
@@ -782,7 +836,7 @@ mod test {
             // Move it just after the expiry buffer and expect a rotation.
             runtime.advance_by(Duration::from_secs(1)).await;
 
-            let second_expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
+            let second_expiry = rotate_keys(runtime.wallclock(), &keymgr).unwrap();
             assert_ne!(first_expiry, second_expiry);
         });
     }
@@ -793,7 +847,7 @@ mod test {
         MockRuntime::test_with_various(|runtime| async move {
             let keymgr = setup();
             // First rotation creates the keys.
-            try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
+            rotate_keys(runtime.wallclock(), &keymgr).unwrap();
 
             // Closure to get the relay signing key keystore entry.
             let get_key_spec = || {
@@ -815,7 +869,7 @@ mod test {
                 SIGNING_KEY_CERT_LIFETIME - KEY_ROTATION_EXPIRE_BUFFER - Duration::from_secs(1);
             runtime.advance_by(just_before).await;
 
-            let _expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
+            let _expiry = rotate_keys(runtime.wallclock(), &keymgr).unwrap();
 
             let spec = get_key_spec();
             assert_eq!(
@@ -832,7 +886,7 @@ mod test {
             // Move it just after the expiry buffer and expect a rotation.
             runtime.advance_by(Duration::from_secs(1)).await;
 
-            let _expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
+            let _expiry = rotate_keys(runtime.wallclock(), &keymgr).unwrap();
             let spec = get_key_spec();
             assert_eq!(
                 spec.valid_until,
@@ -848,30 +902,32 @@ mod test {
         MockRuntime::test_with_various(|runtime| async move {
             let keymgr = setup();
             // First rotation creates the keys.
-            try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
+            rotate_keys(runtime.wallclock(), &keymgr).unwrap();
 
             // Advance to 1 second _before_ the rotation-buffer threshold. We should not rotate
             // with this.
+            let default_params =
+                KeyRotationParams::from(&tor_netdir::params::NetParameters::default());
             let just_before =
-                NTOR_KEY_LIFETIME - KEY_ROTATION_EXPIRE_BUFFER - Duration::from_secs(1);
+                default_params.ntor_lifetime - KEY_ROTATION_EXPIRE_BUFFER - Duration::from_secs(1);
             runtime.advance_by(just_before).await;
 
-            let _expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
+            let _expiry = rotate_keys(runtime.wallclock(), &keymgr).unwrap();
             assert_eq!(count_ntor_keys(&keymgr), 1, "expected one ntor key");
 
             // Move it just after the expiry buffer and expect a rotation.
             runtime.advance_by(Duration::from_secs(1)).await;
 
-            let _expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
+            let _expiry = rotate_keys(runtime.wallclock(), &keymgr).unwrap();
             assert_eq!(
                 count_ntor_keys(&keymgr),
                 2,
                 "there should be 2 ntor keys in the grace period"
             );
 
-            runtime.advance_by(NTOR_KEY_GRACE_PERIOD).await;
+            runtime.advance_by(default_params.ntor_grace_period).await;
 
-            let _expiry = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
+            let _expiry = rotate_keys(runtime.wallclock(), &keymgr).unwrap();
             assert_eq!(
                 count_ntor_keys(&keymgr),
                 1,
