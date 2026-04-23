@@ -27,7 +27,7 @@ use tor_rtcompat::{NetStreamProvider, Runtime};
 use crate::client::RelayClient;
 use crate::config::TorRelayConfig;
 use crate::tasks::channel::build_circ_net_params;
-use crate::tasks::crypto::get_ntor_keys;
+use crate::tasks::crypto::{FullKeyView, get_ntor_keys};
 
 /// An initialized but unbootstrapped relay.
 ///
@@ -326,6 +326,9 @@ impl<R: Runtime> TorRelay<R> {
     pub(crate) async fn run(self) -> anyhow::Result<void::Void> {
         let mut task_handles = JoinSet::new();
 
+        // Full key view built from the keymgr.
+        let key_view = Arc::new(FullKeyView::new(self.keymgr.clone()));
+
         // Channel housekeeping task.
         task_handles.spawn({
             let mut t = crate::tasks::ChannelHouseKeepingTask::new(&self.chanmgr);
@@ -362,21 +365,19 @@ impl<R: Runtime> TorRelay<R> {
             }
         });
 
-        // Start the key rotation tasks.
+        // Start the crypto task.
         task_handles.spawn({
-            let runtime = self.runtime.clone();
-            let keymgr = self.keymgr.clone();
-            let chanmgr = self.chanmgr.clone();
-            let create_request_handler = Arc::clone(&self.create_request_handler);
+            let reactor = crate::tasks::crypto::Reactor::new(
+                self.runtime.clone(),
+                self.chanmgr.clone(),
+                self.create_request_handler.clone(),
+                key_view,
+            );
             async {
-                crate::tasks::crypto::rotate_keys_task(
-                    runtime,
-                    keymgr,
-                    chanmgr,
-                    create_request_handler,
-                )
-                .await
-                .context("Failed to run key rotation task")
+                reactor
+                    .run()
+                    .await
+                    .context("Failed to run key rotation task")
             }
         });
 

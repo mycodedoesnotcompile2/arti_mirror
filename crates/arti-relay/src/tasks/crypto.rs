@@ -22,21 +22,21 @@ use tor_proto::RelayChannelAuthMaterial;
 use tor_proto::relay::CreateRequestHandler;
 use tor_relay_crypto::{RelaySigningKeyCert, gen_link_cert, gen_signing_cert, gen_tls_cert};
 
-use crate::{
-    keys::{
-        RelayIdentityKeypairSpecifier, RelayIdentityRsaKeypairSpecifier,
-        RelayLinkSigningKeypairSpecifier, RelayLinkSigningKeypairSpecifierPattern,
-        RelayNtorKeypairSpecifier, RelayNtorKeypairSpecifierPattern, RelaySigningKeyCertSpecifier,
-        RelaySigningKeyCertSpecifierPattern, RelaySigningKeypairSpecifier,
-        RelaySigningKeypairSpecifierPattern, RelaySigningPublicKeySpecifier, Timestamp,
-    },
-    tasks::crypto::views::FullKeyView,
+use crate::keys::{
+    RelayIdentityKeypairSpecifier, RelayIdentityRsaKeypairSpecifier,
+    RelayLinkSigningKeypairSpecifier, RelayLinkSigningKeypairSpecifierPattern,
+    RelayNtorKeypairSpecifier, RelayNtorKeypairSpecifierPattern, RelaySigningKeyCertSpecifier,
+    RelaySigningKeyCertSpecifierPattern, RelaySigningKeypairSpecifier,
+    RelaySigningKeypairSpecifierPattern, RelaySigningPublicKeySpecifier, Timestamp,
 };
 use tor_relay_crypto::pk::{
     RelayIdentityKeypair, RelayIdentityRsaKeypair, RelayLinkSigningKeypair, RelayNtorKeypair,
     RelayNtorKeys, RelaySigningKeypair,
 };
 use tor_rtcompat::{Runtime, SleepProviderExt};
+
+/// Needed to be create in the relay init.
+pub(crate) use views::FullKeyView;
 
 /// Buffer time before key expiry to trigger rotation. This ensures we rotate slightly before the
 /// key actually expires rather than right at or after expiry.
@@ -603,41 +603,6 @@ pub(crate) fn get_ntor_keys(keymgr: &KeyMgr) -> anyhow::Result<RelayNtorKeys> {
     Ok(keys)
 }
 
-/// Task to rotate keys when they need to be rotated.
-pub(crate) async fn rotate_keys_task<R: Runtime>(
-    runtime: R,
-    keymgr: Arc<KeyMgr>,
-    chanmgr: Arc<ChanMgr<R>>,
-    create_request_handler: Arc<CreateRequestHandler>,
-) -> anyhow::Result<void::Void> {
-    loop {
-        let now = runtime.wallclock();
-        // Attempt a rotation of all keys.
-        let (have_rotated, next_expiry) = try_rotate_keys(now, &keymgr)?;
-        if have_rotated.chan_auth {
-            let auth_material = build_proto_relay_auth_material(now, &keymgr)?;
-            chanmgr
-                .set_relay_auth_material(Arc::new(auth_material))
-                .context("Failed to set relay auth material on ChanMgr")?;
-        }
-
-        if have_rotated.ntor {
-            // Any keys left in the keystore at this point are considered to be usable
-            // (either because they are newly generated, or because they are still
-            // within the grace period).
-            let ntor_keys = get_ntor_keys(&keymgr)?;
-            create_request_handler.update_ntor_keys(ntor_keys);
-        }
-
-        // Sleep until the earliest key expiry minus buffer so we rotate before it expires.
-        // If the subtraction would underflow, wake up immediately to rotate the expired key.
-        let next_wake = next_expiry
-            .checked_sub(KEY_ROTATION_EXPIRE_BUFFER)
-            .unwrap_or(now);
-        runtime.sleep_until_wallclock(next_wake).await;
-    }
-}
-
 /// Reactor object handling the rotation of relay crypto keys.
 pub(crate) struct Reactor<R: Runtime> {
     /// Underlying runtime for a time provider.
@@ -651,7 +616,6 @@ pub(crate) struct Reactor<R: Runtime> {
     // TODO(relay): Add the net provider for consesus params update.
 }
 
-#[expect(unused)] // TODO(relay)
 impl<R: Runtime> Reactor<R> {
     /// Constructor.
     pub(crate) fn new(
