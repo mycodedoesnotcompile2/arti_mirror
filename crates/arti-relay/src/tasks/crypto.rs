@@ -4,6 +4,7 @@ mod views;
 
 use anyhow::Context;
 use std::{
+    collections::HashSet,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -67,15 +68,6 @@ const NTOR_KEY_LIFETIME: Duration = Duration::from_secs(28 * 24 * 60 * 60);
 // TODO(relay): we should be using the "onion-key-grace-period-days" consensus param
 // instead of this hard-coded value.
 const NTOR_KEY_GRACE_PERIOD: Duration = Duration::from_secs(7 * 24 * 60 * 60);
-
-/// The result of an action that affects the relay keys in the keystore.
-#[derive(Copy, Clone, Debug)]
-struct KeyChange {
-    /// Whether the chan auth material has changed.
-    chan_auth: bool,
-    /// Whether the ntor keys have changed.
-    ntor: bool,
-}
 
 /// Build a fresh [`RelayChannelAuthMaterial`] object using a [`KeyMgr`].
 ///
@@ -515,31 +507,19 @@ fn remove_expired_keys(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<Optio
 
 /// Attempt to rotate all keys except identity keys.
 ///
-/// Returns (rotated, next_expiry) where `rotated` indicates if any key was rotated and
-/// `next_expiry` is the earliest expiry time across all keys.
-fn try_rotate_keys_no_lock(
-    now: SystemTime,
-    keymgr: &KeyMgr,
-) -> anyhow::Result<(KeyChange, SystemTime)> {
-    // First do a pass to remove every expired key(s) or/and cert(s).
+/// Returns the earliest expiry time across all keys.
+fn try_rotate_keys_no_lock(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<SystemTime> {
     let min_expiry = remove_expired_keys(now, keymgr)?;
-
     // Then attempt to generate keys. If at least one was generated, we'll get the min expiry time
     // which we need to consider "rotated" so the caller can know that a new key appeared.
     let gen_min_expiry = try_generate_all(now, keymgr)?;
-    let have_rotated = KeyChange {
-        chan_auth: gen_min_expiry.is_some(),
-        ntor: gen_min_expiry.is_some(),
-    };
 
     // We should never get no expiry time.
-    let next_expiry = [min_expiry, gen_min_expiry]
+    Ok([min_expiry, gen_min_expiry]
         .into_iter()
         .flatten()
         .min()
-        .ok_or(internal!("No relay keys after rotation task loop"))?;
-
-    Ok((have_rotated, next_expiry))
+        .ok_or(internal!("No relay keys after rotation task loop"))?)
 }
 
 /// Attempt to generate all keys. The list of keys is:
@@ -645,23 +625,27 @@ impl<R: Runtime> Reactor<R> {
         }
     }
 
-    /// Helper: run the once to handle a single action.
+    /// Helper: run once to handle a single rotation tick.
     fn run_once(&mut self) -> anyhow::Result<SystemTime> {
         let keymgr = self.view.keymgr();
         let now = self.runtime.wallclock();
         // Attempt a rotation of all keys.
-        let (have_rotated, next_expiry) = self.try_rotate_keys(now)?;
-        if have_rotated.chan_auth {
+        let (changed, next_expiry) = self.try_rotate_keys(now)?;
+
+        if changed.contains(&views::ExpirableKeyType::LinkEd)
+            || changed.contains(&views::ExpirableKeyType::RelaysignEd)
+        {
+            // TODO(relay): Use the key view.
             let auth_material = build_proto_relay_auth_material(now, keymgr)?;
             self.chanmgr
                 .set_relay_auth_material(Arc::new(auth_material))
                 .context("Failed to set relay auth material on ChanMgr")?;
         }
 
-        if have_rotated.ntor {
-            // Any keys left in the keystore at this point are considered to be usable
-            // (either because they are newly generated, or because they are still
-            // within the grace period).
+        if changed.contains(&views::ExpirableKeyType::NtorLatest)
+            || changed.contains(&views::ExpirableKeyType::NtorPrevious)
+        {
+            // TODO(relay): Use the key view.
             let ntor_keys = get_ntor_keys(keymgr)?;
             self.create_request_handler.update_ntor_keys(ntor_keys);
         }
@@ -675,9 +659,14 @@ impl<R: Runtime> Reactor<R> {
 
     /// Attempt to rotate all keys except identity keys.
     ///
-    /// Returns (rotated, next_expiry) where `rotated` indicates if any key was rotated and
-    /// `next_expiry` is the earliest expiry time across all keys.
-    fn try_rotate_keys(&self, now: SystemTime) -> anyhow::Result<(KeyChange, SystemTime)> {
+    /// Holds the write lock for the entire rotate + reconcile to prevent the race where another
+    /// task reads a key between the keymgr update and the cache update.
+    ///
+    /// Returns a set of key types that changed and the earliest expiry time across all keys.
+    fn try_rotate_keys(
+        &self,
+        now: SystemTime,
+    ) -> anyhow::Result<(HashSet<views::ExpirableKeyType>, SystemTime)> {
         // As we are about to maybe expire and rotate keys, we need to hold the key view lock. to
         // avoid the race where another task reads a key between the keymgr update and the
         // valid_until cache update.
@@ -685,11 +674,12 @@ impl<R: Runtime> Reactor<R> {
         // This doesn't happen often, once every N-so hours and thus the cost in performance is
         // very small. Furthermore, the chance of hitting this race is very tiny and thus no
         // contention for the majority of the time.
-        let view_guard = self.view.lock()?;
+        let mut view_guard = self.view.lock()?;
         let keymgr = view_guard.keymgr();
 
-        // Call the no lock function.
-        try_rotate_keys_no_lock(now, keymgr)
+        let next_expiry = try_rotate_keys_no_lock(now, keymgr)?;
+        let changed = view_guard.reconcile()?;
+        Ok((changed, next_expiry))
     }
 }
 
