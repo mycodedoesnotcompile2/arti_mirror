@@ -298,12 +298,8 @@ where
 /// only attempted once at boot time. This is so we avoid retrying to generate them at each key
 /// rotation as those identity keys never rotate.
 ///
-/// Returns the minimum valid until value if a key was generated. Else, a None value indicates that
-/// no key was generated.
-fn try_generate_all(
-    now: SystemTime,
-    keymgr: &KeyMgr,
-) -> anyhow::Result<(KeyChange, Option<SystemTime>)> {
+/// Returns the minimum `valid_until` across newly generated keys, or `None` if nothing was generated.
+fn try_generate_all(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<Option<SystemTime>> {
     let link_expiry = now + LINK_CERT_LIFETIME;
     let link_spec = RelayLinkSigningKeypairSpecifier::new(Timestamp::from(link_expiry));
     let link_generated =
@@ -371,22 +367,14 @@ fn try_generate_all(
         should_generate_ntor,
     )?;
 
-    let change = KeyChange {
-        chan_auth: link_generated || cert_generated,
-        ntor: ntor_generated,
-    };
-
-    Ok((
-        change,
-        [
-            link_generated.then_some(link_expiry),
-            cert_generated.then_some(cert_expiry),
-            ntor_generated.then_some(ntor_expiry),
-        ]
-        .into_iter()
-        .flatten()
-        .min(),
-    ))
+    Ok([
+        link_generated.then_some(link_expiry),
+        cert_generated.then_some(cert_expiry),
+        ntor_generated.then_some(ntor_expiry),
+    ]
+    .into_iter()
+    .flatten()
+    .min())
 }
 
 /// Remove any expired keys (and certs) that are expired.
@@ -535,8 +523,11 @@ fn try_rotate_keys(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<(KeyChang
 
     // Then attempt to generate keys. If at least one was generated, we'll get the min expiry time
     // which we need to consider "rotated" so the caller can know that a new key appeared.
-    let (generated, gen_min_expiry) = try_generate_all(now, keymgr)?;
-    let have_rotated = generated;
+    let gen_min_expiry = try_generate_all(now, keymgr)?;
+    let have_rotated = KeyChange {
+        chan_auth: gen_min_expiry.is_some(),
+        ntor: gen_min_expiry.is_some(),
+    };
 
     // We should never get no expiry time.
     let next_expiry = [min_expiry, gen_min_expiry]
@@ -733,10 +724,11 @@ impl<R: Runtime> Reactor<R> {
         // First do a pass to remove every expired key(s) or/and cert(s).
         let min_expiry = remove_expired_keys(now, keymgr)?;
 
-        // Then attempt to generate keys. If at least one was generated, we'll get the min expiry time
-        // which we need to consider "rotated" so the caller can know that a new key appeared.
-        let (generated, gen_min_expiry) = try_generate_all(now, keymgr)?;
-        let have_rotated = generated;
+        let gen_min_expiry = try_generate_all(now, keymgr)?;
+        let have_rotated = KeyChange {
+            chan_auth: gen_min_expiry.is_some(),
+            ntor: gen_min_expiry.is_some(),
+        };
 
         // We should never get no expiry time.
         let next_expiry = [min_expiry, gen_min_expiry]
