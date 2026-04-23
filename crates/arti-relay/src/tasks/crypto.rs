@@ -517,7 +517,10 @@ fn remove_expired_keys(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<Optio
 ///
 /// Returns (rotated, next_expiry) where `rotated` indicates if any key was rotated and
 /// `next_expiry` is the earliest expiry time across all keys.
-fn try_rotate_keys(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<(KeyChange, SystemTime)> {
+fn try_rotate_keys_no_lock(
+    now: SystemTime,
+    keymgr: &KeyMgr,
+) -> anyhow::Result<(KeyChange, SystemTime)> {
     // First do a pass to remove every expired key(s) or/and cert(s).
     let min_expiry = remove_expired_keys(now, keymgr)?;
 
@@ -560,7 +563,7 @@ pub(crate) fn try_generate_keys<R: Runtime>(
     generate_key::<RelayIdentityRsaKeypair>(keymgr, &RelayIdentityRsaKeypairSpecifier::new())?;
 
     // Attempt to rotate the keys. Any missing keys (and cert) will be generated.
-    let _ = try_rotate_keys(now, keymgr)?;
+    let _ = try_rotate_keys_no_lock(now, keymgr)?;
 
     // Now that we have our up-to-date keys, build the relay channel auth material object.
     build_proto_relay_auth_material(now, keymgr)
@@ -685,23 +688,8 @@ impl<R: Runtime> Reactor<R> {
         let view_guard = self.view.lock()?;
         let keymgr = view_guard.keymgr();
 
-        // First do a pass to remove every expired key(s) or/and cert(s).
-        let min_expiry = remove_expired_keys(now, keymgr)?;
-
-        let gen_min_expiry = try_generate_all(now, keymgr)?;
-        let have_rotated = KeyChange {
-            chan_auth: gen_min_expiry.is_some(),
-            ntor: gen_min_expiry.is_some(),
-        };
-
-        // We should never get no expiry time.
-        let next_expiry = [min_expiry, gen_min_expiry]
-            .into_iter()
-            .flatten()
-            .min()
-            .ok_or(internal!("No relay keys after rotation task loop"))?;
-
-        Ok((have_rotated, next_expiry))
+        // Call the no lock function.
+        try_rotate_keys_no_lock(now, keymgr)
     }
 }
 
@@ -812,7 +800,7 @@ mod test {
             let keymgr = setup();
             let now = runtime.wallclock();
 
-            let (rotated, next_expiry) = try_rotate_keys(now, &keymgr).unwrap();
+            let (rotated, next_expiry) = try_rotate_keys_no_lock(now, &keymgr).unwrap();
 
             assert!(
                 rotated.chan_auth && rotated.ntor,
@@ -837,12 +825,12 @@ mod test {
         MockRuntime::test_with_various(|runtime| async move {
             let keymgr = setup();
             let now = runtime.wallclock();
-            try_rotate_keys(now, &keymgr).unwrap();
+            try_rotate_keys_no_lock(now, &keymgr).unwrap();
 
             // Advance by 1 hour (inside 2 days of link key).
             runtime.advance_by(Duration::from_secs(60 * 60)).await;
 
-            let (rotated, _) = try_rotate_keys(now, &keymgr).unwrap();
+            let (rotated, _) = try_rotate_keys_no_lock(now, &keymgr).unwrap();
 
             assert!(
                 !rotated.chan_auth && !rotated.ntor,
@@ -860,7 +848,7 @@ mod test {
         MockRuntime::test_with_various(|runtime| async move {
             let keymgr = setup();
             // First rotation creates the keys.
-            try_rotate_keys(runtime.wallclock(), &keymgr).unwrap();
+            try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
 
             // Advance to 1 second _before_ the rotation-buffer threshold. We should not rotate
             // with this.
@@ -868,7 +856,7 @@ mod test {
                 LINK_CERT_LIFETIME - KEY_ROTATION_EXPIRE_BUFFER - Duration::from_secs(1);
             runtime.advance_by(just_before).await;
 
-            let (rotated, _) = try_rotate_keys(runtime.wallclock(), &keymgr).unwrap();
+            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
 
             assert!(
                 !rotated.chan_auth,
@@ -884,7 +872,7 @@ mod test {
             // Move it just after the expiry buffer and expect a rotation.
             runtime.advance_by(Duration::from_secs(1)).await;
 
-            let (rotated, _) = try_rotate_keys(runtime.wallclock(), &keymgr).unwrap();
+            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
             assert!(
                 rotated.chan_auth,
                 "link key should rotate inside the expiry buffer threshold"
@@ -898,7 +886,7 @@ mod test {
         MockRuntime::test_with_various(|runtime| async move {
             let keymgr = setup();
             // First rotation creates the keys.
-            try_rotate_keys(runtime.wallclock(), &keymgr).unwrap();
+            try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
 
             // Closure to get the relay signing key keystore entry.
             let get_key_spec = || {
@@ -920,7 +908,7 @@ mod test {
                 SIGNING_KEY_CERT_LIFETIME - KEY_ROTATION_EXPIRE_BUFFER - Duration::from_secs(1);
             runtime.advance_by(just_before).await;
 
-            let (rotated, _) = try_rotate_keys(runtime.wallclock(), &keymgr).unwrap();
+            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
             assert!(rotated.chan_auth, "Rotation must happen after 30 days");
 
             let spec = get_key_spec();
@@ -938,7 +926,7 @@ mod test {
             // Move it just after the expiry buffer and expect a rotation.
             runtime.advance_by(Duration::from_secs(1)).await;
 
-            let (rotated, _) = try_rotate_keys(runtime.wallclock(), &keymgr).unwrap();
+            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
             assert!(rotated.chan_auth, "Rotation must happen after 30 days");
 
             let spec = get_key_spec();
@@ -956,7 +944,7 @@ mod test {
         MockRuntime::test_with_various(|runtime| async move {
             let keymgr = setup();
             // First rotation creates the keys.
-            try_rotate_keys(runtime.wallclock(), &keymgr).unwrap();
+            try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
 
             // Advance to 1 second _before_ the rotation-buffer threshold. We should not rotate
             // with this.
@@ -964,7 +952,7 @@ mod test {
                 NTOR_KEY_LIFETIME - KEY_ROTATION_EXPIRE_BUFFER - Duration::from_secs(1);
             runtime.advance_by(just_before).await;
 
-            let (rotated, _) = try_rotate_keys(runtime.wallclock(), &keymgr).unwrap();
+            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
 
             assert!(
                 !rotated.ntor,
@@ -975,7 +963,7 @@ mod test {
             // Move it just after the expiry buffer and expect a rotation.
             runtime.advance_by(Duration::from_secs(1)).await;
 
-            let (rotated, _) = try_rotate_keys(runtime.wallclock(), &keymgr).unwrap();
+            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
             assert!(
                 rotated.ntor,
                 "ntor key should rotate inside the expiry buffer threshold"
@@ -989,7 +977,7 @@ mod test {
 
             runtime.advance_by(NTOR_KEY_GRACE_PERIOD).await;
 
-            let (rotated, _) = try_rotate_keys(runtime.wallclock(), &keymgr).unwrap();
+            let (rotated, _) = try_rotate_keys_no_lock(runtime.wallclock(), &keymgr).unwrap();
             assert!(
                 rotated.ntor,
                 "ntor key should rotate after the grace period"
