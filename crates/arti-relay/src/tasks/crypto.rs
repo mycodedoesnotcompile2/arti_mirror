@@ -741,7 +741,16 @@ impl<R: Runtime> Reactor<R> {
     /// Returns (rotated, next_expiry) where `rotated` indicates if any key was rotated and
     /// `next_expiry` is the earliest expiry time across all keys.
     fn try_rotate_keys(&self, now: SystemTime) -> anyhow::Result<(KeyChange, SystemTime)> {
-        let keymgr = self.view.keymgr();
+        // As we are about to maybe expire and rotate keys, we need to hold the key view lock. to
+        // avoid the race where another task reads a key between the keymgr update and the
+        // valid_until cache update.
+        //
+        // This doesn't happen often, once every N-so hours and thus the cost in performance is
+        // very small. Furthermore, the chance of hitting this race is very tiny and thus no
+        // contention for the majority of the time.
+        let view_guard = self.view.lock()?;
+        let keymgr = view_guard.keymgr();
+
         // First do a pass to remove every expired key(s) or/and cert(s).
         let (have_removed, min_expiry) = remove_expired_keys(now, keymgr)?;
 
