@@ -79,49 +79,15 @@ const NTOR_KEY_GRACE_PERIOD: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 /// are already in the keystore.
 fn build_proto_relay_auth_material(
     now: SystemTime,
-    keymgr: &KeyMgr,
+    view: &FullKeyView,
 ) -> anyhow::Result<RelayChannelAuthMaterial> {
     let mut rng = tor_llcrypto::rng::CautiousRng;
 
-    // Get the identity keypairs.
-    let rsa_id_kp: RelayIdentityRsaKeypair = keymgr
-        .get(&RelayIdentityRsaKeypairSpecifier::new())
-        .context("Failed to get RSA identity from key manager")?
-        .context("Missing RSA identity")?;
-    let ed_id_kp: RelayIdentityKeypair = keymgr
-        .get(&RelayIdentityKeypairSpecifier::new())
-        .context("Failed to get Ed25519 identity from key manager")?
-        .context("Missing Ed25519 identity")?;
-    // We have to list match here because the key specifier here uses a valid_until. We don't know
-    // what it is so we list and take the first one.
-    let link_sign_kp: RelayLinkSigningKeypair = keymgr
-        .get_entry(
-            keymgr
-                .list_matching(&RelayLinkSigningKeypairSpecifierPattern::new_any().arti_pattern()?)?
-                .first()
-                .context("No store entry for link authentication key")?,
-        )
-        .context("Failed to get link authentication key from key manager")?
-        .context("Missing link authentication key")?;
-    let kp_relaysign_id: RelaySigningKeypair = keymgr
-        .get_entry(
-            keymgr
-                .list_matching(&RelaySigningKeypairSpecifierPattern::new_any().arti_pattern()?)?
-                .first()
-                .context("No store entry for signing key")?,
-        )
-        .context("Failed to get signing key from key manager")?
-        .context("Missing signing key")?;
-    let cert_id_sign_ed: RelaySigningKeyCert = keymgr
-        .get_cert_entry::<RelaySigningKeyCertSpecifier, _, _>(
-            keymgr
-                .list_matching(&RelaySigningKeyCertSpecifierPattern::new_any().arti_pattern()?)?
-                .first()
-                .context("No store entry for signing key cert")?,
-            &RelayIdentityKeypairSpecifier::new(),
-        )
-        .context("Failed to get signing key cert from key manager")?
-        .context("Missing signing key cert")?;
+    let rsa_id_kp = view.ks_relayid_rsa()?;
+    let ed_id_kp = view.ks_relayid_ed()?;
+    let link_sign_kp = view.ks_link_ed()?;
+    let kp_relaysign_id = view.ks_relaysign_ed()?;
+    let cert_id_sign_ed = view.cert_relaysign_ed()?;
 
     // TLS key and cert. Random hostname like C-tor. We re-use the issuer_hostname for the RSA
     // legacy cert.
@@ -534,9 +500,13 @@ fn try_rotate_keys_no_lock(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<S
 /// missing keys or/and rotate expired keys.
 pub(crate) fn try_generate_keys<R: Runtime>(
     runtime: &R,
-    keymgr: &KeyMgr,
+    key_view: &FullKeyView,
 ) -> anyhow::Result<RelayChannelAuthMaterial> {
     let now = runtime.wallclock();
+    // Lock the view, we are about to attempt to fill it.
+    let mut guard = key_view.lock()?;
+    let keymgr = guard.keymgr();
+
     // Attempt to generate our identity keys (ed and RSA). Those keys DO NOT rotate. It won't be
     // replaced if they already exists.
     generate_key::<RelayIdentityKeypair>(keymgr, &RelayIdentityKeypairSpecifier::new())?;
@@ -544,9 +514,13 @@ pub(crate) fn try_generate_keys<R: Runtime>(
 
     // Attempt to rotate the keys. Any missing keys (and cert) will be generated.
     let _ = try_rotate_keys_no_lock(now, keymgr)?;
+    // Reconcile caches essentially writing a new one.
+    guard.reconcile()?;
+    // We are done with writing.
+    drop(guard);
 
     // Now that we have our up-to-date keys, build the relay channel auth material object.
-    build_proto_relay_auth_material(now, keymgr)
+    build_proto_relay_auth_material(now, key_view)
 }
 /// Return the current ntor keypairs from the keystore as [`RelayNtorKeys`].
 pub(crate) fn get_ntor_keys(keymgr: &KeyMgr) -> anyhow::Result<RelayNtorKeys> {
@@ -635,8 +609,7 @@ impl<R: Runtime> Reactor<R> {
         if changed.contains(&views::ExpirableKeyType::LinkEd)
             || changed.contains(&views::ExpirableKeyType::RelaysignEd)
         {
-            // TODO(relay): Use the key view.
-            let auth_material = build_proto_relay_auth_material(now, keymgr)?;
+            let auth_material = build_proto_relay_auth_material(now, &self.view)?;
             self.chanmgr
                 .set_relay_auth_material(Arc::new(auth_material))
                 .context("Failed to set relay auth material on ChanMgr")?;

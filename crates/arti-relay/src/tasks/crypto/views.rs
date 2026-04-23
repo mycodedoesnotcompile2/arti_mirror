@@ -148,7 +148,6 @@ pub(crate) struct FullKeyView {
     keys_valid_until: RwLock<HashMap<ExpirableKeyType, Timestamp>>,
 }
 
-#[expect(unused)] // TODO(relay) Remove once used.
 impl FullKeyView {
     /// Constructor.
     pub(crate) fn new(keymgr: Arc<KeyMgr>) -> Self {
