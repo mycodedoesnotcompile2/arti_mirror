@@ -713,7 +713,7 @@ impl<R: Runtime> Reactor<R> {
         let keymgr = self.view.keymgr();
         let now = self.runtime.wallclock();
         // Attempt a rotation of all keys.
-        let (have_rotated, next_expiry) = try_rotate_keys(now, keymgr)?;
+        let (have_rotated, next_expiry) = self.try_rotate_keys(now)?;
         if have_rotated.chan_auth {
             let auth_material = build_proto_relay_auth_material(now, keymgr)?;
             self.chanmgr
@@ -734,6 +734,30 @@ impl<R: Runtime> Reactor<R> {
         Ok(next_expiry
             .checked_sub(KEY_ROTATION_EXPIRE_BUFFER)
             .unwrap_or(now))
+    }
+
+    /// Attempt to rotate all keys except identity keys.
+    ///
+    /// Returns (rotated, next_expiry) where `rotated` indicates if any key was rotated and
+    /// `next_expiry` is the earliest expiry time across all keys.
+    fn try_rotate_keys(&self, now: SystemTime) -> anyhow::Result<(KeyChange, SystemTime)> {
+        let keymgr = self.view.keymgr();
+        // First do a pass to remove every expired key(s) or/and cert(s).
+        let (have_removed, min_expiry) = remove_expired_keys(now, keymgr)?;
+
+        // Then attempt to generate keys. If at least one was generated, we'll get the min expiry time
+        // which we need to consider "rotated" so the caller can know that a new key appeared.
+        let (generated, gen_min_expiry) = try_generate_all(now, keymgr)?;
+        let have_rotated = have_removed.or(&generated);
+
+        // We should never get no expiry time.
+        let next_expiry = [min_expiry, gen_min_expiry]
+            .into_iter()
+            .flatten()
+            .min()
+            .ok_or(internal!("No relay keys after rotation task loop"))?;
+
+        Ok((have_rotated, next_expiry))
     }
 }
 
