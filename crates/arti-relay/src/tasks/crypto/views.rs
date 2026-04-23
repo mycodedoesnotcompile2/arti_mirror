@@ -254,3 +254,154 @@ impl FullKeyView {
         Ok(cert)
     }
 }
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    //!
+    use super::*;
+
+    use tor_keymgr::{KeyMgr, KeystoreSelector};
+    use tor_relay_crypto::pk::{RelayLinkSigningKeypair, RelayNtorKeypair, RelaySigningKeypair};
+
+    use crate::keys::{
+        RelayLinkSigningKeypairSpecifier, RelayNtorKeypairSpecifier, RelaySigningKeypairSpecifier,
+        Timestamp,
+    };
+
+    fn ts(offset: u64) -> Timestamp {
+        Timestamp::from(std::time::UNIX_EPOCH + std::time::Duration::from_secs(offset))
+    }
+
+    fn insert_link_key(keymgr: &KeyMgr, valid_until: Timestamp) {
+        super::super::generate_key::<RelayLinkSigningKeypair>(
+            keymgr,
+            &RelayLinkSigningKeypairSpecifier::new(valid_until),
+        )
+        .unwrap();
+    }
+
+    fn insert_signing_key(keymgr: &KeyMgr, valid_until: Timestamp) {
+        super::super::generate_key::<RelaySigningKeypair>(
+            keymgr,
+            &RelaySigningKeypairSpecifier::new(valid_until),
+        )
+        .unwrap();
+    }
+
+    fn insert_ntor_key(keymgr: &KeyMgr, valid_until: Timestamp) {
+        super::super::generate_key::<RelayNtorKeypair>(
+            keymgr,
+            &RelayNtorKeypairSpecifier::new(valid_until),
+        )
+        .unwrap();
+    }
+
+    /// Reconciling after keys are added should report them as changed.
+    #[test]
+    fn reconcile_new_keys() {
+        let keymgr = super::super::test::new_keymgr();
+        let view = FullKeyView::new(keymgr.clone());
+
+        insert_link_key(&keymgr, ts(1000));
+        insert_signing_key(&keymgr, ts(2000));
+        insert_ntor_key(&keymgr, ts(3000));
+
+        let mut guard = view.lock().unwrap();
+        let changed = guard.reconcile().unwrap();
+
+        assert!(changed.contains(&ExpirableKeyType::LinkEd));
+        assert!(changed.contains(&ExpirableKeyType::RelaysignEd));
+        assert!(changed.contains(&ExpirableKeyType::NtorLatest));
+        assert!(!changed.contains(&ExpirableKeyType::NtorPrevious));
+    }
+
+    /// Reconciling twice without any keystore changes should report nothing.
+    #[test]
+    fn reconcile_no_change() {
+        let keymgr = super::super::test::new_keymgr();
+        let view = FullKeyView::new(keymgr.clone());
+
+        insert_link_key(&keymgr, ts(1000));
+        insert_signing_key(&keymgr, ts(2000));
+        insert_ntor_key(&keymgr, ts(3000));
+
+        {
+            let mut guard = view.lock().unwrap();
+            guard.reconcile().unwrap();
+        }
+
+        let mut guard = view.lock().unwrap();
+        let changed = guard.reconcile().unwrap();
+        assert!(changed.is_empty());
+    }
+
+    /// With two ntor keys, the one with the higher timestamp becomes NtorLatest and the
+    /// lower one becomes NtorPrevious.
+    #[test]
+    fn reconcile_ntor_keys() {
+        let keymgr = super::super::test::new_keymgr();
+        let view = FullKeyView::new(keymgr.clone());
+
+        let older_ts = ts(1000);
+        let newer_ts = ts(2000);
+
+        insert_ntor_key(&keymgr, older_ts);
+        insert_ntor_key(&keymgr, newer_ts);
+
+        let mut guard = view.lock().unwrap();
+        let changed = guard.reconcile().unwrap();
+
+        assert!(changed.contains(&ExpirableKeyType::NtorLatest));
+        assert!(changed.contains(&ExpirableKeyType::NtorPrevious));
+        assert_eq!(
+            guard.guard.get(&ExpirableKeyType::NtorLatest),
+            Some(&newer_ts)
+        );
+        assert_eq!(
+            guard.guard.get(&ExpirableKeyType::NtorPrevious),
+            Some(&older_ts)
+        );
+    }
+
+    /// After a key rotation the replaced key type appears in the changed set.
+    #[test]
+    fn reconcile_rotated_key() {
+        let keymgr = super::super::test::new_keymgr();
+        let view = FullKeyView::new(keymgr.clone());
+
+        insert_link_key(&keymgr, ts(1000));
+
+        {
+            let mut guard = view.lock().unwrap();
+            guard.reconcile().unwrap();
+        }
+
+        // Simulate rotation: old key is removed and a new one is inserted.
+        keymgr
+            .remove::<RelayLinkSigningKeypair>(
+                &RelayLinkSigningKeypairSpecifier::new(ts(1000)),
+                KeystoreSelector::default(),
+            )
+            .unwrap();
+        insert_link_key(&keymgr, ts(5000));
+
+        let mut guard = view.lock().unwrap();
+        let changed = guard.reconcile().unwrap();
+
+        assert!(changed.contains(&ExpirableKeyType::LinkEd));
+        assert_eq!(guard.guard.get(&ExpirableKeyType::LinkEd), Some(&ts(5000)));
+    }
+}

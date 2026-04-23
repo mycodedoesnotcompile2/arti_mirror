@@ -653,7 +653,7 @@ mod test {
     }
 
     /// Initialize test basics that is runtime and a KeyMgr.
-    fn new_keymgr() -> Arc<KeyMgr> {
+    pub(super) fn new_keymgr() -> Arc<KeyMgr> {
         let store = Box::new(ArtiEphemeralKeystore::new("test".to_string()));
         Arc::new(
             KeyMgrBuilder::default()
