@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 # stdlib imports
-import logging
 import os
 import os.path
 import sys
@@ -15,6 +14,7 @@ from typing_extensions import override
 # non-stdlib imports
 import chutney.TorNet as TorNet
 import chutney.network_tests.verify
+from chutney import chutney_logging
 from chutney.Util import addr_and_port_str
 
 # local imports
@@ -159,5 +159,5 @@ class TestNetwork(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    chutney_logging.logging_basic_config()
     unittest.main()
