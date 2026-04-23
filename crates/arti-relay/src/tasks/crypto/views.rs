@@ -3,11 +3,11 @@
 
 use anyhow::{Context, Result};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
 };
 
-use tor_keymgr::KeyMgr;
+use tor_keymgr::{KeyMgr, KeySpecifierPattern};
 use tor_relay_crypto::{
     RelaySigningKeyCert,
     pk::{
@@ -18,8 +18,10 @@ use tor_relay_crypto::{
 
 use crate::keys::{
     RelayIdentityKeypairSpecifier, RelayIdentityRsaKeypairSpecifier,
-    RelayLinkSigningKeypairSpecifier, RelayNtorKeypairSpecifier, RelaySigningKeyCertSpecifier,
-    RelaySigningKeypairSpecifier, RelaySigningPublicKeySpecifier, Timestamp,
+    RelayLinkSigningKeypairSpecifier, RelayLinkSigningKeypairSpecifierPattern,
+    RelayNtorKeypairSpecifier, RelayNtorKeypairSpecifierPattern, RelaySigningKeyCertSpecifier,
+    RelaySigningKeypairSpecifier, RelaySigningKeypairSpecifierPattern,
+    RelaySigningPublicKeySpecifier, Timestamp,
 };
 
 /// Local helper enum to identify specific key/cert that expires.
@@ -58,6 +60,72 @@ impl KeyViewWriteGuard<'_> {
     /// Reference to the key manager.
     pub(super) fn keymgr(&self) -> &KeyMgr {
         self.keymgr
+    }
+
+    /// Rebuild the valid_until cache from the current keystore state.
+    ///
+    /// Reads all expirable key types from the keystore and replaces the cache. For ntor keys,
+    /// entries are sorted descending so the newest is [`NtorLatest`] and the second (if any) is
+    /// [`NtorPrevious`].
+    ///
+    /// Returns the set of key types whose cached `valid_until` changed (added, removed, or
+    /// updated).
+    pub(super) fn reconcile(&mut self) -> anyhow::Result<HashSet<ExpirableKeyType>> {
+        let mut cache = HashMap::new();
+
+        if let Some(entry) = self
+            .keymgr
+            .list_matching(&RelayLinkSigningKeypairSpecifierPattern::new_any().arti_pattern()?)?
+            .first()
+        {
+            let ts = RelayLinkSigningKeypairSpecifier::try_from(entry.key_path())?.valid_until;
+            cache.insert(ExpirableKeyType::LinkEd, ts);
+        }
+
+        if let Some(entry) = self
+            .keymgr
+            .list_matching(&RelaySigningKeypairSpecifierPattern::new_any().arti_pattern()?)?
+            .first()
+        {
+            let ts = RelaySigningKeypairSpecifier::try_from(entry.key_path())?.valid_until;
+            cache.insert(ExpirableKeyType::RelaysignEd, ts);
+        }
+
+        let mut ntor: Vec<Timestamp> = self
+            .keymgr
+            .list_matching(&RelayNtorKeypairSpecifierPattern::new_any().arti_pattern()?)?
+            .iter()
+            .map(|entry| Ok(RelayNtorKeypairSpecifier::try_from(entry.key_path())?.valid_until))
+            .collect::<anyhow::Result<_>>()?;
+        // Sort in descending order.
+        ntor.sort_by(|a, b| b.cmp(a));
+        if let Some(&ts) = ntor.first() {
+            cache.insert(ExpirableKeyType::NtorLatest, ts);
+        }
+        if let Some(&ts) = ntor.get(1) {
+            cache.insert(ExpirableKeyType::NtorPrevious, ts);
+        }
+
+        // Do we have another key after that and if yes, warn that too many exists.
+        if ntor.get(2).is_some() {
+            tracing::warn!(
+                "Found more than 2 NTor keys in the keystore. This is not supposed to happen. Latest two will be used"
+            );
+        }
+
+        // Who changed here.
+        let changed = [
+            ExpirableKeyType::LinkEd,
+            ExpirableKeyType::RelaysignEd,
+            ExpirableKeyType::NtorLatest,
+            ExpirableKeyType::NtorPrevious,
+        ]
+        .into_iter()
+        .filter(|ty| self.guard.get(ty) != cache.get(ty))
+        .collect();
+
+        *self.guard = cache;
+        Ok(changed)
     }
 }
 
