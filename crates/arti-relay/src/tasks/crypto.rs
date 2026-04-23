@@ -77,16 +77,6 @@ struct KeyChange {
     ntor: bool,
 }
 
-impl KeyChange {
-    /// The combined result of two [`KeyChange`]s.
-    fn or(&self, other: &KeyChange) -> KeyChange {
-        KeyChange {
-            chan_auth: self.chan_auth || other.chan_auth,
-            ntor: self.ntor || other.ntor,
-        }
-    }
-}
-
 /// Build a fresh [`RelayChannelAuthMaterial`] object using a [`KeyMgr`].
 ///
 /// The link cert and TLS certs are created in this function.
@@ -207,11 +197,11 @@ where
     Ok(())
 }
 
-/// Go through keystore entries matching `pattern` and remove any that are
-/// expired according to `is_expired`.
+/// Go through keystore entries matching `pattern` and remove any that are expired according to
+/// `is_expired`.
 ///
-/// Returns `(removed, min_remaining)` where `removed` indicates whether any entry was deleted and
-/// `min_remaining` is the minimum `valid_until` of the entries that were kept (if any).
+/// Returns `min_remaining` which is the minimum `valid_until` of the entries that were kept (if
+/// any).
 fn remove_expired<F, E>(
     now: SystemTime,
     keymgr: &KeyMgr,
@@ -219,13 +209,12 @@ fn remove_expired<F, E>(
     label: &'static str,
     expiry_from_keypath: F,
     is_expired: E,
-) -> anyhow::Result<(bool, Option<SystemTime>)>
+) -> anyhow::Result<Option<SystemTime>>
 where
     F: Fn(&KeyPath) -> anyhow::Result<Timestamp>,
     E: Fn(&Timestamp, SystemTime) -> bool,
 {
     let entries = keymgr.list_matching(pattern)?;
-    let mut removed = false;
     let mut min_valid_until: Option<Timestamp> = None;
 
     for entry in entries {
@@ -233,14 +222,13 @@ where
         if is_expired(&valid_until, now) {
             tracing::debug!("Expired {} in keymgr. Removing it.", label);
             keymgr.remove_entry(&entry)?;
-            removed = true;
         } else {
             min_valid_until =
                 Some(min_valid_until.map_or(valid_until, |current| current.min(valid_until)));
         }
     }
 
-    Ok((removed, min_valid_until.map(SystemTime::from)))
+    Ok(min_valid_until.map(SystemTime::from))
 }
 
 /// Attempt to generate a key using the given [`KeySpecifier`].
@@ -406,14 +394,11 @@ fn try_generate_all(
 /// Return (`removed`, `next_expiry`) where the `removed` indicates if at least one key has been
 /// removed because it was expired. The `next_expiry` is the minimum value of all valid_until which
 /// indicates the next closest expiry time.
-fn remove_expired_keys(
-    now: SystemTime,
-    keymgr: &KeyMgr,
-) -> anyhow::Result<(KeyChange, Option<SystemTime>)> {
+fn remove_expired_keys(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<Option<SystemTime>> {
     let is_expired_with_buffer = |valid_until: &Timestamp, now| {
         *valid_until <= Timestamp::from(now + KEY_ROTATION_EXPIRE_BUFFER)
     };
-    let (relaysign_removed, relaysign_expiry) = remove_expired(
+    let relaysign_expiry = remove_expired(
         now,
         keymgr,
         &RelaySigningKeypairSpecifierPattern::new_any().arti_pattern()?,
@@ -421,7 +406,7 @@ fn remove_expired_keys(
         |key_path| Ok(RelaySigningKeypairSpecifier::try_from(key_path)?.valid_until),
         is_expired_with_buffer,
     )?;
-    let (link_removed, link_expiry) = remove_expired(
+    let link_expiry = remove_expired(
         now,
         keymgr,
         &RelayLinkSigningKeypairSpecifierPattern::new_any().arti_pattern()?,
@@ -433,7 +418,7 @@ fn remove_expired_keys(
     // This should always be removed if the signing key above has been removed. However, we still
     // do a pass at the keystore considering the upcoming offline key feature that might have more
     // than one expired cert in the keystore.
-    let (sign_cert_removed, sign_cert_expiry) = remove_expired(
+    let sign_cert_expiry = remove_expired(
         now,
         keymgr,
         &RelaySigningKeyCertSpecifierPattern::new_any().arti_pattern()?,
@@ -463,7 +448,7 @@ fn remove_expired_keys(
         *valid_until <= Timestamp::from(now - NTOR_KEY_GRACE_PERIOD + KEY_ROTATION_EXPIRE_BUFFER)
     };
 
-    let (ntor_key_removed, ntor_key_expiry) = remove_expired(
+    let ntor_key_expiry = remove_expired(
         now,
         keymgr,
         &RelayNtorKeypairSpecifierPattern::new_any().arti_pattern()?,
@@ -471,12 +456,6 @@ fn remove_expired_keys(
         |key_path| Ok(RelayNtorKeypairSpecifier::try_from(key_path)?.valid_until),
         is_expired_ntor,
     )?;
-
-    // Have we at least removed one?
-    let removed = KeyChange {
-        chan_auth: relaysign_removed || link_removed || sign_cert_removed,
-        ntor: ntor_key_removed,
-    };
 
     // TODO: we could, in theory, return this from remove_expired(),
     // but I don't want to make it any more complicated than it already is,
@@ -543,7 +522,7 @@ fn remove_expired_keys(
     .flatten()
     .min();
 
-    Ok((removed, next_expiry))
+    Ok(next_expiry)
 }
 
 /// Attempt to rotate all keys except identity keys.
@@ -552,12 +531,12 @@ fn remove_expired_keys(
 /// `next_expiry` is the earliest expiry time across all keys.
 fn try_rotate_keys(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<(KeyChange, SystemTime)> {
     // First do a pass to remove every expired key(s) or/and cert(s).
-    let (have_removed, min_expiry) = remove_expired_keys(now, keymgr)?;
+    let min_expiry = remove_expired_keys(now, keymgr)?;
 
     // Then attempt to generate keys. If at least one was generated, we'll get the min expiry time
     // which we need to consider "rotated" so the caller can know that a new key appeared.
     let (generated, gen_min_expiry) = try_generate_all(now, keymgr)?;
-    let have_rotated = have_removed.or(&generated);
+    let have_rotated = generated;
 
     // We should never get no expiry time.
     let next_expiry = [min_expiry, gen_min_expiry]
@@ -752,12 +731,12 @@ impl<R: Runtime> Reactor<R> {
         let keymgr = view_guard.keymgr();
 
         // First do a pass to remove every expired key(s) or/and cert(s).
-        let (have_removed, min_expiry) = remove_expired_keys(now, keymgr)?;
+        let min_expiry = remove_expired_keys(now, keymgr)?;
 
         // Then attempt to generate keys. If at least one was generated, we'll get the min expiry time
         // which we need to consider "rotated" so the caller can know that a new key appeared.
         let (generated, gen_min_expiry) = try_generate_all(now, keymgr)?;
-        let have_rotated = have_removed.or(&generated);
+        let have_rotated = generated;
 
         // We should never get no expiry time.
         let next_expiry = [min_expiry, gen_min_expiry]
