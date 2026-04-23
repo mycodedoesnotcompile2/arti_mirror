@@ -23,7 +23,12 @@ use tor_keymgr::{
 use tor_netdir::{DirEvent, NetDirProvider};
 use tor_proto::RelayChannelAuthMaterial;
 use tor_proto::relay::CreateRequestHandler;
+use tor_relay_crypto::pk::{
+    RelayIdentityKeypair, RelayIdentityRsaKeypair, RelayLinkSigningKeypair, RelayNtorKeypair,
+    RelaySigningKeypair,
+};
 use tor_relay_crypto::{RelaySigningKeyCert, gen_link_cert, gen_signing_cert, gen_tls_cert};
+use tor_rtcompat::{Runtime, SleepProviderExt};
 
 use crate::keys::{
     RelayIdentityKeypairSpecifier, RelayIdentityRsaKeypairSpecifier,
@@ -32,11 +37,6 @@ use crate::keys::{
     RelaySigningKeyCertSpecifierPattern, RelaySigningKeypairSpecifier,
     RelaySigningKeypairSpecifierPattern, RelaySigningPublicKeySpecifier, Timestamp,
 };
-use tor_relay_crypto::pk::{
-    RelayIdentityKeypair, RelayIdentityRsaKeypair, RelayLinkSigningKeypair, RelayNtorKeypair,
-    RelaySigningKeypair,
-};
-use tor_rtcompat::{Runtime, SleepProviderExt};
 
 /// Needed to be create in the relay init.
 pub(crate) use views::FullKeyView;
