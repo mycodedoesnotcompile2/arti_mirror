@@ -282,11 +282,13 @@ where
     let encoded = util::encode_request(&req);
 
     // Write the request.
-    stream
-        .write_all(encoded.as_bytes())
-        .await
-        .map_err(RequestError::from)
-        .map_err(wrap_err)?;
+    for chunk in encoded {
+        stream
+            .write_all(chunk.as_ref())
+            .await
+            .map_err(RequestError::from)
+            .map_err(wrap_err)?;
+    }
     stream
         .flush()
         .await

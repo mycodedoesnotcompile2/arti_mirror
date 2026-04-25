@@ -5,7 +5,7 @@ use std::fmt::Write;
 use crate::body::RequestBody;
 
 /// Encode an HTTP request in a quick and dirty HTTP 1.0 format.
-pub(crate) fn encode_request(req: &http::Request<RequestBody>) -> String {
+pub(crate) fn encode_request(req: &http::Request<RequestBody>) -> RequestBody {
     let mut s = format!("{} {} HTTP/1.0\r\n", req.method(), req.uri());
 
     for (key, val) in req.headers().iter() {
@@ -25,15 +25,24 @@ pub(crate) fn encode_request(req: &http::Request<RequestBody>) -> String {
     }
 
     s.push_str("\r\n");
-    // XXXX this isn't where we want to land with this.
-    {
-        for chunk in req.body().iter() {
-            let chunk = str::from_utf8(&chunk[..]).expect("Not valid utf-8");
-            s.push_str(chunk);
-        }
-    }
 
-    s
+    let mut body = RequestBody::new();
+    body.push_str(s);
+    body.push_body(req.body());
+
+    body
+}
+
+/// Testing helper: convert a request to a String.
+///
+/// # Panics
+///
+/// Panics if the request's body is not valid UTF-8
+#[cfg(test)]
+pub(crate) fn request_to_string(req: &http::Request<RequestBody>) -> String {
+    let body = encode_request(req);
+    let bytes: Vec<u8> = body.to_owned();
+    String::from_utf8(bytes).expect("Body was not UTF-8")
 }
 
 #[cfg(test)]
@@ -69,13 +78,13 @@ mod test {
             let req = build_request(body.to_string(), &[]);
 
             assert_eq!(
-                encode_request(&req),
+                request_to_string(&req),
                 format!("GET /index.html HTTP/1.0\r\n{content_length_expected}\r\n{body}")
             );
 
             let req = build_request(body.to_string(), &[("X-Marsupial", "Opossum")]);
             assert_eq!(
-                encode_request(&req),
+                request_to_string(&req),
                 format!(
                     "GET /index.html HTTP/1.0\r\nx-marsupial: Opossum\r\n{content_length_expected}\r\n{body}",
                 )

@@ -74,6 +74,16 @@ impl RequestBody {
     }
 }
 
+impl IntoIterator for RequestBody {
+    type Item = Arc<[u8]>;
+
+    type IntoIter = std::vec::IntoIter<Arc<[u8]>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.into_iter()
+    }
+}
+
 impl From<String> for RequestBody {
     fn from(s: String) -> Self {
         Self {

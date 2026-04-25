@@ -841,7 +841,7 @@ mod test {
         assert!(req.partial_response_body_ok());
         assert_eq!(req.max_response_len(), 16 << 10);
 
-        let req = crate::util::encode_request(&req.make_request()?);
+        let req = crate::util::request_to_string(&req.make_request()?);
 
         assert_eq!(
             req,
@@ -855,7 +855,7 @@ mod test {
         let req2: MicrodescRequest = vec![*d1, *d2].into_iter().collect();
         let ds: Vec<_> = req2.digests().collect();
         assert_eq!(ds, vec![d1, d2]);
-        let req2 = crate::util::encode_request(&req2.make_request()?);
+        let req2 = crate::util::request_to_string(&req2.make_request()?);
         assert_eq!(req, req2);
 
         Ok(())
@@ -887,7 +887,7 @@ mod test {
         let keys: Vec<_> = req.keys().collect();
         assert_eq!(keys, vec![&key1, &key2]);
 
-        let req = crate::util::encode_request(&req.make_request()?);
+        let req = crate::util::request_to_string(&req.make_request()?);
 
         assert_eq!(
             req,
@@ -898,7 +898,7 @@ mod test {
         );
 
         let req2: AuthCertRequest = vec![key1, key2].into_iter().collect();
-        let req2 = crate::util::encode_request(&req2.make_request()?);
+        let req2 = crate::util::request_to_string(&req2.make_request()?);
         assert_eq!(req, req2);
 
         Ok(())
@@ -926,7 +926,7 @@ mod test {
         assert_eq!(req.authority_ids().next(), Some(&d1));
         assert_eq!(req.last_consensus_date(), Some(d3));
 
-        let req = crate::util::encode_request(&req.make_request()?);
+        let req = crate::util::request_to_string(&req.make_request()?);
 
         assert_eq!(
             req,
@@ -939,7 +939,7 @@ mod test {
 
         // Request without authorities
         let req = ConsensusRequest::default();
-        let req = crate::util::encode_request(&req.make_request()?);
+        let req = crate::util::request_to_string(&req.make_request()?);
         assert_eq!(
             req,
             format!(
@@ -958,7 +958,7 @@ mod test {
         assert!(req.partial_response_body_ok());
         assert_eq!(req.max_response_len(), 1 << 26);
 
-        let req = crate::util::encode_request(&req.make_request()?);
+        let req = crate::util::request_to_string(&req.make_request()?);
 
         assert_eq!(
             req,
@@ -989,7 +989,7 @@ mod test {
         assert!(req.partial_response_body_ok());
         assert_eq!(req.max_response_len(), 16 << 10);
 
-        let req = crate::util::encode_request(&req.make_request()?);
+        let req = crate::util::request_to_string(&req.make_request()?);
 
         assert_eq!(
             req,
@@ -1006,7 +1006,7 @@ mod test {
             RequestedDescs::AllDescriptors => Vec::new(),
         };
         assert_eq!(ds, vec![d1, d2]);
-        let req2 = crate::util::encode_request(&req2.make_request()?);
+        let req2 = crate::util::request_to_string(&req2.make_request()?);
         assert_eq!(req, req2);
         Ok(())
     }
@@ -1016,7 +1016,7 @@ mod test {
     fn test_extra_info_request() -> Result<()> {
         let req = ExtraInfoRequest::from_iter([[0; 20], [1; 20], [2; 20]]);
         assert_eq!(
-            crate::util::encode_request(&req.make_request()?),
+            crate::util::request_to_string(&req.make_request()?),
             format!(
                 "GET /tor/extra/d/{}+{}+{} HTTP/1.0\r\naccept-encoding: {}\r\n\r\n",
                 hex::encode_upper([0; 20]),
@@ -1028,7 +1028,7 @@ mod test {
 
         let req = ExtraInfoRequest::all();
         assert_eq!(
-            crate::util::encode_request(&req.make_request()?),
+            crate::util::request_to_string(&req.make_request()?),
             format!(
                 "GET /tor/extra/all HTTP/1.0\r\naccept-encoding: {}\r\n\r\n",
                 all_encodings()
@@ -1048,7 +1048,7 @@ mod test {
         assert!(!req.partial_response_body_ok());
         assert_eq!(req.max_response_len(), 50 * 1000);
 
-        let req = crate::util::encode_request(&req.make_request()?);
+        let req = crate::util::request_to_string(&req.make_request()?);
 
         assert_eq!(
             req,
