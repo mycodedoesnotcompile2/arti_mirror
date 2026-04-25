@@ -20,6 +20,8 @@ use std::borrow::Cow;
 use std::future::Future;
 use std::iter::FromIterator;
 use std::pin::Pin;
+#[cfg(feature = "hs-service")]
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use itertools::Itertools;
@@ -732,12 +734,12 @@ impl sealed::RequestableInner for HsDescDownloadRequest {
 /// rend-spec-v3 2.2.6
 #[derive(Debug, Clone)]
 #[cfg(feature = "hs-service")]
-pub struct HsDescUploadRequest(String);
+pub struct HsDescUploadRequest(Arc<str>);
 
 #[cfg(feature = "hs-service")]
 impl HsDescUploadRequest {
     /// Construct a request for uploading a single onion service descriptor.
-    pub fn new(hsdesc: String) -> Self {
+    pub fn new(hsdesc: Arc<str>) -> Self {
         HsDescUploadRequest(hsdesc)
     }
 }
