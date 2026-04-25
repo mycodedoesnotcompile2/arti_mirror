@@ -225,8 +225,7 @@ cargo-audit:
   needs: []
   # This can start to fail even when our code doesn't change.
   # Usually the new advisory is not a huge concern.
-  # Run it last, separately, so if we think we may want to merge anyway,
-  # all the other tests will have been run.
+  allow_failure: true
   stage: test
   image: $RECENT_RUST_IMAGE
   script:
