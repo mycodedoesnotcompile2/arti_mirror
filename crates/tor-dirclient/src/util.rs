@@ -2,8 +2,10 @@
 
 use std::fmt::Write;
 
+use crate::body::RequestBody;
+
 /// Encode an HTTP request in a quick and dirty HTTP 1.0 format.
-pub(crate) fn encode_request(req: &http::Request<String>) -> String {
+pub(crate) fn encode_request(req: &http::Request<RequestBody>) -> String {
     let mut s = format!("{} {} HTTP/1.0\r\n", req.method(), req.uri());
 
     for (key, val) in req.headers().iter() {
@@ -23,7 +25,13 @@ pub(crate) fn encode_request(req: &http::Request<String>) -> String {
     }
 
     s.push_str("\r\n");
-    s.push_str(req.body());
+    // XXXX this isn't where we want to land with this.
+    {
+        for chunk in req.body().iter() {
+            let chunk = str::from_utf8(&chunk[..]).expect("Not valid utf-8");
+            s.push_str(chunk);
+        }
+    }
 
     s
 }
@@ -45,14 +53,14 @@ mod test {
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
 
-    fn build_request(body: String, headers: &[(&str, &str)]) -> http::Request<String> {
+    fn build_request(body: String, headers: &[(&str, &str)]) -> http::Request<RequestBody> {
         let mut builder = http::Request::builder().method("GET").uri("/index.html");
 
         for (name, value) in headers {
             builder = builder.header(*name, *value);
         }
 
-        builder.body(body).unwrap()
+        builder.body(body.into()).unwrap()
     }
 
     #[test]

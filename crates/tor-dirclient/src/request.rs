@@ -25,11 +25,14 @@ use std::time::{Duration, SystemTime};
 use itertools::Itertools;
 
 use crate::AnonymizedRequest;
+use crate::body::RequestBody;
 use crate::err::RequestError;
 
 /// Declare an inaccessible public type.
 pub(crate) mod sealed {
     use tor_circmgr::ClientDirTunnel;
+
+    use crate::body::RequestBody;
 
     use super::{AnonymizedRequest, Result};
 
@@ -41,14 +44,7 @@ pub(crate) mod sealed {
     pub trait RequestableInner: Send + Sync {
         /// Build an [`http::Request`] from this Requestable, if
         /// it is well-formed.
-        //
-        // TODO: This API is a bit troublesome in how it takes &self and
-        // returns a Request<String>.  First, most Requestables don't actually have
-        // a body to send, and for them having an empty String in their body is a
-        // bit silly.  Second, taking a reference to self but returning an owned
-        // String means that we will often have to clone an internal string owned by
-        // this Requestable instance.
-        fn make_request(&self) -> Result<http::Request<String>>;
+        fn make_request(&self) -> Result<http::Request<RequestBody>>;
 
         /// Return true if partial response bodies are potentially useful.
         ///
@@ -241,7 +237,7 @@ impl Default for ConsensusRequest {
 }
 
 impl sealed::RequestableInner for ConsensusRequest {
-    fn make_request(&self) -> Result<http::Request<String>> {
+    fn make_request(&self) -> Result<http::Request<RequestBody>> {
         // Build the URL.
         let mut uri = "/tor/status-vote/current/consensus".to_string();
         match self.flavor {
@@ -275,7 +271,7 @@ impl sealed::RequestableInner for ConsensusRequest {
             req = req.header("X-Or-Diff-From-Consensus", &ids);
         }
 
-        Ok(req.body(String::new())?)
+        Ok(req.body(RequestBody::new())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -333,7 +329,7 @@ impl AuthCertRequest {
 }
 
 impl sealed::RequestableInner for AuthCertRequest {
-    fn make_request(&self) -> Result<http::Request<String>> {
+    fn make_request(&self) -> Result<http::Request<RequestBody>> {
         if self.ids.is_empty() {
             return Err(RequestError::EmptyRequest);
         }
@@ -356,7 +352,7 @@ impl sealed::RequestableInner for AuthCertRequest {
         let req = http::Request::builder().method("GET").uri(uri);
         let req = add_common_headers(req, self.anonymized());
 
-        Ok(req.body(String::new())?)
+        Ok(req.body(RequestBody::new())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -407,7 +403,7 @@ impl MicrodescRequest {
 }
 
 impl sealed::RequestableInner for MicrodescRequest {
-    fn make_request(&self) -> Result<http::Request<String>> {
+    fn make_request(&self) -> Result<http::Request<RequestBody>> {
         let d_encode_b64 = |d: &[u8; 32]| Base64Unpadded::encode_string(&d[..]);
         let ids = digest_list_stringify(&self.digests, d_encode_b64, "-")
             .ok_or(RequestError::EmptyRequest)?;
@@ -416,7 +412,7 @@ impl sealed::RequestableInner for MicrodescRequest {
 
         let req = add_common_headers(req, self.anonymized());
 
-        Ok(req.body(String::new())?)
+        Ok(req.body(RequestBody::new())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -487,7 +483,7 @@ impl RouterDescRequest {
 
 #[cfg(feature = "routerdesc")]
 impl sealed::RequestableInner for RouterDescRequest {
-    fn make_request(&self) -> Result<http::Request<String>> {
+    fn make_request(&self) -> Result<http::Request<RequestBody>> {
         let mut uri = "/tor/server/".to_string();
 
         match self.requested_descriptors {
@@ -505,7 +501,7 @@ impl sealed::RequestableInner for RouterDescRequest {
         let req = http::Request::builder().method("GET").uri(uri);
         let req = add_common_headers(req, self.anonymized());
 
-        Ok(req.body(String::new())?)
+        Ok(req.body(RequestBody::new())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -555,12 +551,12 @@ impl RoutersOwnDescRequest {
 
 #[cfg(feature = "routerdesc")]
 impl sealed::RequestableInner for RoutersOwnDescRequest {
-    fn make_request(&self) -> Result<http::Request<String>> {
+    fn make_request(&self) -> Result<http::Request<RequestBody>> {
         let uri = "/tor/server/authority";
         let req = http::Request::builder().method("GET").uri(uri);
         let req = add_common_headers(req, self.anonymized());
 
-        Ok(req.body(String::new())?)
+        Ok(req.body(RequestBody::new())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -627,7 +623,7 @@ impl ExtraInfoRequest {
 
 #[cfg(feature = "routerdesc")]
 impl sealed::RequestableInner for ExtraInfoRequest {
-    fn make_request(&self) -> Result<http::Request<String>> {
+    fn make_request(&self) -> Result<http::Request<RequestBody>> {
         let mut uri = "/tor/extra/".to_string();
 
         match &self.requested_extra_infos {
@@ -642,7 +638,7 @@ impl sealed::RequestableInner for ExtraInfoRequest {
 
         let req = http::Request::builder().method("GET").uri(uri);
         let req = add_common_headers(req, self.anonymized());
-        Ok(req.body(String::new())?)
+        Ok(req.body(RequestBody::new())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -708,14 +704,14 @@ impl HsDescDownloadRequest {
 
 #[cfg(feature = "hs-client")]
 impl sealed::RequestableInner for HsDescDownloadRequest {
-    fn make_request(&self) -> Result<http::Request<String>> {
+    fn make_request(&self) -> Result<http::Request<RequestBody>> {
         let hsid = Base64Unpadded::encode_string(self.hsid.as_ref());
         // We hardcode version 3 here; if we ever have a v4 onion service
         // descriptor, it will need a different kind of Request.
         let uri = format!("/tor/hs/3/{}", hsid);
         let req = http::Request::builder().method("GET").uri(uri);
         let req = add_common_headers(req, self.anonymized());
-        Ok(req.body(String::new())?)
+        Ok(req.body(RequestBody::new())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -748,13 +744,13 @@ impl HsDescUploadRequest {
 
 #[cfg(feature = "hs-service")]
 impl sealed::RequestableInner for HsDescUploadRequest {
-    fn make_request(&self) -> Result<http::Request<String>> {
+    fn make_request(&self) -> Result<http::Request<RequestBody>> {
         /// The upload URI.
         const URI: &str = "/tor/hs/3/publish";
 
         let req = http::Request::builder().method("POST").uri(URI);
         let req = add_common_headers(req, self.anonymized());
-        Ok(req.body(self.0.clone())?)
+        Ok(req.body(RequestBody::from(self.0.clone()))?)
     }
 
     fn partial_response_body_ok(&self) -> bool {

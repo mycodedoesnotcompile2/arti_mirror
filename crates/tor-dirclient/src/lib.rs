@@ -52,6 +52,7 @@
     allow(unused_imports)
 )]
 
+mod body;
 mod err;
 pub mod request;
 mod response;
