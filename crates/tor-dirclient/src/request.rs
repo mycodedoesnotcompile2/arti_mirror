@@ -20,7 +20,6 @@ use std::borrow::Cow;
 use std::future::Future;
 use std::iter::FromIterator;
 use std::pin::Pin;
-#[cfg(feature = "hs-service")]
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -97,6 +96,23 @@ pub struct DisplayRequestable<'a, R: Requestable>(&'a R);
 impl<'a, R: Requestable> std::fmt::Debug for DisplayRequestable<'a, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.0.make_request())
+    }
+}
+
+impl sealed::RequestableInner for Arc<dyn Requestable> {
+    fn make_request(&self) -> Result<http::Request<RequestBody>> {
+        let r: &dyn Requestable = self.as_ref();
+        r.make_request()
+    }
+
+    fn partial_response_body_ok(&self) -> bool {
+        let r: &dyn Requestable = self.as_ref();
+        r.partial_response_body_ok()
+    }
+
+    fn anonymized(&self) -> AnonymizedRequest {
+        let r: &dyn Requestable = self.as_ref();
+        r.anonymized()
     }
 }
 
