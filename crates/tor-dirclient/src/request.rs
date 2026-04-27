@@ -745,50 +745,83 @@ impl sealed::RequestableInner for HsDescDownloadRequest {
     }
 }
 
-/// A request to upload a hidden service descriptor
-///
-/// rend-spec-v3 2.2.6
-#[derive(Debug, Clone)]
-#[cfg(feature = "hs-service")]
-pub struct HsDescUploadRequest(Arc<str>);
+/// Define a request type for uploading a document.
+#[allow(unused)]
+macro_rules! upload_request {
+    {
+        $(
+            $(#[$m:meta])*
+            pub struct $t:ident (
+                $anonymity:ident,
+                $uri:expr,
+                $max_hdr_len:expr
+            )
+        );*
+        $(;)?
+    } => {
+        $(
+            $(#[$m])*
+            #[derive(Clone, Debug)]
+            pub struct $t(Arc<str>);
 
-#[cfg(feature = "hs-service")]
-impl HsDescUploadRequest {
-    /// Construct a request for uploading a single onion service descriptor.
-    pub fn new(hsdesc: Arc<str>) -> Self {
-        HsDescUploadRequest(hsdesc)
+            impl $t {
+                /// Create a new upload request
+                pub fn new(document: Arc<str>) -> Self {
+                    Self(document)
+                }
+            }
+
+            impl sealed::RequestableInner for $t {
+                fn make_request(&self) -> Result<http::Request<RequestBody>> {
+                    /// The upload URI.
+                    const URI: &str = $uri;
+
+                    let req = http::Request::builder().method("POST").uri(URI);
+                    let req = add_common_headers(req, self.anonymized());
+                    Ok(req.body(RequestBody::from(self.0.clone()))?)
+                }
+
+                fn partial_response_body_ok(&self) -> bool {
+                    false
+                }
+
+                fn max_response_len(&self) -> usize {
+                    // We expect the response _body_ to be empty, but the max_response_len
+                    // is not zero because it represents the _total_ length of the response
+                    // (which includes the length of the status line and headers).
+                    $max_hdr_len
+                }
+
+                fn anonymized(&self) -> AnonymizedRequest {
+                    AnonymizedRequest::$anonymity
+                }
+            }
+         )*
     }
 }
 
 #[cfg(feature = "hs-service")]
-impl sealed::RequestableInner for HsDescUploadRequest {
-    fn make_request(&self) -> Result<http::Request<RequestBody>> {
-        /// The upload URI.
-        const URI: &str = "/tor/hs/3/publish";
+upload_request! {
 
-        let req = http::Request::builder().method("POST").uri(URI);
-        let req = add_common_headers(req, self.anonymized());
-        Ok(req.body(RequestBody::from(self.0.clone()))?)
-    }
-
-    fn partial_response_body_ok(&self) -> bool {
-        false
-    }
-
-    fn max_response_len(&self) -> usize {
-        // We expect the response _body_ to be empty, but the max_response_len
-        // is not zero because it represents the _total_ length of the response
-        // (which includes the length of the status line and headers).
-        //
-        // A real Tor POST response will always be less than that length, which
+    /// A request to upload a hidden service descriptor
+    ///
+    /// rend-spec-v3 2.2.6
+    pub struct HsDescUploadRequest(
+        Anonymized,
+        "/tor/hs/3/publish",
+        // A real Tor POST response will always be less than this length, which
         // will fit into 3 DATA messages at most. (The reply will be a single
         // HTTP line, followed by a Date header.)
+        // Do not increase this limit without thinking about side channels!
         1024
-    }
+    )
+}
 
-    fn anonymized(&self) -> AnonymizedRequest {
-        AnonymizedRequest::Anonymized
-    }
+#[cfg(feature = "relay")]
+upload_request! {
+    /// A request to upload a router descriptor and optional extra-info document.
+    pub struct UploadRouterDesc(Direct, "/tor/", 4096);
+
 }
 
 /// Encodings that all Tor clients support.
