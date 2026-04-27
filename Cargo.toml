@@ -63,6 +63,7 @@ members = [
     "crates/tor-guardmgr",
     "crates/tor-circmgr",
     "crates/tor-dirclient",
+    "crates/tor-dirpublish",
     "crates/tor-dirmgr",
     "crates/tor-dirserver",
     "crates/tor-hsclient",
