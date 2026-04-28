@@ -157,7 +157,7 @@ async fn connect_to_one<R: Runtime>(
     // Ensure we don't continue trying to make connections.
     drop(connections);
 
-    ret.ok_or_else(|| Error::ChannelBuild {
+    ret.ok_or_else(|| Error::Connect {
         addresses: errors.into_iter().map(|(e, a)| (sv(a), e)).collect(),
     })
 }

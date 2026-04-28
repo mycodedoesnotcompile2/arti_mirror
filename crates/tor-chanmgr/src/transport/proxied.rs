@@ -456,10 +456,16 @@ impl<R: NetStreamProvider + Send + Sync> TransportImplHelper for ExternalProxyPl
             }
         };
 
+        let into_err = |e: ProxyError| crate::Error::Connect {
+            addresses: vec![(self.proxy_addr.into(), e.into())],
+        };
         let protocol =
-            settings_to_protocol(self.proxy_version, encode_settings(pt_target.settings()))?;
+            settings_to_protocol(self.proxy_version, encode_settings(pt_target.settings()))
+                .map_err(into_err)?;
         let stream =
-            connect_via_proxy(&self.runtime, &self.proxy_addr, &protocol, pt_target.addr()).await?;
+            connect_via_proxy(&self.runtime, &self.proxy_addr, &protocol, pt_target.addr())
+                .await
+                .map_err(into_err)?;
 
         Ok((pt_target.into(), stream))
     }
