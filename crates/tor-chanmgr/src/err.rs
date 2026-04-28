@@ -69,11 +69,12 @@ pub enum Error {
     },
 
     /// Failed to build a channel, after trying multiple addresses.
+    // XXXX rename.
     #[error("Channel build failed: [(address, error)] = {addresses:?}")]
     ChannelBuild {
         /// The list of addresses we tried to connect to, coupled with
         /// the error we encountered connecting to each one.
-        addresses: Vec<(ChanSensitive<SocketAddr>, Arc<std::io::Error>)>,
+        addresses: Vec<(ChanSensitive<SocketAddr>, ConnectError)>,
     },
 
     /// Unable to spawn task
@@ -111,6 +112,8 @@ pub enum Error {
     RequestCancelled,
 
     /// We tried to create a channel through a proxy, and encountered an error.
+    //
+    // TODO: This is somewhat redundant with the ProxyError in ChannelBuild.
     #[error("Problem while connecting to Tor via a proxy")]
     Proxy(#[from] ProxyError),
 
@@ -130,6 +133,25 @@ pub enum Error {
     /// An internal error of some kind that should never occur.
     #[error("Internal error")]
     Internal(#[from] tor_error::Bug),
+}
+
+/// An error trying to open a network connection.
+#[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ConnectError {
+    /// Unable to open a direct connection.
+    #[error("Problem connecting to relay")]
+    Direct(#[source] Arc<std::io::Error>),
+
+    /// Unable to open a proxied connection.
+    #[error("Problem connecting to relay via a proxy")]
+    Proxy(#[from] ProxyError),
+}
+
+impl From<std::io::Error> for ConnectError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Direct(Arc::new(e))
+    }
 }
 
 impl<T> From<std::sync::PoisonError<T>> for Error {
