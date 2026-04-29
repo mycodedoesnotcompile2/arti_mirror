@@ -107,7 +107,7 @@ fn test_as_mut_compiles() {
 // TODO DIRAUTH after poc abolished, turn back into a normal struct DirectorySignatureHashAlgo
 macro_rules! define_directory_signature_hash_algo { { $( $attrs:tt )* } => {
     /// `directory-signature` hash algorithm argument
-    #[derive(Clone, Copy, Debug, Eq, PartialEq, strum::EnumString, Deftly)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq, strum::Display, strum::EnumString, Deftly)]
     $($attrs)*
     #[non_exhaustive]
     #[strum(serialize_all = "snake_case")]
