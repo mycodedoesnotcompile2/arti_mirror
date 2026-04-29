@@ -539,8 +539,7 @@ define_derive_deftly! {
     pub struct DirectorySignaturesHashesAccu {
       $(
         ${vattrs doc}
-        // XXXX make no longer pub(crate)
-        pub(crate) $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
+        $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
       )
 
       /// `sha1` but without the algorithm name
@@ -552,13 +551,12 @@ define_derive_deftly! {
       /// So we mustn't use the `sha1` field for both implicit and explicit use of SHA-1,
       /// or multiple signatures with different syntax would overwrite each others'
       /// different hashes.
-      pub(crate) sha1_unnamed: Option<[u8; 20]>,
+      sha1_unnamed: Option<[u8; 20]>,
     }
 
     impl DirectorySignaturesHashesAccu {
         /// Calculate the hash for a signature item and update this accumulator
-        // XXXX make no longer pub(crate)
-        pub(crate) fn update_from(
+        fn update_from(
             &mut self,
             algo: &DigestAlgoInSignature,
             body: &SignatureHashInputs,
@@ -596,7 +594,7 @@ define_derive_deftly! {
         ///
         /// `None` if the value wasn't computed.
         /// That shouldn't happen.
-        // XXXX make no longer pub(crate)
+        // TODO DIRAUTH make private when poc's verification is abolished
         pub(crate) fn hash_slice_for_verification(
             &self,
             algo: &DigestAlgoInSignature,
