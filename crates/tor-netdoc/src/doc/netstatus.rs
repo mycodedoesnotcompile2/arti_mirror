@@ -73,7 +73,7 @@ use crate::parse2::{
     self, ArgumentStream, ErrorProblem, IsStructural, ItemStream, ItemValueParseable, KeywordRef,
     NetdocParseable, StopAt,
 };
-use crate::types::misc::*;
+use crate::types::*;
 use crate::types::relay_flags::{self, DocRelayFlags};
 use crate::util::PeekableIterator;
 use crate::{Error, KeywordEncodable, NetdocErrorKind as EK, NormalItemArgument, Pos, Result};
