@@ -64,7 +64,7 @@ pub use proto_statuses_parse2_encode::ProtoStatusesNetdocParseAccumulator;
 #[cfg(feature = "incomplete")]
 use crate::doc::authcert::EncodedAuthCert;
 
-use crate::doc::authcert::{AuthCert, AuthCertKeyIds};
+use crate::doc::authcert::{self, AuthCert, AuthCertKeyIds};
 use crate::encode::{ItemArgument, ItemEncoder, ItemValueEncodable, NetdocEncodable, NetdocEncoder};
 use crate::parse::keyword::Keyword;
 use crate::parse::parser::{Section, SectionRules, SectionRulesBuilder};
@@ -74,7 +74,7 @@ use crate::parse2::{
     NetdocParseable, StopAt,
     ArgumentError, ItemArgumentParseable,
 };
-use crate::types::*;
+use crate::types::{self, *};
 use crate::types::relay_flags::{self, DocRelayFlags};
 use crate::util::PeekableIterator;
 use crate::{Error, KeywordEncodable, NetdocErrorKind as EK, NormalItemArgument, Pos, Result};
@@ -579,7 +579,12 @@ impl DigestAlgoInSignature {
 impl NormalItemArgument for DirectorySignatureHashAlgo {}
 
 /// The signature of a single directory authority on a networkstatus document.
-#[derive(Debug, Clone)]
+///
+/// Implements `ItemValueParseable` which parses without hashing anything;
+/// this is mostly useful for use by the `SignatureItemParseable` implementation.
+// XXXX that impl doesn't exist yet
+#[derive(Debug, Clone, Deftly)]
+#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 #[non_exhaustive]
 pub struct Signature {
     /// The name of the digest algorithm used to make the signature.
@@ -589,8 +594,10 @@ pub struct Signature {
     pub digest_algo: DigestAlgoInSignature,
     /// Fingerprints of the keys for the authority that made
     /// this signature.
+    #[deftly(netdoc(with = authcert::keyids_directory_signature_args))]
     pub key_ids: AuthCertKeyIds,
     /// The signature itself.
+    #[deftly(netdoc(object(label = "SIGNATURE"), with = types::raw_data_object))]
     pub signature: Vec<u8>,
 }
 

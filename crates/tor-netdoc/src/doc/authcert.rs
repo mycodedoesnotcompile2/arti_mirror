@@ -450,7 +450,6 @@ impl AuthCert {
 // If we find this is being used in many places, and is therefore a standard thing,
 // we should arrange for the derives to be able to derive from an argument collection,
 // and use that.
-#[allow(dead_code)] // XXXX
 pub(crate) mod keyids_directory_signature_args {
     use super::*;
     use std::result::Result;
