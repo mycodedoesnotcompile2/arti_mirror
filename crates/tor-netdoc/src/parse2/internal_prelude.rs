@@ -41,8 +41,8 @@ pub use super::{
     },
     structural::{StopAt, StopPredicate},
     traits::{
-        IsStructural, ItemArgumentParseable, ItemValueParseable, NetdocParseable,
-        NetdocParseableFields, ItemObjectParseable,
+        IsStructural, ItemArgumentParseable, ItemObjectParseable, ItemValueParseable,
+        NetdocParseable, NetdocParseableFields,
     },
 };
 pub use crate::types::Unknown;
