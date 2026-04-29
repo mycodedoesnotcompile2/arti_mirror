@@ -503,14 +503,17 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         // TODO SPEC: Discuss HS descriptor lifetime and expiry client behaviour
         let now = self.runtime.wallclock();
 
-        let cur_revision = data.as_ref().map(|previously| {
-            if let Ok(desc) = previously.as_ref().check_valid_at(&now) {
-                Some(desc.revision())
-            } else {
-                // Seems to be not valid now.  Try to fetch a fresh one.
-                None
-            }
-        }).flatten();
+        let cur_revision = data
+            .as_ref()
+            .map(|previously| {
+                if let Ok(desc) = previously.as_ref().check_valid_at(&now) {
+                    Some(desc.revision())
+                } else {
+                    // Seems to be not valid now.  Try to fetch a fresh one.
+                    None
+                }
+            })
+            .flatten();
 
         match (cur_revision, refetch) {
             (Some(_), None) => {
