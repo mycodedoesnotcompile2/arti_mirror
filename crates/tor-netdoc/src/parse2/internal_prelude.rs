@@ -42,7 +42,7 @@ pub use super::{
     structural::{StopAt, StopPredicate},
     traits::{
         IsStructural, ItemArgumentParseable, ItemValueParseable, NetdocParseable,
-        NetdocParseableFields,
+        NetdocParseableFields, ItemObjectParseable,
     },
 };
 pub use crate::types::Unknown;
