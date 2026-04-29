@@ -825,13 +825,13 @@ mod test {
         assert_eq!(res.len(), 2);
     }
 
-        // === AUTHCERT D190BF3B00E311A9AEB6D62B51980E9B2109BAD1 ===
-        // These values come from testdata2/keys/authority_certificate.
-        const DIR_KEY_PUBLISHED: &str = "2000-01-01 00:00:05";
-        const DIR_KEY_EXPIRES: &str = "2001-01-01 00:00:05";
-        const FINGERPRINT: &str = "D190BF3B00E311A9AEB6D62B51980E9B2109BAD1";
-        const DIR_ADDRESS: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 7100);
-        const DIR_IDENTITY_KEY: &str = "
+    // === AUTHCERT D190BF3B00E311A9AEB6D62B51980E9B2109BAD1 ===
+    // These values come from testdata2/keys/authority_certificate.
+    const DIR_KEY_PUBLISHED: &str = "2000-01-01 00:00:05";
+    const DIR_KEY_EXPIRES: &str = "2001-01-01 00:00:05";
+    const FINGERPRINT: &str = "D190BF3B00E311A9AEB6D62B51980E9B2109BAD1";
+    const DIR_ADDRESS: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 7100);
+    const DIR_IDENTITY_KEY: &str = "
 -----BEGIN RSA PUBLIC KEY-----
 MIIBigKCAYEAt0rXD+1gYwKFAxrO4uNHQ9dQVUOGx5FxkioYNSct5Z3JU00dTKNJ
 jt4OGkFYwixWwk6KLDOiB+I/q9YIdA1NlQ5R3Hz8jjvFPVl0JQQm2LYzdSzv7/CZ
@@ -844,7 +844,7 @@ yfwfiPN6FQWlPyMCEB81HerCn03Zi5WgQLGo7PAeO4LFrLrU16DUC5/oJENeHs0T
 hWBehR+ct4OJAgMBAAE=
 -----END RSA PUBLIC KEY-----
     ";
-        const DIR_SIGNING_KEY: &str = "
+    const DIR_SIGNING_KEY: &str = "
 -----BEGIN RSA PUBLIC KEY-----
 MIIBCgKCAQEAtPF94+bThLI28kn6e+MmUECMMJ5UBlnQ+Mvwn8Zd85awPQTDz5Wu
 13sZDN3nWnhgSuP5q/WDYc5GPPtQdSWBiG1nJA2XLgEHTHf29iGZ+jAoGfIMJvBV
@@ -854,7 +854,7 @@ d7kQzUHbVP0KmYGK4qYntGDfP4g9SmpBoUUHyP3j9en9S6PMYv8m1YFO7M7JKu6Q
 dQZfGTxj9C/0b/jRklgn5JlKAl9eJQvCdwIDAQAB
 -----END RSA PUBLIC KEY-----
 ";
-        const DIR_CROSS_CERT_OBJECT: &str = "
+    const DIR_CROSS_CERT_OBJECT: &str = "
 -----BEGIN ID SIGNATURE-----
 NBaPdBNCNMah6cklrALzj0RdHymF/jPGOv9NmeqaXc0uTN06S/BlVM/xTjilu+dj
 sjPuT0BQL4/ZWyZR+R+gJJojKYILSId4IQ1elzRSxpFN+u2u/ZEmS6SR2SwpA05A
@@ -864,358 +864,353 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
 8HK5TzuknWlkRv3hCyRX+g==
 -----END ID SIGNATURE-----
 ";
-        const AUTHCERT_RAW: &str = include_str!("../../testdata2/keys/authority_certificate");
-        /// A system time in the range of [`DIR_KEY_PUBLISHED`] and [`DIR_KEY_EXPIRES`].
-        ///
-        /// Constructed by ourselves to have a time point we can use for testing
-        /// timestamp verification.
-        const VALID_SYSTEM_TIME: &str = "2000-06-01 00:00:00";
+    const AUTHCERT_RAW: &str = include_str!("../../testdata2/keys/authority_certificate");
+    /// A system time in the range of [`DIR_KEY_PUBLISHED`] and [`DIR_KEY_EXPIRES`].
+    ///
+    /// Constructed by ourselves to have a time point we can use for testing
+    /// timestamp verification.
+    const VALID_SYSTEM_TIME: &str = "2000-06-01 00:00:00";
 
-        // === AUTHCERT 0B8997614EC647C1C6B6A044E2B5408F0B823FB0 ===
-        // This values come from ../../testdata2/cached-certs--1
-        // A different authority certificate different from the one above.
-        const ALTERNATIVE_AUTHCERT_RAW: &str = include_str!("../../testdata2/cached-certs--1");
+    // === AUTHCERT 0B8997614EC647C1C6B6A044E2B5408F0B823FB0 ===
+    // This values come from ../../testdata2/cached-certs--1
+    // A different authority certificate different from the one above.
+    const ALTERNATIVE_AUTHCERT_RAW: &str = include_str!("../../testdata2/cached-certs--1");
 
-        /// Converts a string in the [`Iso8601TimeSp`] format to [`SystemTime`].
-        ///
-        /// This functions panics in the case the input is malformatted.
-        fn to_system_time(s: &str) -> SystemTime {
-            Iso8601TimeSp::from_str(s).unwrap().0
+    /// Converts a string in the [`Iso8601TimeSp`] format to [`SystemTime`].
+    ///
+    /// This functions panics in the case the input is malformatted.
+    fn to_system_time(s: &str) -> SystemTime {
+        Iso8601TimeSp::from_str(s).unwrap().0
+    }
+
+    /// Converts a PEM encoded RSA Public key to an [`rsa::PublicKey`].
+    ///
+    /// This function panics in the case the input is malformatted.
+    fn pem_to_rsa_pk(s: &str) -> rsa::PublicKey {
+        rsa::PublicKey::from_der(pem::parse(s).unwrap().contents()).unwrap()
+    }
+
+    /// Converts a hex-encoded RSA identity to an [`RsaIdentity`].
+    ///
+    /// This function panics in the case the input is malformatted.
+    fn to_rsa_id(s: &str) -> RsaIdentity {
+        RsaIdentity::from_hex(s).unwrap()
+    }
+
+    /// Tests whether a [`DirKeyCrossCert`] can be parsed properly.
+    #[test]
+    fn dir_auth_cross_cert() {
+        #[derive(Debug, Clone, PartialEq, Eq, Deftly)]
+        #[derive_deftly(NetdocParseable)]
+        struct Dummy {
+            dir_key_crosscert: CrossCert,
         }
 
-        /// Converts a PEM encoded RSA Public key to an [`rsa::PublicKey`].
-        ///
-        /// This function panics in the case the input is malformatted.
-        fn pem_to_rsa_pk(s: &str) -> rsa::PublicKey {
-            rsa::PublicKey::from_der(pem::parse(s).unwrap().contents()).unwrap()
-        }
+        // "Encodes" a DIR_CROSS_CERT_OBJECT by simply removing the lines
+        // indicating the BEGIN and END, as the purpose is to test multiple
+        // labels.
+        let encoded = DIR_CROSS_CERT_OBJECT
+            .lines()
+            .filter(|line| !line.starts_with("-----"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let decoded = pem::parse(DIR_CROSS_CERT_OBJECT)
+            .unwrap()
+            .contents()
+            .to_vec();
 
-        /// Converts a hex-encoded RSA identity to an [`RsaIdentity`].
-        ///
-        /// This function panics in the case the input is malformatted.
-        fn to_rsa_id(s: &str) -> RsaIdentity {
-            RsaIdentity::from_hex(s).unwrap()
-        }
-
-        /// Tests whether a [`DirKeyCrossCert`] can be parsed properly.
-        #[test]
-        fn dir_auth_cross_cert() {
-            #[derive(Debug, Clone, PartialEq, Eq, Deftly)]
-            #[derive_deftly(NetdocParseable)]
-            struct Dummy {
-                dir_key_crosscert: CrossCert,
-            }
-
-            // "Encodes" a DIR_CROSS_CERT_OBJECT by simply removing the lines
-            // indicating the BEGIN and END, as the purpose is to test multiple
-            // labels.
-            let encoded = DIR_CROSS_CERT_OBJECT
-                .lines()
-                .filter(|line| !line.starts_with("-----"))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let decoded = pem::parse(DIR_CROSS_CERT_OBJECT)
-                .unwrap()
-                .contents()
-                .to_vec();
-
-            // Try with `SIGNATURE`.
-            let cert = format!(
-                "dir-key-crosscert\n-----BEGIN SIGNATURE-----\n{encoded}\n-----END SIGNATURE-----"
-            );
-            let res = parse2::parse_netdoc::<Dummy>(&ParseInput::new(&cert, "")).unwrap();
-            assert_eq!(
-                res,
-                Dummy {
-                    dir_key_crosscert: CrossCert {
-                        signature: CrossCertObject(decoded.clone())
-                    }
+        // Try with `SIGNATURE`.
+        let cert = format!(
+            "dir-key-crosscert\n-----BEGIN SIGNATURE-----\n{encoded}\n-----END SIGNATURE-----"
+        );
+        let res = parse2::parse_netdoc::<Dummy>(&ParseInput::new(&cert, "")).unwrap();
+        assert_eq!(
+            res,
+            Dummy {
+                dir_key_crosscert: CrossCert {
+                    signature: CrossCertObject(decoded.clone())
                 }
-            );
+            }
+        );
 
-            // Try with `ID SIGNATURE`.
-            let cert = format!(
-                "dir-key-crosscert\n-----BEGIN ID SIGNATURE-----\n{encoded}\n-----END ID SIGNATURE-----"
-            );
-            let res = parse2::parse_netdoc::<Dummy>(&ParseInput::new(&cert, "")).unwrap();
-            assert_eq!(
-                res,
-                Dummy {
-                    dir_key_crosscert: CrossCert {
-                        signature: CrossCertObject(decoded.clone())
-                    }
+        // Try with `ID SIGNATURE`.
+        let cert = format!(
+            "dir-key-crosscert\n-----BEGIN ID SIGNATURE-----\n{encoded}\n-----END ID SIGNATURE-----"
+        );
+        let res = parse2::parse_netdoc::<Dummy>(&ParseInput::new(&cert, "")).unwrap();
+        assert_eq!(
+            res,
+            Dummy {
+                dir_key_crosscert: CrossCert {
+                    signature: CrossCertObject(decoded.clone())
                 }
-            );
-
-            // Try with different label and fail.
-            let cert =
-                format!("dir-key-crosscert\n-----BEGIN WHAT-----\n{encoded}\n-----END WHAT-----");
-            let res = parse2::parse_netdoc::<Dummy>(&ParseInput::new(&cert, ""));
-            match res {
-                Err(ParseError {
-                    problem: ErrorProblem::ObjectIncorrectLabel,
-                    doctype: "dir-key-crosscert",
-                    file: _,
-                    lno: 1,
-                    column: None,
-                }) => {}
-                other => panic!("not expected error {other:#?}"),
             }
+        );
 
-            // Try with extra args.
-            let cert = format!(
-                "dir-key-crosscert arg1\n-----BEGIN ID SIGNATURE-----\n{encoded}\n-----END ID SIGNATURE-----"
-            );
-            let res = parse2::parse_netdoc::<Dummy>(&ParseInput::new(&cert, ""));
-            match res {
-                Err(ParseError {
-                    problem: ErrorProblem::UnexpectedArgument { column: 19 },
-                    doctype: "dir-key-crosscert",
-                    file: _,
-                    lno: 1,
-                    column: Some(19),
-                }) => {}
-                other => panic!("not expected error {other:#?}"),
-            }
+        // Try with different label and fail.
+        let cert =
+            format!("dir-key-crosscert\n-----BEGIN WHAT-----\n{encoded}\n-----END WHAT-----");
+        let res = parse2::parse_netdoc::<Dummy>(&ParseInput::new(&cert, ""));
+        match res {
+            Err(ParseError {
+                problem: ErrorProblem::ObjectIncorrectLabel,
+                doctype: "dir-key-crosscert",
+                file: _,
+                lno: 1,
+                column: None,
+            }) => {}
+            other => panic!("not expected error {other:#?}"),
         }
 
-        #[test]
-        fn dir_auth_cert() {
-            let res =
-                parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, ""))
-                    .unwrap();
-            assert_eq!(
-                *res.inspect_unverified().0,
-                AuthCert {
-                    dir_key_certificate_version: AuthCertVersion::V3,
-                    dir_address: Some(DIR_ADDRESS),
-                    fingerprint: types::Fingerprint(to_rsa_id(FINGERPRINT)),
-                    dir_key_published: Iso8601TimeSp(to_system_time(DIR_KEY_PUBLISHED)),
-                    dir_key_expires: Iso8601TimeSp(to_system_time(DIR_KEY_EXPIRES)),
-                    dir_identity_key: pem_to_rsa_pk(DIR_IDENTITY_KEY),
-                    dir_signing_key: pem_to_rsa_pk(DIR_SIGNING_KEY),
-                    dir_key_crosscert: CrossCert {
-                        signature: CrossCertObject(
-                            pem::parse(DIR_CROSS_CERT_OBJECT)
-                                .unwrap()
-                                .contents()
-                                .to_vec()
-                        )
-                    },
-                    __non_exhaustive: (),
-                }
-            );
+        // Try with extra args.
+        let cert = format!(
+            "dir-key-crosscert arg1\n-----BEGIN ID SIGNATURE-----\n{encoded}\n-----END ID SIGNATURE-----"
+        );
+        let res = parse2::parse_netdoc::<Dummy>(&ParseInput::new(&cert, ""));
+        match res {
+            Err(ParseError {
+                problem: ErrorProblem::UnexpectedArgument { column: 19 },
+                doctype: "dir-key-crosscert",
+                file: _,
+                lno: 1,
+                column: Some(19),
+            }) => {}
+            other => panic!("not expected error {other:#?}"),
         }
+    }
 
-        #[test]
-        fn dir_auth_signature() {
-            let res =
-                parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, ""))
-                    .unwrap();
+    #[test]
+    fn dir_auth_cert() {
+        let res =
+            parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, "")).unwrap();
+        assert_eq!(
+            *res.inspect_unverified().0,
+            AuthCert {
+                dir_key_certificate_version: AuthCertVersion::V3,
+                dir_address: Some(DIR_ADDRESS),
+                fingerprint: types::Fingerprint(to_rsa_id(FINGERPRINT)),
+                dir_key_published: Iso8601TimeSp(to_system_time(DIR_KEY_PUBLISHED)),
+                dir_key_expires: Iso8601TimeSp(to_system_time(DIR_KEY_EXPIRES)),
+                dir_identity_key: pem_to_rsa_pk(DIR_IDENTITY_KEY),
+                dir_signing_key: pem_to_rsa_pk(DIR_SIGNING_KEY),
+                dir_key_crosscert: CrossCert {
+                    signature: CrossCertObject(
+                        pem::parse(DIR_CROSS_CERT_OBJECT)
+                            .unwrap()
+                            .contents()
+                            .to_vec()
+                    )
+                },
+                __non_exhaustive: (),
+            }
+        );
+    }
 
-            // Test a valid signature.
+    #[test]
+    fn dir_auth_signature() {
+        let res =
+            parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, "")).unwrap();
+
+        // Test a valid signature.
+        res.clone()
+            .verify(
+                &[to_rsa_id(FINGERPRINT)],
+                Duration::ZERO,
+                Duration::ZERO,
+                to_system_time(VALID_SYSTEM_TIME),
+            )
+            .unwrap();
+
+        // Test with an invalid authority.
+        assert_eq!(
             res.clone()
                 .verify(
-                    &[to_rsa_id(FINGERPRINT)],
+                    &[],
                     Duration::ZERO,
                     Duration::ZERO,
                     to_system_time(VALID_SYSTEM_TIME),
                 )
-                .unwrap();
+                .unwrap_err(),
+            VerifyFailed::InsufficientTrustedSigners
+        );
 
-            // Test with an invalid authority.
-            assert_eq!(
-                res.clone()
-                    .verify(
-                        &[],
-                        Duration::ZERO,
-                        Duration::ZERO,
-                        to_system_time(VALID_SYSTEM_TIME),
-                    )
-                    .unwrap_err(),
-                VerifyFailed::InsufficientTrustedSigners
-            );
-
-            // Test a key too far in the future.
-            assert_eq!(
-                res.clone()
-                    .verify(
-                        &[to_rsa_id(FINGERPRINT)],
-                        Duration::ZERO,
-                        Duration::ZERO,
-                        SystemTime::UNIX_EPOCH,
-                    )
-                    .unwrap_err(),
-                VerifyFailed::TooNew
-            );
-
-            // Test an almost too new.
+        // Test a key too far in the future.
+        assert_eq!(
             res.clone()
                 .verify(
                     &[to_rsa_id(FINGERPRINT)],
                     Duration::ZERO,
                     Duration::ZERO,
-                    to_system_time(DIR_KEY_PUBLISHED),
+                    SystemTime::UNIX_EPOCH,
                 )
-                .unwrap();
+                .unwrap_err(),
+            VerifyFailed::TooNew
+        );
 
-            // Now fail when we are 1s below ...
-            assert_eq!(
-                res.clone()
-                    .verify(
-                        &[to_rsa_id(FINGERPRINT)],
-                        Duration::ZERO,
-                        Duration::ZERO,
-                        to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1),
-                    )
-                    .unwrap_err(),
-                VerifyFailed::TooNew
-            );
+        // Test an almost too new.
+        res.clone()
+            .verify(
+                &[to_rsa_id(FINGERPRINT)],
+                Duration::ZERO,
+                Duration::ZERO,
+                to_system_time(DIR_KEY_PUBLISHED),
+            )
+            .unwrap();
 
-            // ... but succeed again with a clock skew tolerance.
+        // Now fail when we are 1s below ...
+        assert_eq!(
             res.clone()
                 .verify(
                     &[to_rsa_id(FINGERPRINT)],
-                    Duration::from_secs(1),
+                    Duration::ZERO,
                     Duration::ZERO,
                     to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1),
                 )
-                .unwrap();
+                .unwrap_err(),
+            VerifyFailed::TooNew
+        );
 
-            // Test a key too old.
-            assert_eq!(
-                res.clone()
-                    .verify(
-                        &[to_rsa_id(FINGERPRINT)],
-                        Duration::ZERO,
-                        Duration::ZERO,
-                        SystemTime::UNIX_EPOCH
-                            .checked_add(Duration::from_secs(2000000000))
-                            .unwrap(),
-                    )
-                    .unwrap_err(),
-                VerifyFailed::TooOld
-            );
+        // ... but succeed again with a clock skew tolerance.
+        res.clone()
+            .verify(
+                &[to_rsa_id(FINGERPRINT)],
+                Duration::from_secs(1),
+                Duration::ZERO,
+                to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1),
+            )
+            .unwrap();
 
-            // Test an almost too old.
+        // Test a key too old.
+        assert_eq!(
             res.clone()
                 .verify(
                     &[to_rsa_id(FINGERPRINT)],
                     Duration::ZERO,
                     Duration::ZERO,
-                    to_system_time(DIR_KEY_EXPIRES),
+                    SystemTime::UNIX_EPOCH
+                        .checked_add(Duration::from_secs(2000000000))
+                        .unwrap(),
                 )
-                .unwrap();
+                .unwrap_err(),
+            VerifyFailed::TooOld
+        );
 
-            // Now fail when we are 1s above ...
-            assert_eq!(
-                res.clone()
-                    .verify(
-                        &[to_rsa_id(FINGERPRINT)],
-                        Duration::ZERO,
-                        Duration::ZERO,
-                        to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1),
-                    )
-                    .unwrap_err(),
-                VerifyFailed::TooOld
-            );
+        // Test an almost too old.
+        res.clone()
+            .verify(
+                &[to_rsa_id(FINGERPRINT)],
+                Duration::ZERO,
+                Duration::ZERO,
+                to_system_time(DIR_KEY_EXPIRES),
+            )
+            .unwrap();
 
-            // ... but succeed again with a clock skew tolerance.
+        // Now fail when we are 1s above ...
+        assert_eq!(
             res.clone()
                 .verify(
                     &[to_rsa_id(FINGERPRINT)],
                     Duration::ZERO,
-                    Duration::from_secs(1),
+                    Duration::ZERO,
                     to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1),
                 )
-                .unwrap();
+                .unwrap_err(),
+            VerifyFailed::TooOld
+        );
 
-            // Check with non-matching fingerprint and long-term identity key.
-            let mut cert =
-                parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, ""))
-                    .unwrap();
-            let alternative_cert = parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(
-                ALTERNATIVE_AUTHCERT_RAW,
-                "",
-            ))
+        // ... but succeed again with a clock skew tolerance.
+        res.clone()
+            .verify(
+                &[to_rsa_id(FINGERPRINT)],
+                Duration::ZERO,
+                Duration::from_secs(1),
+                to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1),
+            )
             .unwrap();
-            cert.body.dir_identity_key = alternative_cert.body.dir_identity_key.clone();
-            assert_eq!(
-                cert.verify(
-                    &[to_rsa_id(FINGERPRINT)],
-                    Duration::ZERO,
-                    Duration::ZERO,
-                    to_system_time(VALID_SYSTEM_TIME),
-                )
-                .unwrap_err(),
-                VerifyFailed::Inconsistent
-            );
 
-            // Check invalid cross-cert.
-            let mut cert =
-                parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, ""))
-                    .unwrap();
-            cert.body.dir_key_crosscert = alternative_cert.body.dir_key_crosscert.clone();
-            assert_eq!(
-                cert.verify(
-                    &[to_rsa_id(FINGERPRINT)],
-                    Duration::ZERO,
-                    Duration::ZERO,
-                    to_system_time(VALID_SYSTEM_TIME),
-                )
-                .unwrap_err(),
-                VerifyFailed::VerifyFailed
-            );
+        // Check with non-matching fingerprint and long-term identity key.
+        let mut cert =
+            parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, "")).unwrap();
+        let alternative_cert = parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(
+            ALTERNATIVE_AUTHCERT_RAW,
+            "",
+        ))
+        .unwrap();
+        cert.body.dir_identity_key = alternative_cert.body.dir_identity_key.clone();
+        assert_eq!(
+            cert.verify(
+                &[to_rsa_id(FINGERPRINT)],
+                Duration::ZERO,
+                Duration::ZERO,
+                to_system_time(VALID_SYSTEM_TIME),
+            )
+            .unwrap_err(),
+            VerifyFailed::Inconsistent
+        );
 
-            // Check outer signature.
-            let mut cert =
-                parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, ""))
-                    .unwrap();
-            cert.sigs = alternative_cert.sigs.clone();
-            assert_eq!(
-                cert.verify(
-                    &[to_rsa_id(FINGERPRINT)],
-                    Duration::ZERO,
-                    Duration::ZERO,
-                    to_system_time(VALID_SYSTEM_TIME),
-                )
-                .unwrap_err(),
-                VerifyFailed::VerifyFailed
-            );
-        }
+        // Check invalid cross-cert.
+        let mut cert =
+            parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, "")).unwrap();
+        cert.body.dir_key_crosscert = alternative_cert.body.dir_key_crosscert.clone();
+        assert_eq!(
+            cert.verify(
+                &[to_rsa_id(FINGERPRINT)],
+                Duration::ZERO,
+                Duration::ZERO,
+                to_system_time(VALID_SYSTEM_TIME),
+            )
+            .unwrap_err(),
+            VerifyFailed::VerifyFailed
+        );
 
-        #[test]
-        #[cfg(feature = "incomplete")]
-        fn roundtrip() -> Result<(), anyhow::Error> {
-            let mut rng = test_rng::testing_rng();
-            let k_auth_id_rsa = rsa::KeyPair::generate(&mut rng)?;
-            let k_auth_sign_rsa = rsa::KeyPair::generate(&mut rng)?;
+        // Check outer signature.
+        let mut cert =
+            parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, "")).unwrap();
+        cert.sigs = alternative_cert.sigs.clone();
+        assert_eq!(
+            cert.verify(
+                &[to_rsa_id(FINGERPRINT)],
+                Duration::ZERO,
+                Duration::ZERO,
+                to_system_time(VALID_SYSTEM_TIME),
+            )
+            .unwrap_err(),
+            VerifyFailed::VerifyFailed
+        );
+    }
 
-            let secs = |s| Duration::from_secs(s);
-            let now = parse_rfc3339("1993-01-01T00:00:00Z")?;
-            let published = now - secs(1000);
-            let expires = published + secs(86400);
-            let tolerance = secs(10);
+    #[test]
+    #[cfg(feature = "incomplete")]
+    fn roundtrip() -> Result<(), anyhow::Error> {
+        let mut rng = test_rng::testing_rng();
+        let k_auth_id_rsa = rsa::KeyPair::generate(&mut rng)?;
+        let k_auth_sign_rsa = rsa::KeyPair::generate(&mut rng)?;
 
-            let input_value = AuthCert {
-                dir_address: Some("192.0.2.17:7000".parse()?),
-                ..AuthCert::new_base(&k_auth_id_rsa, &k_auth_sign_rsa, published, expires)?
-            };
-            dbg!(&input_value);
+        let secs = |s| Duration::from_secs(s);
+        let now = parse_rfc3339("1993-01-01T00:00:00Z")?;
+        let published = now - secs(1000);
+        let expires = published + secs(86400);
+        let tolerance = secs(10);
 
-            let encoded = input_value.encode_sign(&k_auth_id_rsa)?;
+        let input_value = AuthCert {
+            dir_address: Some("192.0.2.17:7000".parse()?),
+            ..AuthCert::new_base(&k_auth_id_rsa, &k_auth_sign_rsa, published, expires)?
+        };
+        dbg!(&input_value);
 
-            let reparsed_uv: AuthCertUnverified =
-                parse_netdoc(&ParseInput::new(encoded.as_ref(), "<encoded>"))?;
-            let reparsed_value = reparsed_uv.verify(
-                &[k_auth_id_rsa.to_public_key().to_rsa_identity()],
-                tolerance,
-                tolerance,
-                now,
-            )?;
-            dbg!(&reparsed_value);
+        let encoded = input_value.encode_sign(&k_auth_id_rsa)?;
 
-            assert_eq!(input_value, reparsed_value);
-            Ok(())
-        }
+        let reparsed_uv: AuthCertUnverified =
+            parse_netdoc(&ParseInput::new(encoded.as_ref(), "<encoded>"))?;
+        let reparsed_value = reparsed_uv.verify(
+            &[k_auth_id_rsa.to_public_key().to_rsa_identity()],
+            tolerance,
+            tolerance,
+            now,
+        )?;
+        dbg!(&reparsed_value);
+
+        assert_eq!(input_value, reparsed_value);
+        Ok(())
+    }
 }
