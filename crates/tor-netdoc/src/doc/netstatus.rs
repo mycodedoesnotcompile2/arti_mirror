@@ -520,8 +520,46 @@ impl ConsensusFlavor {
     }
 }
 
+define_derive_deftly! {
+    /// Bespoke derives applied to [`DirectorySignatureHashAlgo`]
+    ///
+    /// Generates:
+    ///
+    ///  * `pub struct DirectorySignaturesHashesAccu`
+    DirectorySignaturesHashesAccu:
+
+    ${define FNAME ${paste ${snake_case $vname}} }
+
+    /// `directory-signature`a hash algorithm argument
+    #[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Deftly)]
+    #[derive_deftly(AsMutSelf)]
+    #[non_exhaustive]
+    pub struct DirectorySignaturesHashesAccu {
+      $(
+        ${vattrs doc}
+        // XXXX make no longer pub(crate)
+        pub(crate) $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
+      )
+
+/*
+      // XXXX actually implement this
+
+      /// `sha1` but without the algorithm name
+      ///
+      /// This is needed because the hash includes the whole signature item keyword line,
+      /// and therefore a signature with the `sha1` explicitly stated,
+      /// and one without, have different hashes!
+      ///
+      /// So we mustn't use the `sha1` field for both implicit and explicit use of SHA-1,
+      /// or multiple signatures with different syntax would overwrite each others'
+      /// different hashes.
+      pub(crate) sha1_unnamed: Option<[u8; 20]>,
+*/
+    }
+}
+
 define_directory_signature_hash_algo! {
-    #[derive_deftly_adhoc] // TODO DIRAUTH; suppresses complaints about attrs used only in poc
+    #[derive_deftly(DirectorySignaturesHashesAccu)]
 }
 
 /// `algorithm` field in a `directory-signature` item

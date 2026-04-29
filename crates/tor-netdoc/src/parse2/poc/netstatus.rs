@@ -5,7 +5,7 @@ use super::*;
 use crate::doc::{self, authcert};
 use crate::types;
 use authcert::AuthCert as DirAuthKeyCert;
-use doc::netstatus::{ConsensusAuthoritySection, VoteAuthoritySection};
+use doc::netstatus::{ConsensusAuthoritySection, DirectorySignaturesHashesAccu, VoteAuthoritySection};
 
 mod ns_per_flavour_macros;
 pub use ns_per_flavour_macros::*;
@@ -90,33 +90,6 @@ define_derive_deftly! {
 
     ${define FNAME ${paste ${snake_case $vname}} }
 
-    /// `directory-signature`a hash algorithm argument
-    #[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Deftly)]
-    #[derive_deftly(AsMutSelf)]
-    #[non_exhaustive]
-    pub struct DirectorySignaturesHashesAccu {
-      $(
-        ${vattrs doc}
-        // XXXX make no longer pub(crate)
-        pub(crate) $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
-      )
-
-/*
-      // XXXX actually implement this
-
-      /// `sha1` but without the algorithm name
-      ///
-      /// This is needed because the hash includes the whole signature item keyword line,
-      /// and therefore a signature with the `sha1` explicitly stated,
-      /// and one without, have different hashes!
-      ///
-      /// So we mustn't use the `sha1` field for both implicit and explicit use of SHA-1,
-      /// or multiple signatures with different syntax would overwrite each others'
-      /// different hashes.
-      pub(crate) sha1_unnamed: Option<[u8; 20]>,
-*/
-    }
-
     impl DirectorySignaturesHashesAccu {
         /// If `algorithm` is an algorithm name, calculate the hash
         ///
@@ -175,6 +148,7 @@ define_derive_deftly! {
 
 define_directory_signature_hash_algo! {
     #[derive_deftly(DirectorySignatureHashesAccu)]
+    #[derive_deftly_adhoc] // XXXX suppress unknown attr errors
 }
 
 /// Unsupported `vote-status` value
