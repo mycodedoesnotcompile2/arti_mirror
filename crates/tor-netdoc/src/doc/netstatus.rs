@@ -65,13 +65,14 @@ pub use proto_statuses_parse2_encode::ProtoStatusesNetdocParseAccumulator;
 use crate::doc::authcert::EncodedAuthCert;
 
 use crate::doc::authcert::{AuthCert, AuthCertKeyIds};
-use crate::encode::{ItemValueEncodable, NetdocEncodable, NetdocEncoder};
+use crate::encode::{ItemArgument, ItemEncoder, ItemValueEncodable, NetdocEncodable, NetdocEncoder};
 use crate::parse::keyword::Keyword;
 use crate::parse::parser::{Section, SectionRules, SectionRulesBuilder};
 use crate::parse::tokenize::{Item, ItemResult, NetDocReader};
 use crate::parse2::{
     self, ArgumentStream, ErrorProblem, IsStructural, ItemStream, ItemValueParseable, KeywordRef,
     NetdocParseable, StopAt,
+    ArgumentError, ItemArgumentParseable,
 };
 use crate::types::*;
 use crate::types::relay_flags::{self, DocRelayFlags};
@@ -523,6 +524,60 @@ define_directory_signature_hash_algo! {
     #[derive_deftly_adhoc] // TODO DIRAUTH; suppresses complaints about attrs used only in poc
 }
 
+/// `algorithm` field in a `directory-signature` item
+///
+/// This is extremely bizarre: it's an *optional item at the start of the arguments*!
+// TODO SPEC #350
+///
+/// So we parse it with some kind of nightmarish lookahead.
+///
+/// Additionally, to be able to convey the signatures accurately, without breaking them,
+/// we must remember whether the argument was present.
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:directory-signature>
+#[derive(Debug, Clone, derive_more::Deref, derive_more::DerefMut)]
+#[allow(clippy::exhaustive_structs)]
+pub struct DigestAlgoInSignature(pub Option<KeywordOrString<DirectorySignatureHashAlgo>>);
+
+impl ItemArgumentParseable for DigestAlgoInSignature {
+    fn from_args<'s>(args: &mut ArgumentStream<'s>) -> StdResult<Self, ArgumentError> {
+        let v = if (|| {
+            let s = args.clone().next()?;
+            // Treat it as a fingerprint if it doesn't have any non-hex characters
+            // (including lowercase ones).  If we reuse this item for new algorithms
+            // they should have at least one letter g-z in their name.
+            s.chars().all(|c| c.is_ascii_hexdigit()).then_some(())
+        })()
+        .is_some()
+        {
+            // next argument looks enough like a fingerprint that we don't treat as an algo name
+            None
+        } else {
+            Some(KeywordOrString::from_args(args)?)
+        };
+        Ok(DigestAlgoInSignature(v))
+    }
+}
+impl ItemArgument for DigestAlgoInSignature {
+    fn write_arg_onto(&self, out: &mut ItemEncoder<'_>) -> StdResult<(), Bug> {
+        if let Some(y) = &self.0 {
+            y.write_arg_onto(out)?;
+        }
+        Ok(())
+    }
+}
+impl DigestAlgoInSignature {
+    /// Return the actual algorithm
+    ///
+    /// This handles the defaulting, where an absent argument means `sha1`.
+    pub fn algorithm(&self) -> &KeywordOrString<DirectorySignatureHashAlgo> {
+        self.as_ref()
+            .unwrap_or(&KeywordOrString::Known(DirectorySignatureHashAlgo::Sha1))
+    }
+}
+
+impl NormalItemArgument for DirectorySignatureHashAlgo {}
+
 /// The signature of a single directory authority on a networkstatus document.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -531,7 +586,7 @@ pub struct Signature {
     ///
     /// Currently sha1 and sh256 are recognized.  Here we only support
     /// sha256.
-    pub digest_algo: KeywordOrString<DirectorySignatureHashAlgo>,
+    pub digest_algo: DigestAlgoInSignature,
     /// Fingerprints of the keys for the authority that made
     /// this signature.
     pub key_ids: AuthCertKeyIds,
@@ -1463,6 +1518,7 @@ impl Signature {
         };
 
         let digest_algo = digest_algo.to_string().parse().void_unwrap();
+        let digest_algo = DigestAlgoInSignature(Some(digest_algo));
         let id_fingerprint = id_fp.parse::<Fingerprint>()?.into();
         let sk_fingerprint = sk_fp.parse::<Fingerprint>()?.into();
         let key_ids = AuthCertKeyIds {
@@ -1574,7 +1630,7 @@ impl SignatureGroup {
             use DirectorySignatureHashAlgo as DSHA;
             use KeywordOrString as KOS;
 
-            let d: Option<&[u8]> = match sig.digest_algo {
+            let d: Option<&[u8]> = match sig.digest_algo.algorithm() {
                 KOS::Known(DSHA::Sha256) => self.sha256.as_ref().map(|a| &a[..]),
                 KOS::Known(DSHA::Sha1) => self.sha1.as_ref().map(|a| &a[..]),
                 _ => None, // We don't know how to find this digest.
