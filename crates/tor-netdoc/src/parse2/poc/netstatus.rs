@@ -112,18 +112,6 @@ define_derive_deftly! {
 
             Some(algo.into())
         }
-
-        /// Return the hash value for a specific algorithm, as a slice
-        ///
-        /// `None` if the value wasn't computed.
-        /// That shouldn't happen.
-        // XXXX make no longer pub(crate)
-        pub(crate) fn hash_slice_for_verification(&self, algo: $ttype) -> Option<&[u8]> {
-            // XXXX handle sha1_unnamed correctly
-            match algo { $(
-                $vtype => Some(self.$FNAME.as_ref()?),
-            ) }
-        }
     }
 
     // XXXX we have two DirectorySignatureHashAlgo types, which we, briefly,
@@ -254,7 +242,7 @@ fn verify_general_timeless(
                 };
 
                 let h = hashes
-                    .hash_slice_for_verification(*hash_algo)
+                    .hash_slice_for_verification((*hash_algo).into())
                     .ok_or(VF::Bug)?;
 
                 let () = cert.dir_signing_key.verify(h, rsa_signature)?;
