@@ -600,7 +600,10 @@ define_derive_deftly! {
         /// `None` if the value wasn't computed.
         /// That shouldn't happen.
         // XXXX make no longer pub(crate)
-        pub(crate) fn hash_slice_for_verification(&self, algo: $ttype) -> Option<&[u8]> {
+        pub(crate) fn hash_slice_for_verification(
+            &self,
+            algo: $ttype,
+        ) -> Option<&[u8]> {
             // XXXX handle sha1_unnamed correctly
             match algo { $(
                 $vtype => Some(self.$FNAME.as_ref()?),
