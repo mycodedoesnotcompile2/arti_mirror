@@ -71,7 +71,7 @@ use crate::parse::parser::{Section, SectionRules, SectionRulesBuilder};
 use crate::parse::tokenize::{Item, ItemResult, NetDocReader};
 use crate::parse2::{
     self, ArgumentStream, ErrorProblem, IsStructural, ItemStream, ItemValueParseable, KeywordRef,
-    NetdocParseable, StopAt,
+    NetdocParseable, SignatureHashInputs, SignatureItemParseable, StopAt, UnparsedItem,
     ArgumentError, ItemArgumentParseable,
 };
 use crate::types::{self, *};
@@ -525,7 +525,8 @@ define_derive_deftly! {
     ///
     /// Generates:
     ///
-    ///  * `pub struct DirectorySignaturesHashesAccu`
+    ///  * [`DirectorySignaturesHashesAccu`]
+    ///  * [`DirectorySignaturesHashesAccu::update_from`]
     DirectorySignaturesHashesAccu:
 
     ${define FNAME ${paste ${snake_case $vname}} }
@@ -555,6 +556,43 @@ define_derive_deftly! {
       /// different hashes.
       pub(crate) sha1_unnamed: Option<[u8; 20]>,
 */
+    }
+
+    impl DirectorySignaturesHashesAccu {
+        /// Calculate the hash for a signature item and update this accumulator
+        // XXXX make no longer pub(crate)
+        pub(crate) fn update_from(
+            &mut self,
+            algo: &DigestAlgoInSignature,
+            body: &SignatureHashInputs,
+        ) {
+            // Update the hash in self.$UPDATE according to algorithm $AGLO
+            // (uses dynamic bindings of those parameters)
+            ${define HASH {
+                    // XXXX indentation is wrong
+                    let mut h = tor_llcrypto::d::$ALGO::new();
+                    h.update(body.body().body());
+                    h.update(body.signature_item_kw_spc);
+                    // XXXX Unconditionally write.  This can involve wasted work.
+                    self.$UPDATE = Some(h.finalize().into());
+            }}
+
+            match &**algo {
+              $(
+                Some(KeywordOrString::Known($vtype)) => {
+                    ${define UPDATE $FNAME}
+                    ${define ALGO $vname}
+                    $HASH
+                }
+              )
+                None => {
+                    ${define UPDATE sha1} // XXXX wrong
+                    ${define ALGO Sha1}
+                    $HASH
+                }
+                Some(KeywordOrString::Unknown(..)) => {}
+            }
+        }
     }
 }
 
@@ -1358,7 +1396,7 @@ mod parse2_impls {
     use super::*;
     pub(super) use parse2::{
         ArgumentError as AE, ArgumentStream, ErrorProblem as EP, ItemArgumentParseable,
-        ItemValueParseable, NetdocParseableFields, UnparsedItem,
+        ItemValueParseable, NetdocParseableFields,
     };
     use std::result::Result;
 

@@ -99,19 +99,18 @@ define_derive_deftly! {
             algorithm: &str,
             body: &SignatureHashInputs,
         ) -> Option<$ttype> {
-            Some(match algorithm {
-              $(
-                ${concat $FNAME} => {
-                    let mut h = tor_llcrypto::d::$vname::new();
-                    h.update(body.body().body());
-                    h.update(body.signature_item_kw_spc);
-                    // XXXX Unconditionally write.  This can involve wasted work.
-                    self.$FNAME = Some(h.finalize().into());
-                    $vtype
-                }
-              )
-                _ => return None,
-            })
+            let Ok(algo) = algorithm.parse()
+            else { return None };
+
+            // XXXX this is just wrong, but our tests don't catch it right now,
+            // and we are about to delete this whole function.
+            let algo_is = doc::netstatus::DigestAlgoInSignature(Some(
+                types::KeywordOrString::Known(algo)
+            ));
+
+            self.update_from(&algo_is, body);
+
+            Some(algo.into())
         }
 
         /// Return the hash value for a specific algorithm, as a slice
