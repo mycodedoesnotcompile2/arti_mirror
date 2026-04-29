@@ -527,6 +527,7 @@ define_derive_deftly! {
     ///
     ///  * [`DirectorySignaturesHashesAccu`]
     ///  * [`DirectorySignaturesHashesAccu::update_from`]
+    ///  * [`DirectorySignaturesHashesAccu::hash_slice_for_verification`]
     DirectorySignaturesHashesAccu:
 
     ${define FNAME ${paste ${snake_case $vname}} }

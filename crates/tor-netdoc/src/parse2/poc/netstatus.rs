@@ -3,14 +3,13 @@
 use super::*;
 
 use crate::doc::{self, authcert};
-use crate::types;
-use authcert::AuthCert as DirAuthKeyCert;
+use crate::types::{self, KeywordOrString};
+use authcert::{AuthCertKeyIds, AuthCert as DirAuthKeyCert};
 use doc::netstatus::{ConsensusAuthoritySection, DirectorySignaturesHashesAccu, VoteAuthoritySection};
+pub use doc::netstatus::Signature as NdiDirectorySignature;
 
 mod ns_per_flavour_macros;
 pub use ns_per_flavour_macros::*;
-
-use crate::doc::netstatus::DirectorySignatureHashAlgo as ProdAlgo; // XXXX remove
 
 ns_per_flavour_macros::ns_export_flavoured_types! {
     NetworkStatus, NetworkStatusUnverified, Router,
@@ -46,98 +45,6 @@ pub struct NdiR {
     pub identity: String, // In non-demo, use a better type
 }
 
-/// `directory-signature` value
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub enum NdiDirectorySignature {
-    /// Known "hash function" name
-    Known {
-        /// Hash algorithm
-        hash_algo: DirectorySignatureHashAlgo,
-        /// H(KP\_auth\_id\_rsa)
-        h_kp_auth_id_rsa: pk::rsa::RsaIdentity,
-        /// H(kp\_auth\_sign\_rsa)
-        h_kp_auth_sign_rsa: pk::rsa::RsaIdentity,
-        /// RSA signature
-        rsa_signature: Vec<u8>,
-    },
-    /// Unknown "hash function" name
-    ///
-    /// TODO torspec#350;
-    /// might have been an unknown algorithm, or might be invalid hex, or something.
-    Unknown {},
-}
-define_derive_deftly! {
-    /// Ad-hoc derives for [`DirectorySignatureHash`] impls, avoiding copypasta bugs
-    ///
-    /// # Input
-    ///
-    ///  * `pub enum DirectorySignatureHashAlgo`
-    ///  * Unit variants
-    ///  * Each variant with `#[deftly(hash_len = "N")]`
-    ///    where `N` is the digest length in bytes.
-    ///
-    /// # Generated code
-    ///
-    ///  * `pub enum DirectorySignaturesHashesAccu`,
-    ///    with each variant a 1-tuple containing `Option<[u8; N]>`.
-    ///    (These are `None` if this hash has not been computed yet.)
-    ///
-    ///  * `DirectorySignaturesHashesAccu::parse_keyword_and_hash`
-    ///
-    ///  * `DirectorySignaturesHashesAccu::hash_slice_for_verification`
-    DirectorySignatureHashesAccu expect items, beta_deftly:
-
-    ${define FNAME ${paste ${snake_case $vname}} }
-
-    impl DirectorySignaturesHashesAccu {
-        /// If `algorithm` is an algorithm name, calculate the hash
-        ///
-        /// Otherwise, return `None`.
-        fn parse_keyword_and_hash(
-            &mut self,
-            algorithm: &str,
-            body: &SignatureHashInputs,
-        ) -> Option<$ttype> {
-            let Ok(algo) = algorithm.parse()
-            else { return None };
-
-            // XXXX this is just wrong, but our tests don't catch it right now,
-            // and we are about to delete this whole function.
-            let algo_is = doc::netstatus::DigestAlgoInSignature(Some(
-                types::KeywordOrString::Known(algo)
-            ));
-
-            self.update_from(&algo_is, body);
-
-            Some(algo.into())
-        }
-    }
-
-    // XXXX we have two DirectorySignatureHashAlgo types, which we, briefly,
-    // need to convert between!
-    impl From<ProdAlgo> for DirectorySignatureHashAlgo {
-        fn from(other: ProdAlgo) -> Self {
-            match other { $(
-                ProdAlgo::$vname => DirectorySignatureHashAlgo::$vname,
-            ) }
-        }
-    }
-    // XXXX
-    impl From<DirectorySignatureHashAlgo> for ProdAlgo {
-        fn from(other: DirectorySignatureHashAlgo) -> Self {
-            match other { $(
-                DirectorySignatureHashAlgo::$vname => ProdAlgo::$vname,
-            ) }
-        }
-    }
-}
-
-define_directory_signature_hash_algo! {
-    #[derive_deftly(DirectorySignatureHashesAccu)]
-    #[derive_deftly_adhoc] // XXXX suppress unknown attr errors
-}
-
 /// Unsupported `vote-status` value
 ///
 /// This message is not normally actually shown since our `ErrorProblem` doesn't contain it.
@@ -145,60 +52,6 @@ define_directory_signature_hash_algo! {
 #[non_exhaustive]
 #[error("invalid value for vote-status in network status document")]
 pub struct InvalidNetworkStatusVoteStatus {}
-
-impl SignatureItemParseable for NdiDirectorySignature {
-    type HashAccu = DirectorySignaturesHashesAccu;
-
-    // TODO torspec#350.  That's why this manual impl is needed
-    fn from_unparsed_and_body<'s>(
-        mut input: UnparsedItem<'s>,
-        document_body: &SignatureHashInputs<'_>,
-        hashes: &mut DirectorySignaturesHashesAccu,
-    ) -> Result<Self, EP> {
-        let object = input.object();
-        let args = input.args_mut();
-        let maybe_algorithm = args.clone().next().ok_or(EP::MissingArgument {
-            field: "algorithm/h_kp_auth_id_rsa",
-        })?;
-
-        let hash_algo =
-            if let Some(algo) = hashes.parse_keyword_and_hash(maybe_algorithm, document_body) {
-                let _: &str = args.next().expect("we just peeked");
-                algo
-            } else if maybe_algorithm
-                .find(|c: char| !c.is_ascii_hexdigit())
-                .is_some()
-            {
-                // Not hex.  Must be some unknown algorithm.
-                // There might be Object, but don't worry if not.
-                return Ok(NdiDirectorySignature::Unknown {});
-            } else {
-                hashes
-                    .parse_keyword_and_hash("sha1", document_body)
-                    .expect("sha1 is not valid?")
-            };
-
-        let rsa_signature = object.ok_or(EP::MissingObject)?.decode_data()?;
-
-        let mut fingerprint_arg = |field: &'static str| {
-            (|| {
-                args.next()
-                    .ok_or(AE::Missing)?
-                    .parse::<types::Fingerprint>()
-                    .map_err(|_e| AE::Invalid)
-                    .map(pk::rsa::RsaIdentity::from)
-            })()
-            .map_err(args.error_handler(field))
-        };
-
-        Ok(NdiDirectorySignature::Known {
-            hash_algo,
-            rsa_signature,
-            h_kp_auth_id_rsa: fingerprint_arg("h_kp_auth_id_rsa")?,
-            h_kp_auth_sign_rsa: fingerprint_arg("h_kp_auth_sign_rsa")?,
-        })
-    }
-}
 
 /// Meat of the verification functions for network documents
 ///
@@ -217,13 +70,17 @@ fn verify_general_timeless(
     let mut ok = HashSet::<pk::rsa::RsaIdentity>::new();
 
     for sig in signatures {
-        match sig {
-            NdiDirectorySignature::Known {
-                hash_algo,
-                h_kp_auth_id_rsa,
-                h_kp_auth_sign_rsa,
-                rsa_signature,
-            } => {
+        let NdiDirectorySignature {
+            digest_algo: hash_algo,
+            key_ids: AuthCertKeyIds {
+                id_fingerprint: h_kp_auth_id_rsa,
+                sk_fingerprint: h_kp_auth_sign_rsa,
+            },
+            signature: rsa_signature,
+        } = sig;
+
+        match hash_algo.algorithm() {
+            KeywordOrString::Known(hash_algo) => {
                 let Some(authority) = ({
                     trusted
                         .iter()
@@ -242,14 +99,14 @@ fn verify_general_timeless(
                 };
 
                 let h = hashes
-                    .hash_slice_for_verification((*hash_algo).into())
+                    .hash_slice_for_verification(*hash_algo)
                     .ok_or(VF::Bug)?;
 
                 let () = cert.dir_signing_key.verify(h, rsa_signature)?;
 
                 ok.insert(*authority);
             }
-            NdiDirectorySignature::Unknown { .. } => {}
+            KeywordOrString::Unknown(..) => {}
         }
     }
 
