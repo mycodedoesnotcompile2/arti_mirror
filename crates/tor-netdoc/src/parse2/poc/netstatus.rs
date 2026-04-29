@@ -3,7 +3,7 @@
 use super::*;
 
 use crate::doc::{self, authcert};
-use crate::types::{self, KeywordOrString};
+use crate::types;
 use authcert::{AuthCertKeyIds, AuthCert as DirAuthKeyCert};
 use doc::netstatus::{ConsensusAuthoritySection, DirectorySignaturesHashesAccu, VoteAuthoritySection};
 pub use doc::netstatus::Signature as NdiDirectorySignature;
@@ -79,8 +79,7 @@ fn verify_general_timeless(
             signature: rsa_signature,
         } = sig;
 
-        match hash_algo.algorithm() {
-            KeywordOrString::Known(hash_algo) => {
+        if let Some(h) = hashes.hash_slice_for_verification(hash_algo) {
                 let Some(authority) = ({
                     trusted
                         .iter()
@@ -98,15 +97,9 @@ fn verify_general_timeless(
                     continue;
                 };
 
-                let h = hashes
-                    .hash_slice_for_verification(*hash_algo)
-                    .ok_or(VF::Bug)?;
-
                 let () = cert.dir_signing_key.verify(h, rsa_signature)?;
 
                 ok.insert(*authority);
-            }
-            KeywordOrString::Unknown(..) => {}
         }
     }
 
