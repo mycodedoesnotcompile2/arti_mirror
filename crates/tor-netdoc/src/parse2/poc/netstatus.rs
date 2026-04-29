@@ -97,6 +97,21 @@ define_derive_deftly! {
         ${vattrs doc}
         $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
       )
+
+/*
+      // XXXX actually implement this
+
+      /// `sha1` but without the algorithm name
+      ///
+      /// This is needed because the hash includes the whole signature item keyword line,
+      /// and therefore a signature with the `sha1` explicitly stated,
+      /// and one without, have different hashes!
+      ///
+      /// So we mustn't use the `sha1` field for both implicit and explicit use of SHA-1,
+      /// or multiple signatures with different syntax would overwrite each others'
+      /// different hashes.
+      pub(crate) sha1_unnamed: Option<[u8; 20]>,
+*/
     }
 
     impl DirectorySignaturesHashesAccu {
@@ -127,6 +142,7 @@ define_derive_deftly! {
         /// `None` if the value wasn't computed.
         /// That shouldn't happen.
         fn hash_slice_for_verification(&self, algo: $ttype) -> Option<&[u8]> {
+            // XXXX handle sha1_unnamed correctly
             match algo { $(
                 $vtype => Some(self.$FNAME.as_ref()?),
             ) }
