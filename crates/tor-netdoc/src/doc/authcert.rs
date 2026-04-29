@@ -7,12 +7,13 @@
 //! signing keys to sign votes and consensuses.
 
 use crate::batching_split_before::IteratorExt as _;
-use crate::encode::{Bug, ItemObjectEncodable, NetdocEncodable, NetdocEncoder};
+use crate::encode::{Bug, ItemArgument, ItemEncoder, ItemObjectEncodable, NetdocEncodable, NetdocEncoder};
 use crate::parse::keyword::Keyword;
 use crate::parse::parser::{Section, SectionRules};
 use crate::parse::tokenize::{ItemResult, NetDocReader};
 use crate::parse2::{
     self, ItemObjectParseable, NetdocUnverified as _, sig_hashes::Sha1WholeKeywordLine,
+    ArgumentError, ArgumentStream, ItemArgumentParseable,
 };
 use crate::types::misc::{Fingerprint, Iso8601TimeSp, RsaPublicParse1Helper, RsaSha1Signature};
 use crate::util::str::Extent;
@@ -435,6 +436,45 @@ impl AuthCert {
             c: signed,
         };
         Ok(unchecked)
+    }
+}
+
+/// Parsing/encoding module for `AuthCertKeyIds` as found in `directory-signature`
+///
+/// Use with `#[deftly(netdoc(with = ...))]` when deriving
+/// `ItemValueParseable` and `ItemValueEncodable`.
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:directory-signature>
+//
+// Currently the only use site is `netstatus::Signature`.
+// If we find this is being used in many places, and is therefore a standard thing,
+// we should arrange for the derives to be able to derive from an argument collection,
+// and use that.
+#[allow(dead_code)] // XXXX
+pub(crate) mod keyids_directory_signature_args {
+    use super::*;
+    use std::result::Result;
+
+    /// Parse
+    pub(crate) fn from_args<'s>(
+        args: &mut ArgumentStream<'s>,
+    ) -> Result<AuthCertKeyIds, ArgumentError> {
+        let mut fp = || Ok::<_, ArgumentError>(Fingerprint::from_args(args)?.0);
+        Ok(AuthCertKeyIds {
+            id_fingerprint: fp()?,
+            sk_fingerprint: fp()?,
+        })
+    }
+
+    /// Encode
+    pub(crate) fn write_arg_onto(
+        self_: &AuthCertKeyIds,
+        out: &mut ItemEncoder<'_>,
+    ) -> Result<(), Bug> {
+        let mut fp = |id| Fingerprint(id).write_arg_onto(out);
+        fp(self_.id_fingerprint)?;
+        fp(self_.sk_fingerprint)?;
+        Ok(())
     }
 }
 
@@ -1177,6 +1217,33 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             .unwrap_err(),
             VerifyFailed::VerifyFailed
         );
+    }
+
+    #[test]
+    fn keyids_for_directory_signature() -> anyhow::Result<()> {
+        #[derive(Deftly)]
+        #[derive_deftly(NetdocEncodable, NetdocParseable)]
+        struct Doc {
+            intro: (),
+            ids: Item,
+        }
+        #[derive(Deftly)]
+        #[derive_deftly(ItemValueEncodable, ItemValueParseable)]
+        struct Item {
+            #[deftly(netdoc(with = keyids_directory_signature_args))]
+            ids: AuthCertKeyIds,
+        }
+
+        let text = r#"intro
+ids 1234567812345678123456781234567812345678 ABCDABCDABCDABCDABCDABCDABCDABCDABCDABCD
+"#;
+        let doc = parse2::parse_netdoc::<Doc>(&ParseInput::new(text, "<text>"))?;
+        let mut re_encode = NetdocEncoder::new();
+        doc.encode_unsigned(&mut re_encode)?;
+        let re_encode = re_encode.finish()?;
+
+        assert_eq!(text, re_encode);
+        Ok(())
     }
 
     #[test]
