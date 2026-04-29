@@ -715,7 +715,19 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
-    use crate::{Error, Pos};
+    use crate::{
+        Pos,
+        parse2::{ErrorProblem, ParseError, ParseInput, VerifyFailed, parse_netdoc},
+        types,
+    };
+    use humantime::parse_rfc3339;
+    use std::result::Result;
+    use std::{
+        net::{Ipv4Addr, SocketAddrV4},
+        str::FromStr,
+    };
+    use tor_basic_utils::test_rng;
+
     const TESTDATA: &str = include_str!("../../testdata/authcert1.txt");
 
     fn bad_data(fname: &str) -> String {
@@ -730,7 +742,7 @@ mod test {
     }
 
     #[test]
-    fn parse_one() -> Result<()> {
+    fn parse_one() -> crate::Result<()> {
         use tor_checkable::{SelfSigned, Timebound};
         let cert = AuthCert::parse(TESTDATA)?
             .check_signature()
@@ -752,7 +764,7 @@ mod test {
 
     #[test]
     fn parse_bad() {
-        fn check(fname: &str, err: &Error) {
+        fn check(fname: &str, err: &crate::Error) {
             let contents = bad_data(fname);
             let cert = AuthCert::parse(&contents);
             assert!(cert.is_err());
@@ -792,7 +804,7 @@ mod test {
         let mut data = "<><><<><>\nfingerprint ABC\n".to_string();
         data += TESTDATA;
 
-        let res: Vec<Result<_>> = AuthCert::parse_multiple(&data).unwrap().collect();
+        let res: Vec<crate::Result<_>> = AuthCert::parse_multiple(&data).unwrap().collect();
 
         // We should recover from the failed case and read the next data fine.
         assert!(res[0].is_err());
@@ -805,30 +817,13 @@ mod test {
         let mut data = bad_data("bad-version");
         data += TESTDATA;
 
-        let res: Vec<Result<_>> = AuthCert::parse_multiple(&data).unwrap().collect();
+        let res: Vec<crate::Result<_>> = AuthCert::parse_multiple(&data).unwrap().collect();
 
         // We should recover from the failed case and read the next data fine.
         assert!(res[0].is_err());
         assert!(res[1].is_ok());
         assert_eq!(res.len(), 2);
     }
-
-    mod parse2_test {
-        use super::{AuthCert, AuthCertUnverified, AuthCertVersion, CrossCert, CrossCertObject};
-
-        use std::{
-            net::{Ipv4Addr, SocketAddrV4},
-            str::FromStr,
-            time::{Duration, SystemTime},
-        };
-
-        use crate::{
-            parse2::{self, ErrorProblem, NetdocUnverified, ParseError, ParseInput, VerifyFailed},
-            types::{self, Iso8601TimeSp},
-        };
-
-        use derive_deftly::Deftly;
-        use tor_llcrypto::pk::rsa::{self, RsaIdentity};
 
         // === AUTHCERT D190BF3B00E311A9AEB6D62B51980E9B2109BAD1 ===
         // These values come from testdata2/keys/authority_certificate.
@@ -1188,17 +1183,9 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
                 VerifyFailed::VerifyFailed
             );
         }
-    }
-
-    #[cfg(feature = "incomplete")]
-    mod encode_test {
-        use super::*;
-        use crate::parse2::{ParseInput, parse_netdoc};
-        use humantime::parse_rfc3339;
-        use std::result::Result;
-        use tor_basic_utils::test_rng;
 
         #[test]
+        #[cfg(feature = "incomplete")]
         fn roundtrip() -> Result<(), anyhow::Error> {
             let mut rng = test_rng::testing_rng();
             let k_auth_id_rsa = rsa::KeyPair::generate(&mut rng)?;
@@ -1231,5 +1218,4 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             assert_eq!(input_value, reparsed_value);
             Ok(())
         }
-    }
 }
