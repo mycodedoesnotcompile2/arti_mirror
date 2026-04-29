@@ -10,6 +10,8 @@ use doc::netstatus::{ConsensusAuthoritySection, VoteAuthoritySection};
 mod ns_per_flavour_macros;
 pub use ns_per_flavour_macros::*;
 
+use crate::doc::netstatus::DirectorySignatureHashAlgo as ProdAlgo; // XXXX remove
+
 ns_per_flavour_macros::ns_export_flavoured_types! {
     NetworkStatus, NetworkStatusUnverified, Router,
 }
@@ -146,6 +148,24 @@ define_derive_deftly! {
             // XXXX handle sha1_unnamed correctly
             match algo { $(
                 $vtype => Some(self.$FNAME.as_ref()?),
+            ) }
+        }
+    }
+
+    // XXXX we have two DirectorySignatureHashAlgo types, which we, briefly,
+    // need to convert between!
+    impl From<ProdAlgo> for DirectorySignatureHashAlgo {
+        fn from(other: ProdAlgo) -> Self {
+            match other { $(
+                ProdAlgo::$vname => DirectorySignatureHashAlgo::$vname,
+            ) }
+        }
+    }
+    // XXXX
+    impl From<DirectorySignatureHashAlgo> for ProdAlgo {
+        fn from(other: DirectorySignatureHashAlgo) -> Self {
+            match other { $(
+                DirectorySignatureHashAlgo::$vname => ProdAlgo::$vname,
             ) }
         }
     }
