@@ -97,7 +97,8 @@ define_derive_deftly! {
     pub struct DirectorySignaturesHashesAccu {
       $(
         ${vattrs doc}
-        $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
+        // XXXX make no longer pub(crate)
+        pub(crate) $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
       )
 
 /*
@@ -144,7 +145,8 @@ define_derive_deftly! {
         ///
         /// `None` if the value wasn't computed.
         /// That shouldn't happen.
-        fn hash_slice_for_verification(&self, algo: $ttype) -> Option<&[u8]> {
+        // XXXX make no longer pub(crate)
+        pub(crate) fn hash_slice_for_verification(&self, algo: $ttype) -> Option<&[u8]> {
             // XXXX handle sha1_unnamed correctly
             match algo { $(
                 $vtype => Some(self.$FNAME.as_ref()?),
