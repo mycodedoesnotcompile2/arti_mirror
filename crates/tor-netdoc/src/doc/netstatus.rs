@@ -65,17 +65,19 @@ pub use proto_statuses_parse2_encode::ProtoStatusesNetdocParseAccumulator;
 use crate::doc::authcert::EncodedAuthCert;
 
 use crate::doc::authcert::{self, AuthCert, AuthCertKeyIds};
-use crate::encode::{ItemArgument, ItemEncoder, ItemValueEncodable, NetdocEncodable, NetdocEncoder};
+use crate::encode::{
+    ItemArgument, ItemEncoder, ItemValueEncodable, NetdocEncodable, NetdocEncoder,
+};
 use crate::parse::keyword::Keyword;
 use crate::parse::parser::{Section, SectionRules, SectionRulesBuilder};
 use crate::parse::tokenize::{Item, ItemResult, NetDocReader};
 use crate::parse2::{
-    self, ArgumentStream, ErrorProblem, IsStructural, ItemStream, ItemValueParseable, KeywordRef,
-    NetdocParseable, SignatureHashInputs, SignatureItemParseable, StopAt, UnparsedItem,
-    ArgumentError, ItemArgumentParseable,
+    self, ArgumentError, ArgumentStream, ErrorProblem, IsStructural, ItemArgumentParseable,
+    ItemStream, ItemValueParseable, KeywordRef, NetdocParseable, SignatureHashInputs,
+    SignatureItemParseable, StopAt, UnparsedItem,
 };
-use crate::types::{self, *};
 use crate::types::relay_flags::{self, DocRelayFlags};
+use crate::types::{self, *};
 use crate::util::PeekableIterator;
 use crate::{Error, KeywordEncodable, NetdocErrorKind as EK, NormalItemArgument, Pos, Result};
 use std::collections::{BTreeSet, HashMap, HashSet};

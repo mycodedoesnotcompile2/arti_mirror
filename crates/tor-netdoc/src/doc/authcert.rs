@@ -7,13 +7,15 @@
 //! signing keys to sign votes and consensuses.
 
 use crate::batching_split_before::IteratorExt as _;
-use crate::encode::{Bug, ItemArgument, ItemEncoder, ItemObjectEncodable, NetdocEncodable, NetdocEncoder};
+use crate::encode::{
+    Bug, ItemArgument, ItemEncoder, ItemObjectEncodable, NetdocEncodable, NetdocEncoder,
+};
 use crate::parse::keyword::Keyword;
 use crate::parse::parser::{Section, SectionRules};
 use crate::parse::tokenize::{ItemResult, NetDocReader};
 use crate::parse2::{
-    self, ItemObjectParseable, NetdocUnverified as _, sig_hashes::Sha1WholeKeywordLine,
-    ArgumentError, ArgumentStream, ItemArgumentParseable,
+    self, ArgumentError, ArgumentStream, ItemArgumentParseable, ItemObjectParseable,
+    NetdocUnverified as _, sig_hashes::Sha1WholeKeywordLine,
 };
 use crate::types::misc::{Fingerprint, Iso8601TimeSp, RsaPublicParse1Helper, RsaSha1Signature};
 use crate::util::str::Extent;

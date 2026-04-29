@@ -718,9 +718,7 @@ impl FlavoredConsensusSigned {
             Self::Ns(ns) => &ns.sigs.sigs.directory_signature,
             Self::Md(md) => &md.sigs.sigs.directory_signature,
         };
-        sigs.iter()
-            .map(|sig| sig.key_ids)
-            .collect()
+        sigs.iter().map(|sig| sig.key_ids).collect()
     }
 }
 

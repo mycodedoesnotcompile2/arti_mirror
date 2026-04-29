@@ -4,9 +4,11 @@ use super::*;
 
 use crate::doc::{self, authcert};
 use crate::types;
-use authcert::{AuthCertKeyIds, AuthCert as DirAuthKeyCert};
-use doc::netstatus::{ConsensusAuthoritySection, DirectorySignaturesHashesAccu, VoteAuthoritySection};
+use authcert::{AuthCert as DirAuthKeyCert, AuthCertKeyIds};
 pub use doc::netstatus::Signature as NdiDirectorySignature;
+use doc::netstatus::{
+    ConsensusAuthoritySection, DirectorySignaturesHashesAccu, VoteAuthoritySection,
+};
 
 mod ns_per_flavour_macros;
 pub use ns_per_flavour_macros::*;
@@ -72,34 +74,35 @@ fn verify_general_timeless(
     for sig in signatures {
         let NdiDirectorySignature {
             digest_algo: hash_algo,
-            key_ids: AuthCertKeyIds {
-                id_fingerprint: h_kp_auth_id_rsa,
-                sk_fingerprint: h_kp_auth_sign_rsa,
-            },
+            key_ids:
+                AuthCertKeyIds {
+                    id_fingerprint: h_kp_auth_id_rsa,
+                    sk_fingerprint: h_kp_auth_sign_rsa,
+                },
             signature: rsa_signature,
         } = sig;
 
         if let Some(h) = hashes.hash_slice_for_verification(hash_algo) {
-                let Some(authority) = ({
-                    trusted
-                        .iter()
-                        .find(|trusted| **trusted == *h_kp_auth_id_rsa)
-                }) else {
-                    // unknown kp_auth_id_rsa, ignore it
-                    continue;
-                };
-                let Some(cert) = ({
-                    certs
-                        .iter()
-                        .find(|cert| cert.dir_signing_key.to_rsa_identity() == *h_kp_auth_sign_rsa)
-                }) else {
-                    // no cert for this kp_auth_sign_rsa, ignore it
-                    continue;
-                };
+            let Some(authority) = ({
+                trusted
+                    .iter()
+                    .find(|trusted| **trusted == *h_kp_auth_id_rsa)
+            }) else {
+                // unknown kp_auth_id_rsa, ignore it
+                continue;
+            };
+            let Some(cert) = ({
+                certs
+                    .iter()
+                    .find(|cert| cert.dir_signing_key.to_rsa_identity() == *h_kp_auth_sign_rsa)
+            }) else {
+                // no cert for this kp_auth_sign_rsa, ignore it
+                continue;
+            };
 
-                let () = cert.dir_signing_key.verify(h, rsa_signature)?;
+            let () = cert.dir_signing_key.verify(h, rsa_signature)?;
 
-                ok.insert(*authority);
+            ok.insert(*authority);
         }
     }
 
