@@ -122,7 +122,7 @@ define_derive_deftly! {
             })
         }
 
-        /// Return the hash value for this algorithm, as a slice
+        /// Return the hash value for a specific algorithm, as a slice
         ///
         /// `None` if the value wasn't computed.
         /// That shouldn't happen.
