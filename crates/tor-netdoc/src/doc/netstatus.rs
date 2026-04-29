@@ -566,12 +566,13 @@ define_derive_deftly! {
             // Update the hash in self.$UPDATE according to algorithm $AGLO
             // (uses dynamic bindings of those parameters)
             ${define HASH {
-                    // XXXX indentation is wrong
+                // Avoid recalculating if we don't need to
+                self.$UPDATE.get_or_insert_with(|| {
                     let mut h = tor_llcrypto::d::$ALGO::new();
                     h.update(body.body().body());
                     h.update(body.signature_item_kw_spc);
-                    // XXXX Unconditionally write.  This can involve wasted work.
-                    self.$UPDATE = Some(h.finalize().into());
+                    h.finalize().into()
+                });
             }}
 
             match &**algo {
