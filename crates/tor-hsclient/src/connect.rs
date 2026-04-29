@@ -488,8 +488,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
 
         let now = self.runtime.wallclock();
         let unwrap_valid_desc = |data: &'d mut DataHsDesc| -> &'d HsDesc {
-            data
-                .as_ref()
+            data.as_ref()
                 .expect("Some but now None")
                 .as_ref()
                 .check_valid_at(&now)
@@ -504,17 +503,16 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         // TODO SPEC: Discuss HS descriptor lifetime and expiry client behaviour
         let now = self.runtime.wallclock();
 
-        let cur_revision =
-            if let Some(previously) = data {
-                if let Ok(desc) = previously.as_ref().check_valid_at(&now) {
-                    Some(desc.revision())
-                } else {
-                // Seems to be not valid now.  Try to fetch a fresh one.
-                    None
-                }
+        let cur_revision = if let Some(previously) = data {
+            if let Ok(desc) = previously.as_ref().check_valid_at(&now) {
+                Some(desc.revision())
             } else {
+                // Seems to be not valid now.  Try to fetch a fresh one.
                 None
-            };
+            }
+        } else {
+            None
+        };
 
         match (cur_revision, refetch) {
             (Some(_), None) => {
