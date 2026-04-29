@@ -129,6 +129,7 @@ define_derive_deftly! {
                     let mut h = tor_llcrypto::d::$vname::new();
                     h.update(body.body().body());
                     h.update(body.signature_item_kw_spc);
+                    // XXXX Unconditionally write.  This can involve wasted work.
                     self.$FNAME = Some(h.finalize().into());
                     $vtype
                 }
