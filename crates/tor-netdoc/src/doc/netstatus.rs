@@ -543,9 +543,6 @@ define_derive_deftly! {
         pub(crate) $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
       )
 
-/*
-      // XXXX actually implement this
-
       /// `sha1` but without the algorithm name
       ///
       /// This is needed because the hash includes the whole signature item keyword line,
@@ -556,7 +553,6 @@ define_derive_deftly! {
       /// or multiple signatures with different syntax would overwrite each others'
       /// different hashes.
       pub(crate) sha1_unnamed: Option<[u8; 20]>,
-*/
     }
 
     impl DirectorySignaturesHashesAccu {
@@ -587,7 +583,7 @@ define_derive_deftly! {
                 }
               )
                 None => {
-                    ${define UPDATE sha1} // XXXX wrong
+                    ${define UPDATE sha1_unnamed}
                     ${define ALGO Sha1}
                     $HASH
                 }
@@ -608,7 +604,7 @@ define_derive_deftly! {
               $(
                 Some(KeywordOrString::Known($vtype)) => Some(self.$FNAME.as_ref()?),
               )
-                None => Some(self.sha1.as_ref()?), // XXXX handle this correctly
+                None => Some(self.sha1_unnamed.as_ref()?),
                 Some(KeywordOrString::Unknown(..)) => None,
             }
         }
