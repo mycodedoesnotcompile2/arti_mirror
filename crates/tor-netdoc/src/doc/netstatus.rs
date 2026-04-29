@@ -658,7 +658,6 @@ impl NormalItemArgument for DirectorySignatureHashAlgo {}
 ///
 /// Implements `ItemValueParseable` which parses without hashing anything;
 /// this is mostly useful for use by the `SignatureItemParseable` implementation.
-// XXXX that impl doesn't exist yet
 #[derive(Debug, Clone, Deftly)]
 #[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 #[non_exhaustive]
@@ -675,6 +674,20 @@ pub struct Signature {
     /// The signature itself.
     #[deftly(netdoc(object(label = "SIGNATURE"), with = types::raw_data_object))]
     pub signature: Vec<u8>,
+}
+
+impl SignatureItemParseable for Signature {
+    type HashAccu = DirectorySignaturesHashesAccu;
+
+    fn from_unparsed_and_body(
+        item: UnparsedItem,
+        body: &SignatureHashInputs<'_>,
+        hash: &mut Self::HashAccu,
+    ) -> StdResult<Self, ErrorProblem> {
+        let signature = Signature::from_unparsed(item)?;
+        hash.update_from(&signature.digest_algo, body);
+        Ok(signature)
+    }
 }
 
 /// A collection of signatures that can be checked on a networkstatus document
