@@ -610,8 +610,18 @@ define_derive_deftly! {
     }
 }
 
-define_directory_signature_hash_algo! {
-    #[derive_deftly(DirectorySignaturesHashesAccu)]
+/// `directory-signature` hash algorithm argument
+#[derive(Clone, Copy, Debug, Eq, PartialEq, strum::Display, strum::EnumString, Deftly)]
+#[derive_deftly(DirectorySignaturesHashesAccu)]
+#[non_exhaustive]
+#[strum(serialize_all = "snake_case")]
+pub enum DirectorySignatureHashAlgo {
+    /// SHA-1
+    #[deftly(hash_len = "20")]
+    Sha1,
+    /// SHA-256
+    #[deftly(hash_len = "32")]
+    Sha256,
 }
 
 /// `algorithm` field in a `directory-signature` item
