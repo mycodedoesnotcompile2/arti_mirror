@@ -428,7 +428,11 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
                     // out of intro_rend_connect() after the first NACK,
                     // instead of waiting until all connection attempts
                     // are exhausted?
-                    errors.clone().into_iter().any(is_intro_nack).then_some(RefetchDescriptor)
+                    errors
+                        .clone()
+                        .into_iter()
+                        .any(is_intro_nack)
+                        .then_some(RefetchDescriptor)
                 } else {
                     None
                 };
