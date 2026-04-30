@@ -79,7 +79,7 @@ pub use keys::{HsClientDescEncKeypairSpecifier, HsClientSecretKeys, HsClientSecr
 pub use relay_info::InvalidTarget;
 pub use state::HsClientConnectorConfig;
 
-use err::{IntroPtIndex, RendPtIdentityForError, rend_pt_identity_for_error};
+use err::{IntroPtIndex, rend_pt_identity_for_error};
 use state::{Config, MockableConnectorData, Services};
 
 /// An object that negotiates connections with onion services

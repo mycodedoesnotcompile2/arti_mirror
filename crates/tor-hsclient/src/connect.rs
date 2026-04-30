@@ -54,7 +54,7 @@ use crate::proto_oneshot;
 use crate::relay_info::ipt_to_circtarget;
 use crate::state::MockableConnectorData;
 use crate::{ConnError, DescriptorError, DescriptorErrorDetail};
-use crate::{FailedAttemptError, IntroPtIndex, RendPtIdentityForError, rend_pt_identity_for_error};
+use crate::{FailedAttemptError, IntroPtIndex, rend_pt_identity_for_error};
 use crate::{HsClientConnector, HsClientSecretKeys};
 
 use ConnError as CE;
@@ -659,15 +659,6 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             // let's give them as many retries as we can manage.
             .unwrap_or(usize::MAX);
 
-        // Limit on the duration of each attempt to establish a rendezvous point
-        //
-        // This *might* include establishing a fresh circuit,
-        // if the HsCircPool's pool is empty.
-        let rend_timeout = self.estimate_timeout(&[
-            (1, TimeoutsAction::BuildCircuit { length: HOPS }), // build circuit
-            (1, TimeoutsAction::RoundTrip { length: HOPS }),    // One ESTABLISH_RENDEZVOUS
-        ]);
-
         // Limit on the duration of each attempt to negotiate with an introduction point
         //
         // *Does* include establishing the circuit.
@@ -833,18 +824,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
                         return Ok(None);
                     };
 
-                    let mut using_rend_pt = None;
-                    saved_rendezvous = Some(
-                        self.runtime
-                            .timeout(rend_timeout, self.establish_rendezvous(&mut using_rend_pt))
-                            .await
-                            .map_err(|_: TimeoutError| match using_rend_pt {
-                                None => FAE::RendezvousCircuitObtain {
-                                    error: tor_circmgr::Error::CircTimeout(None),
-                                },
-                                Some(rend_pt) => FAE::RendezvousEstablishTimeout { rend_pt },
-                            })??,
-                    );
+                    saved_rendezvous = Some(self.establish_rendezvous().await?);
                 }
 
                 let Some(ipt) = intro_attempts.next() else {
@@ -991,16 +971,8 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
     /// In particular it doesn't depend on the introduction point.
     ///
     /// Does not apply a timeout.
-    ///
-    /// On entry `using_rend_pt` is `None`.
-    /// This function will store `Some` when it finds out which relay
-    /// it is talking to and starts to converse with it.
-    /// That way, if a timeout occurs, the caller can add that information to the error.
     #[instrument(level = "trace", skip_all)]
-    async fn establish_rendezvous(
-        &'c self,
-        using_rend_pt: &mut Option<RendPtIdentityForError>,
-    ) -> Result<Rendezvous<'c, R, M>, FAE> {
+    async fn establish_rendezvous(&'c self) -> Result<Rendezvous<'c, R, M>, FAE> {
         let (rend_tunnel, rend_relay) = self
             .circpool
             .m_get_or_launch_client_rend(&self.netdir)
@@ -1008,7 +980,6 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             .map_err(|error| FAE::RendezvousCircuitObtain { error })?;
 
         let rend_pt = rend_pt_identity_for_error(&rend_relay);
-        *using_rend_pt = Some(rend_pt.clone());
 
         let rend_cookie: RendCookie = self.mocks.thread_rng().random();
         let message = EstablishRendezvous::new(rend_cookie);
@@ -1055,6 +1026,13 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             rend2_tx,
         };
 
+        let num_hops = rend_tunnel
+            .m_num_own_real_hops()
+            .map_err(|error| FAE::RendezvousCircuitObtain { error })?;
+
+        let timeout_roundtrip =
+            self.estimate_timeout(&[(1, TimeoutsAction::RoundTrip { length: num_hops })]);
+
         // TODO(conflux) This error handling is horrible. Problem is that this Mock system requires
         // to send back a tor_circmgr::Error while our reply handler requires a tor_proto::Error.
         // And unifying both is hard here considering it needs to be converted to yet another Error
@@ -1075,7 +1053,15 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
 
         // `start_conversation` returns as soon as the control message has been sent.
         // We need to obtain the RENDEZVOUS_ESTABLISHED message, which is "returned" via the oneshot.
-        let _: RendezvousEstablished = rend_established_rx.recv(failed_map_err).await?;
+        let _: RendezvousEstablished = self
+            .runtime
+            .timeout(timeout_roundtrip, rend_established_rx.recv(failed_map_err))
+            .await
+            .map_err(
+                |_timeout: tor_rtcompat::TimeoutError| FAE::RendezvousEstablishTimeout {
+                    rend_pt: rend_pt.clone(),
+                },
+            )??;
 
         debug!(
             "hs conn to {}: RPT {}: got RENDEZVOUS_ESTABLISHED",
