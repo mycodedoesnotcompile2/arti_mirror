@@ -443,7 +443,9 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
 
         let mocks = self.mocks.clone();
 
-        let desc = self.descriptor_ensure(&mut data.desc, &mut data.hsdirs, None).await?;
+        let desc = self
+            .descriptor_ensure(&mut data.desc, &mut data.hsdirs, None)
+            .await?;
 
         mocks.test_got_desc(desc);
 
@@ -482,7 +484,9 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
                         &self.hsid,
                     );
                     // Refetch the descriptor and try one more time
-                    let desc = self.descriptor_ensure(&mut data.desc, &mut data.hsdirs, retry).await?;
+                    let desc = self
+                        .descriptor_ensure(&mut data.desc, &mut data.hsdirs, retry)
+                        .await?;
                     mocks.test_got_desc(desc);
                     self.intro_rend_connect(desc, &mut data.ipts).await?
                 } else {
@@ -573,13 +577,11 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         // First, filter out any HsDirs that we *can* requery
         recent_hsdirs.retain(|_hsdir, requery| *requery >= now);
 
-        let hs_dirs = self
-            .netdir
-            .hs_dirs_download(
-                self.hs_blind_id,
-                self.netdir.hs_time_period(),
-                &mut self.mocks.thread_rng(),
-            )?;
+        let hs_dirs = self.netdir.hs_dirs_download(
+            self.hs_blind_id,
+            self.netdir.hs_time_period(),
+            &mut self.mocks.thread_rng(),
+        )?;
 
         trace!(
             "HS desc fetch for {}, for period {}, using {} hsdirs",
