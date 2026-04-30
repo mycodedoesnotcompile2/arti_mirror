@@ -1215,6 +1215,10 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         /// renedezvous point itself.
         const MAX_PEER_REND_HOPS: usize = 5;
 
+        /// Largest number of retries that we think the peer might make if its
+        /// circuits are failing.
+        const MAX_PEER_CIRC_RETRIES: u32 = 3;
+
         let rend_pt = rend_pt_identity_for_error(&rendezvous.rend_relay);
         let intro_index = ipt.intro_index;
         let failed_map_err = |error| FAE::RendezvousCompletionCircuitError {
@@ -1272,7 +1276,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             ),
             //    HS builds to our RPT
             (
-                1,
+                MAX_PEER_CIRC_RETRIES,
                 TimeoutsAction::BuildCircuit {
                     length: peer_circ_len,
                 },
