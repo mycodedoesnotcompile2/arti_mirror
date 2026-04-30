@@ -165,23 +165,27 @@ impl Action {
 
 /// A safe variant of [`Duration::mul_f64`] that never panics.
 ///
-/// For infinite or NaN or negative multipliers, the results might be
-/// nonsensical, but at least they won't be a panic.
+/// If the result would be outside the range of [`Duration`],
+/// instead saturate to `0` or [`Duration::MAX`] as appropriate.
+///
+/// If the result would be NaN, we return an arbitrary duration.
 fn mul_duration_f64_saturating(d: Duration, mul: f64) -> Duration {
+    use std::cmp::Ordering;
+
     let secs = d.as_secs_f64() * mul;
-    // At this point I'd like to use Duration::try_from_secs_f64, but
-    // that isn't stable yet. :p
-    if secs.is_finite() && secs >= 0.0 {
-        // We rely on the property that `f64 as uNN` is saturating.
-        let seconds = secs.trunc() as u64;
-        let nanos = if seconds == u64::MAX {
-            0 // prevent any possible overflow.
-        } else {
-            (secs.fract() * 1e9) as u32
-        };
-        Duration::new(seconds, nanos)
-    } else {
-        Duration::from_secs(1)
+    match Duration::try_from_secs_f64(secs) {
+        Ok(product) => product,
+        // TODO perhaps we should log a warning in this case.
+        // Alternatively, we could make our timeout estimators fallible.
+        Err(_) => match secs.partial_cmp(&0.0) {
+            Some(Ordering::Greater) => Duration::MAX,
+            Some(_) => Duration::new(0, 0),
+            // The result is NaN, which means that the input `mul` was NaN.
+            // We are allowed to return anything in this case, so we return
+            // the original duration, on the theory that it is roughly
+            // the right order of magnitude.
+            None => d,
+        },
     }
 }
 
@@ -254,14 +258,14 @@ mod test {
 
         // This would underflow.
         let v = mul_duration_f64_saturating(mega_year, -1.0);
-        assert_eq!(v, Duration::from_secs(1));
+        assert_eq!(v, Duration::from_secs(0));
 
         // These are just silly.
         let v = mul_duration_f64_saturating(mega_year, f64::INFINITY);
-        assert_eq!(v, Duration::from_secs(1));
+        assert_eq!(v, Duration::MAX);
         let v = mul_duration_f64_saturating(mega_year, f64::NEG_INFINITY);
-        assert_eq!(v, Duration::from_secs(1));
+        assert_eq!(v, Duration::from_secs(0));
         let v = mul_duration_f64_saturating(mega_year, f64::NAN);
-        assert_eq!(v, Duration::from_secs(1));
+        assert_eq!(v, mega_year);
     }
 }
