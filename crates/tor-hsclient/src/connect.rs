@@ -659,15 +659,6 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             // let's give them as many retries as we can manage.
             .unwrap_or(usize::MAX);
 
-        // Limit on the duration of each attempt to negotiate with an introduction point
-        //
-        // *Does* include establishing the circuit.
-        let intro_timeout = self.estimate_timeout(&[
-            (1, TimeoutsAction::BuildCircuit { length: HOPS }), // build circuit
-            // This does some crypto too, but we don't account for that.
-            (1, TimeoutsAction::RoundTrip { length: HOPS }), // One INTRODUCE1/INTRODUCE_ACK
-        ]);
-
         // Timeout estimator for the action that the HS will take in building
         // its circuit to the RPT.
         let hs_build_action = TimeoutsAction::BuildCircuit {
@@ -862,19 +853,9 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
                     rend_pt_for_error.as_inner()
                 );
 
-                let (rendezvous, introduced) = self
-                    .runtime
-                    .timeout(
-                        intro_timeout,
-                        self.exchange_introduce(ipt, &mut saved_rendezvous,
-                            proof_of_work),
-                    )
+                let (rendezvous, introduced) =
+                    self.exchange_introduce(ipt, &mut saved_rendezvous, proof_of_work)
                     .await
-                    .map_err(|_: TimeoutError| {
-                        // The intro point ought to give us a prompt ACK regardless of HS
-                        // behaviour or whatever is happening at the RPT, so blame the IPT.
-                        FAE::IntroductionTimeout { intro_index }
-                    })?
                     // TODO: Maybe try, once, to extend-and-reuse the intro circuit.
                     //
                     // If the introduction fails, the introduction circuit is in principle
@@ -1206,6 +1187,14 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         let (intro_ack_tx, intro_ack_rx) = proto_oneshot::channel();
         let handler = Handler { intro_ack_tx };
 
+        let num_hops = intro_circ
+            .m_num_hops()
+            .map_err(|error| FAE::IntroductionCircuitObtain { error, intro_index })?;
+        // NOTE: Should we allow this to be longer in case the introduction point is grievously
+        // overloaded?
+        let timeout_roundtrip =
+            self.estimate_timeout(&[(1, TimeoutsAction::RoundTrip { length: num_hops })]);
+
         debug!(
             "hs conn to {}: RPT {} IPT {}: making introduction - sending INTRODUCE1",
             &self.hsid,
@@ -1233,15 +1222,16 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
 
         // Status is checked by `.success()`, and we don't look at the extensions;
         // just discard the known-successful `IntroduceAck`
-        let _: IntroduceAck =
-            intro_ack_rx
-                .recv(failed_map_err)
-                .await?
-                .success()
-                .map_err(|status| FAE::IntroductionFailed {
-                    status,
-                    intro_index,
-                })?;
+        let _: IntroduceAck = self
+            .runtime
+            .timeout(timeout_roundtrip, intro_ack_rx.recv(failed_map_err))
+            .await
+            .map_err(|_timeout: TimeoutError| FAE::IntroductionTimeout { intro_index })??
+            .success()
+            .map_err(|status| FAE::IntroductionFailed {
+                status,
+                intro_index,
+            })?;
 
         debug!(
             "hs conn to {}: RPT {} IPT {}: making introduction - success",
