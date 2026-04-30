@@ -568,9 +568,16 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
                 // and we don't need to fetch a new one.
                 return Ok(unwrap_valid_desc(data));
             }
-            (None, _) | (_, Some(RefetchDescriptor)) => {
-                // We either don't have a timely descriptor,
-                // or we have been asked to try to fetch a new descriptor.
+            (None, _) => {
+                // We don't have a timely descriptor,
+                // so ignore the requery_period,
+                // and reach out to all HsDirs
+                recent_hsdirs.clear();
+            }
+            (_, Some(RefetchDescriptor)) => {
+                // We have been asked to try to fetch a new descriptor.
+                // We will only reach out to the HsDirs that are
+                // not within the `hs_dir_requery_period`
             }
         }
 
