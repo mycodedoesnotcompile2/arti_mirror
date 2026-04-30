@@ -107,11 +107,22 @@ impl Action {
     /// for an action `a2` is `t * a2.timeout_scale() /
     /// a1.timeout_scale()`.
     ///
+    /// Callers should never rely on the actual values of this method:
+    /// only on their ratios.
+    ///
     /// This function can return garbage if the circuit length is larger
     /// than actually supported on the Tor network.
     fn timeout_scale(&self) -> usize {
+        // Internally, we define "1" as the amount of time it takes a
+        // message to transit from one hop to the next.
+        // So sending a message to the end of a 3-hop circuit is "3",
+        // and a round-trip with a 3-hop circuit is "6".
+
         /// An arbitrary value to use to prevent overflow.
         const MAX_LEN: usize = 64;
+
+        /// An arbitrary value to use to prevent overflow.
+        const MAX_ONEWAY_LEN: usize = MAX_LEN * 2;
 
         /// Return the scale value for building a `len`-hop circuit.
         fn build_scale(len: usize) -> usize {
@@ -136,7 +147,7 @@ impl Action {
                 //
                 // TODO: This is undocumented.
                 let length = length.clamp(3, MAX_LEN);
-                build_scale(length)
+                build_scale(length) * 2
             }
             Action::ExtendCircuit {
                 initial_length,
@@ -144,11 +155,10 @@ impl Action {
             } => {
                 let initial_length = initial_length.clamp(0, MAX_LEN);
                 let final_length = final_length.clamp(initial_length, MAX_LEN);
-                build_scale(final_length) - build_scale(initial_length)
+                (build_scale(final_length) - build_scale(initial_length)) * 2
             }
-            Action::RoundTrip { length } => length.clamp(0, MAX_LEN),
-            // XXXX eliminate the div_ceil here.
-            Action::OneWay { length } => length.clamp(0, MAX_LEN * 2).div_ceil(2),
+            Action::RoundTrip { length } => length.clamp(0, MAX_LEN) * 2,
+            Action::OneWay { length } => length.clamp(0, MAX_ONEWAY_LEN),
         }
     }
 }
@@ -194,11 +204,11 @@ mod test {
 
     #[test]
     fn action_scale_values() {
-        assert_eq!(Action::BuildCircuit { length: 1 }.timeout_scale(), 6);
-        assert_eq!(Action::BuildCircuit { length: 2 }.timeout_scale(), 6);
-        assert_eq!(Action::BuildCircuit { length: 3 }.timeout_scale(), 6);
-        assert_eq!(Action::BuildCircuit { length: 4 }.timeout_scale(), 10);
-        assert_eq!(Action::BuildCircuit { length: 5 }.timeout_scale(), 15);
+        assert_eq!(Action::BuildCircuit { length: 1 }.timeout_scale(), 6 * 2);
+        assert_eq!(Action::BuildCircuit { length: 2 }.timeout_scale(), 6 * 2);
+        assert_eq!(Action::BuildCircuit { length: 3 }.timeout_scale(), 6 * 2);
+        assert_eq!(Action::BuildCircuit { length: 4 }.timeout_scale(), 10 * 2);
+        assert_eq!(Action::BuildCircuit { length: 5 }.timeout_scale(), 15 * 2);
 
         assert_eq!(
             Action::ExtendCircuit {
@@ -206,7 +216,7 @@ mod test {
                 final_length: 4
             }
             .timeout_scale(),
-            4
+            4 * 2
         );
         assert_eq!(
             Action::ExtendCircuit {
@@ -217,7 +227,8 @@ mod test {
             0
         );
 
-        assert_eq!(Action::RoundTrip { length: 3 }.timeout_scale(), 3);
+        assert_eq!(Action::RoundTrip { length: 3 }.timeout_scale(), 3 * 2);
+        assert_eq!(Action::OneWay { length: 3 }.timeout_scale(), 3);
     }
 
     #[test]
