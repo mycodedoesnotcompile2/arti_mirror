@@ -95,8 +95,6 @@ struct HsDescForTp {
     ///
     /// Used for determining whether a newly fetched descriptor
     /// is for the same time period as this one.
-    ///
-    // XXX this is not implemented yet
     hs_blind_id: HsBlindId,
     /// The descriptor
     desc: TimerangeBound<HsDesc>,
@@ -567,7 +565,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
                 // we need the known-to-be-Some descriptor instead.
                 //
                 // https://github.com/rust-lang/rust/issues/51545
-                Some(desc.revision())
+                Some((desc.revision(), previously.hs_blind_id))
             } else {
                 // Seems to be not valid now.  Try to fetch a fresh one.
                 None
@@ -700,27 +698,17 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
 
         // If our existing descriptor is newer than the one we have just fetched,
         // we should retain it.
-        if let Some(cur_revision) = cur_revision {
+        if let Some((cur_revision, hs_blind_id)) = cur_revision {
             // It is safe to dangerously_assume_timely,
             // as descriptor_fetch_attempt has already checked the timeliness of the descriptor.
             let new_desc = desc.as_ref().dangerously_assume_timely();
 
-            // TODO: revision counters are not supposed to grow unboundedly,
-            // which means a long-running client will eventually reach a point
-            // where its cached descriptor has the highest allowed revision counter.
-            // At that point, a well-behaved service will reset its revision counter.
-            // This new revision counter can be lower the revision counter before the reset.
-            // When that happens, the condition below will prevent the client
-            // from renewing its descriptor (at least until the new revision counter
-            // catches up with the counter in our cached descriptor).
-            //
-            // But how we even detect when the counter has reset, and what value it was reset to?
-            //
-            // See <https://spec.torproject.org/rend-spec/revision-counter-mgt.html#avoid>:
-            //
-            // "Similarly, implementations SHOULD NOT let the revision counter increase forever without
-            // resetting it – doing so links the service across changes in the blinded public key."
-            if cur_revision >= new_desc.revision() {
+            // Revision counters are monotonically increasing within a given time period.
+            // If our newly fetched descriptor has the same HsBlindId as our cached one,
+            // it means they are both used for the same time period,
+            // and so we should only update our cache if the new descriptor is more recent
+            // (i.e. it has a higher revision counter).
+            if hs_blind_id == self.hs_blind_id && cur_revision >= new_desc.revision() {
                 // Our cached descriptor is still timely, and has a higher revision counter
                 // than the one we've just fetched, so we retain it.
                 return Ok(unwrap_valid_desc(data));
