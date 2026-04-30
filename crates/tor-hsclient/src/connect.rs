@@ -730,12 +730,6 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             //  * Ok(None) means all attempts exhausted
             //  * Err(error) means this attempt failed
             //
-            // Error handling is rather complex here.  It's the primary job of *this* code to
-            // make sure that it's done right for timeouts.  (The individual component
-            // functions handle non-timeout errors.)  The different timeout errors have
-            // different amounts of information about the identity of the RPT and IPT: in each
-            // case, the error only mentions the RPT or IPT if that node is implicated in the
-            // timeout.
             let outcome = async {
                 // We establish a rendezvous point first.  Although it appears from reading
                 // this code that this means we serialise establishment of the rendezvous and
@@ -892,7 +886,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
     /// other than (obviously) the isolation implied by our circuit pool.
     /// In particular it doesn't depend on the introduction point.
     ///
-    /// Does not apply a timeout.
+    /// Applies timeouts as appropriate.
     #[instrument(level = "trace", skip_all)]
     async fn establish_rendezvous(&'c self) -> Result<Rendezvous<'c, R, M>, FAE> {
         let (rend_tunnel, rend_relay) = self
@@ -1011,7 +1005,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
     /// nothing in it actually involves the rendezvous point.
     /// So if there's a failure, it's purely to do with the introduction point.
     ///
-    /// Does not apply a timeout.
+    /// Applies timeouts as appropriate.
     #[allow(clippy::cognitive_complexity, clippy::type_complexity)] // TODO: Refactor
     #[instrument(level = "trace", skip_all)]
     async fn exchange_introduce(
