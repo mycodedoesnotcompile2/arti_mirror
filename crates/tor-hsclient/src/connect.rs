@@ -292,9 +292,7 @@ impl<K> RelayIdFor<K> {
 
     /// Identities to use to try to find previous experience information about this IPT
     fn for_lookup<T: HasRelayIds>(ids: &T) -> impl Iterator<Item = Self> + '_ {
-        ids
-            .identities()
-            .map(|id| RelayIdFor::new(id.to_owned()))
+        ids.identities().map(|id| RelayIdFor::new(id.to_owned()))
     }
 
     /// Identity to use to store previous experience information about this IPT
