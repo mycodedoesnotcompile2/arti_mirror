@@ -2090,6 +2090,25 @@ mod test {
         HsClientDescEncKeypair::new(pk, sk)
     }
 
+    fn expected_hsdesc(hsid: HsId, netdir: &NetDir, now: SystemTime) -> HsDesc {
+        let time_period = netdir.hs_time_period();
+        let (hs_blind_id_key, subcredential) = HsIdKey::try_from(hsid)
+            .unwrap()
+            .compute_blinded_key(time_period)
+            .unwrap();
+        let hs_blind_id = hs_blind_id_key.id();
+
+        HsDesc::parse_decrypt_validate(
+            test_data::TEST_DATA_2,
+            &hs_blind_id,
+            now,
+            &subcredential,
+            Some(&ks_hsc_desc_enc()),
+        )
+        .unwrap()
+        .dangerously_assume_timely()
+    }
+
     fn build_test_netdir() -> Arc<NetDir> {
         let valid_after = humantime::parse_rfc3339("2023-02-09T12:00:00Z").unwrap();
         let fresh_until = valid_after + humantime::parse_duration("1 hours").unwrap();
@@ -2117,7 +2136,6 @@ mod test {
         let runtime = runtime
             .with_sleep_provider(mock_sp.clone())
             .with_coarse_time_provider(mock_sp);
-        let time_period = netdir.hs_time_period();
 
         let intro_acks = vec![(
             IntroduceAck::new(IntroduceAckStatus::SUCCESS),
@@ -2141,7 +2159,7 @@ mod test {
         let ctx = Context::new(
             &runtime,
             &mocks,
-            netdir,
+            Arc::clone(&netdir),
             Default::default(),
             hsid,
             secret_keys,
@@ -2151,22 +2169,7 @@ mod test {
 
         let _got = ctx.connect(&mut data).await.unwrap();
 
-        let (hs_blind_id_key, subcredential) = HsIdKey::try_from(hsid)
-            .unwrap()
-            .compute_blinded_key(time_period)
-            .unwrap();
-        let hs_blind_id = hs_blind_id_key.id();
-
-        let hsdesc = HsDesc::parse_decrypt_validate(
-            test_data::TEST_DATA_2,
-            &hs_blind_id,
-            now,
-            &subcredential,
-            Some(&ks_hsc_desc_enc()),
-        )
-        .unwrap()
-        .dangerously_assume_timely();
-
+        let hsdesc = expected_hsdesc(hsid, &netdir, now);
         let mglobal = mocks.mglobal.lock().unwrap();
         assert_eq!(mglobal.hsdirs_asked.len(), 1);
         // TODO hs: here and in other places, consider implementing PartialEq instead, or creating
