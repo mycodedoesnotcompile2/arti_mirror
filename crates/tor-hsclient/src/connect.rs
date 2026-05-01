@@ -1899,10 +1899,12 @@ mod test {
     use tor_rtmock::simple_time::SimpleMockTimeProvider;
     use tracing_test::traced_test;
 
-    #[derive(Debug, Default)]
+    #[derive(derive_more::Debug, Default)]
     struct MocksGlobal {
         hsdirs_asked: Vec<OwnedCircTarget>,
         got_desc: Option<HsDesc>,
+        #[debug(skip)]
+        rendezvous: Option<Box<dyn MsgHandler + Send + 'static>>,
     }
     #[derive(Clone, Debug)]
     struct Mocks<I> {
@@ -1966,14 +1968,17 @@ mod test {
             _netdir: &NetDir,
             target: impl CircTarget + Send + Sync + 'async_trait,
         ) -> tor_circmgr::Result<Self::IntroTunnel> {
-            todo!()
+            Ok(self.clone())
         }
         /// Client circuit
         async fn m_get_or_launch_client_rend<'a>(
             &self,
             netdir: &'a NetDir,
         ) -> tor_circmgr::Result<(Self::DataTunnel, Relay<'a>)> {
-            todo!()
+            // Pick one of the relays we know to be in the test net as our RPT
+            let rpt = netdir.by_id(&Ed25519Identity::from([12; 32])).unwrap();
+
+            Ok((self.clone(), rpt))
         }
 
         fn m_estimate_timeout(&self, action: &TimeoutsAction) -> Duration {
@@ -2016,9 +2021,22 @@ mod test {
         async fn m_start_conversation_last_hop(
             &self,
             msg: Option<AnyRelayMsg>,
-            reply_handler: impl MsgHandler + Send + 'static,
+            mut reply_handler: impl MsgHandler + Send + 'static,
         ) -> tor_circmgr::Result<Self::Conversation<'_>> {
-            todo!()
+            match msg {
+                Some(AnyRelayMsg::EstablishRendezvous(_)) => {
+                    let reply = RendezvousEstablished::default();
+                    let disp = reply_handler.handle_msg(reply.into()).unwrap();
+                    assert_eq!(disp, MetaCellDisposition::Consumed);
+                    // Save this, because we'll need to use it later,
+                    // when handling the INTRODUCE1
+                    let mut global = self.mglobal.lock().unwrap();
+                    global.rendezvous = Some(Box::new(reply_handler));
+                }
+                _ => panic!("unexpected msg {msg:?}"),
+            }
+
+            Ok(&())
         }
 
         async fn m_extend_virtual(
@@ -2029,7 +2047,7 @@ mod test {
             params: CircParameters,
             capabilities: &tor_protover::Protocols,
         ) -> tor_circmgr::Result<()> {
-            todo!()
+            Ok(())
         }
 
         fn m_num_own_hops(&self) -> tor_circmgr::Result<usize> {
@@ -2044,9 +2062,30 @@ mod test {
         async fn m_start_conversation_last_hop(
             &self,
             msg: Option<AnyRelayMsg>,
-            reply_handler: impl MsgHandler + Send + 'static,
+            mut reply_handler: impl MsgHandler + Send + 'static,
         ) -> tor_circmgr::Result<Self::Conversation<'_>> {
-            todo!()
+            match msg {
+                Some(AnyRelayMsg::Introduce1(introduce1)) => {
+                    // TODO: need infrastructure for sending various intro point errors
+                    // to test retries and descriptor re-fetching
+                    let reply = IntroduceAck::new(IntroduceAckStatus::SUCCESS);
+                    let disp = reply_handler.handle_msg(reply.into()).unwrap();
+                    assert_eq!(disp, MetaCellDisposition::ConversationFinished);
+
+                    // Mock the service's response
+                    let mut global = self.mglobal.lock().unwrap();
+                    let rendezvous = global
+                        .rendezvous
+                        .as_mut()
+                        .expect("got INTRODUCE1 before ESTABLISH_RENDEZVOUS?!");
+                    let reply = Rendezvous2::new(b"dummy handshake info, ignored");
+                    let disp = rendezvous.handle_msg(reply.into()).unwrap();
+                    assert_eq!(disp, MetaCellDisposition::ConversationFinished);
+                }
+                _ => panic!("unexpected msg {msg:?}"),
+            }
+
+            Ok(&())
         }
 
         fn m_num_hops(&self) -> tor_circmgr::Result<usize> {
