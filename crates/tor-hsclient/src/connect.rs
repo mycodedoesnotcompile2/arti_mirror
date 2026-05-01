@@ -23,7 +23,7 @@ use tor_dirclient::SourceInfo;
 use tor_error::{Bug, debug_report, warn_report};
 use tor_hscrypto::Subcredential;
 use tor_proto::TargetHop;
-use tor_proto::client::circuit::handshake::hs_ntor;
+use tor_proto::client::circuit::handshake::hs_ntor::{self, HsNtorHkdfKeyGenerator};
 use tracing::{debug, instrument, trace, warn};
 use web_time_compat::{Duration, Instant, SystemTime};
 
@@ -50,6 +50,7 @@ use tor_proto::{MetaCellDisposition, MsgHandler};
 use tor_rtcompat::{Runtime, SleepProviderExt as _, TimeoutError};
 
 use crate::Config;
+use crate::err::RendPtIdentityForError;
 use crate::pow::HsPowClient;
 use crate::proto_oneshot;
 use crate::relay_info::ipt_to_circtarget;
@@ -1509,18 +1510,9 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         let handshake_state = introduced.handshake_state;
 
         // Try to complete the cryptographic handshake.
-        let keygen = handshake_state
-            .client_receive_rend(rend2_msg.handshake_info())
-            // If this goes wrong. either the onion service has mangled the crypto,
-            // or the rendezvous point has misbehaved (that that is possible is a protocol bug),
-            // or we have used the wrong handshake_state (let's assume that's not true).
-            //
-            // If this happens we'll go and try another RPT.
-            .map_err(|error| FAE::RendezvousCompletionHandshake {
-                error,
-                intro_index,
-                rend_pt: rend_pt.clone(),
-            })?;
+        let keygen =
+            self.mocks
+                .rendezvous_handshake(handshake_state, rend2_msg, intro_index, &rend_pt)?;
 
         let params = onion_circparams_from_netparams(self.netdir.params())
             .map_err(into_internal!("Failed to build CircParameters"))?;
@@ -1595,6 +1587,9 @@ trait MocksForConnect<R>: Clone {
     /// A random number generator
     type Rng: rand::Rng + rand::CryptoRng;
 
+    /// Key generator used for generating the keys for the virtual hop.
+    type KeyGenerator: tor_proto::client::circuit::handshake::KeyGenerator + Send;
+
     /// Tell tests we got this descriptor text
     fn test_got_desc(&self, _: &HsDesc) {}
     /// Tell tests we got this data tunnel.
@@ -1604,6 +1599,15 @@ trait MocksForConnect<R>: Clone {
 
     /// Return a random number generator
     fn thread_rng(&self) -> Self::Rng;
+
+    /// Complete the rendezvous handshake, returning the resulting keygen
+    fn rendezvous_handshake(
+        &self,
+        handshake_state: hs_ntor::HsNtorClientState,
+        rend2_msg: Rendezvous2,
+        intro_index: IntroPtIndex,
+        rend_pt: &RendPtIdentityForError,
+    ) -> Result<Self::KeyGenerator, FAE>;
 }
 /// Mock for `HsCircPool`
 ///
@@ -1717,9 +1721,32 @@ trait MockableClientIntro: Debug {
 impl<R: Runtime> MocksForConnect<R> for () {
     type HsCircPool = HsCircPool<R>;
     type Rng = rand::rngs::ThreadRng;
+    type KeyGenerator = HsNtorHkdfKeyGenerator;
 
     fn thread_rng(&self) -> Self::Rng {
         rand::rng()
+    }
+
+    fn rendezvous_handshake(
+        &self,
+        handshake_state: hs_ntor::HsNtorClientState,
+        rend2_msg: Rendezvous2,
+        intro_index: IntroPtIndex,
+        rend_pt: &RendPtIdentityForError,
+    ) -> Result<Self::KeyGenerator, FAE> {
+        // Try to complete the cryptographic handshake.
+        handshake_state
+            .client_receive_rend(rend2_msg.handshake_info())
+            // If this goes wrong. either the onion service has mangled the crypto,
+            // or the rendezvous point has misbehaved (that that is possible is a protocol bug),
+            // or we have used the wrong handshake_state (let's assume that's not true).
+            //
+            // If this happens we'll go and try another RPT.
+            .map_err(|error| FAE::RendezvousCompletionHandshake {
+                error,
+                intro_index,
+                rend_pt: rend_pt.clone(),
+            })
     }
 }
 #[async_trait]
@@ -1883,9 +1910,18 @@ mod test {
         id: I,
     }
 
+    struct MockKeyGenerator;
+
+    impl tor_proto::client::circuit::handshake::KeyGenerator for MockKeyGenerator {
+        fn expand(self, _keylen: usize) -> tor_proto::Result<tor_bytes::SecretBuf> {
+            todo!()
+        }
+    }
+
     impl<R: Runtime> MocksForConnect<R> for Mocks<()> {
         type HsCircPool = Mocks<()>;
         type Rng = TestingRng;
+        type KeyGenerator = MockKeyGenerator;
 
         fn test_got_desc(&self, desc: &HsDesc) {
             self.mglobal.lock().unwrap().got_desc = Some(desc.clone());
@@ -1895,6 +1931,16 @@ mod test {
 
         fn thread_rng(&self) -> Self::Rng {
             testing_rng()
+        }
+
+        fn rendezvous_handshake(
+            &self,
+            _handshake_state: hs_ntor::HsNtorClientState,
+            _rend2_msg: Rendezvous2,
+            _intro_index: IntroPtIndex,
+            _rend_pt: &RendPtIdentityForError,
+        ) -> Result<Self::KeyGenerator, FAE> {
+            Ok(MockKeyGenerator)
         }
     }
     #[allow(clippy::diverging_sub_expression)] // async_trait + todo!()
