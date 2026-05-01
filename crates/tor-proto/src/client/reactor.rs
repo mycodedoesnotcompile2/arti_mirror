@@ -450,7 +450,7 @@ pub(crate) trait MetaCellHandler: Send {
 }
 
 /// A possible successful outcome of giving a message to a [`MsgHandler`](super::msghandler::MsgHandler).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "send-control-msg", visibility::make(pub))]
 #[non_exhaustive]
 pub(crate) enum MetaCellDisposition {
