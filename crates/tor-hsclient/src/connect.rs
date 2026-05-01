@@ -2084,11 +2084,7 @@ mod test {
         }
     }
 
-    #[traced_test]
-    #[tokio::test]
-    async fn test_connect() {
-        use MetaCellDisposition::*;
-
+    fn build_test_netdir() -> Arc<NetDir> {
         let valid_after = humantime::parse_rfc3339("2023-02-09T12:00:00Z").unwrap();
         let fresh_until = valid_after + humantime::parse_duration("1 hours").unwrap();
         let valid_until = valid_after + humantime::parse_duration("24 hours").unwrap();
@@ -2101,7 +2097,14 @@ mod test {
         )
         .expect("failed to build default testing netdir");
 
-        let netdir = Arc::new(netdir.unwrap_if_sufficient().unwrap());
+        Arc::new(netdir.unwrap_if_sufficient().unwrap())
+    }
+
+    #[traced_test]
+    #[tokio::test]
+    async fn test_connect() {
+        use MetaCellDisposition::*;
+        let netdir = build_test_netdir();
         let runtime = TokioNativeTlsRuntime::current().unwrap();
         let now = humantime::parse_rfc3339("2023-02-09T12:00:00Z").unwrap();
         let mock_sp = SimpleMockTimeProvider::from_wallclock(now);
