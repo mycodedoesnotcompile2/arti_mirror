@@ -1886,8 +1886,7 @@ mod test {
 
     use super::*;
     use crate::*;
-    use futures::FutureExt as _;
-    use std::{iter, panic::AssertUnwindSafe};
+    use std::iter;
     use tokio_crate as tokio;
     use tor_async_utils::JoinReadWrite;
     use tor_basic_utils::test_rng::{TestingRng, testing_rng};
@@ -2140,8 +2139,7 @@ mod test {
         )
         .unwrap();
 
-        let _got = AssertUnwindSafe(ctx.connect(&mut data))
-            .catch_unwind() // TODO HS TESTS: remove this and the AssertUnwindSafe
+        let _got = ctx.connect(&mut data)
             .await;
 
         let (hs_blind_id_key, subcredential) = HsIdKey::try_from(hsid)
