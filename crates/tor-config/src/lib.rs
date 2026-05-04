@@ -77,14 +77,16 @@ pub mod deps {
 }
 
 pub use cmdline::CmdLine;
-pub use err::{ConfigBuildError, ConfigError, ReconfigureError};
+pub use err::{ConfigBuildError, ConfigError, ConfigGetValueError, ReconfigureError};
 pub use flatten::{Flatten, Flattenable};
 pub use list_builder::{MultilineListBuilder, MultilineListBuilderError};
 pub use listen::*;
 pub use load::{resolve, resolve_ignore_warnings, resolve_return_results};
 pub use misc::*;
 pub use mut_cfg::MutCfg;
+use serde::de::DeserializeOwned;
 pub use sources::{ConfigurationSource, ConfigurationSources};
+use tor_error::into_internal;
 
 #[doc(hidden)]
 pub use derive_deftly;
@@ -101,7 +103,6 @@ derive_deftly::template_export_semver_check! { "0.12.1" }
 #[derive(Clone, Debug)]
 pub struct ConfigurationTree(figment::Figment);
 
-#[cfg(test)]
 impl ConfigurationTree {
     #[cfg(test)]
     pub(crate) fn get_string(&self, key: &str) -> Result<String, crate::ConfigError> {
@@ -112,6 +113,24 @@ impl ConfigurationTree {
             V::Num(_, n) => n.to_i128().expect("Failed to extract i128").to_string(),
             _ => format!("{:?}", val),
         })
+    }
+
+    /// Return the value with a given key as some type that implements Deserialize.
+    ///
+    /// Return `None` if no such value is set in this tree.
+    pub fn get_serde_value<T: DeserializeOwned>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>, ConfigGetValueError> {
+        use figment::error::{Error as FError, Kind::MissingField};
+        match self.0.extract_inner(key) {
+            Ok(v) => Ok(Some(v)),
+            Err(FError {
+                kind: MissingField(..),
+                ..
+            }) => Ok(None),
+            Err(e) => Err(into_internal!("Unexpected error looking up config value")(e).into()),
+        }
     }
 }
 
@@ -440,7 +459,7 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
-    use crate as tor_config;
+    use crate::{self as tor_config, sources::MustRead};
     use derive_builder::Builder;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -528,5 +547,39 @@ mod test {
             assert_eq!(builder_from_methods.build().unwrap(),
                        TestConfig { none: None, four: None });
         }
+    }
+
+    #[test]
+    fn get_value() {
+        use serde_value::Value as V;
+        let to_value = |json_str: &str| {
+            serde_value::to_value(serde_json::from_str::<serde_json::Value>(json_str).unwrap())
+                .unwrap()
+        };
+        let mut sources = ConfigurationSources::new_empty();
+
+        let source = "
+        [foo]
+        bar.baz = 7
+        quux = [[],[],{}]
+        ";
+        let source = ConfigurationSource::from_verbatim(source.to_string());
+        sources.push_source(source, MustRead::MustRead);
+
+        let tree = sources.load().unwrap();
+
+        {
+            let v1 = tree.get_serde_value::<V>("foo.quux").unwrap().unwrap();
+            let v2 = to_value(r#"[[], [], {}]"#);
+            assert_eq!(v1, v2);
+        }
+
+        assert!(tree.get_serde_value::<V>("nonexist").unwrap().is_none());
+        assert!(tree.get_serde_value::<V>("foo.nonexist").unwrap().is_none());
+        assert!(
+            tree.get_serde_value::<V>("foo.quux.nonexist")
+                .unwrap()
+                .is_none()
+        );
     }
 }
