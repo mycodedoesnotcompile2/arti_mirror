@@ -129,14 +129,6 @@ async fn run_watcher<R: Runtime>(
                 };
 
                 info!("Received SIGHUP");
-
-                watcher = reload_configuration(
-                    runtime.clone(),
-                    watcher,
-                    &sources,
-                    &modules,
-                    tx.clone()
-                ).await?;
             },
             event = rx.next().fuse() => {
                 if let Some(debounce_interval) = debounce_interval {
@@ -152,15 +144,11 @@ async fn run_watcher<R: Runtime>(
                     // call recv() in the outer loop.
                 }
                 debug!("Config reload event {:?}: reloading configuration.", event);
-                watcher = reload_configuration(
-                    runtime.clone(),
-                    watcher,
-                    &sources,
-                    &modules,
-                    tx.clone()
-                ).await?;
             },
         }
+
+        watcher =
+            reload_configuration(runtime.clone(), watcher, &sources, &modules, tx.clone()).await?;
     }
 
     Ok(())
