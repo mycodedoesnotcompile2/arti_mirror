@@ -497,7 +497,8 @@ mod ed25519impl {
 
     /// An alleged ed25519 public key, encoded in base64 with optional
     /// padding.
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq, Deftly)]
+    #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct Ed25519Public(pub Ed25519Identity);
 
@@ -518,12 +519,6 @@ mod ed25519impl {
     }
 
     impl NormalItemArgument for Ed25519Public {}
-
-    impl From<Ed25519Public> for Ed25519Identity {
-        fn from(pk: Ed25519Public) -> Ed25519Identity {
-            pk.0
-        }
-    }
 
     /// Helper that checks for the presence of `ed25519`.
     #[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::FromStr)]
