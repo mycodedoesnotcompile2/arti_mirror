@@ -101,6 +101,7 @@ derive_deftly::template_export_semver_check! { "0.12.1" }
 /// (This is a wrapper for an underlying type provided by the library that
 /// actually does our configuration.)
 #[derive(Clone, Debug)]
+#[must_use] // to prevent errors from merge_from.
 pub struct ConfigurationTree(figment::Figment);
 
 impl ConfigurationTree {
@@ -131,6 +132,27 @@ impl ConfigurationTree {
             }) => Ok(None),
             Err(e) => Err(into_internal!("Unexpected error looking up config value")(e).into()),
         }
+    }
+
+    /// Override our current tree with the settings in `config`, returning a new
+    /// `ConfigurationTree`.
+    ///
+    /// `config` must be implement [`Serialize`](serde::Serialize),
+    /// and must serialize to a map.
+    ///
+    /// This operation follows the same as are used when reading
+    /// multiple configuration files in sequence,
+    /// where option settings in later files replace earlier ones.
+    #[allow(clippy::unnecessary_wraps)]
+    pub fn merge_from<T>(mut self, config: &T) -> Result<Self, ConfigError>
+    where
+        T: serde::Serialize,
+    {
+        let provider = figment::providers::Serialized::from(config, figment::Profile::Default);
+        // Figment::merge handles errors by making the type of the figment itself into an error...
+        self.0 = self.0.merge(provider);
+        // but we don't want our API to rely on that, so we let this be a Result.
+        Ok(self)
     }
 }
 
