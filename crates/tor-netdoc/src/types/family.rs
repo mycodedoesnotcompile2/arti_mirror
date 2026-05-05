@@ -182,8 +182,14 @@ impl RelayFamilyIds {
 }
 
 impl FromIterator<RelayFamilyId> for RelayFamilyIds {
+    /// Creates a [`RelayFamilyIds`] from an iterator.
+    ///
+    /// Automatically dedups and sorts.
     fn from_iter<T: IntoIterator<Item = RelayFamilyId>>(iter: T) -> Self {
-        Self(iter.into_iter().collect())
+        let mut res = Self(iter.into_iter().collect());
+        res.sort();
+        res.dedup();
+        res
     }
 }
 
