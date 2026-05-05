@@ -51,9 +51,9 @@ pub struct ConsensusBuilder {
     voting_delay: Option<(u32, u32)>,
     /// See [`Preamble::consensus_method`]
     consensus_method: Option<u32>,
-    /// See [`Preamble::shared_rand_previous_value`]
+    /// See [`SharedRandStatuses::shared_rand_previous_value`]
     shared_rand_previous_value: Option<SharedRandStatus>,
-    /// See [`Preamble::shared_rand_current_value`]
+    /// See [`SharedRandStatuses::shared_rand_current_value`]
     shared_rand_current_value: Option<SharedRandStatus>,
     /// See [`Consensus::voters`]
     voters: Vec<ConsensusAuthorityEntry>,
@@ -243,6 +243,11 @@ impl ConsensusBuilder {
             .consensus_method
             .ok_or(Error::CannotBuild("Missing consensus method."))?;
 
+        let shared_rand = SharedRandStatuses {
+            shared_rand_previous_value: self.shared_rand_previous_value.clone(),
+            shared_rand_current_value: self.shared_rand_current_value.clone(),
+        };
+
         let preamble = Preamble {
             lifetime,
             client_versions: self.client_versions.clone(),
@@ -254,8 +259,7 @@ impl ConsensusBuilder {
             consensus_methods: NotPresent,
             published: NotPresent,
             known_flags: DocRelayFlags::new_empty_unknown_discarded(),
-            shared_rand_previous_value: self.shared_rand_previous_value.clone(),
-            shared_rand_current_value: self.shared_rand_current_value.clone(),
+            shared_rand,
             __non_exhaustive: (),
         };
 

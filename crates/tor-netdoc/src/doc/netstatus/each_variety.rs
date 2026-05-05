@@ -91,13 +91,10 @@ pub struct Preamble {
     #[deftly(constructor)]
     pub params: NetParams<i32>,
 
-    /// Global shared-random value for the previous shared-random period.
+    /// Global shared-random values
     // TODO DIRAUTH in votes, is in the authority section
-    pub shared_rand_previous_value: Option<SharedRandStatus>,
-
-    /// Global shared-random value for the current shared-random period.
-    // TODO DIRAUTH in votes, is in the authority section
-    pub shared_rand_current_value: Option<SharedRandStatus>,
+    #[deftly(netdoc(flatten))]
+    pub shared_rand: ns_type!( SharedRandStatuses, SharedRandStatuses, NotPresent ),
 
     // TODO DIRAUTH missing field: bandwidth-file-headers (in votes)
     // TODO DIRAUTH missing field: bandwidth-file-digest (in votes)

@@ -757,6 +757,25 @@ pub struct SharedRandStatus {
     pub timestamp: Option<Iso8601TimeNoSp>,
 }
 
+/// The two shared random values, `shared-rand-*-value`
+///
+/// As found in the consensus preamble
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-current-value>
+/// and a vote's authority section
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#authority-item-shared-rand-value>
+#[derive(Debug, Clone, Default, Deftly)]
+#[non_exhaustive]
+#[derive_deftly(Constructor, NetdocEncodableFields, NetdocParseableFields)]
+pub struct SharedRandStatuses {
+    /// Global shared-random value for the previous shared-random period.
+    // TODO DIRAUTH in votes, is in the authority section
+    pub shared_rand_previous_value: Option<SharedRandStatus>,
+
+    /// Global shared-random value for the current shared-random period.
+    // TODO DIRAUTH in votes, is in the authority section
+    pub shared_rand_current_value: Option<SharedRandStatus>,
+}
+
 /// Recognized weight fields on a single relay in a consensus
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy)]
