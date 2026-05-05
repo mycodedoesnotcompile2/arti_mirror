@@ -47,6 +47,8 @@ full = [
     "tor-protover/full",
     "tor-relay-crypto/full",
     "web-time-compat/full",
+    "tor-relay-crypto?/full",
+    "tor-rpcbase?/full",
 ]
 
 experimental = [

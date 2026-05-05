@@ -37,6 +37,8 @@ full = [
     "tor-basic-utils/full",
     "tor-cert/full",
     "tor-key-forge/full",
+    "tor-units/full",
+    "web-time-compat/full",
 ]
 
 [dependencies]
