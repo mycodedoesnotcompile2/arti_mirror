@@ -52,7 +52,7 @@ use crate::parse2::{
 use derive_deftly::{Deftly, define_derive_deftly, define_derive_deftly_module};
 use digest::Digest as _;
 use educe::Educe;
-use std::cmp::{self, PartialOrd};
+use std::cmp::{self, Ordering, PartialOrd};
 use std::fmt::{self, Display};
 use std::iter;
 use std::marker::PhantomData;
@@ -179,7 +179,7 @@ define_derive_deftly! {
     ///
     /// # Generated code
     ///
-    ///  * impls of `ConstantTimeEq`, `Eq`, `PartialEq`
+    ///  * impls of `ConstantTimeEq`, `Eq`, `PartialEq`, `Ord`, `PartialOrd`
     ///  * `as_bytes()` method
     ${TRANSPARENT_DOCS_IMPLS}
     ///  * impls of `AsMut<field>`, `AsRef<field>`, `AsRef<[u8]>`, `AsMut<[u8]>`
@@ -211,6 +211,18 @@ define_derive_deftly! {
         }
     }
     impl<$tgens> Eq for $ttype {}
+    impl<$tgens> PartialOrd for $ttype {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+    impl<$tgens> Ord for $ttype {
+        fn cmp(&self, other: &Self) -> Ordering {
+          $(
+            self.$fname.cmp(&other.$fname)
+          )
+        }
+    }
 
     impl<$tgens> $ttype {
         /// Return the byte array from this object.

@@ -8,3 +8,4 @@ BREAKING: `RouterDesc::is_dircache` renamed to `tunnelled_dir_server`
 BREAKING: `RouterDesc::rsa_identity()` now returns a copy
 BREAKING: `RouterDesc::fingerprint()` now stored in a `Option<SpFingerprint>`
 ADDED: `Fingerprint` et al implement `Ord` and `PartialOrd`
+ADDED: `B16, B16U, B64, B16Fixed` et al implement `Ord` and `PartialOrd`
