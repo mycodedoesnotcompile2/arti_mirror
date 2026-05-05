@@ -270,8 +270,10 @@ define_derive_deftly! {
     impl<$tgens> $P::NetdocEncodableFields for $ttype {
         fn encode_fields(
             &self,
+            #[allow(unused)] // Not used if there are no fields.
             out: &mut $P::NetdocEncoder,
         ) -> $P::Result<(), $P::Bug> {
+            #[allow(unused)] // Not used if there are no fields.
             use $P::*;
 
             $ENCODE_ITEMS_BODY
