@@ -7,3 +7,4 @@ BREAKING: `RouterDesc::ipv6addr` renamed to `or_address`
 BREAKING: `RouterDesc::is_dircache` renamed to `tunnelled_dir_server`
 BREAKING: `RouterDesc::rsa_identity()` now returns a copy
 BREAKING: `RouterDesc::fingerprint()` now stored in a `Option<SpFingerprint>`
+ADDED: `Fingerprint` et al implement `Ord` and `PartialOrd`

@@ -1405,7 +1405,7 @@ mod fingerprint {
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html?highlight=fingerprint#item:fingerprint>
     ///
     /// Netdoc parsing adapter for [`RsaIdentity`]
-    #[derive(Debug, Clone, Eq, PartialEq, Hash, Deftly)]
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct SpFingerprint(pub RsaIdentity);
@@ -1413,7 +1413,7 @@ mod fingerprint {
     /// A hex-encoded fingerprint with no spaces.
     ///
     /// Netdoc parsing adapter for [`RsaIdentity`]
-    #[derive(Debug, Clone, Eq, PartialEq, Hash, Deftly)]
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct Fingerprint(pub RsaIdentity);
@@ -1421,7 +1421,7 @@ mod fingerprint {
     /// A base64-encoded fingerprint (unpadded)
     ///
     /// Netdoc parsing adapter for [`RsaIdentity`]
-    #[derive(Debug, Clone, Eq, PartialEq, Hash, Deftly)]
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct Base64Fingerprint(pub RsaIdentity);
@@ -1429,7 +1429,7 @@ mod fingerprint {
     /// A "long identity" in the format used for Family members.
     ///
     /// Netdoc parsing adapter for [`RsaIdentity`]
-    #[derive(Debug, Clone, Eq, PartialEq, Hash, Deftly)]
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub(crate) struct LongIdent(pub RsaIdentity);
