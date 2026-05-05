@@ -768,11 +768,9 @@ pub struct SharedRandStatus {
 #[derive_deftly(Constructor, NetdocEncodableFields, NetdocParseableFields)]
 pub struct SharedRandStatuses {
     /// Global shared-random value for the previous shared-random period.
-    // TODO DIRAUTH in votes, is in the authority section
     pub shared_rand_previous_value: Option<SharedRandStatus>,
 
     /// Global shared-random value for the current shared-random period.
-    // TODO DIRAUTH in votes, is in the authority section
     pub shared_rand_current_value: Option<SharedRandStatus>,
 }
 
@@ -866,11 +864,13 @@ pub struct VoteAuthorityEntry {
     #[deftly(constructor)]
     pub contact: ContactInfo,
 
+    /// Global shared-random values
+    #[deftly(netdoc(flatten))]
+    pub shared_rand: SharedRandStatuses,
+
     // TODO DIRAUTH missing field legacy-dir-key
     // TODO DIRAUTH missing field shared-rand-participate
     // TODO DIRAUTH missing field shared-rand-commit
-    // TODO DIRAUTH missing field shared-rand-previous-value
-    // TODO DIRAUTH missing field shared-rand-current-value
     //
     #[doc(hidden)]
     #[deftly(netdoc(skip))]

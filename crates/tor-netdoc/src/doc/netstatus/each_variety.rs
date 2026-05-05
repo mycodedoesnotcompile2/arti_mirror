@@ -92,7 +92,6 @@ pub struct Preamble {
     pub params: NetParams<i32>,
 
     /// Global shared-random values
-    // TODO DIRAUTH in votes, is in the authority section
     #[deftly(netdoc(flatten))]
     pub shared_rand: ns_type!( SharedRandStatuses, SharedRandStatuses, NotPresent ),
 
