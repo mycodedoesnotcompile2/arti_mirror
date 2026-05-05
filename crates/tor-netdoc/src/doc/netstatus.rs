@@ -879,8 +879,11 @@ pub struct VoteAuthorityEntry {
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-participate>
     pub shared_rand_participate: Option<SharedRandParticipate>,
 
-    // TODO DIRAUTH missing field shared-rand-commit
-    //
+    /// `shared-rand-commit` - Shared random commitment
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-commit>
+    pub shared_rand_commit: Vec<SharedRandCommit>,
+
     #[doc(hidden)]
     #[deftly(netdoc(skip))]
     pub __non_exhaustive: (),
@@ -900,6 +903,90 @@ pub struct SharedRandParticipate {
     #[doc(hidden)]
     #[deftly(netdoc(skip))]
     pub __non_exhaustive: (),
+}
+
+/// `shared-rand-commit` in a vote authority entry
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-commit>
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deftly)]
+// If new protocols use this item with a different version, we'll call it an API break.
+#[allow(clippy::exhaustive_enums)]
+pub enum SharedRandCommit {
+    /// Version 1, the only one supported
+    V1(SharedRandCommitV1),
+
+    /// Other versions.  Cannot be encoded.
+    // It's not clear that future versions will use this version mechanism.  torspec#408.
+    Unknown {},
+}
+
+/// `shared-rand-commit` in a vote authority entry
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-commit>
+///
+/// Version and hash are not explicitly represented.  See torspec#407.
+///
+/// `ItemValueEncodable` and `ItemValueParseable` impls do not include the fixed arguments;
+/// in a netdoc, this type should be used within `SharedRandCommit::V1`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deftly)]
+#[derive_deftly(Constructor, ItemValueEncodable, ItemValueParseable)]
+#[allow(clippy::exhaustive_structs)]
+pub struct SharedRandCommitV1 {
+    /// Authority id key, recapitulated.
+    // TODO this field shouldn't here at all torspec#407
+    #[deftly(constructor)]
+    h_kp_auth_id_rsa: Fingerprint,
+
+    /// Commitment
+    #[deftly(constructor)]
+    commit: B64,
+
+    /// Reveal
+    reveal: Option<B64>,
+
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
+}
+
+impl SharedRandCommitV1 {
+    /// The fixed arguments that precede the actual value in `shared-rand-commit 1 ...`
+    const FIXED_ARGUMENTS: &[&str] = &["1", "sha3-256"];
+}
+impl ItemValueEncodable for SharedRandCommit {
+    fn write_item_value_onto(&self, mut out: ItemEncoder) -> StdResult<(), Bug> {
+        match self {
+            SharedRandCommit::V1(values) => {
+                for fixed in SharedRandCommitV1::FIXED_ARGUMENTS {
+                    out.args_raw_string(fixed);
+                }
+                values.write_item_value_onto(out)
+            }
+            SharedRandCommit::Unknown {} => Err(internal!("encoding SharedRandCommit::Unknown")),
+        }
+    }
+}
+impl ItemValueParseable for SharedRandCommit {
+    fn from_unparsed(mut item: UnparsedItem<'_>) -> StdResult<Self, ErrorProblem> {
+        let mut fixed = SharedRandCommitV1::FIXED_ARGUMENTS.iter().copied();
+        let args = item.args_mut();
+        let version = args
+            .next()
+            .ok_or_else(|| args.handle_error("version", ArgumentError::Missing))?;
+        if version != fixed.next().expect("nonempty") {
+            return Ok(SharedRandCommit::Unknown {});
+        }
+        for exp in fixed {
+            let got = args
+                .next()
+                .ok_or_else(|| args.handle_error(exp, ArgumentError::Missing))?;
+            if got != exp {
+                return Err(args.handle_error(exp, ArgumentError::Invalid))?;
+            }
+        }
+        let values = SharedRandCommitV1::from_unparsed(item)?;
+        Ok(SharedRandCommit::V1(values))
+    }
 }
 
 // For `ConsensusAuthoritySection`, see `dir_source.rs`.
