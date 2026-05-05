@@ -100,7 +100,7 @@ derive_deftly::template_export_semver_check! { "0.12.1" }
 ///
 /// (This is a wrapper for an underlying type provided by the library that
 /// actually does our configuration.)
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 #[must_use] // to prevent errors from merge_from.
 pub struct ConfigurationTree(figment::Figment);
 
