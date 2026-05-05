@@ -588,6 +588,9 @@ mod ignored_impl {
     ///    **rejects** an object - failing the parse if one is present.
     ///    (Functions similarly to `Option<Void>`, but prefer `NotPresent` as it's clearer.)
     ///
+    ///  * When used as a sub-document (ie, `netdoc(flatten)` when deriving a document trait),
+    ///    it recognises, and encodes as, no fields.
+    ///
     /// There are bespoke impls of the multiplicity traits
     /// `ItemSetMethods` and `ObjectSetMethods`:
     /// don't wrap this type in `Option` or `Vec`.
@@ -596,7 +599,7 @@ mod ignored_impl {
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Default)]
     #[allow(clippy::exhaustive_structs)]
     #[derive(Deftly)]
-    #[derive_deftly(NetdocParseableFields)]
+    #[derive_deftly(NetdocEncodableFields, NetdocParseableFields)]
     pub struct NotPresent;
 
     /// Ignored part of a network document.
