@@ -849,9 +849,6 @@ pub struct ConsensusAuthorityEntry {
 /// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:authority-entry>
 ///
 /// See also [`ConsensusAuthorityEntry`]
-///
-/// TODO DIRAUTH not all fields are here yet.
-// They have individual comments, below.
 #[derive(Debug, Clone, Deftly)]
 #[derive_deftly(Constructor, NetdocEncodable, NetdocParseable)]
 #[allow(clippy::exhaustive_structs)]
