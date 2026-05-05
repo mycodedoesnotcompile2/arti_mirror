@@ -404,6 +404,15 @@ mod b16impl {
         }
     }
 
+    /// Write `b` to `f` in hex uppercase
+    // `hex` has `hex::encode_upper` but that allocates a `String`
+    fn write_b16u(b: &[u8], f: &mut fmt::Formatter) -> fmt::Result {
+        for c in b {
+            write!(f, "{c:02X}")?;
+        }
+        Ok(())
+    }
+
     impl Display for B16 {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             // `hex` has `hex::encode` but that allocates a `String`, which this approach doesn't
@@ -416,22 +425,13 @@ mod b16impl {
 
     impl Display for B16U {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            // `hex` has `hex::encode_upper` but that allocates a `String`
-            for c in self.as_bytes() {
-                write!(f, "{c:02X}")?;
-            }
-            Ok(())
+            write_b16u(self.as_bytes(), f)
         }
     }
 
     impl<const N: usize> Display for FixedB16U<N> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            // TODO DIRAUTH combine this with the same code in `Display for B16U`
-            // `hex` has `hex::encode_upper` but that allocates a `String`
-            for c in self.as_bytes() {
-                write!(f, "{c:02X}")?;
-            }
-            Ok(())
+            write_b16u(self.as_bytes(), f)
         }
     }
 
