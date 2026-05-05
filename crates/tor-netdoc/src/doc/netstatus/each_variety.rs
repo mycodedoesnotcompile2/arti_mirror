@@ -76,7 +76,7 @@ pub struct Preamble {
     #[deftly(netdoc(with = "relay_flags::ParserEncoder::<relay_flags::NoImplicitRepr>"))]
     pub known_flags: DocRelayFlags,
 
-    // TODO DIRAUTH missing field: flag-thresholds (in votes)
+    // TODO DIRAUTH torspec#404 missing field: flag-thresholds (in votes)
 
     /// Lists of recommended and required subprotocols.
     ///
