@@ -643,13 +643,14 @@ pub struct DigestAlgoInSignature(pub Option<KeywordOrString<DirectorySignatureHa
 
 impl ItemArgumentParseable for DigestAlgoInSignature {
     fn from_args<'s>(args: &mut ArgumentStream<'s>) -> StdResult<Self, ArgumentError> {
-        let v = if (|| {
-            let s = args.clone().next()?;
+        let v = if
+            args.clone().next()
             // Treat it as a fingerprint if it doesn't have any non-hex characters
             // (including lowercase ones).  If we reuse this item for new algorithms
             // they should have at least one letter g-z in their name.
+            .and_then(|s| {
             s.chars().all(|c| c.is_ascii_hexdigit()).then_some(())
-        })()
+            })
         .is_some()
         {
             // next argument looks enough like a fingerprint that we don't treat as an algo name
