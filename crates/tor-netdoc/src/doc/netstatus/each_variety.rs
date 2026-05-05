@@ -26,8 +26,8 @@ ns_use_this_variety! {
 /// `parse2` doesn't (currently) support subdocuments which contain the parent's intro item
 /// (ie, `#[deftly(netdoc(flatten))]` is not supported on the first field.)
 //
-// TODO DIRAUTH the *contents* of this struct is still wrong for votes,
-// and is missing some consensus fields that need to be manipulated by dirauths;
+// TODO DIRAUTH this is missing some fields that need to be included in votes,
+// by dirauths, when voting.  They are not needed for calculating a consensus from votes.
 // there are individual TODO comments about each such defect.
 #[derive(Clone, Debug, Deftly)]
 #[derive_deftly(Constructor, NetdocEncodableFields, NetdocParseableFields)]
