@@ -868,7 +868,12 @@ pub struct VoteAuthorityEntry {
     #[deftly(netdoc(flatten))]
     pub shared_rand: SharedRandStatuses,
 
-    // TODO DIRAUTH missing field legacy-dir-key
+    /// `legacy-dir-key` - superseded authority identity key
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:legacy-dir-key>
+    #[deftly(netdoc(single_arg))]
+    pub legacy_dir_key: Option<Fingerprint>,
+
     // TODO DIRAUTH missing field shared-rand-participate
     // TODO DIRAUTH missing field shared-rand-commit
     //
