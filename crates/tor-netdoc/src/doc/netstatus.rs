@@ -874,9 +874,29 @@ pub struct VoteAuthorityEntry {
     #[deftly(netdoc(single_arg))]
     pub legacy_dir_key: Option<Fingerprint>,
 
-    // TODO DIRAUTH missing field shared-rand-participate
+    /// `shared-rand-participate` - Indicate shared random participation
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-participate>
+    pub shared_rand_participate: Option<SharedRandParticipate>,
+
     // TODO DIRAUTH missing field shared-rand-commit
     //
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
+}
+
+/// `shared-rand-participate` in a vote authority entry
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-participate>
+//
+// We could have done `shared_rand_participate: Option<()>` in VoteAuthorityEntry,
+// but then we might end up with variables of type `&Option<()>` etc.
+// whose meaning has been detached from its type.
+#[derive(Debug, Clone, Deftly)]
+#[derive_deftly(Constructor, ItemValueEncodable, ItemValueParseable)]
+#[allow(clippy::exhaustive_structs)]
+pub struct SharedRandParticipate {
     #[doc(hidden)]
     #[deftly(netdoc(skip))]
     pub __non_exhaustive: (),
