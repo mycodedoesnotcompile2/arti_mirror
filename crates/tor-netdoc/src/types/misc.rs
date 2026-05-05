@@ -1779,15 +1779,18 @@ mod contact_info {
 
 /// Types for boolean-like types.
 mod boolean {
-    use std::{fmt::Display, str::FromStr};
-
-    use derive_more::{From, Into};
+    use derive_deftly::Deftly;
+    use std::{
+        fmt::Display,
+        ops::{Deref, DerefMut},
+        str::FromStr,
+    };
 
     use crate::{Error, NetdocErrorKind as EK, NormalItemArgument, Pos};
 
     /// A boolean that is represented by a `0` (false) or `1` (true).
-    // TODO DIRMIRROR: Derive Transparent
-    #[derive(Clone, Copy, Debug, Default, From, Into)]
+    #[derive(Clone, Copy, Debug, Default, Deftly)]
+    #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct NumericBoolean(pub bool);
 
