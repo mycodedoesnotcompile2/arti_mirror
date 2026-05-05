@@ -473,7 +473,7 @@ where
     T::Builder: Builder<Built = Self>,
 {
     fn resolve(input: &mut ResolveContext) -> Result<T, ConfigResolveError> {
-        let deser = input.input.clone();
+        let deser = &input.input;
         let builder: Result<T::Builder, _> = {
             // If input.unrecognized.is_empty() then we don't bother tracking the
             // unrecognized keys since we would intersect with the empty set.
