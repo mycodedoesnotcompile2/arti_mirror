@@ -228,20 +228,19 @@ fn find_srv_for_time(info: &[SrvInfo], when: SystemTime) -> Option<&SrvInfo> {
 /// most recent SRV.
 fn extract_srvs(consensus: &MdConsensus) -> Vec<SrvInfo> {
     let mut v = Vec::new();
-    let consensus_ts = consensus.lifetime().valid_after();
     let srv_interval = srv_interval(consensus);
 
     if let Some(cur) = consensus.shared_rand_cur() {
         let ts_begin = cur
             .timestamp()
-            .unwrap_or_else(|| start_of_day_containing(consensus_ts));
+            .unwrap_or_else(|| start_of_sr_round(consensus));
         let ts_end = ts_begin + srv_interval;
         v.push((*cur.value(), ts_begin..ts_end));
     }
     if let Some(prev) = consensus.shared_rand_prev() {
         let ts_begin = prev
             .timestamp()
-            .unwrap_or_else(|| start_of_day_containing(consensus_ts) - ONE_DAY);
+            .unwrap_or_else(|| start_of_sr_round(consensus) - srv_interval);
         let ts_end = ts_begin + srv_interval;
         v.push((*prev.value(), ts_begin..ts_end));
     }
@@ -280,6 +279,29 @@ fn start_of_day_containing(t: SystemTime) -> SystemTime {
         .to_offset(UtcOffset::UTC)
         .replace_time(time::macros::time!(00:00))
         .into()
+}
+
+/// Return the start time of the current SR protocol run
+/// of the specified `consensus`.
+///
+/// If a full SR protocol run is 24 hours, this function returns
+/// the start of the UTC day containing the `valid-after` timestamp
+/// of the consensus.
+///
+/// Corresponds to C Tor's `sr_state_get_start_time_of_current_protocol_run()`.
+fn start_of_sr_round(consensus: &MdConsensus) -> SystemTime {
+    let t = consensus.lifetime().valid_after();
+    let beginning_of_curr_round = t
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("consensus valid-after is before Unix epoch?!")
+        .as_secs();
+    let voting_interval = consensus.lifetime().voting_period().as_secs();
+    let curr_round_slot =
+        (beginning_of_curr_round / voting_interval) % u64::from(VOTING_PERIODS_IN_SRV_ROUND);
+    let time_elapsed_since_start_of_run = curr_round_slot * voting_interval;
+
+    let offset = Duration::from_secs(beginning_of_curr_round - time_elapsed_since_start_of_run);
+    SystemTime::UNIX_EPOCH + offset
 }
 
 #[cfg(test)]
