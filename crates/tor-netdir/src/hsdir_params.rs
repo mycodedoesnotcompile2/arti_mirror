@@ -26,7 +26,6 @@
 use std::time::{Duration, SystemTime};
 
 use crate::{Error, HsDirs, Result, params::NetParameters};
-use time::{OffsetDateTime, UtcOffset};
 use tor_hscrypto::time::TimePeriod;
 use tor_netdoc::doc::netstatus::{MdConsensus, SharedRandVal};
 
@@ -269,18 +268,6 @@ fn srv_interval(consensus: &MdConsensus) -> Duration {
     consensus.lifetime().voting_period() * VOTING_PERIODS_IN_SRV_ROUND
 }
 
-/// Return the length of the voting period in the consensus.
-///
-/// (The "voting period" is the length of time between between one consensus and the next.)
-///
-/// Return a time at the start of the UTC day containing `t`.
-fn start_of_day_containing(t: SystemTime) -> SystemTime {
-    OffsetDateTime::from(t)
-        .to_offset(UtcOffset::UTC)
-        .replace_time(time::macros::time!(00:00))
-        .into()
-}
-
 /// Return the start time of the current SR protocol run
 /// of the specified `consensus`.
 ///
@@ -364,22 +351,6 @@ mod test {
             .shared_rand_cur(7, SRV2.into(), None);
 
         bld
-    }
-
-    #[test]
-    fn start_of_day() {
-        assert_eq!(
-            start_of_day_containing(t("1985-10-25T07:00:00Z")),
-            t("1985-10-25T00:00:00Z")
-        );
-        assert_eq!(
-            start_of_day_containing(t("1985-10-25T00:00:00Z")),
-            t("1985-10-25T00:00:00Z")
-        );
-        assert_eq!(
-            start_of_day_containing(t("1985-10-25T23:59:59.999Z")),
-            t("1985-10-25T00:00:00Z")
-        );
     }
 
     #[test]
