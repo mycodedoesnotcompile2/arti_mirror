@@ -24,6 +24,5 @@ test-temp-dir = { version = "0.7.0", path = "../test-temp-dir" }
 [package.metadata.docs.rs]
 all-features = true
 
-[target.'cfg(windows)'.dependencies.winapi]
-version = "^0.3.8"
-features = ["fileapi"]
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
