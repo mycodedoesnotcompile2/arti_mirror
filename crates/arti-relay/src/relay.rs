@@ -258,9 +258,12 @@ impl<R: Runtime> TorRelay<R> {
             .set_create_request_handler(Arc::clone(&create_request_handler))
             .context("Failed to set the CREATE* request handler")?;
 
+        // We don't use any custom options on the listening socket.
+        let listen_options = Default::default();
+
         // An iterator of `listen()` futures with some extra error handling.
         let or_listeners = inert.config.relay.listen.addrs().map(async |addr| {
-            match runtime.listen(addr).await {
+            match runtime.listen(addr, &listen_options).await {
                 Ok(x) => Some(Ok(x)),
                 // If we don't support the address family (typically IPv6), only warn.
                 #[cfg(unix)]

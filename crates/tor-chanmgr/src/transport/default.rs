@@ -216,8 +216,20 @@ mod test {
                 .add_address(addr1.ip())
                 .add_address(addr4.ip())
                 .runtime(rt.clone());
-            let _listener = server_rt.mock_net().listen(&addr1).await.unwrap();
-            let _listener2 = server_rt.mock_net().listen(&addr4).await.unwrap();
+
+            let listen_options = Default::default();
+
+            let _listener = server_rt
+                .mock_net()
+                .listen(&addr1, &listen_options)
+                .await
+                .unwrap();
+            let _listener2 = server_rt
+                .mock_net()
+                .listen(&addr4, &listen_options)
+                .await
+                .unwrap();
+
             // TODO: Because this test doesn't mock time, there will actually be
             // delays as we wait for connections to this address to time out. It
             // would be good to use MockSleepProvider instead, once we figure

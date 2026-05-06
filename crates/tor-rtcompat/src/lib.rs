@@ -512,7 +512,9 @@ mod test {
         let localhost = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0);
         let rt1 = runtime.clone();
 
-        let listener = runtime.block_on(rt1.listen(&(SocketAddr::from(localhost))))?;
+        let listen_options = Default::default();
+        let listener =
+            runtime.block_on(rt1.listen(&(SocketAddr::from(localhost)), &listen_options))?;
         let addr = listener.local_addr()?;
 
         runtime.block_on(async {
@@ -580,8 +582,9 @@ mod test {
         let localhost = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0);
         let rt1 = runtime.clone();
 
+        let listen_options = Default::default();
         let listener = runtime
-            .block_on(rt1.listen(&SocketAddr::from(localhost)))
+            .block_on(rt1.listen(&SocketAddr::from(localhost), &listen_options))
             .unwrap();
         let addr = listener.local_addr().unwrap();
         let mut stream = listener.incoming();
@@ -710,7 +713,8 @@ mod test {
 
         let msg = b"Derse Reviles Him And Outlaws Frogs Wherever They Can";
         runtime.block_on(async move {
-            let listener = runtime.listen(&localhost).await.unwrap();
+            let listen_options = Default::default();
+            let listener = runtime.listen(&localhost, &listen_options).await.unwrap();
             let address = listener.local_addr().unwrap();
 
             let h1 = runtime

@@ -15,6 +15,8 @@ use web_time_compat::{Duration, Instant, InstantExt, SystemTime, SystemTimeExt};
 #[cfg(feature = "tls-server")]
 use tor_cert_x509::TlsKeyAndCert;
 
+use crate::network::{TcpListenOptions, UnixListenOptions};
+
 /// A runtime for use by Tor client library code.
 ///
 /// This trait comprises several other traits that we require all of our
@@ -70,8 +72,8 @@ pub trait Runtime:
     + Clone
     + SleepProvider
     + CoarseTimeProvider
-    + NetStreamProvider<net::SocketAddr>
-    + NetStreamProvider<unix::SocketAddr>
+    + NetStreamProvider<net::SocketAddr, ListenOptions = TcpListenOptions>
+    + NetStreamProvider<unix::SocketAddr, ListenOptions = UnixListenOptions>
     + TlsProvider<<Self as NetStreamProvider<net::SocketAddr>>::Stream>
     + UdpProvider
     + Debug
@@ -87,8 +89,8 @@ impl<T> Runtime for T where
         + Clone
         + SleepProvider
         + CoarseTimeProvider
-        + NetStreamProvider<net::SocketAddr>
-        + NetStreamProvider<unix::SocketAddr>
+        + NetStreamProvider<net::SocketAddr, ListenOptions = TcpListenOptions>
+        + NetStreamProvider<unix::SocketAddr, ListenOptions = UnixListenOptions>
         + TlsProvider<<Self as NetStreamProvider<net::SocketAddr>>::Stream>
         + UdpProvider
         + Debug
@@ -530,6 +532,8 @@ pub trait NetStreamProvider<ADDR = net::SocketAddr>: Clone + Send + Sync + 'stat
     type Stream: AsyncRead + AsyncWrite + StreamOps + Send + Sync + Unpin + 'static;
     /// The type for the listeners returned by [`Self::listen()`].
     type Listener: NetStreamListener<ADDR, Stream = Self::Stream> + Send + Sync + Unpin + 'static;
+    /// The options that can be passed to [`Self::listen()`].
+    type ListenOptions: Clone + Default + Send + Sync + Unpin + 'static;
 
     /// Launch a connection connection to a given socket address.
     ///
@@ -540,7 +544,7 @@ pub trait NetStreamProvider<ADDR = net::SocketAddr>: Clone + Send + Sync + 'stat
     async fn connect(&self, addr: &ADDR) -> IoResult<Self::Stream>;
 
     /// Open a listener on a given socket address.
-    async fn listen(&self, addr: &ADDR) -> IoResult<Self::Listener>;
+    async fn listen(&self, addr: &ADDR, options: &Self::ListenOptions) -> IoResult<Self::Listener>;
 }
 
 /// Trait for a local socket that accepts incoming streams.

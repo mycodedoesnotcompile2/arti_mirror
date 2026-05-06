@@ -20,6 +20,8 @@ pub(crate) mod native_tls;
 pub(crate) mod streamops;
 pub(crate) mod unimpl_tls;
 
+use crate::network::{CommonListenOptions, TcpListenOptions};
+
 #[cfg(unix)]
 use tor_error::warn_report;
 
@@ -97,8 +99,16 @@ const LISTEN_BACKLOG: i32 = u16::MAX as i32;
 /// if each runtime were using a different `listen()` backlog size, it might be difficult to debug
 /// related issues.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub(crate) fn tcp_listen(addr: &std::net::SocketAddr) -> std::io::Result<std::net::TcpListener> {
+pub(crate) fn tcp_listen(
+    addr: &std::net::SocketAddr,
+    options: &TcpListenOptions,
+) -> std::io::Result<std::net::TcpListener> {
     use socket2::{Domain, Socket, Type};
+
+    // Destructure the options so that we don't forget to use any.
+    let TcpListenOptions {
+        common: CommonListenOptions {},
+    } = options;
 
     // `socket2::Socket::new()`:
     // > This function corresponds to `socket(2)` on Unix and `WSASocketW` on Windows.
@@ -161,7 +171,10 @@ pub(crate) fn tcp_listen(addr: &std::net::SocketAddr) -> std::io::Result<std::ne
 
 /// Stub replacement for tcp_listen on wasm32-unknown
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub(crate) fn tcp_listen(_addr: &std::net::SocketAddr) -> std::io::Result<std::net::TcpListener> {
+pub(crate) fn tcp_listen(
+    _addr: &std::net::SocketAddr,
+    _options: &TcpListenOptions,
+) -> std::io::Result<std::net::TcpListener> {
     Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
 }
 
@@ -174,11 +187,15 @@ macro_rules! impl_unix_non_provider {
         impl crate::traits::NetStreamProvider<tor_general_addr::unix::SocketAddr> for $for_type {
             type Stream = crate::unimpl::FakeStream;
             type Listener = crate::unimpl::FakeListener<tor_general_addr::unix::SocketAddr>;
+            type ListenOptions = crate::network::UnixListenOptions;
             async fn connect(&self, _a: &tor_general_addr::unix::SocketAddr) -> IoResult<Self::Stream> {
                 Err(tor_general_addr::unix::NoAfUnixSocketSupport::default().into())
 
             }
-            async fn listen(&self, _a: &tor_general_addr::unix::SocketAddr) -> IoResult<Self::Listener> {
+            async fn listen(&self,
+                _a: &tor_general_addr::unix::SocketAddr,
+                _options: &Self::ListenOptions,
+            ) -> IoResult<Self::Listener> {
                 Err(tor_general_addr::unix::NoAfUnixSocketSupport::default().into())
             }
         }

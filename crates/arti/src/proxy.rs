@@ -396,6 +396,9 @@ pub(crate) async fn bind_proxy<R: Runtime>(
         );
     }
 
+    // We don't (yet) use any custom options on the listening socket.
+    let listen_options = Default::default();
+
     let mut listeners = Vec::new();
 
     // Try to bind to the listener ports.
@@ -403,7 +406,7 @@ pub(crate) async fn bind_proxy<R: Runtime>(
         Ok(addrgroups) => {
             for addrgroup in addrgroups {
                 for addr in addrgroup {
-                    match runtime.listen(&addr).await {
+                    match runtime.listen(&addr, &listen_options).await {
                         Ok(listener) => {
                             let bound_addr = listener.local_addr()?;
                             info!("Listening on {:?}", bound_addr);
