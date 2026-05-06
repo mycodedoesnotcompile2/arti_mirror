@@ -3,6 +3,276 @@
 This file describes changes in Arti through the current release.  Once Arti
 is more mature, we may switch to using a separate changelog for each crate.
 
+# Arti 2.3.0 — 6 April 2026
+
+Arti 2.3.0 continues development on relay, directory authority, and RPC functionality.
+It also adds a couple new logging-related features, including the ability to log to syslog.
+We have also made improvements in memory usage, by moving the GeoIP database out of the
+heap and optimizing the format it's stored in.
+
+As usual, there are also many small changes and improvements which are detailed below.
+
+### Breaking changes
+
+* The minimum MacOS version supported by Arti is now 10.14, rather than 10.12. (!3920)
+
+### Breaking changes in lower-level crates
+
+* Removed `KeystoreItem::into_erased()` method from `tor-key-forge`. ([!3863])
+* Many breaking changes in `tor-netdoc`:
+  * Renamed `ItemEncoder::object()` to `.object_bytes()`. ([!3826])
+  * Renamed `AuthCertUnverified::verify_self_signed()` to `.verify()`. ([!3826])
+  * `Microdesc::ed25519_id` is now stored as a `Ed25519IdentityLine`. ([!3797])
+  * `Microdesc::family_ids` is now stored as a `RelayFamilyIds`. ([!3797])
+  * `Microdesc::ntor_onion_key` is now stored as a `Curve25519Public`. ([!3797])
+  * `PortRange`'s fields are now private. ([!3797])
+  * Removed `types::B64::into_array`; use methods on `Vec` and slice instead. ([!3870])
+  * `types::Nickname` and `FromStr` error types are now `InvalidNickname`. ([!3886])
+  * Changed several field types in `DirSource`. ([!3892])
+  * `netstatus::Preamble.consensus_method` and `.published` are now 1-element tuples. ([!3864])
+  * Renamed `VoteRepr` relay flags handling marker type to `NoImplicitRepr` ([!3864])
+  * `doc::netstatus::Preamble` has new `known_flags` field. ([!3864])
+  * Renamed `ConsensusVoterInfo` to `ConsensusAuthorityEntry`. ([!3892])
+  * Changed several field types in `ConsensusVoterInfo`. ([!3892])
+  * `NormalItemArgument` no longer has `FromStr` and `Display` as supertraits. ([!3923])
+  * Changed `Unknown::as_ref` signature, `.only_known()` may need to be used by some callers. ([!3923])
+* In `tor-rpcbase`:
+  * Renamed `Context::release_owned` to `Context::release`. ([!3883])
+  * `invoke_rpc_method` no longer takes an `Object`. ([!3883])
+  * `Context::release` returns a `bool` instead of an `Object`. ([!3883])
+* In `tor-geoip`:
+  * The legacy geoip database format is enforced more strictly. ([!3900])
+  * `new_from_legacy_format` takes an extra argument to determine whether to include ASN data. ([!3900])
+* In `tor-rtcompat`, if the application fails to install a rustls `CryptoProvider`,
+  `tor-rtcompat` no longer installs one itself. ([!3857])
+
+### Relay development
+
+* `arti-relay` now supports generating and rotating ntor keys. ([!3850], [!3874])
+* `arti-relay` now retrieves the signing key certificate from the keystore,
+  instead of regenerating it. ([!3863])
+* Added support for handling `CREATE_FAST` cells and launching circuits. ([!3846], [!3869])
+* `arti-relay` now logs public keys on startup.
+  Note that this behaviour may be removed in the future. ([!3882])
+* Enabled `flowctl-cc` and `counter-galois-onion` features
+  in low-level crates used by `arti-relay`. ([!3898])
+
+### Directory authority development
+
+* Implemented encoding and signing of directory authority key certificates. ([!3826], [!3851])
+* Implemented microdescriptor. ([!3797])
+* Implemented `ContactInfo` parsing. ([!3866])
+* Added `Hostname` and `InternetHost` types to `tor-netdoc`. ([!3886])
+* Implemented encoding for `netstatus::Preamble`, added `known_flags`, and cleaned up APIs. ([!3864])
+* Added types for router descriptors. ([!3908])
+* Added `EmbeddedCert` type to represent a certificate inside a netdoc,
+  which has been verified as having a correct and timely signature. ([!3918], [!3922])
+* Implemented parsing and encoding of authority sections in votes and consensuses. ([!3892])
+* Enforced that descriptors only have a `sha1` or a `sha2` hash, not both. ([!3917])
+* Improved handling of unknown keywords. ([!3923])
+* Cleaned up type for directory signature hash algorithm. ([!3923])
+
+### RPC development
+
+* Added APIs for inspecting tunnel paths. ([!3888])
+* Added support for [weak references]. ([!3883])
+
+### Logging development
+
+* Arti now supports logging to syslog when the `syslog` feature and the new `logging.syslog` config option are enabled. ([!3817])
+* Added `logging.protocol_warnings` option to make protocol violations warnings. ([!3805])
+
+### Testing
+
+* Added onion services to chutney tests. ([!3858])
+* Fixed downloading of test data in `tor-netdoc`. ([!3861])
+* Fixed timing in `test_rotation_link_key` test. ([!3873])
+* Reverted some non-default parameters for C Tor in shadow integration tests. ([!3871])
+* Enabled `flowctl-cc` and `counter-galois-onion` in `arti-extra` build. ([!3889])
+* Added relay channel handshake tests. ([!3853])
+* Added flake8 exceptions for `flake8-type-checking` extension. ([!3749])
+
+### Documentation
+
+* Documented policies around cargo features. ([!3799])
+* Begun documenting policy for upstream RUSTSEC issues. ([!3800])
+* Updated oniux version on website. ([!3840])
+* Adjusted the ordering of some steps in the release process. ([!3842])
+* Documented use of `ADDED` instead of `MODIFIED` in semver files. ([!3852])
+* Removed outdated references to `derive-adhoc`, which has been named `derive-deftly` for a while now. ([!3896])
+* Added documentation about overlapping work in `CONTRIBUTING.md`. ([!3934])
+* Documented how to update OSX SDK version. ([!3921])
+
+### Infrastructure
+
+* `maint/cargo-sort` now uses the `$CARGO` env var. ([!3842])
+* Added `maint/dependencies-bodge` crate to entice cargo to avoid some broken versions of upstream packages. ([!3838])
+* Commit hooks now use `set -x` instead of `echo`. ([!3847])
+* Updated CI image versions. ([!3839])
+* Updated chutney version. ([!3868])
+* Updated the OSX SDK used for reproducible builds, switching to the same pkg file used by Tor Browser. ([!3901])
+* Disabled worker spinning and cpu pinning in shadow tests, in order to play more nicely with the shared CI environment. ([!3911])
+
+### Cleanups, minor features, and bugfixes
+
+* Switched default crypto provider to `aws-lc-rs` from `ring`. ([!3857])
+* Reduced geoip database memory usage. ([!3895], !3900)
+* Added new `tor-geoip` tool for converting between geoip database formats.
+  This is currently for internal use, and is expected to be merged into the existing `geoip-db-tool` eventually. ([!3909])
+* Updated dependencies. ([!3835], [!3836], [!3837], [!3855], [!3880], [!3893], [!3913], [!3942], [!3928])
+* Cleaned up relay channel authentication related code. ([!3802])
+* Updated list of `maint/cargo-audit` exceptions. ([!3841])
+* `tor-proto`'s dependency on `tor-relay-crypto` is now optional. ([!3848])
+* Changed uses of `SystemTime::now` and `Instant::now` to use `SleepProvider` methods in some places. ([!3845])
+* Use `derive-deftly` string templating in `tor-netdoc`. ([!3854])
+* Allow sending `DATA` cells on closed streams. ([!3824])
+* Changed "removing circuit leg" log to be debug instead of warn. ([!3859])
+* Switched to new `derive-deftly` `meta_quoted rigorous` in `tor-netdoc`. ([!3856])
+* Changed `CircuitClosed` error to `NotConnected` in a case where it may be dropped without explicitly being closed. ([!3825])
+* Added `memquota::Account::add_parent()` API and changed `tor-proto` to use it. ([!3829])
+* Fixed `tor-netdoc` parsing and encoding macros generating invalid code. ([!3862])
+* Fixed incorrect help text for `arti -h`. ([!3860])
+* Implemented `NormalItemArgument` for `IpAddr` in `tor-netdoc`. ([!3867])
+* Changed `AuthLogDigest` to use separate types for sending and receiving. ([!3844])
+* Added tunnel IDs to some log statements. ([!3872], [!3875])
+* Removed superfluous `clippy(allow)`s. ([!3904], [!3944])
+* Fixed new warnings when compiling with Rust 1.95. ([!3902])
+* Added additional validation when creating a `ChanTarget`. ([!3843])
+* Changed channel reactor to take identity keys. ([!3877], [!3897])
+* Cleaned up base64/base16 related code. ([!3870], [!3908])
+* Fixed error type when trying to parse invalid `NormalItemArgument` in `tor-netdoc`. ([!3879])
+* Fixed bug in flow control sidechannel mitigation. ([!3884])
+* Switched to new `derive-deftly` `meta_quoted rigorous` for key specifiers. ([!3891])
+* Cleaned up `tor-netdoc` derive macros. ([!3887])
+* Removed dummy suffixes from a couple variable names. ([!3903])
+* Changed some comments and variable names. ([!3865])
+* Added support for `#[deftly(netdoc(skip))]` in `ItemValueParseable` and `ItemValueEncodable` derives. ([!3890])
+* Added `Debug` implementation to `ItemValueParseable` derive. ([!3881])
+* Sorted ntor keys by `valid_until` and created new struct to hold them. ([!3899])
+* Cleaned up feature flags in `tor-netdoc`, adding new `incomplete` feature for all incomplete parts. ([!3910], [!3915], [!3930])
+* Modified handling of `EXTEND2` to reject cells that target the previous hop. ([!3906])
+* Added `RsaIdentity::to_bytes` method. ([!3916])
+* Made a `derive(Deftly)` unconditional. ([!3929])
+* Added `serde(default)` to fields in `RelayIds`. ([!3933])
+* Begun refactoring `tor-dirserver`. ([!3931])
+* Stabilized experimental `tor-cert` `encode` feature. ([!3926])
+* Stabilized experimental `tor-netdoc` `hsdesc-inner-docs` feature. ([!3927])
+
+### Acknowledgments
+
+Thanks to everybody who's contributed to this release, including
+Andrew Kloet, hjrgrn, and moumenalaoui.
+
+Also, our deep thanks to
+the [Bureau of Democracy, Human Rights, and Labor],
+and our [other sponsors]
+for funding the development of Arti!
+
+[!3749]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3749
+[!3797]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3797
+[!3799]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3799
+[!3800]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3800
+[!3802]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3802
+[!3805]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3805
+[!3817]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3817
+[!3824]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3824
+[!3825]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3825
+[!3826]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3826
+[!3829]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3829
+[!3835]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3835
+[!3836]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3836
+[!3837]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3837
+[!3838]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3838
+[!3839]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3839
+[!3840]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3840
+[!3841]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3841
+[!3842]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3842
+[!3843]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3843
+[!3844]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3844
+[!3845]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3845
+[!3846]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3846
+[!3847]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3847
+[!3848]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3848
+[!3850]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3850
+[!3851]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3851
+[!3852]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3852
+[!3853]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3853
+[!3854]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3854
+[!3855]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3855
+[!3856]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3856
+[!3857]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3857
+[!3858]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3858
+[!3859]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3859
+[!3860]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3860
+[!3861]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3861
+[!3862]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3862
+[!3863]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3863
+[!3864]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3864
+[!3865]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3865
+[!3866]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3866
+[!3867]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3867
+[!3868]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3868
+[!3869]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3869
+[!3870]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3870
+[!3871]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3871
+[!3872]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3872
+[!3873]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3873
+[!3874]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3874
+[!3875]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3875
+[!3877]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3877
+[!3879]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3879
+[!3880]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3880
+[!3881]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3881
+[!3882]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3882
+[!3883]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3883
+[!3884]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3884
+[!3886]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3886
+[!3887]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3887
+[!3888]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3888
+[!3889]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3889
+[!3890]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3890
+[!3891]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3891
+[!3892]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3892
+[!3893]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3893
+[!3895]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3895
+[!3896]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3896
+[!3897]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3897
+[!3898]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3898
+[!3899]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3899
+[!3900]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3900
+[!3901]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3901
+[!3902]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3902
+[!3903]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3903
+[!3904]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3904
+[!3906]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3906
+[!3908]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3908
+[!3909]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3909
+[!3910]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3910
+[!3911]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3911
+[!3913]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3913
+[!3915]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3915
+[!3916]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3916
+[!3917]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3917
+[!3918]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3918
+[!3921]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3921
+[!3922]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3922
+[!3923]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3923
+[!3926]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3926
+[!3927]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3927
+[!3928]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3928
+[!3929]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3929
+[!3930]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3930
+[!3931]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3931
+[!3933]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3933
+[!3934]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3934
+[!3942]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3942
+[!3944]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3944
+[Bureau of Democracy, Human Rights, and Labor]: https://www.state.gov/bureaus-offices/under-secretary-for-civilian-security-democracy-and-human-rights/bureau-of-democracy-human-rights-and-labor/
+[other sponsors]: https://www.torproject.org/about/sponsors/
+[weak references]: https://gitlab.torproject.org/tpo/core/arti/-/blob/993a8158407dc3c2c1d759c1b0bb4c8554f5a4a1/doc/dev/rpc-book/src/basic-concepts.md#strong-and-weak-object-ids
+
+
+
 # Arti 2.2.0 — 30 March 2026
 
 Arti 2.2.0 continues our work on relay development,
