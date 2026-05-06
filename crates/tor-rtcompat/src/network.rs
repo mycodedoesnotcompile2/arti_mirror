@@ -3,7 +3,15 @@
 /// Socket options to set when initializing a listening socket.
 #[derive(Copy, Clone, Debug, derive_builder::Builder, amplify::Getters)]
 #[non_exhaustive]
-pub struct CommonListenOptions {}
+pub struct CommonListenOptions {
+    /// Value set for `SO_SNDBUF` on the listening socket.
+    #[builder(default)]
+    pub(crate) send_buffer_size: Option<usize>,
+
+    /// Value set for `SO_RCVBUF` on the listening socket.
+    #[builder(default)]
+    pub(crate) recv_buffer_size: Option<usize>,
+}
 
 impl CommonListenOptions {
     /// Returns a builder for this [`CommonListenOptions`].

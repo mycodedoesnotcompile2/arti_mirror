@@ -107,7 +107,11 @@ pub(crate) fn tcp_listen(
 
     // Destructure the options so that we don't forget to use any.
     let TcpListenOptions {
-        common: CommonListenOptions {},
+        common:
+            CommonListenOptions {
+                send_buffer_size,
+                recv_buffer_size,
+            },
     } = options;
 
     // `socket2::Socket::new()`:
@@ -161,6 +165,17 @@ pub(crate) fn tcp_listen(
     // So here we only set SO_REUSEADDR for `cfg(unix)` to match tokio.
     #[cfg(unix)]
     socket.set_reuse_address(true)?;
+
+    // tcp(7):
+    //
+    // > On individual connections, the socket buffer size must be set prior to the listen(2) or
+    // > connect(2) calls in order to have it take effect.
+    if let Some(send_buffer_size) = send_buffer_size {
+        socket.set_send_buffer_size(*send_buffer_size)?;
+    }
+    if let Some(recv_buffer_size) = recv_buffer_size {
+        socket.set_recv_buffer_size(*recv_buffer_size)?;
+    }
 
     socket.bind(&(*addr).into())?;
 
