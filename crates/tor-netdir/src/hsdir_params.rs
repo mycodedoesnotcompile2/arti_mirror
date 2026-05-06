@@ -62,9 +62,6 @@ const VOTING_PERIODS_IN_OFFSET: u32 = 12;
 /// We use this to compute an SRV lifetime if one of the SRV values is missing.
 const VOTING_PERIODS_IN_SRV_ROUND: u32 = 24;
 
-/// One day.
-const ONE_DAY: Duration = Duration::new(86400, 0);
-
 impl HsDirParams {
     /// Return the time period for which these parameters are valid.
     ///
