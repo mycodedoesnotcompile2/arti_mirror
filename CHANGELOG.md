@@ -10,6 +10,11 @@ It also adds a couple new logging-related features, including the ability to log
 We have also made improvements in memory usage, by moving the GeoIP database out of the
 heap and optimizing the format it's stored in.
 
+Users of the `arti-client` crate should note that in the release following this one,
+`TorClient` will be explicitly wrapped in an `Arc`, rather than implicitly having
+Arc-like semantics. Be prepared for this breaking change next release, and feel free
+to comment in [#2469] if you have any thoughts on this change.
+
 As usual, there are also many small changes and improvements which are detailed below.
 
 ### Breaking changes
@@ -267,6 +272,7 @@ for funding the development of Arti!
 [!3934]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3934
 [!3942]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3942
 [!3944]: https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3944
+[#2469]: https://gitlab.torproject.org/tpo/core/arti/-/issues/2469
 [Bureau of Democracy, Human Rights, and Labor]: https://www.state.gov/bureaus-offices/under-secretary-for-civilian-security-democracy-and-human-rights/bureau-of-democracy-human-rights-and-labor/
 [other sponsors]: https://www.torproject.org/about/sponsors/
 [weak references]: https://gitlab.torproject.org/tpo/core/arti/-/blob/993a8158407dc3c2c1d759c1b0bb4c8554f5a4a1/doc/dev/rpc-book/src/basic-concepts.md#strong-and-weak-object-ids
