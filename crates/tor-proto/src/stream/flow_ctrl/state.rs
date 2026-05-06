@@ -37,14 +37,14 @@ enum StreamFlowCtrlInner {
 #[derive(Debug)]
 pub(crate) struct StreamFlowCtrl {
     /// Private internal enum.
-    e: StreamFlowCtrlInner,
+    inner: StreamFlowCtrlInner,
 }
 
 impl StreamFlowCtrl {
     /// Returns a new sendme-window-based [`StreamFlowCtrl`].
     pub(crate) fn new_window(window: sendme::StreamSendWindow) -> Self {
         Self {
-            e: StreamFlowCtrlInner::WindowBased(WindowFlowCtrl::new(window)),
+            inner: StreamFlowCtrlInner::WindowBased(WindowFlowCtrl::new(window)),
         }
     }
 
@@ -57,7 +57,7 @@ impl StreamFlowCtrl {
         drain_rate_requester: NotifySender<DrainRateRequest>,
     ) -> Self {
         Self {
-            e: StreamFlowCtrlInner::XonXoffBased(XonXoffFlowCtrl::new(
+            inner: StreamFlowCtrlInner::XonXoffBased(XonXoffFlowCtrl::new(
                 params,
                 use_sidechannel_mitigations,
                 rate_limit_updater,
@@ -71,7 +71,7 @@ impl StreamFlowCtrl {
     /// this method will turn the flow control object into a version
     /// that is designed to be used for half-streams.
     pub(crate) fn half_stream(self) -> HalfStreamFlowCtrl {
-        let inner = match self.e {
+        let inner = match self.inner {
             StreamFlowCtrlInner::WindowBased(x) => {
                 HalfStreamFlowCtrlInner::WindowBased(HalfStreamWindowFlowCtrl::new(x))
             }
@@ -81,38 +81,38 @@ impl StreamFlowCtrl {
             }
         };
 
-        HalfStreamFlowCtrl { e: inner }
+        HalfStreamFlowCtrl { inner }
     }
 }
 
 // forward all trait methods to the inner enum
 impl FlowCtrlHooks for StreamFlowCtrl {
     fn can_send<M: RelayMsg>(&self, msg: &M) -> bool {
-        self.e.can_send(msg)
+        self.inner.can_send(msg)
     }
 
     fn about_to_send(&mut self, msg: &AnyRelayMsg) -> Result<()> {
-        self.e.about_to_send(msg)
+        self.inner.about_to_send(msg)
     }
 
     fn put_for_incoming_sendme(&mut self, msg: UnparsedRelayMsg) -> Result<()> {
-        self.e.put_for_incoming_sendme(msg)
+        self.inner.put_for_incoming_sendme(msg)
     }
 
     fn handle_incoming_xon(&mut self, msg: UnparsedRelayMsg) -> Result<()> {
-        self.e.handle_incoming_xon(msg)
+        self.inner.handle_incoming_xon(msg)
     }
 
     fn handle_incoming_xoff(&mut self, msg: UnparsedRelayMsg) -> Result<()> {
-        self.e.handle_incoming_xoff(msg)
+        self.inner.handle_incoming_xoff(msg)
     }
 
     fn maybe_send_xon(&mut self, rate: XonKbpsEwma, buffer_len: usize) -> Result<Option<Xon>> {
-        self.e.maybe_send_xon(rate, buffer_len)
+        self.inner.maybe_send_xon(rate, buffer_len)
     }
 
     fn maybe_send_xoff(&mut self, buffer_len: usize) -> Result<Option<Xoff>> {
-        self.e.maybe_send_xoff(buffer_len)
+        self.inner.maybe_send_xoff(buffer_len)
     }
 }
 
@@ -174,7 +174,7 @@ pub(crate) trait FlowCtrlHooks {
 #[derive(Debug)]
 pub(crate) struct HalfStreamFlowCtrl {
     /// Private internal enum.
-    e: HalfStreamFlowCtrlInner,
+    inner: HalfStreamFlowCtrlInner,
 }
 
 /// Private internals of [`HalfStreamFlowCtrl`].
@@ -216,11 +216,11 @@ pub(crate) trait HalfStreamFlowCtrlHooks {
 // forward all trait methods to the inner enum
 impl HalfStreamFlowCtrlHooks for HalfStreamFlowCtrl {
     fn handle_incoming_dropped(&mut self, msg_count: u16) -> Result<()> {
-        self.e.handle_incoming_dropped(msg_count)
+        self.inner.handle_incoming_dropped(msg_count)
     }
 
     fn handle_incoming_msg(&mut self, msg: UnparsedRelayMsg) -> Result<Option<UnparsedRelayMsg>> {
-        self.e.handle_incoming_msg(msg)
+        self.inner.handle_incoming_msg(msg)
     }
 }
 
