@@ -8061,6 +8061,7 @@ dependencies = [
 name = "tor-rtcompat"
 version = "0.42.0"
 dependencies = [
+ "amplify",
  "arbitrary",
  "assert_matches",
  "async-io",
@@ -8072,6 +8073,7 @@ dependencies = [
  "blocking",
  "cfg-if",
  "coarsetime",
+ "derive_builder_fork_arti",
  "derive_more",
  "dyn-clone",
  "educe",
