@@ -595,16 +595,17 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         // First, filter out any HsDirs that we *can* requery
         recent_hsdirs.retain(|_hsdir, requery| *requery > now);
 
+        let working_tp = self.netdir.hs_time_period();
         let hs_dirs = self.netdir.hs_dirs_download(
             self.hs_blind_id,
-            self.netdir.hs_time_period(),
+            working_tp,
             &mut self.mocks.thread_rng(),
         )?;
 
         trace!(
             "HS desc fetch for {}, for period {}, using {} hsdirs",
             &self.hsid,
-            self.netdir.hs_time_period(),
+            working_tp,
             hs_dirs.len()
         );
 
@@ -624,7 +625,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             warn!(
                 "Tried to fetch HS desc for {}, for period {}, but all hsdirs are rate-limited",
                 &self.hsid,
-                self.netdir.hs_time_period(),
+                working_tp,
             );
 
             if cur_revision.is_none() {
