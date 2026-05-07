@@ -124,4 +124,13 @@ native-tls-crate = { package = "native-tls", version = "0.2" }
 tor-basic-utils = { version = "0.42.0", path = "../tor-basic-utils" }
 # Ensure that we have aws-lc-rs for testing, but only if we're building with rustls.
 # (We need to do it this way because we can't have conditional dev-dependencies.)
-tor-rtcompat-testing = { package = "tor-rtcompat", version = "0.42.0", path = ".", features = ["testing"] }
+#
+# Note the lack of `version =`.  This is to work around a bug in cargo: it refuses to
+# publish this crate if we specify the version, because it sees that before publication,
+# this self-dependency is not satisfied.
+#
+# Omitting the version causes the .crate file to omit that dependency, which means
+# that any downstream using the .crate won't be able to run the tests.
+#
+# https://github.com/rust-lang/cargo/issues/4242
+tor-rtcompat-testing = { package = "tor-rtcompat", path = ".", features = ["testing"] }
