@@ -2506,17 +2506,15 @@ mod test {
         #[derive(Deftly, Clone, Debug, PartialEq)]
         #[derive_deftly(TorConfig)]
         pub(super) struct CfgEnabled {
-            // MSRV 1.88: Use "true" instead.
             #[deftly(tor_config(
                 default,
-                cfg = "all()",
+                cfg = "true",
                 cfg_desc = "with eschaton immenentization"
             ))]
             pub(super) flower_power: u32,
-            // MSRV 1.88: Use "true" instead.
             #[deftly(tor_config(
                 default,
-                cfg = "all()",
+                cfg = "true",
                 cfg_reject,
                 cfg_desc = "with eschaton immenentization"
             ))]
@@ -2526,16 +2524,15 @@ mod test {
         #[derive(Deftly, Clone, Debug, PartialEq)]
         #[derive_deftly(TorConfig)]
         pub(super) struct CfgDisabled {
-            // MSRV 1.88: Use "false" instead.
             #[deftly(tor_config(
                 default,
-                cfg = "any()",
+                cfg = "false",
                 cfg_desc = "with resublimated thiotimoline"
             ))]
             pub(super) time_travel: u32,
             #[deftly(tor_config(
                 default,
-                cfg = "any()",
+                cfg = "false",
                 cfg_reject,
                 cfg_desc = "with resublimated thiotimoline"
             ))]

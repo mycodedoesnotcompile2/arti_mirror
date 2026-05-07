@@ -55,7 +55,7 @@ anywhere in our whole stack.
    and check out the tag for the version we're using.
  * Use cargo's `[patch]` mechanism to redirect all uses of that crate,
    to the one you've just checked out.
- * Put `#![cfg(any())]` at the top of the affected crate's `lib.rs`
+ * Put `#![cfg(false)]` at the top of the affected crate's `lib.rs`
    and verify that that breaks the build.
    Now you know the `patch` is effective.
  * Somehow sabotage the affected method, eg by deleting or renaming it.

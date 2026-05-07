@@ -111,7 +111,7 @@ pub fn iter_join(
     separator: &str,
     iter: impl Iterator<Item: fmt::Display> + Clone,
 ) -> impl fmt::Display {
-    // TODO: This can be replaced with `std::fmt::from_fn()` once stabilised and within our MSRV.
+    // TODO MSRV 1.93: Replace with `std::fmt::from_fn()`?
     struct Fmt<'a, I: Iterator<Item: fmt::Display> + Clone> {
         /// Separates items in `iter`.
         separator: &'a str,
@@ -575,21 +575,6 @@ macro_rules! derive_serde_raw { {
         $($body)*
     }
 } }
-
-// ----------------------------------------------------------------------
-
-/// Flatten a `Result<Result<T, E>, E>` into a `Result<T, E>`.
-///
-/// See [`Result::flatten`], which is not available
-/// at our current MSRV.
-// TODO MSRV 1.89: When our MSRV is at least 1.89,
-// remove this function and replace uses with `Result::flatten`.
-pub fn flatten<T, E>(x: Result<Result<T, E>, E>) -> Result<T, E> {
-    match x {
-        Ok(Ok(x)) => Ok(x),
-        Err(e) | Ok(Err(e)) => Err(e),
-    }
-}
 
 // ----------------------------------------------------------------------
 
