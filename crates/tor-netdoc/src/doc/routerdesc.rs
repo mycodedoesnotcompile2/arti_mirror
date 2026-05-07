@@ -141,61 +141,103 @@ pub struct RouterDesc {
     // descriptors, although potentially not under the same name.
     //
     //
-    /// Ed25519 identity certificate (identity key authenticating a
-    /// signing key)
+    /// `identity-ed25519` --- Specify the router's ed25519 identity.
+    ///
+    /// * `identity-ed25519\n<certificate object>`
+    /// * Exactly once, in second position in document.
     pub identity_cert: tor_cert::Ed25519Cert,
 
-    /// Software and version that this relay says it's running.
+    /// `platform` --- Describe the platform on which this relay is running.
+    ///
+    /// * `platform <rest of line>`
+    /// * At most once.
     pub platform: Option<RelayPlatform>,
 
-    /// Time when this router descriptor was published.
+    /// `published` --- Time this descriptor (and extra-info) was generated.
+    ///
+    /// * `published <date> <time>`
+    /// * Exactly once.
     pub published: time::SystemTime,
 
-    /// RSA identity key for this relay. (Deprecated; never use this without
-    /// the ed25519 identity as well).
+    /// `fingerprint` --- Redundant hash of ASN-1 encoding of router identity key.
+    ///
+    /// * `fingerprint <spaced fingerprint>`
+    /// * At most once.
     pub rsa_identity: ll::pk::rsa::RsaIdentity,
 
-    /// Declared uptime for this relay, in seconds.
+    /// `uptime` --- How long this relay has been continously running
+    ///
+    /// * `uptime <number>`
+    /// * At most once.
     pub uptime: Option<u64>,
 
-    /// Key for extending a circuit to this relay using the
-    /// (deprecated) TAP protocol.
+    /// `onion-key` --- Relay's obsolete RSA tap key.
+    ///
+    /// * `onion-key\n<rsa public key>`
+    /// * At most once.
+    /// * No extra arguments.
     pub tap_onion_key: Option<ll::pk::rsa::PublicKey>,
 
-    /// Key for extending a circuit to this relay using the ntor protocol.
+    /// `ntor-onion-key` --- The circuit extension key.
+    ///
+    /// * `ntor-onion-key <base64 padded key>`
+    /// * Exactly once.
     pub ntor_onion_key: ll::pk::curve25519::PublicKey,
 
-    /// RSA identity key for this relay. (Deprecated; never use this without
-    /// the ed25519 identity as well).
+    /// `signing-key` --- Obsolete RSA identity key.
+    ///
+    /// * `signing-key\n<rsa public key>`
     pub rsa_identity_key: ll::pk::rsa::PublicKey,
 
-    /// A complete address-level policy for which IPv4 addresses this relay
-    /// says it supports.
+    /// `accept, reject` --- Exit policy.
+    ///
+    /// * `accept exitpattern`
+    /// * `reject exitpattern`
+    /// * Any number of times.
     // TODO: these polices can get bulky too. Perhaps we should
     // de-duplicate them too.
     pub ipv4_policy: AddrPolicy,
 
-    /// A summary of which ports this relay is willing to connect to
-    /// on IPv6.
+    /// `ipv6-policy` --- Exit plicy summary for IPv6
+    ///
+    /// * `ipv6-policy <accept/reject> PortList`
+    /// * At most once.
     pub ipv6_policy: Arc<PortPolicy>,
 
-    /// Declared family members for this relay.  If two relays are in the
-    /// same family, they shouldn't be used in the same circuit.
+    /// `family` --- Group relays for the purpose of path selection.
+    ///
+    /// * `family <LongIdent> ...`
+    /// * One or more `LongIdent` arguments.
+    /// * At most once.
     pub family: Arc<RelayFamily>,
 
-    /// True if this relay says that it caches extrainfo documents.
+    /// `caches-extra-info` --- Router provides extra-info as a dirmirror.
+    ///
+    /// * `caches-extra-info`
+    /// * At most once.
+    /// * No extra arguments.
     pub is_extrainfo_cache: bool,
 
-    /// IPv6 address and port for this relay.
+    /// `or-address` --- Alternative ORport address and port
+    ///
+    /// * `or-address <address>:<port>`.
+    /// * Any number of times.
     // TODO: we don't use a socketaddrv6 because we don't care about
     // the flow and scope fields.  We should decide whether that's a
     // good idea.
     pub ipv6addr: Option<(net::Ipv6Addr, u16)>,
 
-    /// True if this relay says it's a directory cache.
+    /// `tunnelled-dir-server` --- Accepts a `BEGIN_DIR` relay message.
+    ///
+    /// * `tunnelled-dir-server`
+    /// * At most once.
+    /// * No extra arguments.
     pub is_dircache: bool,
 
-    /// List of subprotocol versions supported by this relay.
+    /// `proto` --- Subprotocol capabilities supported.
+    ///
+    /// * `proto <entries>`
+    /// * Exactly once.
     pub proto: tor_protover::Protocols,
 }
 
