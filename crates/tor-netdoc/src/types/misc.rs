@@ -10,7 +10,7 @@ pub use b64impl::*;
 pub use contact_info::*;
 pub use curve25519impl::*;
 pub use ed25519impl::*;
-pub(crate) use edcert::*;
+pub use edcert::*;
 pub use fingerprint::*;
 pub use hostname::*;
 pub use rsa::*;
@@ -1219,9 +1219,20 @@ mod rsa {
 
 /// Types for decoding Ed25519 certificates
 mod edcert {
-    use crate::{NetdocErrorKind as EK, Pos, Result};
+    use std::result::Result as StdResult;
+    use std::time::{Duration, SystemTime};
+
+    use crate::types::EmbeddedCert;
+    use crate::{
+        NetdocErrorKind as EK, Pos, Result,
+        parse2::{ErrorProblem, VerifyFailed},
+        types::EmbeddableCertObject,
+    };
+    use saturating_time::SaturatingTime;
     use tor_cert::{CertType, Ed25519Cert, KeyUnknownCert};
-    use tor_llcrypto::pk::ed25519;
+    use tor_checkable::{SelfSigned, Timebound};
+    use tor_error::{Bug, into_internal};
+    use tor_llcrypto::pk::ed25519::{self, Ed25519PublicKey};
 
     /// An ed25519 certificate as parsed from a directory object, with
     /// signature not validated.
@@ -1267,6 +1278,119 @@ mod edcert {
         /// Consume this object and return the inner Ed25519 certificate.
         pub(crate) fn into_unchecked(self) -> KeyUnknownCert {
             self.0
+        }
+    }
+
+    /// An Ed25519 identity certificate.
+    ///
+    /// This is a certificate of [`CertType::IDENTITY_V_SIGNING`] where the
+    /// relay's long-term ed25519 identity key signs the relay's medium-term
+    /// ed25519 signing key, used for signing almost all other certifications
+    /// associated with a given relay.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[allow(clippy::exhaustive_structs)]
+    pub struct Ed25519IdentityCert {
+        /// The long-term ed25519 identity key of the relay
+        pub id_ed25519: ed25519::Ed25519Identity,
+        /// The medium-term ed25519 signing key of the relay.
+        pub sign_ed25519: ed25519::Ed25519Identity,
+    }
+
+    impl EmbeddableCertObject<KeyUnknownCert> for Ed25519IdentityCert {
+        const LABEL: &str = "ED25519 CERT";
+    }
+
+    impl Ed25519IdentityCert {
+        /// Verifies the validity of an [`Ed25519IdentityCert`].
+        ///
+        /// # Requirements
+        ///
+        /// 1. MUST have the identity key in the `signed-with-ed25519-key` extension.
+        /// 2. MUST have a valid signature by the identity key.
+        /// 3. MUST be valid at `now`.
+        /// 4. MUST be of [`CertType::IDENTITY_V_SIGNING`].
+        /// 5. Both keys MUST be different.
+        /// 6. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+        pub fn verify(
+            cert: KeyUnknownCert,
+            post_tolerance: Duration,
+            now: SystemTime,
+        ) -> StdResult<Self, VerifyFailed> {
+            let cert = cert
+                // 1. MUST have the identity key in the `signed-with-ed25519-key` extension.
+                .should_have_signing_key()
+                .map_err(|_| VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData))?
+                // 2. MUST have a valid signature by the identity key.
+                .check_signature()?
+                // 3. MUST be valid at `now`.
+                .check_valid_at(&now.saturating_sub(post_tolerance))?;
+
+            // 4. MUST be of [`CertType::IDENTITY_V_SIGNING`].
+            if cert.cert_type() != CertType::IDENTITY_V_SIGNING {
+                return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
+            }
+
+            // Bug is alright because .should_have_signing_key() assured us.
+            let id_ed25519 = *cert.signing_key().ok_or(VerifyFailed::Bug)?;
+
+            // Bug is alright because CertifiedKey depends on CertType which we
+            // assured above.
+            let sign_ed25519 = *cert.subject_key().as_ed25519().ok_or(VerifyFailed::Bug)?;
+
+            // 5. Both keys MUST be different.
+            if id_ed25519 == sign_ed25519 {
+                return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
+            }
+
+            // 6. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+            // Unsure if this check is required or implied by (2) but defensive
+            // programming does not hurt.
+            if ed25519::PublicKey::try_from(id_ed25519).is_err()
+                || ed25519::PublicKey::try_from(sign_ed25519).is_err()
+            {
+                return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
+            }
+
+            Ok(Self {
+                id_ed25519,
+                sign_ed25519,
+            })
+        }
+
+        /// Creates a new signed [`Ed25519IdentityCert`].
+        pub fn new_signed(
+            id_ed25519: &ed25519::Keypair,
+            sign_ed25519: ed25519::Ed25519Identity,
+            expiry: SystemTime,
+        ) -> StdResult<EmbeddedCert<Self, KeyUnknownCert>, Bug> {
+            let cert = Ed25519Cert::builder()
+                .expiration(expiry)
+                .signing_key(id_ed25519.public_key().into())
+                .cert_type(CertType::IDENTITY_V_SIGNING)
+                .cert_key(sign_ed25519.into())
+                .encode_and_sign(id_ed25519)
+                .map_err(into_internal!("failed to encode and sign identity cert"))?;
+
+            // Do a round-trip decoding and verification.  The decoding is
+            // required for the result, whereas the verification is for
+            // defensive programming.
+            let cert =
+                Ed25519Cert::decode(&cert).map_err(into_internal!("decode just encoded cert"))?;
+            Self::verify(
+                cert.clone(),
+                // Required because expiry itself is excluding.
+                Duration::from_secs(1),
+                expiry,
+            )
+            .map_err(into_internal!("round trip verification failed"))?;
+
+            Ok(EmbeddedCert::new(
+                Self {
+                    id_ed25519: id_ed25519.public_key().into(),
+                    sign_ed25519,
+                },
+                cert,
+            ))
         }
     }
 }
@@ -2673,6 +2797,39 @@ mod test {
         ) -> StdResult<Self, VerifyFailed>;
     }
 
+    impl Ed25519CertTest for Ed25519IdentityCert {
+        fn new(
+            signing_key: ed25519::Ed25519Identity,
+            certified_key: ed25519::Ed25519Identity,
+        ) -> Self {
+            Self {
+                id_ed25519: signing_key,
+                sign_ed25519: certified_key,
+            }
+        }
+
+        fn cert_type() -> CertType {
+            CertType::IDENTITY_V_SIGNING
+        }
+
+        fn new_signed(
+            signing_key: &ed25519::Keypair,
+            certified_key: ed25519::Ed25519Identity,
+            expiry: SystemTime,
+        ) -> StdResult<EmbeddedCert<Self, KeyUnknownCert>, Bug> {
+            Self::new_signed(signing_key, certified_key, expiry)
+        }
+
+        fn verify(
+            _certified_key: ed25519::Ed25519Identity,
+            cert: KeyUnknownCert,
+            post_tolerance: Duration,
+            now: SystemTime,
+        ) -> StdResult<Self, VerifyFailed> {
+            Self::verify(cert, post_tolerance, now)
+        }
+    }
+
     /// Converts from [`Iso8601TimeSp`] to [`SystemTime`]
     fn str_to_st(s: &str) -> SystemTime {
         Iso8601TimeSp::from_str(s).unwrap().0
@@ -2789,5 +2946,15 @@ mod test {
             let cert = Ed25519Cert::decode(&builder.encode_and_sign(signing_kp).unwrap()).unwrap();
             T::verify(certified_key, cert, Duration::ZERO, now).unwrap_err();
         }
+    }
+
+    #[test]
+    fn ed25519_identity_cert_rng() {
+        ed25519_cert_rng::<Ed25519IdentityCert>();
+    }
+
+    #[test]
+    fn ed25519_identity_cert_invalid() {
+        ed25519_cert_invalid::<Ed25519IdentityCert>();
     }
 }
