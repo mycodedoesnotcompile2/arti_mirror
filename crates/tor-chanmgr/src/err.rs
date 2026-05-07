@@ -1,6 +1,5 @@
 //! Declare error types for tor-chanmgr
 
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use futures::task::SpawnError;
@@ -76,7 +75,10 @@ pub enum Error {
     Connect {
         /// The list of addresses we tried to connect to, coupled with
         /// the error we encountered connecting to each one.
-        addresses: Vec<(ChanSensitive<SocketAddr>, ConnectError)>,
+        ///
+        /// These addresses are currently represented as strings; this
+        /// type may change in the future if and when refactor this error type.
+        addresses: Vec<(ChanSensitive<String>, ConnectError)>,
     },
 
     /// Unable to spawn task

@@ -158,7 +158,10 @@ async fn connect_to_one<R: Runtime>(
     drop(connections);
 
     ret.ok_or_else(|| Error::Connect {
-        addresses: errors.into_iter().map(|(e, a)| (sv(a), e)).collect(),
+        addresses: errors
+            .into_iter()
+            .map(|(e, a)| (sv(a.to_string()), e))
+            .collect(),
     })
 }
 

@@ -21,7 +21,7 @@ use base64ct::{Base64, Encoding};
 use futures::io::{AsyncBufReadExt, BufReader};
 use futures::{AsyncReadExt, AsyncWriteExt};
 use httparse;
-use safelog::Sensitive;
+use safelog::{Sensitive, sensitive as sv};
 use tor_linkspec::PtTargetAddr;
 use tor_rtcompat::NetStreamProvider;
 use tor_socksproto::{
@@ -457,7 +457,7 @@ impl<R: NetStreamProvider + Send + Sync> TransportImplHelper for ExternalProxyPl
         };
 
         let into_err = |e: ProxyError| crate::Error::Connect {
-            addresses: vec![(self.proxy_addr.into(), e.into())],
+            addresses: vec![(sv(pt_target.to_string()), e.into())],
         };
         let protocol =
             settings_to_protocol(self.proxy_version, encode_settings(pt_target.settings()))
