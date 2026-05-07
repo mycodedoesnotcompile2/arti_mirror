@@ -61,6 +61,16 @@
 # https://spec.torproject.org/http-connect.html
 #enable_http_connect = true
 
+# The socket buffer sizes (`SO_SNDBUF` and `SO_RCVBUF`) to use for
+# SOCKS and HTTP CONNECT sockets.
+#
+# The defaults are intended to work well for all use cases.
+# If you find that you need to change these options,
+# you may want to open an issue at
+# https://gitlab.torproject.org/tpo/core/arti/-/work_items.
+#socket_send_buf_size = "128 KB"
+#socket_recv_buf_size = "128 KB"
+
 # Configure logging
 [logging]
 
