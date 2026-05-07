@@ -403,7 +403,7 @@ pub struct PublishStatus {
     /// The number of targets we are configured to publish to.
     n_targets: usize,
 
-    /// The number of targets that have acknowledges that there is no document to publish.
+    /// The number of targets that have acknowledged that there is no document to publish.
     n_inert: usize,
 
     /// The number of targets we have successfully published to.
