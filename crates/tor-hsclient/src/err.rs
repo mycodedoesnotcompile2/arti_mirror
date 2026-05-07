@@ -130,6 +130,12 @@ pub enum DescriptorErrorDetail {
     Bug(#[from] Bug),
 }
 
+impl From<tor_rtcompat::TimeoutError> for DescriptorErrorDetail {
+    fn from(_: tor_rtcompat::TimeoutError) -> Self {
+        Self::Timeout
+    }
+}
+
 /// Error that occurred making one attempt to connect to a hidden service using an IP and RP
 #[derive(Error, Clone, Debug)]
 #[non_exhaustive]

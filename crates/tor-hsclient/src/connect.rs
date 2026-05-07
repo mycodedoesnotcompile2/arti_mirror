@@ -54,30 +54,11 @@ use crate::proto_oneshot;
 use crate::relay_info::ipt_to_circtarget;
 use crate::state::MockableConnectorData;
 use crate::{ConnError, DescriptorError, DescriptorErrorDetail};
-use crate::{FailedAttemptError, IntroPtIndex, RendPtIdentityForError, rend_pt_identity_for_error};
+use crate::{FailedAttemptError, IntroPtIndex, rend_pt_identity_for_error};
 use crate::{HsClientConnector, HsClientSecretKeys};
 
 use ConnError as CE;
 use FailedAttemptError as FAE;
-
-/// Number of hops in our hsdir, introduction, and rendezvous circuits
-///
-/// Required by `tor_circmgr`'s timeout estimation API
-/// ([`tor_circmgr::CircMgr::estimate_timeout`], [`HsCircPool::estimate_timeout`]).
-///
-/// TODO HS hardcoding the number of hops to 3 seems wrong.
-/// This is really something that HsCircPool knows.  And some setups might want to make
-/// shorter circuits for some reason.  And it will become wrong with vanguards?
-/// But right now I think this is what HsCircPool does.
-//
-// Some commentary from
-//   https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/1342#note_2918050
-// Possibilities:
-//  * Look at n_hops() on the circuits we get, if we don't need this estimate
-//    till after we have the circuit.
-//  * Add a function to HsCircPool to tell us what length of circuit to expect
-//    for each given type of circuit.
-const HOPS: usize = 3;
 
 /// Given `R, M` where `M: MocksForConnect<M>`, expand to the mockable `ClientCirc`
 // This is quite annoying.  But the alternative is to write out `<... as // ...>`
@@ -450,12 +431,6 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             // let's give them as many retries as we can manage.
             .unwrap_or(usize::MAX);
 
-        // Limit on the duration of each retrieval attempt
-        let each_timeout = self.estimate_timeout(&[
-            (1, TimeoutsAction::BuildCircuit { length: HOPS }), // build circuit
-            (1, TimeoutsAction::RoundTrip { length: HOPS }),    // One HTTP query/response
-        ]);
-
         // We retain a previously obtained descriptor precisely until its lifetime expires,
         // and pay no attention to the descriptor's revision counter.
         // When it expires, we discard it completely and try to obtain a new one.
@@ -509,12 +484,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
                 }
             };
             let hsdir_for_error: Sensitive<Ed25519Identity> = (*relay.id()).into();
-            match self
-                .runtime
-                .timeout(each_timeout, self.descriptor_fetch_attempt(relay))
-                .await
-                .unwrap_or(Err(DescriptorErrorDetail::Timeout))
-            {
+            match self.descriptor_fetch_attempt(relay).await {
                 Ok(desc) => break desc,
                 Err(error) => {
                     if error.should_report_as_suspicious() {
@@ -600,16 +570,31 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             .circpool
             .m_get_or_launch_dir(&self.netdir, OwnedCircTarget::from_circ_target(hsdir))
             .await?;
+        let n_hops = circuit.m_num_hops()?;
+        let timeout_roundtrip =
+            self.estimate_timeout(&[(1, TimeoutsAction::RoundTrip { length: n_hops })]);
+
         let source: Option<SourceInfo> = circuit
             .m_source_info()
             .map_err(into_internal!("Couldn't get SourceInfo for circuit"))?;
-        let mut stream = circuit
-            .m_begin_dir_stream()
-            .await
+
+        let mut stream = self
+            .runtime
+            // NOTE: In fact this timeout is overkill: this operation should succeed immediately,
+            // since we always send BEGINDIR messages optimistically (without waiting for a reply).
+            // But since our code is complex, and since it could become possible for this to block
+            // if the circuit is saturated or we implement proposal 367 or something,
+            // we may as well have _some_ timeout here.
+            .timeout(timeout_roundtrip, circuit.m_begin_dir_stream())
+            .await?
             .map_err(DescriptorErrorDetail::Circuit)?;
 
-        let response = tor_dirclient::send_request(self.runtime, &request, &mut stream, source)
-            .await
+        let request_future =
+            tor_dirclient::send_request(self.runtime, &request, &mut stream, source);
+        let response = self
+            .runtime
+            .timeout(timeout_roundtrip, request_future)
+            .await?
             .map_err(|dir_error| match dir_error {
                 tor_dirclient::Error::RequestFailed(rfe) => DescriptorErrorDetail::from(rfe.error),
                 tor_dirclient::Error::CircMgr(ce) => into_internal!(
@@ -654,56 +639,6 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             // User specified a very large u32.  We must be downcasting it to 16bit!
             // let's give them as many retries as we can manage.
             .unwrap_or(usize::MAX);
-
-        // Limit on the duration of each attempt to establish a rendezvous point
-        //
-        // This *might* include establishing a fresh circuit,
-        // if the HsCircPool's pool is empty.
-        let rend_timeout = self.estimate_timeout(&[
-            (1, TimeoutsAction::BuildCircuit { length: HOPS }), // build circuit
-            (1, TimeoutsAction::RoundTrip { length: HOPS }),    // One ESTABLISH_RENDEZVOUS
-        ]);
-
-        // Limit on the duration of each attempt to negotiate with an introduction point
-        //
-        // *Does* include establishing the circuit.
-        let intro_timeout = self.estimate_timeout(&[
-            (1, TimeoutsAction::BuildCircuit { length: HOPS }), // build circuit
-            // This does some crypto too, but we don't account for that.
-            (1, TimeoutsAction::RoundTrip { length: HOPS }), // One INTRODUCE1/INTRODUCE_ACK
-        ]);
-
-        // Timeout estimator for the action that the HS will take in building
-        // its circuit to the RPT.
-        let hs_build_action = TimeoutsAction::BuildCircuit {
-            length: if desc.is_single_onion_service() {
-                1
-            } else {
-                HOPS
-            },
-        };
-        // Limit on the duration of each attempt for activities involving both
-        // RPT and IPT.
-        let rpt_ipt_timeout = self.estimate_timeout(&[
-            // The API requires us to specify a number of circuit builds and round trips.
-            // So what we tell the estimator is a rather imprecise description.
-            // (TODO it would be nice if the circmgr offered us a one-way trip Action).
-            //
-            // What we are timing here is:
-            //
-            //    INTRODUCE2 goes from IPT to HS
-            //    but that happens in parallel with us waiting for INTRODUCE_ACK,
-            //    which is controlled by `intro_timeout` so not pat of `ipt_rpt_timeout`.
-            //    and which has to come HOPS hops.  So don't count INTRODUCE2 here.
-            //
-            //    HS builds to our RPT
-            (1, hs_build_action),
-            //
-            //    RENDEZVOUS1 goes from HS to RPT.  `hs_hops`, one-way.
-            //    RENDEZVOUS2 goes from RPT to us.  HOPS, one-way.
-            //    Together, we squint a bit and call this a HOPS round trip:
-            (1, TimeoutsAction::RoundTrip { length: HOPS }),
-        ]);
 
         // We can't reliably distinguish IPT failure from RPT failure, so we iterate over IPTs
         // (best first) and each time use a random RPT.
@@ -795,12 +730,6 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             //  * Ok(None) means all attempts exhausted
             //  * Err(error) means this attempt failed
             //
-            // Error handling is rather complex here.  It's the primary job of *this* code to
-            // make sure that it's done right for timeouts.  (The individual component
-            // functions handle non-timeout errors.)  The different timeout errors have
-            // different amounts of information about the identity of the RPT and IPT: in each
-            // case, the error only mentions the RPT or IPT if that node is implicated in the
-            // timeout.
             let outcome = async {
                 // We establish a rendezvous point first.  Although it appears from reading
                 // this code that this means we serialise establishment of the rendezvous and
@@ -829,24 +758,14 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
                         return Ok(None);
                     };
 
-                    let mut using_rend_pt = None;
-                    saved_rendezvous = Some(
-                        self.runtime
-                            .timeout(rend_timeout, self.establish_rendezvous(&mut using_rend_pt))
-                            .await
-                            .map_err(|_: TimeoutError| match using_rend_pt {
-                                None => FAE::RendezvousCircuitObtain {
-                                    error: tor_circmgr::Error::CircTimeout(None),
-                                },
-                                Some(rend_pt) => FAE::RendezvousEstablishTimeout { rend_pt },
-                            })??,
-                    );
+                    saved_rendezvous = Some(self.establish_rendezvous().await?);
                 }
 
                 let Some(ipt) = intro_attempts.next() else {
                     return Ok(None);
                 };
                 let intro_index = ipt.intro_index;
+                let is_single_onion_service = desc.is_single_onion_service();
 
                 let proof_of_work = match pow_client.solve().await {
                     Ok(solution) => solution,
@@ -878,19 +797,9 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
                     rend_pt_for_error.as_inner()
                 );
 
-                let (rendezvous, introduced) = self
-                    .runtime
-                    .timeout(
-                        intro_timeout,
-                        self.exchange_introduce(ipt, &mut saved_rendezvous,
-                            proof_of_work),
-                    )
+                let (rendezvous, introduced) =
+                    self.exchange_introduce(ipt, &mut saved_rendezvous, proof_of_work)
                     .await
-                    .map_err(|_: TimeoutError| {
-                        // The intro point ought to give us a prompt ACK regardless of HS
-                        // behaviour or whatever is happening at the RPT, so blame the IPT.
-                        FAE::IntroductionTimeout { intro_index }
-                    })?
                     // TODO: Maybe try, once, to extend-and-reuse the intro circuit.
                     //
                     // If the introduction fails, the introduction circuit is in principle
@@ -911,17 +820,8 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
                 let saved_rendezvous = (); // don't use `saved_rendezvous` any more, use rendezvous
 
                 let rend_pt = rend_pt_identity_for_error(&rendezvous.rend_relay);
-                let circ = self
-                    .runtime
-                    .timeout(
-                        rpt_ipt_timeout,
-                        self.complete_rendezvous(ipt, rendezvous, introduced),
-                    )
-                    .await
-                    .map_err(|_: TimeoutError| FAE::RendezvousCompletionTimeout {
-                        intro_index,
-                        rend_pt: rend_pt.clone(),
-                    })??;
+                let circ = self.complete_rendezvous(ipt, rendezvous, introduced, is_single_onion_service)
+                    .await?;
 
                 debug!(
                     "hs conn to {}: RPT {} IPT {}: success",
@@ -986,17 +886,9 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
     /// other than (obviously) the isolation implied by our circuit pool.
     /// In particular it doesn't depend on the introduction point.
     ///
-    /// Does not apply a timeout.
-    ///
-    /// On entry `using_rend_pt` is `None`.
-    /// This function will store `Some` when it finds out which relay
-    /// it is talking to and starts to converse with it.
-    /// That way, if a timeout occurs, the caller can add that information to the error.
+    /// Applies timeouts as appropriate.
     #[instrument(level = "trace", skip_all)]
-    async fn establish_rendezvous(
-        &'c self,
-        using_rend_pt: &mut Option<RendPtIdentityForError>,
-    ) -> Result<Rendezvous<'c, R, M>, FAE> {
+    async fn establish_rendezvous(&'c self) -> Result<Rendezvous<'c, R, M>, FAE> {
         let (rend_tunnel, rend_relay) = self
             .circpool
             .m_get_or_launch_client_rend(&self.netdir)
@@ -1004,7 +896,6 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             .map_err(|error| FAE::RendezvousCircuitObtain { error })?;
 
         let rend_pt = rend_pt_identity_for_error(&rend_relay);
-        *using_rend_pt = Some(rend_pt.clone());
 
         let rend_cookie: RendCookie = self.mocks.thread_rng().random();
         let message = EstablishRendezvous::new(rend_cookie);
@@ -1051,6 +942,13 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             rend2_tx,
         };
 
+        let num_hops = rend_tunnel
+            .m_num_own_hops()
+            .map_err(|error| FAE::RendezvousCircuitObtain { error })?;
+
+        let timeout_roundtrip =
+            self.estimate_timeout(&[(1, TimeoutsAction::RoundTrip { length: num_hops })]);
+
         // TODO(conflux) This error handling is horrible. Problem is that this Mock system requires
         // to send back a tor_circmgr::Error while our reply handler requires a tor_proto::Error.
         // And unifying both is hard here considering it needs to be converted to yet another Error
@@ -1071,7 +969,15 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
 
         // `start_conversation` returns as soon as the control message has been sent.
         // We need to obtain the RENDEZVOUS_ESTABLISHED message, which is "returned" via the oneshot.
-        let _: RendezvousEstablished = rend_established_rx.recv(failed_map_err).await?;
+        let _: RendezvousEstablished = self
+            .runtime
+            .timeout(timeout_roundtrip, rend_established_rx.recv(failed_map_err))
+            .await
+            .map_err(
+                |_timeout: tor_rtcompat::TimeoutError| FAE::RendezvousEstablishTimeout {
+                    rend_pt: rend_pt.clone(),
+                },
+            )??;
 
         debug!(
             "hs conn to {}: RPT {}: got RENDEZVOUS_ESTABLISHED",
@@ -1099,7 +1005,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
     /// nothing in it actually involves the rendezvous point.
     /// So if there's a failure, it's purely to do with the introduction point.
     ///
-    /// Does not apply a timeout.
+    /// Applies timeouts as appropriate.
     #[allow(clippy::cognitive_complexity, clippy::type_complexity)] // TODO: Refactor
     #[instrument(level = "trace", skip_all)]
     async fn exchange_introduce(
@@ -1216,6 +1122,14 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         let (intro_ack_tx, intro_ack_rx) = proto_oneshot::channel();
         let handler = Handler { intro_ack_tx };
 
+        let num_hops = intro_circ
+            .m_num_hops()
+            .map_err(|error| FAE::IntroductionCircuitObtain { error, intro_index })?;
+        // NOTE: Should we allow this to be longer in case the introduction point is grievously
+        // overloaded?
+        let timeout_roundtrip =
+            self.estimate_timeout(&[(1, TimeoutsAction::RoundTrip { length: num_hops })]);
+
         debug!(
             "hs conn to {}: RPT {} IPT {}: making introduction - sending INTRODUCE1",
             &self.hsid,
@@ -1243,15 +1157,16 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
 
         // Status is checked by `.success()`, and we don't look at the extensions;
         // just discard the known-successful `IntroduceAck`
-        let _: IntroduceAck =
-            intro_ack_rx
-                .recv(failed_map_err)
-                .await?
-                .success()
-                .map_err(|status| FAE::IntroductionFailed {
-                    status,
-                    intro_index,
-                })?;
+        let _: IntroduceAck = self
+            .runtime
+            .timeout(timeout_roundtrip, intro_ack_rx.recv(failed_map_err))
+            .await
+            .map_err(|_timeout: TimeoutError| FAE::IntroductionTimeout { intro_index })??
+            .success()
+            .map_err(|status| FAE::IntroductionFailed {
+                status,
+                intro_index,
+            })?;
 
         debug!(
             "hs conn to {}: RPT {} IPT {}: making introduction - success",
@@ -1273,7 +1188,10 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         ))
     }
 
-    /// Attempt (once) to connect a rendezvous circuit using the given intro pt
+    /// Attempt (once) to connect a rendezvous circuit using the given intro pt.
+    ///
+    /// That is to say, we simply wait for a RENDEZVOUS2 message,
+    /// and if we get one, we add a virtual hop.
     ///
     /// Timeouts here might be due to the IPT, RPT, service,
     /// or any of the intermediate relays.
@@ -1281,15 +1199,25 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
     /// If, rather than a timeout, we actually encounter some kind of error,
     /// we'll return the appropriate `FailedAttemptError`.
     /// (Who is responsible may vary, so the `FailedAttemptError` variant will reflect that.)
-    ///
-    /// Does not apply a timeout
     async fn complete_rendezvous(
         &'c self,
         ipt: &UsableIntroPt<'_>,
         rendezvous: Rendezvous<'c, R, M>,
         introduced: Introduced<R, M>,
+        is_single_onion_service: bool,
     ) -> Result<DataTunnel!(R, M), FAE> {
         use tor_proto::client::circuit::handshake;
+
+        /// Largest number of hops that the onion service must build for _its_
+        /// circuits to our rendezvous points.
+        ///
+        /// This is 4 hops (assuming that it has full vanguards enabled) plus one for the
+        /// renedezvous point itself.
+        const MAX_PEER_REND_HOPS: usize = 5;
+
+        /// Largest number of retries that we think the peer might make if its
+        /// circuits are failing.
+        const MAX_PEER_CIRC_RETRIES: u32 = 3;
 
         let rend_pt = rend_pt_identity_for_error(&rendezvous.rend_relay);
         let intro_index = ipt.intro_index;
@@ -1306,7 +1234,66 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             intro_index,
         );
 
-        let rend2_msg: Rendezvous2 = rendezvous.rend2_rx.recv(failed_map_err).await?;
+        let num_hops = rendezvous
+            .rend_tunnel
+            .m_num_own_hops()
+            // This is not necessarily the best error, but it isn't totally wrong.
+            // We can't wrap the tor_circuit error in anything else that makes sense.
+            // See #2513.
+            .map_err(|error| FAE::RendezvousCircuitObtain { error })?;
+
+        // Maximum length of the circuit that the peer will build to the rendezvous point.
+        let peer_rend_circ_len = if is_single_onion_service {
+            1
+        } else {
+            MAX_PEER_REND_HOPS
+        };
+
+        // The total number of hops from the peer to us.
+        //
+        // We subtract 1 because both circuits terminate at the rendezvous point.
+        let total_circ_len = peer_rend_circ_len + num_hops - 1;
+
+        // Limit on the duration of each attempt for activities involving both
+        // RPT and IPT.
+        let rpt_ipt_timeout = self.estimate_timeout(&[
+            // The API requires us to specify a number of circuit builds and round trips.
+            // So what we tell the estimator is a rather imprecise description.
+            //
+            // What we are timing here is:
+            //
+            //    INTRODUCE2 goes from IPT to HS.
+            //    This happens in parallel with our waiting for the INTRODUCE_ACK,
+            //    and we know that our own introduction circuit is always at least
+            //    as long as the peer's (even if they are using full vanguards),
+            //    so we don't need any additional delay here.
+            //
+            //    HS builds to our RPT
+            (
+                MAX_PEER_CIRC_RETRIES,
+                TimeoutsAction::BuildCircuit {
+                    length: peer_rend_circ_len,
+                },
+            ),
+            //
+            //    RENDEZVOUS1 goes from HS to RPT.  `peer_circ_len`, one-way.
+            //    RENDEZVOUS2 goes from RPT to us.  `num_hops`, one-way.
+            (
+                1,
+                TimeoutsAction::OneWay {
+                    length: total_circ_len,
+                },
+            ),
+        ]);
+
+        let rend2_msg: Rendezvous2 = self
+            .runtime
+            .timeout(rpt_ipt_timeout, rendezvous.rend2_rx.recv(failed_map_err))
+            .await
+            .map_err(|_: TimeoutError| FAE::RendezvousCompletionTimeout {
+                intro_index,
+                rend_pt: rend_pt.clone(),
+            })??;
 
         debug!(
             "hs conn to {}: RPT {} IPT {}: received RENDEZVOUS2",
@@ -1470,6 +1457,9 @@ trait MockableClientDir: Debug {
 
     /// Get a tor_dirclient::SourceInfo for this circuit, if possible.
     fn m_source_info(&self) -> tor_proto::Result<Option<SourceInfo>>;
+
+    /// Return the length of this circuit.
+    fn m_num_hops(&self) -> tor_circmgr::Result<usize>;
 }
 
 /// Mock for onion service client data tunnel.
@@ -1495,6 +1485,15 @@ trait MockableClientData: Debug {
         params: CircParameters,
         capabilities: &tor_protover::Protocols,
     ) -> tor_circmgr::Result<()>;
+
+    /// Return the number of our own hops in this circuit.
+    ///
+    /// This does not count any hops for the service's rendezvous circuit.
+    /// It does count our virtual hop, if we have one.
+    /// (That isn't a problem, since we only use this method to calculate
+    /// timeouts, and we only calculate timeouts _before_ we establish
+    /// the virtual hop.)
+    fn m_num_own_hops(&self) -> tor_circmgr::Result<usize>;
 }
 
 /// Mock for onion service client introduction tunnel.
@@ -1510,6 +1509,9 @@ trait MockableClientIntro: Debug {
         msg: Option<AnyRelayMsg>,
         reply_handler: impl MsgHandler + Send + 'static,
     ) -> tor_circmgr::Result<Self::Conversation<'_>>;
+
+    /// Return the number of hops in this circuit.
+    fn m_num_hops(&self) -> tor_circmgr::Result<usize>;
 }
 
 impl<R: Runtime> MocksForConnect<R> for () {
@@ -1565,6 +1567,10 @@ impl MockableClientDir for ClientOnionServiceDirTunnel {
     fn m_source_info(&self) -> tor_proto::Result<Option<SourceInfo>> {
         SourceInfo::from_tunnel(self)
     }
+
+    fn m_num_hops(&self) -> tor_circmgr::Result<usize> {
+        self.n_hops()
+    }
 }
 
 #[async_trait]
@@ -1589,6 +1595,10 @@ impl MockableClientData for ClientOnionServiceDataTunnel {
     ) -> tor_circmgr::Result<()> {
         Self::extend_virtual(self, protocol, role, handshake, params, capabilities).await
     }
+
+    fn m_num_own_hops(&self) -> tor_circmgr::Result<usize> {
+        self.n_hops()
+    }
 }
 
 #[async_trait]
@@ -1601,6 +1611,10 @@ impl MockableClientIntro for ClientOnionServiceIntroTunnel {
         reply_handler: impl MsgHandler + Send + 'static,
     ) -> tor_circmgr::Result<Self::Conversation<'_>> {
         Self::start_conversation(self, msg, reply_handler, TargetHop::LastHop).await
+    }
+
+    fn m_num_hops(&self) -> tor_circmgr::Result<usize> {
+        self.n_hops()
     }
 }
 
@@ -1752,6 +1766,10 @@ mod test {
         fn m_source_info(&self) -> tor_proto::Result<Option<SourceInfo>> {
             Ok(None)
         }
+
+        fn m_num_hops(&self) -> tor_circmgr::Result<usize> {
+            Ok(4)
+        }
     }
 
     #[allow(clippy::diverging_sub_expression)] // async_trait + todo!()
@@ -1776,6 +1794,10 @@ mod test {
         ) -> tor_circmgr::Result<()> {
             todo!()
         }
+
+        fn m_num_own_hops(&self) -> tor_circmgr::Result<usize> {
+            Ok(4)
+        }
     }
 
     #[allow(clippy::diverging_sub_expression)] // async_trait + todo!()
@@ -1788,6 +1810,10 @@ mod test {
             reply_handler: impl MsgHandler + Send + 'static,
         ) -> tor_circmgr::Result<Self::Conversation<'_>> {
             todo!()
+        }
+
+        fn m_num_hops(&self) -> tor_circmgr::Result<usize> {
+            Ok(4)
         }
     }
 
