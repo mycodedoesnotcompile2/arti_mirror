@@ -128,6 +128,7 @@ fn fs_error_action(err: &std::io::Error) -> ClientErrorAction {
     match err.kind() {
         EK::NotFound => A::Decline,
         EK::PermissionDenied => A::Decline,
+        EK::ReadOnlyFilesystem => A::Decline,
         _ => A::Abort,
     }
 }
@@ -142,8 +143,9 @@ fn net_error_action(err: &std::io::Error) -> ClientErrorAction {
     match err.kind() {
         EK::ConnectionRefused => A::Decline,
         EK::ConnectionReset => A::Decline,
-        // TODO MSRV 1.83; revisit once some of `io_error_more` is stabilized.
-        // see https://github.com/rust-lang/rust/pull/128316
+        EK::HostUnreachable => A::Decline,
+        EK::NetworkDown => A::Decline,
+        EK::NetworkUnreachable => A::Decline,
         _ => A::Abort,
     }
 }
