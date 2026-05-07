@@ -2063,12 +2063,20 @@ mod test {
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use std::{
+        fmt::Debug,
+        time::{Duration, SystemTime},
+    };
+
     use itertools::Itertools;
 
     use base64ct::Encoding;
+    use tor_basic_utils::test_rng::testing_rng;
+    use tor_cert::{CertType, CertifiedKey, Ed25519Cert, KeyUnknownCert};
+    use tor_llcrypto::pk::ed25519::{self, Ed25519PublicKey};
 
     use super::*;
-    use crate::{Pos, Result};
+    use crate::{Pos, Result, parse2::VerifyFailed, types::EmbeddedCert};
 
     /// Decode s as a multi-line base64 string, ignoring ascii whitespace.
     fn base64_decode_ignore_ws(s: &str) -> std::result::Result<Vec<u8>, base64ct::Error> {
@@ -2628,5 +2636,158 @@ mod test {
             parse2(&vec!["ZZZZ"; 10].join(" ")).unwrap_err(),
             ErrorProblem::InvalidArgument { .. }
         ));
+    }
+
+    /// Helper to call methods for edcerts.
+    trait Ed25519CertTest: Sized + PartialEq + Eq + Debug {
+        /// Creates a new instance.
+        ///
+        /// Used to create a struct in ad-hoc fashion for Eq comparison.
+        fn new(
+            signing_key: ed25519::Ed25519Identity,
+            certified_key: ed25519::Ed25519Identity,
+        ) -> Self;
+
+        /// Returns the expected [`CertType`].
+        fn cert_type() -> CertType;
+
+        /// Calls .new_signed().
+        ///
+        /// This method is used to create an [`EmbeddedCert`] with a given
+        /// signing key and a key that shall be certified.
+        fn new_signed(
+            signing_key: &ed25519::Keypair,
+            certified_key: ed25519::Ed25519Identity,
+            expiry: SystemTime,
+        ) -> StdResult<EmbeddedCert<Self, KeyUnknownCert>, Bug>;
+
+        /// Calls .verify().
+        ///
+        /// The method verifies a certificate given a pre-known certified key,
+        /// the actual certificate, and a timestamp.
+        fn verify(
+            certified_key: ed25519::Ed25519Identity,
+            cert: KeyUnknownCert,
+            post_tolerance: Duration,
+            now: SystemTime,
+        ) -> StdResult<Self, VerifyFailed>;
+    }
+
+    /// Converts from [`Iso8601TimeSp`] to [`SystemTime`]
+    fn str_to_st(s: &str) -> SystemTime {
+        Iso8601TimeSp::from_str(s).unwrap().0
+    }
+
+    /// Tests a valid ad-hoc generated certificate.
+    fn ed25519_cert_rng<T: Ed25519CertTest>() {
+        let mut rng = testing_rng();
+        let signing_key = ed25519::Keypair::generate(&mut rng);
+        let certified_key = ed25519::Keypair::generate(&mut rng);
+        let now = str_to_st("2000-01-01 06:00:00");
+        let expiry = str_to_st("2000-01-01 12:00:00");
+
+        // Test ad-hoc generation.
+        let embedded_cert =
+            T::new_signed(&signing_key, certified_key.public_key().into(), expiry).unwrap();
+        assert_eq!(
+            *embedded_cert.get().unwrap(),
+            T::new(
+                signing_key.public_key().into(),
+                certified_key.public_key().into()
+            )
+        );
+
+        // Verify ad-hoc certificate generation.
+        let unverified = embedded_cert.raw_unverified().clone();
+        assert_eq!(T::cert_type(), unverified.peek_cert_type());
+        match unverified.peek_subject_key() {
+            CertifiedKey::Ed25519(x) => assert_eq!(
+                *x,
+                ed25519::Ed25519Identity::from(certified_key.public_key())
+            ),
+            _ => panic!(),
+        }
+
+        // Finally, see if .verify() agrees.
+        T::verify(
+            certified_key.public_key().into(),
+            unverified.clone(),
+            Duration::ZERO,
+            now,
+        )
+        .unwrap();
+
+        // See if .verify() also agrees when expired but with toleration.
+        T::verify(
+            certified_key.public_key().into(),
+            unverified,
+            Duration::from_secs(60 * 60),
+            expiry,
+        )
+        .unwrap();
+    }
+
+    /// Tests invalid Ed25519 certificates by violating various constraints.
+    fn ed25519_cert_invalid<T: Ed25519CertTest>() {
+        let mut rng = testing_rng();
+        let now = str_to_st("2000-01-01 06:00:00");
+        let expiry = str_to_st("2000-01-01 12:00:00");
+        let signing_key = ed25519::Keypair::generate(&mut rng);
+        let signing_pk = ed25519::Ed25519Identity::from(signing_key.public_key());
+        let certified_key = ed25519::Keypair::generate(&mut rng);
+        let certified_pk = ed25519::Ed25519Identity::from(certified_key.public_key());
+
+        let tests = [
+            // Violate absence of `signed-with-ed25519-key`.
+            (T::cert_type(), expiry, certified_pk, None, &signing_key),
+            // ---
+            // Testing a violation of the signature is hard because the encoder
+            // refuses to emit such a thing.
+            // ---
+            // Violate timestamp.
+            (
+                T::cert_type(),
+                // We achieve this by setting expiry to now.
+                now,
+                certified_pk,
+                Some(&signing_pk),
+                &signing_key,
+            ),
+            // Violate cert type.
+            (
+                // Just picking something completely out of place here.
+                CertType::NTOR_CC_IDENTITY,
+                expiry,
+                certified_pk,
+                Some(&signing_pk),
+                &signing_key,
+            ),
+            // Violate both keys must be different.
+            (
+                T::cert_type(),
+                expiry,
+                // Just pass the signing key twice.
+                signing_pk,
+                Some(&signing_pk),
+                &signing_key,
+            ),
+            // ---
+            // Missing test for violating both keys MUST be valid mappings to a
+            // [`ed25519::PublicKey`].  I was unable to find a single test
+            // vector for this, even in curve25591-dalek. :/
+        ];
+
+        for (ctype, expiry, certified_key, signing_key, signing_kp) in tests {
+            let mut builder = Ed25519Cert::builder()
+                .cert_type(ctype)
+                .expiration(expiry)
+                .cert_key(certified_key.into())
+                .clone();
+            if let Some(signing_key) = signing_key {
+                builder = builder.signing_key(*signing_key).clone();
+            }
+            let cert = Ed25519Cert::decode(&builder.encode_and_sign(signing_kp).unwrap()).unwrap();
+            T::verify(certified_key, cert, Duration::ZERO, now).unwrap_err();
+        }
     }
 }
