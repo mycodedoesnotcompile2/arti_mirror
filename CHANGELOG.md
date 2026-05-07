@@ -3,7 +3,7 @@
 This file describes changes in Arti through the current release.  Once Arti
 is more mature, we may switch to using a separate changelog for each crate.
 
-# Arti 2.3.0 — 6 April 2026
+# Arti 2.3.0 — 7 April 2026
 
 Arti 2.3.0 continues development on relay, directory authority, and RPC functionality.
 It also adds a couple new logging-related features, including the ability to log to syslog.
