@@ -120,7 +120,7 @@ impl HsDirParams {
         consensus: &MdConsensus,
         params: &NetParameters,
     ) -> Result<HsDirs<HsDirParams>> {
-        let srvs = extract_srvs(consensus);
+        let srvs = extract_srvs(consensus)?;
         let tp_length: Duration = params.hsdir_timeperiod_length.try_into().map_err(|_| {
             // Note that this error should be impossible:
             // The type of hsdir_timeperiod_length() is IntegerMinutes<BoundedInt32<30, 14400>>...
@@ -222,26 +222,28 @@ fn find_srv_for_time(info: &[SrvInfo], when: SystemTime) -> Option<&SrvInfo> {
 
 /// Return every SRV from a consensus, along with a duration over which it is
 /// most recent SRV.
-fn extract_srvs(consensus: &MdConsensus) -> Vec<SrvInfo> {
+fn extract_srvs(consensus: &MdConsensus) -> Result<Vec<SrvInfo>> {
     let mut v = Vec::new();
     let srv_interval = srv_interval(consensus);
 
     if let Some(cur) = consensus.shared_rand_cur() {
         let ts_begin = cur
             .timestamp()
-            .unwrap_or_else(|| start_of_sr_round(consensus));
+            .map(Ok)
+            .unwrap_or_else(|| start_of_sr_round(consensus))?;
         let ts_end = ts_begin + srv_interval;
         v.push((*cur.value(), ts_begin..ts_end));
     }
     if let Some(prev) = consensus.shared_rand_prev() {
         let ts_begin = prev
             .timestamp()
-            .unwrap_or_else(|| start_of_sr_round(consensus) - srv_interval);
+            .map(Ok)
+            .unwrap_or_else(|| start_of_sr_round(consensus).map(|t| t - srv_interval))?;
         let ts_end = ts_begin + srv_interval;
         v.push((*prev.value(), ts_begin..ts_end));
     }
 
-    v
+    Ok(v)
 }
 
 /// Return the length of time for which a single SRV value is valid.
@@ -273,11 +275,11 @@ fn srv_interval(consensus: &MdConsensus) -> Duration {
 /// of the consensus.
 ///
 /// Corresponds to C Tor's `sr_state_get_start_time_of_current_protocol_run()`.
-fn start_of_sr_round(consensus: &MdConsensus) -> SystemTime {
+fn start_of_sr_round(consensus: &MdConsensus) -> Result<SystemTime> {
     let t = consensus.lifetime().valid_after();
     let beginning_of_curr_round = t
         .duration_since(SystemTime::UNIX_EPOCH)
-        .expect("consensus valid-after is before Unix epoch?!")
+        .map_err(|_| Error::InvalidConsensus("consensus valid-after is before Unix epoch?!"))?
         .as_secs();
     let voting_interval = consensus.lifetime().voting_period().as_secs();
     let curr_round_slot =
@@ -285,7 +287,7 @@ fn start_of_sr_round(consensus: &MdConsensus) -> SystemTime {
     let time_elapsed_since_start_of_run = curr_round_slot * voting_interval;
 
     let offset = Duration::from_secs(beginning_of_curr_round - time_elapsed_since_start_of_run);
-    SystemTime::UNIX_EPOCH + offset
+    Ok(SystemTime::UNIX_EPOCH + offset)
 }
 
 #[cfg(test)]
@@ -390,7 +392,7 @@ mod test {
     #[test]
     fn srvs_extract_and_find() {
         let consensus = example_consensus_builder().testing_consensus().unwrap();
-        let srvs = extract_srvs(&consensus);
+        let srvs = extract_srvs(&consensus).unwrap();
         assert_eq!(
             srvs,
             vec![
@@ -415,7 +417,7 @@ mod test {
             .shared_rand_cur(7, SRV2.into(), Some(t("1985-10-25T06:00:05Z")))
             .testing_consensus()
             .unwrap();
-        let srvs = extract_srvs(&consensus);
+        let srvs = extract_srvs(&consensus).unwrap();
         assert_eq!(
             srvs,
             vec![
