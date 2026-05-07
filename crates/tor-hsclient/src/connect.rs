@@ -1242,20 +1242,17 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             // See #2513.
             .map_err(|error| FAE::RendezvousCircuitObtain { error })?;
 
-        // Total length of the circuit that the peer will build to the onion service.
-        let peer_circ_len = if is_single_onion_service {
+        // Maximum length of the circuit that the peer will build to the rendezvous point.
+        let peer_rend_circ_len = if is_single_onion_service {
             1
         } else {
             MAX_PEER_REND_HOPS
         };
 
-        // The number of hops that the peer may be using beyond our own.
-        let extra_peer_hops = peer_circ_len.saturating_sub(num_hops);
-
         // The total number of hops from the peer to us.
         //
         // We subtract 1 because both circuits terminate at the rendezvous point.
-        let total_circ_len = peer_circ_len + num_hops - 1;
+        let total_circ_len = peer_rend_circ_len + num_hops - 1;
 
         // Limit on the duration of each attempt for activities involving both
         // RPT and IPT.
@@ -1267,18 +1264,15 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             //
             //    INTRODUCE2 goes from IPT to HS.
             //    This happens in parallel with our waiting for the INTRODUCE_ACK,
-            //    so we only wait for the _extra_ hops that apply to the peer's circuit.
-            (
-                1,
-                TimeoutsAction::OneWay {
-                    length: extra_peer_hops,
-                },
-            ),
+            //    and we know that our own introduction circuit is always at least
+            //    as long as the peer's (even if they are using full vanguards),
+            //    so we don't need any additional delay here.
+            //
             //    HS builds to our RPT
             (
                 MAX_PEER_CIRC_RETRIES,
                 TimeoutsAction::BuildCircuit {
-                    length: peer_circ_len,
+                    length: peer_rend_circ_len,
                 },
             ),
             //
