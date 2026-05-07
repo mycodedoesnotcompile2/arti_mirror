@@ -38,6 +38,7 @@ RECOGNIZED_LICENSES=(
     "ISC AND (Apache-2.0 OR ISC)"
     "(Apache-2.0 OR ISC) AND ISC"
     "(Apache-2.0 OR MIT) AND BSD-3-Clause"
+    "Apache-2.0 AND MIT"
 )
 
 # List of packages that don't list a license.
