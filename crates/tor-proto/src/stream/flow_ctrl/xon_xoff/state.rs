@@ -20,6 +20,7 @@
 //!   stopping mid-download, the receive buffer was 6,116,738 bytes and the send buffer was
 //!   2,631,062 bytes. This sums to around 8.7 MB of stream data buffered in the kernel, which is
 //!   significantly higher than the current consensus value of `cc_xoff_client`.
+//!   NOTE: Arti's proxy sockets now use fixed-size `DEFAULT_{SEND,RECV}_BUF_SIZE` kernel buffers.
 //!
 //! This means that the total number of bytes buffered before an XOFF is sent can be much larger
 //! than `cc_xoff_client`.
