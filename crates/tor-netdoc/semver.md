@@ -14,3 +14,4 @@ BREAKING: `nickname`, `ipv4addr`, `orport`, and `dirport` moved `RouterDesc::rou
 BREAKING: `RouterDesc::published` now stored in a `Iso8601TimeSp`
 BREAKING: `RouterDesc::ntor_onion_key` now stored in a `Curve25519Public`
 ADDED: `Ed25519IdentityCert` type
+ADDED: `Ed25519FamilyCert` type

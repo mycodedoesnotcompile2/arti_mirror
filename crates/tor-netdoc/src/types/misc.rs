@@ -1393,6 +1393,121 @@ mod edcert {
             ))
         }
     }
+
+    /// An Ed25519 family certificate.
+    ///
+    /// This is a certificate of [`CertType::FAMILY_V_IDENTITY`] where the
+    /// family key signs the long-term ed25519 identity key of the given relay.
+    ///
+    /// It purposely does not store the long-term ed25519 identity key of the
+    /// relay because the idea of this type should be equal only to other types
+    /// with the same family key.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[allow(clippy::exhaustive_structs)]
+    pub struct Ed25519FamilyCert {
+        /// The public key of the family.
+        pub family_ed25519: ed25519::Ed25519Identity,
+    }
+
+    impl EmbeddableCertObject<KeyUnknownCert> for Ed25519FamilyCert {
+        const LABEL: &str = "FAMILY CERT";
+    }
+
+    impl Ed25519FamilyCert {
+        /// Verifies the validity of an [`Ed25519FamilyCert`].
+        ///
+        /// For such a certificate to be valid, the caller must provide a
+        /// known Ed25519 identity key of the relay beforehand.
+        ///
+        /// # Requirements
+        ///
+        /// 1. MUST have the `signed-with-ed25519-key` extension containing the family key.
+        /// 2. MUST have a valid signature by the family key.
+        /// 3. MUST be valid at `now`.
+        /// 4. MUST be of of [`CertType::FAMILY_V_IDENTITY`].
+        /// 5. `id_ed25519` MUST be the certified key.
+        /// 6. Both keys MUST be different.
+        /// 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+        pub fn verify(
+            id_ed25519: ed25519::Ed25519Identity,
+            cert: KeyUnknownCert,
+            post_tolerance: Duration,
+            now: SystemTime,
+        ) -> StdResult<Self, VerifyFailed> {
+            let cert = cert
+                // 1. MUST have the `signed-with-ed25519-key` extension containing the family key.
+                .should_have_signing_key()?
+                // 2. MUST have a valid signature by the family key.
+                .check_signature()?
+                // 3. MUST be valid at `now`.
+                .check_valid_at(&now.saturating_sub(post_tolerance))?;
+
+            // 4. MUST be of of [`CertType::FAMILY_V_IDENTITY`].
+            if cert.cert_type() != CertType::FAMILY_V_IDENTITY {
+                return Err(ErrorProblem::ObjectInvalidData.into());
+            }
+
+            // Bug is alright because .should_have_signing_key() assured us.
+            let family_ed25519 = *cert.signing_key().ok_or(VerifyFailed::Bug)?;
+
+            // Bug is alright because CertifiedKey depends on CertType which we
+            // assured above.
+            let certified_key = *cert.subject_key().as_ed25519().ok_or(VerifyFailed::Bug)?;
+            // 5. `id_ed25519` MUST be the certified key.
+            if certified_key != id_ed25519 {
+                return Err(VerifyFailed::VerifyFailed);
+            }
+
+            // 6. Both keys MUST be different.
+            if id_ed25519 == family_ed25519 {
+                return Err(ErrorProblem::ObjectInvalidData.into());
+            }
+
+            // 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+            if ed25519::PublicKey::try_from(family_ed25519).is_err()
+                || ed25519::PublicKey::try_from(id_ed25519).is_err()
+            {
+                return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
+            }
+
+            Ok(Self { family_ed25519 })
+        }
+
+        /// Creates a new signed [`Ed25519FamilyCert`].
+        pub fn new_signed(
+            family_ed25519: &ed25519::Keypair,
+            id_ed25519: ed25519::Ed25519Identity,
+            expiry: SystemTime,
+        ) -> StdResult<EmbeddedCert<Self, KeyUnknownCert>, Bug> {
+            let cert = Ed25519Cert::builder()
+                .expiration(expiry)
+                .signing_key(family_ed25519.public_key().into())
+                .cert_type(CertType::FAMILY_V_IDENTITY)
+                .cert_key(id_ed25519.into())
+                .encode_and_sign(family_ed25519)
+                .map_err(into_internal!("failed to encode and sign family cert"))?;
+
+            // Do a round-trip decoding and verification similar to
+            // Ed25519IdentityCert::new_signed().
+            let cert =
+                Ed25519Cert::decode(&cert).map_err(into_internal!("decode just encoded cert"))?;
+            Self::verify(
+                id_ed25519,
+                cert.clone(),
+                // Required because expiry itself is excluding.
+                Duration::from_secs(1),
+                expiry,
+            )
+            .map_err(into_internal!("round trip verification failed"))?;
+
+            Ok(EmbeddedCert::new(
+                Self {
+                    family_ed25519: family_ed25519.public_key().into(),
+                },
+                cert,
+            ))
+        }
+    }
 }
 
 /// Digest identifiers, and digests in the form `ALGORITHM=BASE64U`
@@ -2830,6 +2945,38 @@ mod test {
         }
     }
 
+    impl Ed25519CertTest for Ed25519FamilyCert {
+        fn new(
+            signing_key: ed25519::Ed25519Identity,
+            _certified_key: ed25519::Ed25519Identity,
+        ) -> Self {
+            Self {
+                family_ed25519: signing_key,
+            }
+        }
+
+        fn cert_type() -> CertType {
+            CertType::FAMILY_V_IDENTITY
+        }
+
+        fn new_signed(
+            signing_key: &ed25519::Keypair,
+            certified_key: ed25519::Ed25519Identity,
+            expiry: SystemTime,
+        ) -> StdResult<EmbeddedCert<Self, KeyUnknownCert>, Bug> {
+            Self::new_signed(signing_key, certified_key, expiry)
+        }
+
+        fn verify(
+            certified_key: ed25519::Ed25519Identity,
+            cert: KeyUnknownCert,
+            post_tolerance: Duration,
+            now: SystemTime,
+        ) -> StdResult<Self, VerifyFailed> {
+            Self::verify(certified_key, cert, post_tolerance, now)
+        }
+    }
+
     /// Converts from [`Iso8601TimeSp`] to [`SystemTime`]
     fn str_to_st(s: &str) -> SystemTime {
         Iso8601TimeSp::from_str(s).unwrap().0
@@ -2956,5 +3103,15 @@ mod test {
     #[test]
     fn ed25519_identity_cert_invalid() {
         ed25519_cert_invalid::<Ed25519IdentityCert>();
+    }
+
+    #[test]
+    fn ed25519_family_cert_rng() {
+        ed25519_cert_rng::<Ed25519FamilyCert>();
+    }
+
+    #[test]
+    fn ed25519_family_cert_invalid() {
+        ed25519_cert_invalid::<Ed25519FamilyCert>();
     }
 }
