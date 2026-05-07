@@ -571,4 +571,81 @@ mod test {
             SrvPeriodOffset::from((25 * 60 + 19) * 60)
         );
     }
+
+    #[test]
+    fn start_of_sr_protocol_run() {
+        let test_cases = [
+            // (valid_after, fresh_until, expected_sr_start, expected_srv_interval)
+            //
+            // Voting interval = 1h
+            // The start of the current SR run is always the start
+            // of the day of valid-after of the consensus.
+            // An SRV protocol run takes 1h * 24 rounds = 24h
+            (
+                "2015-04-20T00:00:00Z",
+                "2015-04-20T01:00:00Z",
+                "2015-04-20T00:00:00Z",
+                "24 hours",
+            ),
+            (
+                "2015-04-20T22:00:00Z",
+                "2015-04-20T23:00:00Z",
+                "2015-04-20T00:00:00Z",
+                "24 hours",
+            ),
+            (
+                "2015-04-19T23:00:00Z",
+                "2015-04-20T00:00:00Z",
+                "2015-04-19T00:00:00Z",
+                "24 hours",
+            ),
+            // Voting interval = 10s
+            // An SRV protocol run takes 10s * 24 rounds = 4 mins
+            (
+                "2015-04-20T00:15:30Z",
+                "2015-04-20T00:15:40Z",
+                "2015-04-20T00:12:00Z",
+                "4 minutes",
+            ),
+            // Voting interval = 20s
+            // An SRV protocol run takes 20s * 24 rounds = 8 mins
+            (
+                "2015-04-20T00:15:00Z",
+                "2015-04-20T00:15:20Z",
+                "2015-04-20T00:08:00Z",
+                "8 minutes",
+            ),
+            (
+                "2015-04-20T00:15:30Z",
+                "2015-04-20T00:15:50Z",
+                "2015-04-20T00:08:10Z",
+                "8 minutes",
+            ),
+        ];
+
+        for (valid_after, fresh_until, expected_start, expected_interval) in test_cases {
+            let lifetime = Lifetime::new(
+                t(valid_after),
+                t(fresh_until),
+                // The valid-until doesn't matter for the purposes of this test
+                t("2020-10-25T10:00:00Z"),
+            )
+            .unwrap();
+
+            let consensus = example_consensus_builder()
+                .lifetime(lifetime)
+                .testing_consensus()
+                .unwrap();
+            let sr_start = start_of_sr_round(&consensus).unwrap();
+
+            assert_eq!(
+                t(expected_start),
+                sr_start,
+                "{expected_start} != {} (valid-after = {valid_after}, fresh-until = {fresh_until})",
+                humantime::format_rfc3339(sr_start)
+            );
+
+            assert_eq!(d(expected_interval), srv_interval(&consensus));
+        }
+    }
 }
