@@ -107,6 +107,16 @@ pub struct RouterAnnotation {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct RouterDesc {
+    // === Virtual items ===
+    // These items do not correspond to any actual item within the router
+    // descriptor from a netdoc point of view.  They cannot persist this way
+    // in parse2 and are already grouped together this way to indicate this
+    // change.  For example, `family_ids` is computed on the fly and is not
+    // present in normal router descriptors.  Although `orport`, `nickname`
+    // and other members are present in a router descriptor, they are only
+    // present as arguments, not as independent items.
+    //
+    //
     /// Human-readable nickname for this relay.
     ///
     /// This is not secure, and not guaranteed to be unique.
@@ -118,15 +128,24 @@ pub struct RouterDesc {
     /// IPv4 ORPort for this relay.
     pub orport: u16,
 
+    /// Directory port for contacting this relay for direct HTTP
+    /// directory downloads.
+    pub dirport: u16,
+
+    /// Declared (and proven) family IDs for this relay. If two relays
+    /// share a family ID, they shouldn't be used in the same circuit.
+    family_ids: Vec<RelayFamilyId>,
+
+    // === Real items ===
+    // These items are real and correspond to actual items found in router
+    // descriptors, although potentially not under the same name.
+    //
+    //
     /// IPv6 address and port for this relay.
     // TODO: we don't use a socketaddrv6 because we don't care about
     // the flow and scope fields.  We should decide whether that's a
     // good idea.
     pub ipv6addr: Option<(net::Ipv6Addr, u16)>,
-
-    /// Directory port for contacting this relay for direct HTTP
-    /// directory downloads.
-    pub dirport: u16,
 
     /// Declared uptime for this relay, in seconds.
     pub uptime: Option<u64>,
@@ -165,10 +184,6 @@ pub struct RouterDesc {
     /// Declared family members for this relay.  If two relays are in the
     /// same family, they shouldn't be used in the same circuit.
     pub family: Arc<RelayFamily>,
-
-    /// Declared (and proven) family IDs for this relay. If two relays
-    /// share a family ID, they shouldn't be used in the same circuit.
-    family_ids: Vec<RelayFamilyId>,
 
     /// Software and version that this relay says it's running.
     pub platform: Option<RelayPlatform>,
@@ -858,8 +873,10 @@ impl RouterDesc {
             nickname,
             ipv4addr,
             orport,
-            ipv6addr,
             dirport,
+            family_ids,
+
+            ipv6addr,
             uptime,
             published,
             identity_cert,
@@ -871,7 +888,6 @@ impl RouterDesc {
             is_dircache,
             is_extrainfo_cache,
             family,
-            family_ids,
             platform,
             ipv4_policy,
             ipv6_policy: ipv6_policy.intern(),
