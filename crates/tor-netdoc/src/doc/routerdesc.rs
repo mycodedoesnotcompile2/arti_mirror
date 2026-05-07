@@ -145,7 +145,7 @@ pub struct RouterDesc {
     ///
     /// * `identity-ed25519\n<certificate object>`
     /// * Exactly once, in second position in document.
-    pub identity_cert: tor_cert::Ed25519Cert,
+    pub identity_ed25519: tor_cert::Ed25519Cert,
 
     /// `platform` --- Describe the platform on which this relay is running.
     ///
@@ -163,7 +163,7 @@ pub struct RouterDesc {
     ///
     /// * `fingerprint <spaced fingerprint>`
     /// * At most once.
-    pub rsa_identity: ll::pk::rsa::RsaIdentity,
+    pub fingerprint: ll::pk::rsa::RsaIdentity,
 
     /// `uptime` --- How long this relay has been continously running
     ///
@@ -176,7 +176,7 @@ pub struct RouterDesc {
     /// * `onion-key\n<rsa public key>`
     /// * At most once.
     /// * No extra arguments.
-    pub tap_onion_key: Option<ll::pk::rsa::PublicKey>,
+    pub onion_key: Option<ll::pk::rsa::PublicKey>,
 
     /// `ntor-onion-key` --- The circuit extension key.
     ///
@@ -187,7 +187,7 @@ pub struct RouterDesc {
     /// `signing-key` --- Obsolete RSA identity key.
     ///
     /// * `signing-key\n<rsa public key>`
-    pub rsa_identity_key: ll::pk::rsa::PublicKey,
+    pub signing_key: ll::pk::rsa::PublicKey,
 
     /// `accept, reject` --- Exit policy.
     ///
@@ -216,7 +216,7 @@ pub struct RouterDesc {
     /// * `caches-extra-info`
     /// * At most once.
     /// * No extra arguments.
-    pub is_extrainfo_cache: bool,
+    pub caches_extra_info: bool,
 
     /// `or-address` --- Alternative ORport address and port
     ///
@@ -225,14 +225,14 @@ pub struct RouterDesc {
     // TODO: we don't use a socketaddrv6 because we don't care about
     // the flow and scope fields.  We should decide whether that's a
     // good idea.
-    pub ipv6addr: Option<(net::Ipv6Addr, u16)>,
+    pub or_address: Option<(net::Ipv6Addr, u16)>,
 
     /// `tunnelled-dir-server` --- Accepts a `BEGIN_DIR` relay message.
     ///
     /// * `tunnelled-dir-server`
     /// * At most once.
     /// * No extra arguments.
-    pub is_dircache: bool,
+    pub tunnelled_dir_server: bool,
 
     /// `proto` --- Subprotocol capabilities supported.
     ///
@@ -461,12 +461,12 @@ const ROUTER_PRE_VALIDITY_SECONDS: u64 = 86400;
 impl RouterDesc {
     /// Return a reference to this relay's RSA identity.
     pub fn rsa_identity(&self) -> &RsaIdentity {
-        &self.rsa_identity
+        &self.fingerprint
     }
 
     /// Return a reference to this relay's Ed25519 identity.
     pub fn ed_identity(&self) -> &Ed25519Identity {
-        self.identity_cert
+        self.identity_ed25519
             .signing_key()
             .expect("No ed25519 identity key on identity cert")
     }
@@ -493,7 +493,7 @@ impl RouterDesc {
         self.ipv4addr
             .map(|a| net::SocketAddr::new(a.into(), self.orport))
             .into_iter()
-            .chain(self.ipv6addr.map(net::SocketAddr::from))
+            .chain(self.or_address.map(net::SocketAddr::from))
     }
 
     /// Return the declared family of this descriptor.
@@ -918,20 +918,20 @@ impl RouterDesc {
             dirport,
             family_ids,
 
-            identity_cert,
+            identity_ed25519: identity_cert,
             platform,
             published,
-            rsa_identity,
+            fingerprint: rsa_identity,
             uptime,
-            tap_onion_key,
+            onion_key: tap_onion_key,
             ntor_onion_key,
-            rsa_identity_key,
+            signing_key: rsa_identity_key,
             ipv4_policy,
             ipv6_policy: ipv6_policy.intern(),
             family,
-            is_extrainfo_cache,
-            ipv6addr,
-            is_dircache,
+            caches_extra_info: is_extrainfo_cache,
+            or_address: ipv6addr,
+            tunnelled_dir_server: is_dircache,
             proto,
         };
 
@@ -1125,7 +1125,7 @@ mod test {
                 "[2a01:4f9:2a:2145::2]:443".parse().unwrap(),
             ]
         );
-        assert!(rd.tap_onion_key.is_some());
+        assert!(rd.onion_key.is_some());
 
         Ok(())
     }
@@ -1136,7 +1136,7 @@ mod test {
         let rd = RouterDesc::parse(TESTDATA2)?
             .check_signature()?
             .dangerously_assume_timely();
-        assert!(rd.tap_onion_key.is_none());
+        assert!(rd.onion_key.is_none());
 
         Ok(())
     }
