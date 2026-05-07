@@ -55,5 +55,5 @@ web-time-compat = { path = "../web-time-compat", version = "0.1.0" }
 base64ct = "1.5.1"
 hex-literal = "1.0"
 humantime = "2"
-rand = "0.9.1"
+rand = "0.10.1"
 tor-basic-utils = { path = "../tor-basic-utils", version = "0.42.0" }
