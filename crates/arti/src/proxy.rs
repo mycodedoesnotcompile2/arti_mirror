@@ -396,8 +396,24 @@ pub(crate) async fn bind_proxy<R: Runtime>(
         );
     }
 
-    // We don't (yet) use any custom options on the listening socket.
-    let listen_options = Default::default();
+    // Our proxy sockets will use a small-ish fixed kernel socket buffer size.
+    // Tor streams are slow relative to a pair of loopback sockets,
+    // so don't need socket buffers as large as what Linux provides by default
+    // (sometimes several MBs).
+    //
+    // This has a few advantages over the defaults:
+    // - Less buffer bloat.
+    // - Better ability to make congestion/flow control decisions.
+    // - Disables TCP autotuning, which means behaviour will better match Shadow sims.
+    // - Easier to reason about stream performance when the buffer size isn't dynamic.
+    //
+    // See https://gitlab.torproject.org/tpo/core/arti/-/work_items/2500.
+    let mut listen_options = tor_rtcompat::TcpListenOptions::builder();
+    listen_options
+        .common()
+        .send_buffer_size(Some(128_000))
+        .recv_buffer_size(Some(128_000));
+    let listen_options = listen_options.build()?;
 
     let mut listeners = Vec::new();
 
