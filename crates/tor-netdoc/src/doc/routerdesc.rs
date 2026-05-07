@@ -141,52 +141,33 @@ pub struct RouterDesc {
     // descriptors, although potentially not under the same name.
     //
     //
-    /// IPv6 address and port for this relay.
-    // TODO: we don't use a socketaddrv6 because we don't care about
-    // the flow and scope fields.  We should decide whether that's a
-    // good idea.
-    pub ipv6addr: Option<(net::Ipv6Addr, u16)>,
-
-    /// Declared uptime for this relay, in seconds.
-    pub uptime: Option<u64>,
-
-    /// Time when this router descriptor was published.
-    pub published: time::SystemTime,
-
     /// Ed25519 identity certificate (identity key authenticating a
     /// signing key)
     pub identity_cert: tor_cert::Ed25519Cert,
 
-    /// RSA identity key for this relay. (Deprecated; never use this without
-    /// the ed25519 identity as well).
-    pub rsa_identity_key: ll::pk::rsa::PublicKey,
+    /// Software and version that this relay says it's running.
+    pub platform: Option<RelayPlatform>,
+
+    /// Time when this router descriptor was published.
+    pub published: time::SystemTime,
 
     /// RSA identity key for this relay. (Deprecated; never use this without
     /// the ed25519 identity as well).
     pub rsa_identity: ll::pk::rsa::RsaIdentity,
 
-    /// Key for extending a circuit to this relay using the ntor protocol.
-    pub ntor_onion_key: ll::pk::curve25519::PublicKey,
+    /// Declared uptime for this relay, in seconds.
+    pub uptime: Option<u64>,
 
     /// Key for extending a circuit to this relay using the
     /// (deprecated) TAP protocol.
     pub tap_onion_key: Option<ll::pk::rsa::PublicKey>,
 
-    /// List of subprotocol versions supported by this relay.
-    pub proto: tor_protover::Protocols,
+    /// Key for extending a circuit to this relay using the ntor protocol.
+    pub ntor_onion_key: ll::pk::curve25519::PublicKey,
 
-    /// True if this relay says it's a directory cache.
-    pub is_dircache: bool,
-
-    /// True if this relay says that it caches extrainfo documents.
-    pub is_extrainfo_cache: bool,
-
-    /// Declared family members for this relay.  If two relays are in the
-    /// same family, they shouldn't be used in the same circuit.
-    pub family: Arc<RelayFamily>,
-
-    /// Software and version that this relay says it's running.
-    pub platform: Option<RelayPlatform>,
+    /// RSA identity key for this relay. (Deprecated; never use this without
+    /// the ed25519 identity as well).
+    pub rsa_identity_key: ll::pk::rsa::PublicKey,
 
     /// A complete address-level policy for which IPv4 addresses this relay
     /// says it supports.
@@ -197,6 +178,25 @@ pub struct RouterDesc {
     /// A summary of which ports this relay is willing to connect to
     /// on IPv6.
     pub ipv6_policy: Arc<PortPolicy>,
+
+    /// Declared family members for this relay.  If two relays are in the
+    /// same family, they shouldn't be used in the same circuit.
+    pub family: Arc<RelayFamily>,
+
+    /// True if this relay says that it caches extrainfo documents.
+    pub is_extrainfo_cache: bool,
+
+    /// IPv6 address and port for this relay.
+    // TODO: we don't use a socketaddrv6 because we don't care about
+    // the flow and scope fields.  We should decide whether that's a
+    // good idea.
+    pub ipv6addr: Option<(net::Ipv6Addr, u16)>,
+
+    /// True if this relay says it's a directory cache.
+    pub is_dircache: bool,
+
+    /// List of subprotocol versions supported by this relay.
+    pub proto: tor_protover::Protocols,
 }
 
 /// Signatures of a [`RouterDesc`].
@@ -876,21 +876,21 @@ impl RouterDesc {
             dirport,
             family_ids,
 
-            ipv6addr,
-            uptime,
-            published,
             identity_cert,
-            rsa_identity_key,
-            rsa_identity,
-            ntor_onion_key,
-            tap_onion_key,
-            proto,
-            is_dircache,
-            is_extrainfo_cache,
-            family,
             platform,
+            published,
+            rsa_identity,
+            uptime,
+            tap_onion_key,
+            ntor_onion_key,
+            rsa_identity_key,
             ipv4_policy,
             ipv6_policy: ipv6_policy.intern(),
+            family,
+            is_extrainfo_cache,
+            ipv6addr,
+            is_dircache,
+            proto,
         };
 
         let time_gated = timed::TimerangeBound::new(desc, start_time..expiry);
