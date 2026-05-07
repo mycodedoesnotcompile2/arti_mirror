@@ -111,55 +111,74 @@ pub struct RouterDesc {
     ///
     /// This is not secure, and not guaranteed to be unique.
     pub nickname: Nickname,
+
     /// IPv4 address for this relay.
     pub ipv4addr: Option<net::Ipv4Addr>,
+
     /// IPv4 ORPort for this relay.
     pub orport: u16,
+
     /// IPv6 address and port for this relay.
     // TODO: we don't use a socketaddrv6 because we don't care about
     // the flow and scope fields.  We should decide whether that's a
     // good idea.
     pub ipv6addr: Option<(net::Ipv6Addr, u16)>,
+
     /// Directory port for contacting this relay for direct HTTP
     /// directory downloads.
     pub dirport: u16,
+
     /// Declared uptime for this relay, in seconds.
     pub uptime: Option<u64>,
+
     /// Time when this router descriptor was published.
     pub published: time::SystemTime,
+
     /// Ed25519 identity certificate (identity key authenticating a
     /// signing key)
     pub identity_cert: tor_cert::Ed25519Cert,
+
     /// RSA identity key for this relay. (Deprecated; never use this without
     /// the ed25519 identity as well).
     pub rsa_identity_key: ll::pk::rsa::PublicKey,
+
     /// RSA identity key for this relay. (Deprecated; never use this without
     /// the ed25519 identity as well).
     pub rsa_identity: ll::pk::rsa::RsaIdentity,
+
     /// Key for extending a circuit to this relay using the ntor protocol.
     pub ntor_onion_key: ll::pk::curve25519::PublicKey,
+
     /// Key for extending a circuit to this relay using the
     /// (deprecated) TAP protocol.
     pub tap_onion_key: Option<ll::pk::rsa::PublicKey>,
+
     /// List of subprotocol versions supported by this relay.
     pub proto: tor_protover::Protocols,
+
     /// True if this relay says it's a directory cache.
     pub is_dircache: bool,
+
     /// True if this relay says that it caches extrainfo documents.
     pub is_extrainfo_cache: bool,
+
     /// Declared family members for this relay.  If two relays are in the
     /// same family, they shouldn't be used in the same circuit.
     pub family: Arc<RelayFamily>,
+
     /// Declared (and proven) family IDs for this relay. If two relays
     /// share a family ID, they shouldn't be used in the same circuit.
     family_ids: Vec<RelayFamilyId>,
+
     /// Software and version that this relay says it's running.
     pub platform: Option<RelayPlatform>,
+
     /// A complete address-level policy for which IPv4 addresses this relay
     /// says it supports.
     // TODO: these polices can get bulky too. Perhaps we should
     // de-duplicate them too.
     pub ipv4_policy: AddrPolicy,
+
     /// A summary of which ports this relay is willing to connect to
     /// on IPv6.
     pub ipv6_policy: Arc<PortPolicy>,
