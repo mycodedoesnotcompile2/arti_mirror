@@ -7,13 +7,13 @@ use async_trait::async_trait;
 use futures::Future;
 use oneshot_fused_workaround as oneshot;
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicU32, Ordering},
 };
 use tor_chanmgr::{ChanMgr, ChanProvenance, ChannelUsage};
-use tor_error::into_internal;
+use tor_error::{ErrorKind, HasKind, into_internal};
 use tor_guardmgr::GuardStatus;
-use tor_linkspec::{IntoOwnedChanTarget, OwnedChanTarget, OwnedCircTarget};
+use tor_linkspec::{IntoOwnedChanTarget, OwnedChanTarget, OwnedCircTarget, RelayIds};
 use tor_netdir::params::NetParameters;
 use tor_proto::ccparams::{self, AlgorithmType};
 use tor_proto::client::circuit::{CircParameters, PendingClientTunnel};
@@ -232,6 +232,9 @@ struct Builder<R: Runtime, C: Buildable + Sync + Send + 'static> {
     chanmgr: Arc<ChanMgr<R>>,
     /// An estimator to determine the correct timeouts for circuit building.
     timeouts: Arc<timeouts::Estimator>,
+    /// Tracks recent ambiguous post-hop-1 failures so we only classify a
+    /// local outage when there is correlated evidence.
+    local_outage_detector: Mutex<LocalOutageDetector>,
     /// We don't actually hold any clientcircs, so we need to put this
     /// type here so the compiler won't freak out.
     _phantom: std::marker::PhantomData<C>,
@@ -244,6 +247,7 @@ impl<R: Runtime, C: Buildable + Sync + Send + 'static> Builder<R, C> {
             runtime,
             chanmgr,
             timeouts: Arc::new(timeouts),
+            local_outage_detector: Mutex::new(LocalOutageDetector::default()),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -317,6 +321,8 @@ impl<R: Runtime, C: Buildable + Sync + Send + 'static> Builder<R, C> {
     ) -> Result<C> {
         let action = Action::BuildCircuit { length: path.len() };
         let (timeout, abandon_timeout) = self.timeouts.timeouts(&action);
+        let first_hop = RelayIds::from_relay_ids(path.first_hop_as_chantarget());
+        let track_local_outages = guard_status.tracks_guard_status();
 
         // TODO: This is probably not the best way for build_notimeout to
         // tell us how many hops it managed to build, but at least it is
@@ -351,29 +357,39 @@ impl<R: Runtime, C: Buildable + Sync + Send + 'static> Builder<R, C> {
         );
 
         match double_timeout(&self.runtime, circuit_future, timeout, abandon_timeout).await {
-            Ok(circuit) => Ok(circuit),
+            Ok(circuit) => {
+                if track_local_outages {
+                    self.local_outage_detector
+                        .lock()
+                        .expect("Poisoned lock")
+                        .note_success();
+                }
+                Ok(circuit)
+            }
             Err(Error::CircTimeout(unique_id)) => {
                 let n_built = hops_built.load(Ordering::SeqCst);
                 self.timeouts
                     .note_circ_timeout(n_built as u8, self.runtime.now() - start_time);
-                if should_ignore_indeterminate_failure(
+                if self.should_downgrade_to_local_network_suspect(
+                    track_local_outages,
+                    &first_hop,
                     &Error::CircTimeout(unique_id),
-                    tor_proto::time_since_last_incoming_traffic(),
                     timeout,
-                ) && n_built > 0
-                {
+                    n_built,
+                ) {
                     guard_status.pending(GuardStatus::LocalNetworkSuspect);
                 }
                 Err(Error::CircTimeout(unique_id))
             }
             Err(e) => {
                 let n_built = hops_built.load(Ordering::SeqCst);
-                if should_ignore_indeterminate_failure(
+                if self.should_downgrade_to_local_network_suspect(
+                    track_local_outages,
+                    &first_hop,
                     &e,
-                    tor_proto::time_since_last_incoming_traffic(),
                     timeout,
-                ) && n_built > 0
-                {
+                    n_built,
+                ) {
                     guard_status.pending(GuardStatus::LocalNetworkSuspect);
                 }
                 Err(e)
@@ -390,18 +406,133 @@ impl<R: Runtime, C: Buildable + Sync + Send + 'static> Builder<R, C> {
     pub(crate) fn estimator(&self) -> &timeouts::Estimator {
         &self.timeouts
     }
+
+    /// Return true if a post-hop-1 ambiguous failure should be treated as a
+    /// likely local outage instead of counting against the guard.
+    fn should_downgrade_to_local_network_suspect(
+        &self,
+        track_local_outages: bool,
+        first_hop: &RelayIds,
+        error: &Error,
+        timeout: Duration,
+        n_built: u32,
+    ) -> bool {
+        if !track_local_outages || n_built == 0 {
+            return false;
+        }
+
+        let Some(evidence) = local_outage_evidence(
+            error,
+            tor_proto::time_since_last_incoming_traffic(),
+            timeout,
+        ) else {
+            return false;
+        };
+
+        self.local_outage_detector
+            .lock()
+            .expect("Poisoned lock")
+            .note_failure(first_hop.clone(), evidence, self.runtime.now())
+    }
 }
 
-/// Return true if `error` should avoid counting against the guard.
-fn should_ignore_indeterminate_failure(
+/// Evidence suggesting that an ambiguous post-hop-1 failure came from the
+/// local network rather than the selected guard.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LocalOutageEvidence {
+    /// An unattributed timeout or protocol failure with no stronger signal.
+    AmbiguousFailure,
+    /// The circuit or channel collapsed while we were extending.
+    ChannelCollapse,
+}
+
+/// Tracks recent ambiguous post-hop-1 failures so we only classify
+/// `LocalNetworkSuspect` when there is correlated evidence.
+#[derive(Debug, Default)]
+struct LocalOutageDetector {
+    /// Recent ambiguous failures still within the burst window.
+    recent_failures: Vec<LocalOutageFailure>,
+}
+
+/// A recent ambiguous failure that may contribute to local-outage detection.
+#[derive(Clone, Debug)]
+struct LocalOutageFailure {
+    /// The first hop that this circuit was using.
+    guard: RelayIds,
+    /// When we observed the failure.
+    observed_at: Instant,
+    /// What kind of local-outage evidence we saw.
+    evidence: LocalOutageEvidence,
+}
+
+/// How long we keep ambiguous failures around when looking for a correlated
+/// burst across multiple guards.
+const LOCAL_OUTAGE_BURST_WINDOW: Duration = Duration::from_secs(30);
+
+impl LocalOutageDetector {
+    /// Forget any retained suspicion once we complete a circuit successfully.
+    fn note_success(&mut self) {
+        self.recent_failures.clear();
+    }
+
+    /// Record a new ambiguous post-hop-1 failure and return true if the
+    /// accumulated evidence is strong enough to treat it as a local outage.
+    fn note_failure(
+        &mut self,
+        guard: RelayIds,
+        evidence: LocalOutageEvidence,
+        now: Instant,
+    ) -> bool {
+        self.recent_failures.retain(|failure| {
+            now.saturating_duration_since(failure.observed_at) <= LOCAL_OUTAGE_BURST_WINDOW
+        });
+
+        let multiple_guards = self
+            .recent_failures
+            .iter()
+            .any(|failure| failure.guard != guard);
+        let saw_channel_collapse = evidence == LocalOutageEvidence::ChannelCollapse
+            || self
+                .recent_failures
+                .iter()
+                .any(|failure| failure.evidence == LocalOutageEvidence::ChannelCollapse);
+
+        self.recent_failures.push(LocalOutageFailure {
+            guard,
+            observed_at: now,
+            evidence,
+        });
+
+        // We stay conservative here: a single stale timeout is not enough.
+        saw_channel_collapse || multiple_guards
+    }
+}
+
+/// Return local-outage evidence for an ambiguous post-hop-1 failure when the
+/// client has already gone stale enough to suspect its own network.
+fn local_outage_evidence(
     error: &Error,
     time_since_last_incoming_traffic: Option<std::time::Duration>,
     timeout: Duration,
-) -> bool {
-    matches!(
-        error,
-        Error::CircTimeout(_) | Error::Protocol { peer: None, .. }
-    ) && time_since_last_incoming_traffic.is_some_and(|duration| duration >= timeout)
+) -> Option<LocalOutageEvidence> {
+    if time_since_last_incoming_traffic.is_none_or(|duration| duration < timeout) {
+        return None;
+    }
+
+    match error {
+        Error::CircTimeout(_) => Some(LocalOutageEvidence::AmbiguousFailure),
+        Error::Protocol {
+            peer: None, error, ..
+        } if matches!(
+            error.kind(),
+            ErrorKind::CircuitCollapse | ErrorKind::LocalNetworkError
+        ) =>
+        {
+            Some(LocalOutageEvidence::ChannelCollapse)
+        }
+        Error::Protocol { peer: None, .. } => Some(LocalOutageEvidence::AmbiguousFailure),
+        _ => None,
+    }
 }
 
 /// A factory object to build circuits.
@@ -776,10 +907,16 @@ mod test {
     use tor_proto::memquota::ToplevelAccount;
     use tor_rtcompat::SleepProvider;
     use tracing::trace;
+    use web_time_compat::InstantExt;
 
     /// Make a new nonfunctional `Arc<GuardStatusHandle>`
     fn gs() -> Arc<GuardStatusHandle> {
         Arc::new(None.into())
+    }
+
+    #[test]
+    fn non_guard_builds_do_not_track_guard_status() {
+        assert!(!gs().tracks_guard_status());
     }
 
     #[test]
@@ -891,21 +1028,110 @@ mod test {
     }
 
     #[test]
-    fn ignore_indeterminate_failure_when_traffic_is_stale() {
-        assert!(should_ignore_indeterminate_failure(
-            &Error::CircTimeout(None),
-            Some(std::time::Duration::from_secs(30)),
-            Duration::from_secs(10),
+    fn local_outage_evidence_when_traffic_is_stale() {
+        assert_eq!(
+            local_outage_evidence(
+                &Error::CircTimeout(None),
+                Some(std::time::Duration::from_secs(30)),
+                Duration::from_secs(10),
+            ),
+            Some(LocalOutageEvidence::AmbiguousFailure)
+        );
+    }
+
+    #[test]
+    fn no_local_outage_evidence_when_traffic_is_recent() {
+        assert_eq!(
+            local_outage_evidence(
+                &Error::CircTimeout(None),
+                Some(std::time::Duration::from_secs(3)),
+                Duration::from_secs(10),
+            ),
+            None
+        );
+    }
+
+    fn relay_ids(n: u8) -> RelayIds {
+        RelayIds::builder()
+            .ed_identity([n; 32].into())
+            .rsa_identity([n; 20].into())
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn local_outage_detector_needs_multiple_guards_for_ambiguous_failures() {
+        let mut detector = LocalOutageDetector::default();
+        let now = Instant::get();
+
+        assert!(!detector.note_failure(relay_ids(1), LocalOutageEvidence::AmbiguousFailure, now,));
+        assert!(!detector.note_failure(
+            relay_ids(1),
+            LocalOutageEvidence::AmbiguousFailure,
+            now + Duration::from_secs(1),
+        ));
+        assert!(detector.note_failure(
+            relay_ids(2),
+            LocalOutageEvidence::AmbiguousFailure,
+            now + Duration::from_secs(2),
         ));
     }
 
     #[test]
-    fn keep_indeterminate_failure_when_traffic_is_recent() {
-        assert!(!should_ignore_indeterminate_failure(
-            &Error::CircTimeout(None),
-            Some(std::time::Duration::from_secs(3)),
-            Duration::from_secs(10),
+    fn local_outage_detector_promotes_channel_collapse() {
+        let mut detector = LocalOutageDetector::default();
+
+        assert!(detector.note_failure(
+            relay_ids(3),
+            LocalOutageEvidence::ChannelCollapse,
+            Instant::get(),
         ));
+    }
+
+    #[test]
+    fn local_outage_detector_clears_after_success() {
+        let mut detector = LocalOutageDetector::default();
+        let now = Instant::get();
+
+        assert!(!detector.note_failure(relay_ids(4), LocalOutageEvidence::AmbiguousFailure, now,));
+        detector.note_success();
+        assert!(!detector.note_failure(
+            relay_ids(5),
+            LocalOutageEvidence::AmbiguousFailure,
+            now + Duration::from_secs(1),
+        ));
+    }
+
+    #[test]
+    fn local_outage_detector_expires_old_failures() {
+        let mut detector = LocalOutageDetector::default();
+        let now = Instant::get();
+
+        assert!(!detector.note_failure(relay_ids(6), LocalOutageEvidence::AmbiguousFailure, now,));
+        assert!(!detector.note_failure(
+            relay_ids(7),
+            LocalOutageEvidence::AmbiguousFailure,
+            now + LOCAL_OUTAGE_BURST_WINDOW + Duration::from_secs(1),
+        ));
+    }
+
+    #[test]
+    fn local_outage_evidence_promotes_channel_collapse_errors() {
+        let error = Error::Protocol {
+            action: "extending circuit",
+            peer: None,
+            error: tor_proto::Error::CircuitClosed,
+            unique_id: None,
+        };
+
+        assert_eq!(
+            local_outage_evidence(
+                &error,
+                Some(std::time::Duration::from_secs(30)),
+                Duration::from_secs(10),
+            ),
+            Some(LocalOutageEvidence::ChannelCollapse)
+        );
     }
 
     /// Get a pair of timeouts that we've encoded as an Ed25519 identity.
