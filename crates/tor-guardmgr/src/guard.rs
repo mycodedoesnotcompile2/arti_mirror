@@ -146,8 +146,7 @@ pub(crate) struct Guard {
     /// What version of this crate added this guard to our sample?
     added_by: Option<CrateId>,
 
-    /// If present, this guard is permanently disabled, and this
-    /// object tells us why.
+    /// If present, this guard is disabled, and this object tells us why.
     #[serde(default)]
     disabled: Option<Futureproof<GuardDisabled>>,
 
@@ -218,7 +217,7 @@ pub(crate) struct Guard {
     /// A count of all the circuit statuses we've seen on this guard.
     ///
     /// Used to implement a lightweight version of path-bias detection.
-    #[serde(skip)]
+    #[serde(default)]
     circ_history: CircHistory,
 
     /// True if we have warned about this guard behaving suspiciously.
@@ -367,6 +366,67 @@ impl Guard {
         self.unlisted_since.is_none() && self.disabled.is_none()
     }
 
+    /// Clear any expired heuristic disable on this guard.
+    ///
+    /// Returns true if the disable state changed.
+    pub(crate) fn clear_expired_indeterminate_disable(&mut self, now: SystemTime) -> bool {
+        let should_clear = matches!(
+            self.disabled.as_ref(),
+            Some(Futureproof::Understandable(
+                GuardDisabled::TooManyIndeterminateFailures { disabled_until, .. }
+            )) if disabled_until.is_none() || disabled_until.is_some_and(|until| until <= now)
+        );
+
+        if should_clear {
+            self.disabled = None;
+            self.circ_history.clear();
+            self.suspicious_behavior_warned = false;
+            return true;
+        }
+
+        false
+    }
+
+    /// Force-clear a heuristic disable so the guard can be retried.
+    pub(crate) fn clear_indeterminate_disable_for_recovery(&mut self) -> bool {
+        let should_clear = matches!(
+            self.disabled.as_ref(),
+            Some(Futureproof::Understandable(
+                GuardDisabled::TooManyIndeterminateFailures { .. }
+            ))
+        );
+
+        if should_clear {
+            self.disabled = None;
+            self.circ_history.clear();
+            self.suspicious_behavior_warned = false;
+            return true;
+        }
+
+        false
+    }
+
+    /// Return the heuristic-disable metadata for this guard, if any.
+    fn indeterminate_disable(&self) -> Option<&GuardDisabled> {
+        match self.disabled.as_ref()? {
+            Futureproof::Understandable(reason) => Some(reason),
+            Futureproof::Unknown(_) => None,
+        }
+    }
+
+    /// Return the score to use when deciding which heuristic-disabled guard
+    /// to revive as a last resort.
+    pub(crate) fn indeterminate_disable_penalty(&self) -> Option<f64> {
+        if self.unlisted_since.is_some() {
+            return None;
+        }
+        match self.indeterminate_disable()? {
+            GuardDisabled::TooManyIndeterminateFailures { failure_ratio, .. } => {
+                Some(*failure_ratio)
+            }
+        }
+    }
+
     /// Return true if this guard is ready (with respect to any timeouts) for
     /// the given `usage` at `now`.
     pub(crate) fn ready_for_usage(&self, usage: &GuardUsage, now: Instant) -> bool {
@@ -423,7 +483,7 @@ impl Guard {
             is_dir_cache: other.is_dir_cache,
             exploratory_circ_pending: other.exploratory_circ_pending,
             dir_info_missing: other.dir_info_missing,
-            circ_history: other.circ_history,
+            circ_history: self.circ_history,
             suspicious_behavior_warned: other.suspicious_behavior_warned,
             dir_status: other.dir_status,
             clock_skew: other.clock_skew,
@@ -642,9 +702,11 @@ impl Guard {
                 false
             }
         }
-        if self.disabled.is_some() {
-            // We never forget a guard that we've disabled: we've disabled
-            // it for a reason.
+        if matches!(
+            self.indeterminate_disable(),
+            Some(GuardDisabled::TooManyIndeterminateFailures { disabled_until, .. })
+                if disabled_until.is_none() || disabled_until.is_some_and(|until| until > now)
+        ) {
             return false;
         }
         if let Some(confirmed_at) = self.confirmed_at {
@@ -720,7 +782,8 @@ impl Guard {
         self.retry_schedule = None;
         self.set_reachable(Reachable::Reachable);
         self.exploratory_circ_pending = false;
-        self.circ_history.n_successes += 1;
+        self.circ_history
+            .record_success(params.indeterminate_history_window);
 
         if self.confirmed_at.is_none() {
             self.confirmed_at = Some(
@@ -756,29 +819,38 @@ impl Guard {
 
     /// Note that a circuit through this guard died in a way that we couldn't
     /// necessarily attribute to the guard.
-    pub(crate) fn record_indeterminate_result(&mut self) {
-        self.circ_history.n_indeterminate += 1;
+    pub(crate) fn record_indeterminate_result(&mut self, now: SystemTime, params: &GuardParams) {
+        self.circ_history
+            .record_indeterminate(params.indeterminate_history_window);
 
-        if let Some(ratio) = self.circ_history.indeterminate_ratio() {
-            // TODO: These should not be hardwired, and they may be set
-            // too high.
-            /// If this fraction of circs are suspicious, we should disable
-            /// the guard.
-            const DISABLE_THRESHOLD: f64 = 0.7;
-            /// If this fraction of circuits are suspicious, we should
-            /// warn.
-            const WARN_THRESHOLD: f64 = 0.5;
-
-            if ratio > DISABLE_THRESHOLD {
+        if let Some(ratio) = self
+            .circ_history
+            .indeterminate_ratio(params.indeterminate_min_observations)
+        {
+            if ratio > params.indeterminate_disable_threshold && params.indeterminate_disable_guards
+            {
                 let reason = GuardDisabled::TooManyIndeterminateFailures {
                     history: self.circ_history.clone(),
                     failure_ratio: ratio,
-                    threshold_ratio: DISABLE_THRESHOLD,
+                    threshold_ratio: params.indeterminate_disable_threshold,
+                    disabled_at: Some(now),
+                    disabled_until: Some(now + params.indeterminate_cooldown),
                 };
-                warn!(guard=?self.id, "Disabling guard: {:.1}% of circuits died under mysterious circumstances, exceeding threshold of {:.1}%", ratio*100.0, (DISABLE_THRESHOLD*100.0));
+                warn!(
+                    guard = ?self.id,
+                    "Cooling down guard: {:.1}% of circuits died under mysterious circumstances, exceeding threshold of {:.1}%",
+                    ratio * 100.0,
+                    (params.indeterminate_disable_threshold * 100.0)
+                );
                 self.disabled = Some(reason.into());
-            } else if ratio > WARN_THRESHOLD && !self.suspicious_behavior_warned {
-                warn!(guard=?self.id, "Questionable guard: {:.1}% of circuits died under mysterious circumstances.", ratio*100.0);
+            } else if ratio > params.indeterminate_warn_threshold
+                && !self.suspicious_behavior_warned
+            {
+                warn!(
+                    guard = ?self.id,
+                    "Questionable guard: {:.1}% of circuits died under mysterious circumstances.",
+                    ratio * 100.0
+                );
                 self.suspicious_behavior_warned = true;
             }
         }
@@ -851,7 +923,7 @@ impl std::fmt::Display for Guard {
     }
 }
 
-/// A reason for permanently disabling a guard.
+/// A reason for disabling a guard.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 enum GuardDisabled {
@@ -863,6 +935,12 @@ enum GuardDisabled {
         failure_ratio: f64,
         /// Threshold that was exceeded.
         threshold_ratio: f64,
+        /// When this guard was disabled.
+        #[serde(default, with = "humantime_serde::option")]
+        disabled_at: Option<SystemTime>,
+        /// When this guard may be retried.
+        #[serde(default, with = "humantime_serde::option")]
+        disabled_until: Option<SystemTime>,
     },
 }
 
@@ -905,31 +983,63 @@ fn retry_schedule(is_primary: bool) -> RetryDelay {
 // want that anyway, to make attacks harder.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct CircHistory {
-    /// How many times have we seen this guard succeed?
-    n_successes: u32,
     /// How many times have we seen this guard fail?
-    #[allow(dead_code)] // not actually used yet.
+    #[serde(default)]
     n_failures: u32,
-    /// How many times has this guard given us indeterminate results?
-    n_indeterminate: u32,
+    /// Recent outcomes that count toward the indeterminate heuristic.
+    #[serde(default)]
+    recent_outcomes: Vec<CircOutcome>,
 }
 
 impl CircHistory {
+    /// Record a successful use of a guard.
+    fn record_success(&mut self, window: usize) {
+        self.push(CircOutcome::Success, window);
+    }
+
+    /// Record an indeterminate outcome for a guard.
+    fn record_indeterminate(&mut self, window: usize) {
+        self.push(CircOutcome::Indeterminate, window);
+    }
+
+    /// Remove all remembered outcomes.
+    fn clear(&mut self) {
+        self.recent_outcomes.clear();
+    }
+
+    /// Push a new outcome into the rolling history window.
+    fn push(&mut self, outcome: CircOutcome, window: usize) {
+        self.recent_outcomes.push(outcome);
+        if self.recent_outcomes.len() > window {
+            let excess = self.recent_outcomes.len() - window;
+            self.recent_outcomes.drain(0..excess);
+        }
+    }
+
     /// If we have seen enough, return the fraction of circuits that have
     /// "died under mysterious circumstances".
-    fn indeterminate_ratio(&self) -> Option<f64> {
-        // TODO: This should probably not be hardwired
-
-        /// Don't try to give a ratio unless we've seen this many observations.
-        const MIN_OBSERVATIONS: u32 = 15;
-
-        let total = self.n_successes + self.n_indeterminate;
-        if total < MIN_OBSERVATIONS {
+    fn indeterminate_ratio(&self, min_observations: usize) -> Option<f64> {
+        if self.recent_outcomes.len() < min_observations {
             return None;
         }
 
-        Some(f64::from(self.n_indeterminate) / f64::from(total))
+        let n_indeterminate = self
+            .recent_outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome, CircOutcome::Indeterminate))
+            .count();
+
+        Some((n_indeterminate as f64) / (self.recent_outcomes.len() as f64))
     }
+}
+
+/// A circuit outcome that feeds the indeterminate-history heuristic.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+enum CircOutcome {
+    /// A successful circuit outcome.
+    Success,
+    /// An indeterminate circuit outcome.
+    Indeterminate,
 }
 
 #[cfg(test)]
@@ -1305,15 +1415,19 @@ mod test {
 
     #[test]
     fn circ_history() {
-        let mut h = CircHistory {
-            n_successes: 3,
-            n_failures: 4,
-            n_indeterminate: 3,
-        };
-        assert!(h.indeterminate_ratio().is_none());
+        let mut h = CircHistory::default();
+        for _ in 0..3 {
+            h.record_indeterminate(32);
+        }
+        for _ in 0..10 {
+            h.record_success(32);
+        }
+        assert!(h.indeterminate_ratio(15).is_none());
 
-        h.n_successes = 20;
-        assert!((h.indeterminate_ratio().unwrap() - 3.0 / 23.0).abs() < 0.0001);
+        for _ in 0..10 {
+            h.record_success(32);
+        }
+        assert!((h.indeterminate_ratio(15).unwrap() - 3.0 / 23.0).abs() < 0.0001);
     }
 
     #[test]
@@ -1325,13 +1439,13 @@ mod test {
 
         let _ignore = g.record_success(now, &params);
         for _ in 0..13 {
-            g.record_indeterminate_result();
+            g.record_indeterminate_result(now, &params);
         }
         // We're still under the observation threshold.
         assert!(g.disabled.is_none());
 
         // This crosses the threshold.
-        g.record_indeterminate_result();
+        g.record_indeterminate_result(now, &params);
         assert!(g.disabled.is_some());
 
         #[allow(unreachable_patterns)]
@@ -1340,14 +1454,38 @@ mod test {
                 history: _,
                 failure_ratio,
                 threshold_ratio,
+                disabled_at,
+                disabled_until,
             } => {
                 assert!((failure_ratio - 0.933).abs() < 0.01);
                 assert!((threshold_ratio - 0.7).abs() < 0.01);
+                assert_eq!(disabled_at, Some(now));
+                assert_eq!(disabled_until, Some(now + params.indeterminate_cooldown));
             }
             other => {
                 panic!("Wrong variant: {:?}", other);
             }
         }
+    }
+
+    #[test]
+    fn clear_disabled_guard_after_cooldown() {
+        let mut g = basic_guard();
+        let params = GuardParams::default();
+        let now = SystemTime::get();
+
+        let _ignore = g.record_success(now, &params);
+        for _ in 0..14 {
+            g.record_indeterminate_result(now, &params);
+        }
+        assert!(g.disabled.is_some());
+
+        let cleared = g.clear_expired_indeterminate_disable(
+            now + params.indeterminate_cooldown + Duration::from_secs(1),
+        );
+        assert!(cleared);
+        assert!(g.disabled.is_none());
+        assert!(g.circ_history.indeterminate_ratio(1).is_none());
     }
 
     #[test]
