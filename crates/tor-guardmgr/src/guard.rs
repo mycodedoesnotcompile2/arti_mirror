@@ -214,11 +214,10 @@ pub(crate) struct Guard {
     #[serde(skip)]
     exploratory_circ_pending: bool,
 
-    /// A count of all the circuit statuses we've seen on this guard.
-    ///
-    /// Used to implement a lightweight version of path-bias detection.
-    #[serde(default)]
-    circ_history: CircHistory,
+    /// Rolling path-bias-style accounting for circuit attempts that got past
+    /// the first hop on this guard.
+    #[serde(default, rename = "circ_history")]
+    path_bias: PathBias,
 
     /// True if we have warned about this guard behaving suspiciously.
     #[serde(skip)]
@@ -326,7 +325,7 @@ impl Guard {
             retry_schedule: None,
             is_dir_cache: true,
             exploratory_circ_pending: false,
-            circ_history: CircHistory::default(),
+            path_bias: PathBias::default(),
             suspicious_behavior_warned: false,
             clock_skew: None,
             unknown_fields: Default::default(),
@@ -379,7 +378,7 @@ impl Guard {
 
         if should_clear {
             self.disabled = None;
-            self.circ_history.clear();
+            self.path_bias.clear();
             self.suspicious_behavior_warned = false;
             return true;
         }
@@ -398,7 +397,7 @@ impl Guard {
 
         if should_clear {
             self.disabled = None;
-            self.circ_history.clear();
+            self.path_bias.clear();
             self.suspicious_behavior_warned = false;
             return true;
         }
@@ -483,7 +482,7 @@ impl Guard {
             is_dir_cache: other.is_dir_cache,
             exploratory_circ_pending: other.exploratory_circ_pending,
             dir_info_missing: other.dir_info_missing,
-            circ_history: self.circ_history,
+            path_bias: self.path_bias,
             suspicious_behavior_warned: other.suspicious_behavior_warned,
             dir_status: other.dir_status,
             clock_skew: other.clock_skew,
@@ -742,7 +741,7 @@ impl Guard {
         self.set_reachable(Reachable::Unreachable);
         self.exploratory_circ_pending = false;
 
-        self.circ_history.n_failures += 1;
+        self.path_bias.connect_failures += 1;
     }
 
     /// Note that we have launch an attempted use of this guard.
@@ -782,8 +781,8 @@ impl Guard {
         self.retry_schedule = None;
         self.set_reachable(Reachable::Reachable);
         self.exploratory_circ_pending = false;
-        self.circ_history
-            .record_success(params.indeterminate_history_window);
+        self.path_bias
+            .record_attempt_success(params.indeterminate_history_window);
 
         if self.confirmed_at.is_none() {
             self.confirmed_at = Some(
@@ -820,17 +819,17 @@ impl Guard {
     /// Note that a circuit through this guard died in a way that we couldn't
     /// necessarily attribute to the guard.
     pub(crate) fn record_indeterminate_result(&mut self, now: SystemTime, params: &GuardParams) {
-        self.circ_history
-            .record_indeterminate(params.indeterminate_history_window);
+        self.path_bias
+            .record_attempt_failure(params.indeterminate_history_window);
 
         if let Some(ratio) = self
-            .circ_history
-            .indeterminate_ratio(params.indeterminate_min_observations)
+            .path_bias
+            .failure_ratio(params.indeterminate_min_observations)
         {
             if ratio > params.indeterminate_disable_threshold && params.indeterminate_disable_guards
             {
                 let reason = GuardDisabled::TooManyIndeterminateFailures {
-                    history: self.circ_history.clone(),
+                    history: self.path_bias.clone(),
                     failure_ratio: ratio,
                     threshold_ratio: params.indeterminate_disable_threshold,
                     disabled_at: Some(now),
@@ -838,7 +837,7 @@ impl Guard {
                 };
                 warn!(
                     guard = ?self.id,
-                    "Cooling down guard: {:.1}% of circuits died under mysterious circumstances, exceeding threshold of {:.1}%",
+                    "Cooling down guard: {:.1}% of post-hop-1 circuit attempts failed, exceeding threshold of {:.1}%",
                     ratio * 100.0,
                     (params.indeterminate_disable_threshold * 100.0)
                 );
@@ -848,7 +847,7 @@ impl Guard {
             {
                 warn!(
                     guard = ?self.id,
-                    "Questionable guard: {:.1}% of circuits died under mysterious circumstances.",
+                    "Path-bias warning: {:.1}% of post-hop-1 circuit attempts failed.",
                     ratio * 100.0
                 );
                 self.suspicious_behavior_warned = true;
@@ -930,7 +929,7 @@ enum GuardDisabled {
     /// Too many attempts to use this guard failed for indeterminate reasons.
     TooManyIndeterminateFailures {
         /// Observed count of status reports about this guard.
-        history: CircHistory,
+        history: PathBias,
         /// Observed fraction of indeterminate status reports.
         failure_ratio: f64,
         /// Threshold that was exceeded.
@@ -957,10 +956,10 @@ fn retry_schedule(is_primary: bool) -> RetryDelay {
     RetryDelay::from_duration(minimum)
 }
 
-/// The recent history of circuit activity on this guard.
+/// Rolling path-bias-style history for circuit activity on this guard.
 ///
-/// We keep this information so that we can tell if too many circuits are
-/// winding up in "indeterminate" status.
+/// We keep this information so that we can tell if too many post-hop-1
+/// circuit attempts are failing before completion.
 ///
 /// # What's this for?
 ///
@@ -975,71 +974,73 @@ fn retry_schedule(is_primary: bool) -> RetryDelay {
 /// filter the client's paths down to a hostile subset.
 ///
 /// So as a workaround, and to discourage this kind of behavior, we
-/// track the fraction of indeterminate circuits, and disable any guard
-/// where the fraction is too high.
+/// track the fraction of post-hop-1 attempts that fail before completion, and
+/// use that as a path-bias-style signal.
 //
 // TODO: We may eventually want to make this structure persistent.  If we
 // do, however, we'll need a way to make ancient history expire.  We might
 // want that anyway, to make attacks harder.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub(crate) struct CircHistory {
-    /// How many times have we seen this guard fail?
-    #[serde(default)]
-    n_failures: u32,
-    /// Recent outcomes that count toward the indeterminate heuristic.
-    #[serde(default)]
-    recent_outcomes: Vec<CircOutcome>,
+pub(crate) struct PathBias {
+    /// How many times have we seen the initial connection to this guard fail?
+    #[serde(default, rename = "n_failures")]
+    connect_failures: u32,
+    /// Recent post-hop-1 circuit outcomes that count toward path-bias
+    /// accounting.
+    #[serde(default, rename = "recent_outcomes")]
+    recent_attempts: Vec<PathBiasOutcome>,
 }
 
-impl CircHistory {
-    /// Record a successful use of a guard.
-    fn record_success(&mut self, window: usize) {
-        self.push(CircOutcome::Success, window);
+impl PathBias {
+    /// Record a post-hop-1 circuit attempt that completed successfully.
+    fn record_attempt_success(&mut self, window: usize) {
+        self.push(PathBiasOutcome::Success, window);
     }
 
-    /// Record an indeterminate outcome for a guard.
-    fn record_indeterminate(&mut self, window: usize) {
-        self.push(CircOutcome::Indeterminate, window);
+    /// Record a post-hop-1 circuit attempt that failed before completion.
+    fn record_attempt_failure(&mut self, window: usize) {
+        self.push(PathBiasOutcome::Failure, window);
     }
 
     /// Remove all remembered outcomes.
     fn clear(&mut self) {
-        self.recent_outcomes.clear();
+        self.recent_attempts.clear();
     }
 
     /// Push a new outcome into the rolling history window.
-    fn push(&mut self, outcome: CircOutcome, window: usize) {
-        self.recent_outcomes.push(outcome);
-        if self.recent_outcomes.len() > window {
-            let excess = self.recent_outcomes.len() - window;
-            self.recent_outcomes.drain(0..excess);
+    fn push(&mut self, outcome: PathBiasOutcome, window: usize) {
+        self.recent_attempts.push(outcome);
+        if self.recent_attempts.len() > window {
+            let excess = self.recent_attempts.len() - window;
+            self.recent_attempts.drain(0..excess);
         }
     }
 
-    /// If we have seen enough, return the fraction of circuits that have
-    /// "died under mysterious circumstances".
-    fn indeterminate_ratio(&self, min_observations: usize) -> Option<f64> {
-        if self.recent_outcomes.len() < min_observations {
+    /// If we have seen enough, return the fraction of post-hop-1 attempts that
+    /// failed before completion.
+    fn failure_ratio(&self, min_observations: usize) -> Option<f64> {
+        if self.recent_attempts.len() < min_observations {
             return None;
         }
 
-        let n_indeterminate = self
-            .recent_outcomes
+        let n_failed = self
+            .recent_attempts
             .iter()
-            .filter(|outcome| matches!(outcome, CircOutcome::Indeterminate))
+            .filter(|outcome| matches!(outcome, PathBiasOutcome::Failure))
             .count();
 
-        Some((n_indeterminate as f64) / (self.recent_outcomes.len() as f64))
+        Some((n_failed as f64) / (self.recent_attempts.len() as f64))
     }
 }
 
-/// A circuit outcome that feeds the indeterminate-history heuristic.
+/// A circuit outcome that feeds the rolling path-bias heuristic.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
-enum CircOutcome {
+enum PathBiasOutcome {
     /// A successful circuit outcome.
     Success,
-    /// An indeterminate circuit outcome.
-    Indeterminate,
+    /// A post-hop-1 circuit attempt that failed before completion.
+    #[serde(rename = "Indeterminate")]
+    Failure,
 }
 
 #[cfg(test)]
@@ -1414,26 +1415,44 @@ mod test {
     }
 
     #[test]
-    fn circ_history() {
-        let mut h = CircHistory::default();
+    fn path_bias_history() {
+        let mut h = PathBias::default();
         for _ in 0..3 {
-            h.record_indeterminate(32);
+            h.record_attempt_failure(32);
         }
         for _ in 0..10 {
-            h.record_success(32);
+            h.record_attempt_success(32);
         }
-        assert!(h.indeterminate_ratio(15).is_none());
+        assert!(h.failure_ratio(15).is_none());
 
         for _ in 0..10 {
-            h.record_success(32);
+            h.record_attempt_success(32);
         }
-        assert!((h.indeterminate_ratio(15).unwrap() - 3.0 / 23.0).abs() < 0.0001);
+        assert!((h.failure_ratio(15).unwrap() - 3.0 / 23.0).abs() < 0.0001);
     }
 
     #[test]
-    fn disable_on_failure() {
+    fn warns_by_default_without_disabling() {
         let mut g = basic_guard();
         let params = GuardParams::default();
+        let now = SystemTime::get();
+
+        let _ignore = g.record_success(now, &params);
+        for _ in 0..14 {
+            g.record_indeterminate_result(now, &params);
+        }
+
+        assert!(g.disabled.is_none());
+        assert!(g.suspicious_behavior_warned);
+    }
+
+    #[test]
+    fn disable_on_failure_when_opted_in() {
+        let mut g = basic_guard();
+        let params = GuardParams {
+            indeterminate_disable_guards: true,
+            ..GuardParams::default()
+        };
 
         let now = SystemTime::get();
 
@@ -1471,7 +1490,10 @@ mod test {
     #[test]
     fn clear_disabled_guard_after_cooldown() {
         let mut g = basic_guard();
-        let params = GuardParams::default();
+        let params = GuardParams {
+            indeterminate_disable_guards: true,
+            ..GuardParams::default()
+        };
         let now = SystemTime::get();
 
         let _ignore = g.record_success(now, &params);
@@ -1485,7 +1507,7 @@ mod test {
         );
         assert!(cleared);
         assert!(g.disabled.is_none());
-        assert!(g.circ_history.indeterminate_ratio(1).is_none());
+        assert!(g.path_bias.failure_ratio(1).is_none());
     }
 
     #[test]

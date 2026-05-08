@@ -1743,7 +1743,7 @@ impl Default for GuardParams {
             indeterminate_warn_threshold: 0.5,
             indeterminate_disable_threshold: 0.7,
             indeterminate_cooldown: one_day,
-            indeterminate_disable_guards: true,
+            indeterminate_disable_guards: false,
         }
     }
 }
@@ -2276,6 +2276,7 @@ mod test {
                 inner.params.indeterminate_min_observations = 2;
                 inner.params.indeterminate_disable_threshold = 0.4;
                 inner.params.indeterminate_history_window = 4;
+                inner.params.indeterminate_disable_guards = true;
                 inner.params.max_sample_size = 5;
             }
 

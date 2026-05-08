@@ -1525,6 +1525,7 @@ mod test {
         let netdir = netdir();
         let usage = crate::GuardUsageBuilder::default().build().unwrap();
         let params = GuardParams {
+            indeterminate_disable_guards: true,
             min_filtered_sample_size: 1,
             n_primary: 1,
             ..GuardParams::default()
@@ -1552,6 +1553,7 @@ mod test {
     fn heuristic_disable_persists_and_expires() {
         let netdir = netdir();
         let params = GuardParams {
+            indeterminate_disable_guards: true,
             min_filtered_sample_size: 1,
             n_primary: 1,
             ..GuardParams::default()
