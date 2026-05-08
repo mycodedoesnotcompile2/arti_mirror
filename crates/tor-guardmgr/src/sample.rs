@@ -652,17 +652,23 @@ impl GuardSet {
 
     /// Clear any heuristic disables whose cooldown has elapsed.
     pub(crate) fn release_expired_indeterminate_disables(&mut self, now: SystemTime) {
-        let mut released_any = false;
+        let mut released_count = 0_usize;
         let old_guards = std::mem::take(&mut self.guards);
         self.guards = old_guards
             .into_values()
             .map(|mut guard| {
-                released_any |= guard.clear_expired_indeterminate_disable(now);
+                if guard.clear_expired_indeterminate_disable(now) {
+                    released_count += 1;
+                }
                 guard
             })
             .collect();
 
-        if released_any {
+        if released_count > 0 {
+            info!(
+                released_count,
+                "Released guards whose path-bias cooldowns had expired."
+            );
             self.primary_guards_invalidated = true;
         }
     }

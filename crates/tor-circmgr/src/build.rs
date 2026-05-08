@@ -441,10 +441,23 @@ impl<R: Runtime, C: Buildable + Sync + Send + 'static> Builder<R, C> {
         };
         let settings = *self.local_outage_settings.lock().expect("Poisoned lock");
 
-        self.local_outage_detector
+        let should_downgrade = self
+            .local_outage_detector
             .lock()
             .expect("Poisoned lock")
-            .note_failure(first_hop.clone(), evidence, self.runtime.now(), settings)
+            .note_failure(first_hop.clone(), evidence, self.runtime.now(), settings);
+
+        if should_downgrade {
+            tracing::debug!(
+                ?first_hop,
+                ?evidence,
+                ?settings,
+                n_built,
+                "Classifying ambiguous post-hop-1 failure as LocalNetworkSuspect"
+            );
+        }
+
+        should_downgrade
     }
 }
 

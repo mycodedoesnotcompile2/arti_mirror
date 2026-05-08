@@ -380,6 +380,10 @@ impl Guard {
             self.disabled = None;
             self.path_bias.clear();
             self.suspicious_behavior_warned = false;
+            info!(
+                guard = ?self.id,
+                "Path-bias cooldown expired; guard is eligible for retry again."
+            );
             return true;
         }
 
@@ -399,6 +403,10 @@ impl Guard {
             self.disabled = None;
             self.path_bias.clear();
             self.suspicious_behavior_warned = false;
+            warn!(
+                guard = ?self.id,
+                "Reviving a path-bias cooled-down guard as a last-resort recovery step."
+            );
             return true;
         }
 
