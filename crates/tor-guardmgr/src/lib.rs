@@ -2257,6 +2257,41 @@ mod test {
     }
 
     #[test]
+    fn recover_when_all_other_guards_are_down() {
+        test_with_all_runtimes!(|rt| async move {
+            let (guardmgr, _statemgr, netdir) = init(rt);
+            guardmgr.install_test_netdir(&netdir);
+            {
+                let mut inner = guardmgr.inner.lock().unwrap();
+                inner.params.indeterminate_min_observations = 2;
+                inner.params.indeterminate_disable_threshold = 0.4;
+                inner.params.indeterminate_history_window = 4;
+                inner.params.max_sample_size = 5;
+            }
+
+            let usage = GuardUsage::default();
+            let (guard1, mon, _usable) = guardmgr.select_guard(usage.clone()).unwrap();
+            mon.succeeded();
+            guardmgr.flush_msg_queue().await;
+
+            let (guard1_again, mon, _usable) = guardmgr.select_guard(usage.clone()).unwrap();
+            assert_eq!(guard1_again.ed_identity(), guard1.ed_identity());
+            mon.report(GuardStatus::Indeterminate);
+            guardmgr.flush_msg_queue().await;
+
+            for _ in 0..4 {
+                let (guard, mon, _usable) = guardmgr.select_guard(usage.clone()).unwrap();
+                assert_ne!(guard.ed_identity(), guard1.ed_identity());
+                mon.failed();
+                guardmgr.flush_msg_queue().await;
+            }
+
+            let (recovered, _mon, _usable) = guardmgr.select_guard(usage).unwrap();
+            assert_eq!(recovered.ed_identity(), guard1.ed_identity());
+        });
+    }
+
+    #[test]
     fn heuristic_recovery_requires_no_pending_guards() {
         let err_without_pending = PickGuardError::AllGuardsDown {
             retry_at: None,
@@ -2332,6 +2367,7 @@ mod test {
             }
         });
     }
+
     #[cfg(feature = "vanguards")]
     #[test]
     fn vanguard_mode_ord() {

@@ -1543,6 +1543,36 @@ mod test {
     }
 
     #[test]
+    fn heuristic_disable_persists_and_expires() {
+        let netdir = netdir();
+        let params = GuardParams {
+            min_filtered_sample_size: 1,
+            n_primary: 1,
+            ..GuardParams::default()
+        };
+        let now = SystemTime::get();
+
+        let mut guards = GuardSet::default();
+        guards.extend_sample_as_needed(now, &params, &netdir);
+        guards.select_primary_guards(&params);
+
+        let guard_id = guards.primary[0].clone();
+        guards.record_success(&guard_id, &params, None, now);
+        for _ in 0..14 {
+            guards.record_indeterminate_result(&guard_id, now, &params);
+        }
+
+        let state: GuardSample = (&guards).into();
+        let mut restored: GuardSet = state.into();
+        assert!(!restored.get(&guard_id).unwrap().usable());
+
+        restored.release_expired_indeterminate_disables(
+            now + params.indeterminate_cooldown + Duration::from_secs(1),
+        );
+        assert!(restored.get(&guard_id).unwrap().usable());
+    }
+
+    #[test]
     fn count_missing_mds() {
         let netdir = netdir();
         let params = GuardParams {
