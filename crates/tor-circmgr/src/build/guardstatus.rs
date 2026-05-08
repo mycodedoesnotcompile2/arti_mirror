@@ -46,14 +46,6 @@ impl GuardStatusHandle {
         }
     }
 
-    /// Configure this handle to ignore any pending indeterminate status.
-    pub(crate) fn ignore_indeterminate_status(&self) {
-        let mut mon = self.mon.lock().expect("Poisoned lock");
-        if let Some(mon) = mon.as_mut() {
-            mon.ignore_indeterminate_status();
-        }
-    }
-
     /// Change the pending clock skew for this guard.
     ///
     /// As with pending status, this value won't be sent to the guard manager

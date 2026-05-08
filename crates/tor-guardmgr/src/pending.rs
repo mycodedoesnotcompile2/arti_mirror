@@ -100,6 +100,9 @@ pub enum GuardStatus {
     /// The circuit failed in a way that we cannot prove is the guard's
     /// fault, but which _might_ be the guard's fault.
     Indeterminate,
+    /// The circuit failed after the first hop, and the client has strong
+    /// reason to suspect that its own network connectivity was at fault.
+    LocalNetworkSuspect,
     /// Our attempt to use the guard didn't get far enough to be sure
     /// whether the guard is usable or not.
     AttemptAbandoned,
@@ -355,5 +358,54 @@ impl PendingRequest {
     pub(crate) fn mark_waiting(&mut self, now: Instant) {
         debug_assert!(self.waiting_since.is_none());
         self.waiting_since = Some(now);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+
+    use super::*;
+    use crate::daemon::Msg;
+    use futures::{StreamExt as _, channel::mpsc};
+
+    #[test]
+    fn ignore_indeterminate_status_only_changes_indeterminate() {
+        let (tx, mut rx) = mpsc::unbounded();
+        let mut mon = GuardMonitor::new(RequestId::next(), tx);
+        mon.pending_status(GuardStatus::Indeterminate);
+        mon.ignore_indeterminate_status();
+        mon.commit();
+
+        let msg = futures::executor::block_on(rx.next()).unwrap();
+        assert!(matches!(
+            msg,
+            Msg::Status(_, GuardStatus::AttemptAbandoned, None)
+        ));
+    }
+
+    #[test]
+    fn local_network_suspect_passes_through() {
+        let (tx, mut rx) = mpsc::unbounded();
+        let mon = GuardMonitor::new(RequestId::next(), tx);
+        mon.report(GuardStatus::LocalNetworkSuspect);
+
+        let msg = futures::executor::block_on(rx.next()).unwrap();
+        assert!(matches!(
+            msg,
+            Msg::Status(_, GuardStatus::LocalNetworkSuspect, None)
+        ));
     }
 }

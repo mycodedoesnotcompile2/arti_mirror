@@ -360,18 +360,21 @@ impl<R: Runtime, C: Buildable + Sync + Send + 'static> Builder<R, C> {
                     &Error::CircTimeout(unique_id),
                     tor_proto::time_since_last_incoming_traffic(),
                     timeout,
-                ) {
-                    guard_status.ignore_indeterminate_status();
+                ) && n_built > 0
+                {
+                    guard_status.pending(GuardStatus::LocalNetworkSuspect);
                 }
                 Err(Error::CircTimeout(unique_id))
             }
             Err(e) => {
+                let n_built = hops_built.load(Ordering::SeqCst);
                 if should_ignore_indeterminate_failure(
                     &e,
                     tor_proto::time_since_last_incoming_traffic(),
                     timeout,
-                ) {
-                    guard_status.ignore_indeterminate_status();
+                ) && n_built > 0
+                {
+                    guard_status.pending(GuardStatus::LocalNetworkSuspect);
                 }
                 Err(e)
             }

@@ -767,6 +767,12 @@ impl GuardSet {
             .modify_by_all_ids(guard_id, |guard| guard.note_exploratory_circ(false));
     }
 
+    /// Record that an attempt ended because the client likely lost local
+    /// connectivity after the first hop was already working.
+    pub(crate) fn record_local_network_suspect(&mut self, guard_id: &GuardId) {
+        self.record_attempt_abandoned(guard_id);
+    }
+
     /// Record that an attempt to use the guard with `guard_id` has
     /// just failed in a way that we could not definitively attribute to
     /// the guard.
@@ -1570,6 +1576,34 @@ mod test {
             now + params.indeterminate_cooldown + Duration::from_secs(1),
         );
         assert!(restored.get(&guard_id).unwrap().usable());
+    }
+
+    #[test]
+    fn local_network_suspect_is_non_blaming() {
+        let netdir = netdir();
+        let params = GuardParams {
+            min_filtered_sample_size: 1,
+            n_primary: 1,
+            ..GuardParams::default()
+        };
+        let now = SystemTime::get();
+
+        let mut guards = GuardSet::default();
+        guards.extend_sample_as_needed(now, &params, &netdir);
+        guards.select_primary_guards(&params);
+
+        let guard_id = guards.primary[0].clone();
+        guards.record_success(&guard_id, &params, None, now);
+
+        for _ in 0..64 {
+            guards.record_local_network_suspect(&guard_id);
+        }
+
+        assert!(guards.get(&guard_id).unwrap().usable());
+        assert_eq!(
+            guards.recover_heuristic_disabled_guard(&GuardUsage::default()),
+            None
+        );
     }
 
     #[test]

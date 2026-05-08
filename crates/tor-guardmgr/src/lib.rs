@@ -1266,6 +1266,16 @@ impl GuardMgrInner {
                     self.guards.guards_mut(sample).record_attempt_abandoned(id);
                     pending.reply(false);
                 }
+                (GuardStatus::LocalNetworkSuspect, FirstHopIdInner::Guard(sample, id)) => {
+                    debug!(
+                        ?guard_id,
+                        "Not counting this post-hop-1 failure against the guard because the local network looks suspect"
+                    );
+                    self.guards
+                        .guards_mut(sample)
+                        .record_local_network_suspect(id);
+                    pending.reply(false);
+                }
                 (GuardStatus::Indeterminate, FirstHopIdInner::Guard(sample, id)) => {
                     self.guards.guards_mut(sample).record_indeterminate_result(
                         id,
