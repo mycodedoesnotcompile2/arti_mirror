@@ -1766,7 +1766,12 @@ impl TryFrom<&NetParameters> for GuardParams {
             internet_down_timeout: p.guard_internet_likely_down.try_into()?,
             filter_threshold: p.guard_meaningful_restriction.as_fraction(),
             extreme_threshold: p.guard_extreme_restriction.as_fraction(),
-            ..GuardParams::default()
+            indeterminate_min_observations: p.guard_path_bias_min_circs.try_into()?,
+            indeterminate_history_window: p.guard_path_bias_window.try_into()?,
+            indeterminate_warn_threshold: p.guard_path_bias_warn_percent.as_fraction(),
+            indeterminate_disable_threshold: p.guard_path_bias_disable_percent.as_fraction(),
+            indeterminate_cooldown: p.guard_path_bias_cooldown.try_into()?,
+            indeterminate_disable_guards: bool::from(p.guard_path_bias_disable),
         })
     }
 }
@@ -2090,6 +2095,29 @@ mod test {
         let p1 = GuardParams::default();
         let p2: GuardParams = (&NetParameters::default()).try_into().unwrap();
         assert_eq!(p1, p2);
+    }
+
+    #[test]
+    fn guard_param_path_bias_overrides() {
+        let overrides: tor_netdoc::doc::netstatus::NetParams<i32> = [
+            ("guard-path-bias-min-circs", 9),
+            ("guard-path-bias-window", 12),
+            ("guard-path-bias-warn-percent", 34),
+            ("guard-path-bias-disable-percent", 56),
+            ("guard-path-bias-disable", 1),
+            ("guard-path-bias-cooldown-sec", 78),
+        ]
+        .into_iter()
+        .collect();
+        let params = NetParameters::from_map(&overrides);
+        let guard_params: GuardParams = (&params).try_into().unwrap();
+
+        assert_eq!(guard_params.indeterminate_min_observations, 9);
+        assert_eq!(guard_params.indeterminate_history_window, 12);
+        assert_eq!(guard_params.indeterminate_warn_threshold, 0.34);
+        assert_eq!(guard_params.indeterminate_disable_threshold, 0.56);
+        assert!(guard_params.indeterminate_disable_guards);
+        assert_eq!(guard_params.indeterminate_cooldown, Duration::from_secs(78));
     }
 
     fn init<R: Runtime>(rt: R) -> (GuardMgr<R>, TestingStateMgr, NetDir) {

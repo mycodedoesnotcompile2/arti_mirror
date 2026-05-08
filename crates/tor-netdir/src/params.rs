@@ -476,6 +476,34 @@ pub struct NetParameters {
     pub guard_remove_unlisted_after: IntegerDays<BoundedInt32<1,3650>> = (20)
         from "guard-remove-unlisted-guards-after-days",
 
+    /// Minimum post-hop-1 circuit observations before path-bias warning logic applies.
+    pub guard_path_bias_min_circs: BoundedInt32<1, {i32::MAX}> = (15)
+        from "guard-path-bias-min-circs",
+    /// Number of recent post-hop-1 circuit outcomes to retain for path-bias accounting.
+    pub guard_path_bias_window: BoundedInt32<1, {i32::MAX}> = (30)
+        from "guard-path-bias-window",
+    /// Warning threshold for the fraction of post-hop-1 circuit attempts that fail.
+    pub guard_path_bias_warn_percent: Percentage<BoundedInt32<0,100>> = (50)
+        from "guard-path-bias-warn-percent",
+    /// Disable threshold for the fraction of post-hop-1 circuit attempts that fail.
+    pub guard_path_bias_disable_percent: Percentage<BoundedInt32<0,100>> = (70)
+        from "guard-path-bias-disable-percent",
+    /// Whether path-bias heuristics may temporarily disable a guard at all.
+    pub guard_path_bias_disable: BoundedInt32<0, 1> = (0)
+        from "guard-path-bias-disable",
+    /// How long a heuristic path-bias cooldown lasts before the guard may be retried.
+    pub guard_path_bias_cooldown: IntegerSeconds<BoundedInt32<1, {i32::MAX}>> = (86_400)
+        from "guard-path-bias-cooldown-sec",
+    /// How long to retain recent ambiguous failures when looking for a local-outage burst.
+    pub circ_local_outage_burst_window: IntegerMilliseconds<BoundedInt32<1, {i32::MAX}>> = (30_000)
+        from "circ-local-outage-burst-window-msec",
+    /// Minimum number of ambiguous failures in a burst before circmgr may classify a local outage.
+    pub circ_local_outage_min_failures: BoundedInt32<1, {i32::MAX}> = (2)
+        from "circ-local-outage-min-failures",
+    /// Minimum number of distinct first hops involved before circmgr may classify a local outage.
+    pub circ_local_outage_min_distinct_guards: BoundedInt32<1, {i32::MAX}> = (2)
+        from "circ-local-outage-min-distinct-guards",
+
 
     /// The minimum threshold for circuit patch construction
     pub min_circuit_path_threshold: Percentage<BoundedInt32<25, 95>> = (60)
@@ -953,6 +981,15 @@ mod test {
             ("guard-nonprimary-guard-connect-timeout", 45),
             ("guard-nonprimary-guard-idle-timeout", 46),
             ("guard-remove-unlisted-guards-after-days", 47),
+            ("guard-path-bias-min-circs", 48),
+            ("guard-path-bias-window", 49),
+            ("guard-path-bias-warn-percent", 52),
+            ("guard-path-bias-disable-percent", 53),
+            ("guard-path-bias-disable", 1),
+            ("guard-path-bias-cooldown-sec", 54),
+            ("circ-local-outage-burst-window-msec", 550),
+            ("circ-local-outage-min-failures", 3),
+            ("circ-local-outage-min-distinct-guards", 4),
             ("guard-meaningful-restriction-percent", 12),
             ("guard-extreme-restriction-percent", 3),
             ("ExtendByEd25519ID", 0),
@@ -1041,6 +1078,21 @@ mod test {
             Duration::try_from(p.guard_remove_unlisted_after).unwrap(),
             Duration::from_secs(86400 * 47)
         );
+        assert_eq!(p.guard_path_bias_min_circs.get(), 48);
+        assert_eq!(p.guard_path_bias_window.get(), 49);
+        assert_eq!(p.guard_path_bias_warn_percent.as_percent().get(), 52);
+        assert_eq!(p.guard_path_bias_disable_percent.as_percent().get(), 53);
+        assert!(bool::from(p.guard_path_bias_disable));
+        assert_eq!(
+            Duration::try_from(p.guard_path_bias_cooldown).unwrap(),
+            Duration::from_secs(54)
+        );
+        assert_eq!(
+            Duration::try_from(p.circ_local_outage_burst_window).unwrap(),
+            Duration::from_millis(550)
+        );
+        assert_eq!(p.circ_local_outage_min_failures.get(), 3);
+        assert_eq!(p.circ_local_outage_min_distinct_guards.get(), 4);
         assert_eq!(p.guard_meaningful_restriction.as_percent().get(), 12);
         assert_eq!(p.guard_extreme_restriction.as_percent().get(), 3);
     }

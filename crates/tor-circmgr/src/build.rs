@@ -6,6 +6,7 @@ use crate::{Error, Result};
 use async_trait::async_trait;
 use futures::Future;
 use oneshot_fused_workaround as oneshot;
+use std::collections::HashSet;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, Ordering},
@@ -235,6 +236,9 @@ struct Builder<R: Runtime, C: Buildable + Sync + Send + 'static> {
     /// Tracks recent ambiguous post-hop-1 failures so we only classify a
     /// local outage when there is correlated evidence.
     local_outage_detector: Mutex<LocalOutageDetector>,
+    /// Thresholds for classifying local outages from ambiguous post-hop-1
+    /// failures.
+    local_outage_settings: Mutex<LocalOutageSettings>,
     /// We don't actually hold any clientcircs, so we need to put this
     /// type here so the compiler won't freak out.
     _phantom: std::marker::PhantomData<C>,
@@ -248,6 +252,7 @@ impl<R: Runtime, C: Buildable + Sync + Send + 'static> Builder<R, C> {
             chanmgr,
             timeouts: Arc::new(timeouts),
             local_outage_detector: Mutex::new(LocalOutageDetector::default()),
+            local_outage_settings: Mutex::new(LocalOutageSettings::default()),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -407,6 +412,12 @@ impl<R: Runtime, C: Buildable + Sync + Send + 'static> Builder<R, C> {
         &self.timeouts
     }
 
+    /// Replace the local-outage detector settings with values derived from the
+    /// latest network parameters.
+    fn update_local_outage_settings(&self, settings: LocalOutageSettings) {
+        *self.local_outage_settings.lock().expect("Poisoned lock") = settings;
+    }
+
     /// Return true if a post-hop-1 ambiguous failure should be treated as a
     /// likely local outage instead of counting against the guard.
     fn should_downgrade_to_local_network_suspect(
@@ -428,11 +439,12 @@ impl<R: Runtime, C: Buildable + Sync + Send + 'static> Builder<R, C> {
         ) else {
             return false;
         };
+        let settings = *self.local_outage_settings.lock().expect("Poisoned lock");
 
         self.local_outage_detector
             .lock()
             .expect("Poisoned lock")
-            .note_failure(first_hop.clone(), evidence, self.runtime.now())
+            .note_failure(first_hop.clone(), evidence, self.runtime.now(), settings)
     }
 }
 
@@ -465,9 +477,50 @@ struct LocalOutageFailure {
     evidence: LocalOutageEvidence,
 }
 
-/// How long we keep ambiguous failures around when looking for a correlated
-/// burst across multiple guards.
-const LOCAL_OUTAGE_BURST_WINDOW: Duration = Duration::from_secs(30);
+/// Thresholds used to decide whether a cluster of ambiguous failures looks
+/// like a local outage.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct LocalOutageSettings {
+    /// How long we keep ambiguous failures around when looking for a
+    /// correlated burst.
+    burst_window: Duration,
+    /// Minimum number of failures in the burst before we downgrade blame.
+    min_failures: usize,
+    /// Minimum number of distinct first hops involved before we downgrade
+    /// blame.
+    min_distinct_guards: usize,
+}
+
+impl Default for LocalOutageSettings {
+    fn default() -> Self {
+        Self {
+            burst_window: Duration::from_secs(30),
+            min_failures: 2,
+            min_distinct_guards: 2,
+        }
+    }
+}
+
+impl LocalOutageSettings {
+    /// Derive local-outage settings from the latest network parameters.
+    fn from_netparams(p: &NetParameters) -> Self {
+        let defaults = Self::default();
+        Self {
+            burst_window: p
+                .circ_local_outage_burst_window
+                .try_into()
+                .unwrap_or(defaults.burst_window),
+            min_failures: p
+                .circ_local_outage_min_failures
+                .try_into()
+                .unwrap_or(defaults.min_failures),
+            min_distinct_guards: p
+                .circ_local_outage_min_distinct_guards
+                .try_into()
+                .unwrap_or(defaults.min_distinct_guards),
+        }
+    }
+}
 
 impl LocalOutageDetector {
     /// Forget any retained suspicion once we complete a circuit successfully.
@@ -482,15 +535,19 @@ impl LocalOutageDetector {
         guard: RelayIds,
         evidence: LocalOutageEvidence,
         now: Instant,
+        settings: LocalOutageSettings,
     ) -> bool {
         self.recent_failures.retain(|failure| {
-            now.saturating_duration_since(failure.observed_at) <= LOCAL_OUTAGE_BURST_WINDOW
+            now.saturating_duration_since(failure.observed_at) <= settings.burst_window
         });
 
-        let multiple_guards = self
+        let total_failures = self.recent_failures.len() + 1;
+        let mut distinct_guards: HashSet<_> = self
             .recent_failures
             .iter()
-            .any(|failure| failure.guard != guard);
+            .map(|failure| failure.guard.clone())
+            .collect();
+        distinct_guards.insert(guard.clone());
         let saw_channel_collapse = evidence == LocalOutageEvidence::ChannelCollapse
             || self
                 .recent_failures
@@ -504,7 +561,9 @@ impl LocalOutageDetector {
         });
 
         // We stay conservative here: a single stale timeout is not enough.
-        saw_channel_collapse || multiple_guards
+        saw_channel_collapse
+            || (total_failures >= settings.min_failures
+                && distinct_guards.len() >= settings.min_distinct_guards)
     }
 }
 
@@ -632,6 +691,8 @@ impl<R: Runtime> TunnelBuilder<R> {
     /// (NOTE: for now, this only affects circuit timeout estimation.)
     pub fn update_network_parameters(&self, p: &tor_netdir::params::NetParameters) {
         self.builder.timeouts.update_params(p);
+        self.builder
+            .update_local_outage_settings(LocalOutageSettings::from_netparams(p));
     }
 
     /// Like `build`, but construct a new circuit from an [`OwnedPath`].
@@ -1062,57 +1123,132 @@ mod test {
     #[test]
     fn local_outage_detector_needs_multiple_guards_for_ambiguous_failures() {
         let mut detector = LocalOutageDetector::default();
+        let settings = LocalOutageSettings::default();
         let now = Instant::get();
 
-        assert!(!detector.note_failure(relay_ids(1), LocalOutageEvidence::AmbiguousFailure, now,));
+        assert!(!detector.note_failure(
+            relay_ids(1),
+            LocalOutageEvidence::AmbiguousFailure,
+            now,
+            settings,
+        ));
         assert!(!detector.note_failure(
             relay_ids(1),
             LocalOutageEvidence::AmbiguousFailure,
             now + Duration::from_secs(1),
+            settings,
         ));
         assert!(detector.note_failure(
             relay_ids(2),
             LocalOutageEvidence::AmbiguousFailure,
             now + Duration::from_secs(2),
+            settings,
         ));
     }
 
     #[test]
     fn local_outage_detector_promotes_channel_collapse() {
         let mut detector = LocalOutageDetector::default();
+        let settings = LocalOutageSettings::default();
 
         assert!(detector.note_failure(
             relay_ids(3),
             LocalOutageEvidence::ChannelCollapse,
             Instant::get(),
+            settings,
         ));
     }
 
     #[test]
     fn local_outage_detector_clears_after_success() {
         let mut detector = LocalOutageDetector::default();
+        let settings = LocalOutageSettings::default();
         let now = Instant::get();
 
-        assert!(!detector.note_failure(relay_ids(4), LocalOutageEvidence::AmbiguousFailure, now,));
+        assert!(!detector.note_failure(
+            relay_ids(4),
+            LocalOutageEvidence::AmbiguousFailure,
+            now,
+            settings,
+        ));
         detector.note_success();
         assert!(!detector.note_failure(
             relay_ids(5),
             LocalOutageEvidence::AmbiguousFailure,
             now + Duration::from_secs(1),
+            settings,
         ));
     }
 
     #[test]
     fn local_outage_detector_expires_old_failures() {
         let mut detector = LocalOutageDetector::default();
+        let settings = LocalOutageSettings::default();
         let now = Instant::get();
 
-        assert!(!detector.note_failure(relay_ids(6), LocalOutageEvidence::AmbiguousFailure, now,));
+        assert!(!detector.note_failure(
+            relay_ids(6),
+            LocalOutageEvidence::AmbiguousFailure,
+            now,
+            settings,
+        ));
         assert!(!detector.note_failure(
             relay_ids(7),
             LocalOutageEvidence::AmbiguousFailure,
-            now + LOCAL_OUTAGE_BURST_WINDOW + Duration::from_secs(1),
+            now + settings.burst_window + Duration::from_secs(1),
+            settings,
         ));
+    }
+
+    #[test]
+    fn local_outage_detector_respects_custom_thresholds() {
+        let mut detector = LocalOutageDetector::default();
+        let settings = LocalOutageSettings {
+            burst_window: Duration::from_secs(30),
+            min_failures: 3,
+            min_distinct_guards: 2,
+        };
+        let now = Instant::get();
+
+        assert!(!detector.note_failure(
+            relay_ids(8),
+            LocalOutageEvidence::AmbiguousFailure,
+            now,
+            settings,
+        ));
+        assert!(!detector.note_failure(
+            relay_ids(9),
+            LocalOutageEvidence::AmbiguousFailure,
+            now + Duration::from_secs(1),
+            settings,
+        ));
+        assert!(detector.note_failure(
+            relay_ids(10),
+            LocalOutageEvidence::AmbiguousFailure,
+            now + Duration::from_secs(2),
+            settings,
+        ));
+    }
+
+    #[test]
+    fn local_outage_settings_from_netparams() {
+        let overrides: tor_netdoc::doc::netstatus::NetParams<i32> = [
+            ("circ-local-outage-burst-window-msec", 1234),
+            ("circ-local-outage-min-failures", 5),
+            ("circ-local-outage-min-distinct-guards", 4),
+        ]
+        .into_iter()
+        .collect();
+        let params = NetParameters::from_map(&overrides);
+
+        assert_eq!(
+            LocalOutageSettings::from_netparams(&params),
+            LocalOutageSettings {
+                burst_window: Duration::from_millis(1234),
+                min_failures: 5,
+                min_distinct_guards: 4,
+            }
+        );
     }
 
     #[test]
