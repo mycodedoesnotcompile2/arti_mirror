@@ -340,13 +340,14 @@ impl<R: Runtime, C: Buildable + Sync + Send + 'static> Builder<R, C> {
 
         let start_time = self.runtime.now();
 
+        let guard_status_for_future = Arc::clone(&guard_status);
         let circuit_future = self_clone.build_notimeout(
             path,
             channel,
             params,
             start_time,
             Arc::clone(&hops_built),
-            guard_status,
+            guard_status_for_future,
         );
 
         match double_timeout(&self.runtime, circuit_future, timeout, abandon_timeout).await {
@@ -355,9 +356,25 @@ impl<R: Runtime, C: Buildable + Sync + Send + 'static> Builder<R, C> {
                 let n_built = hops_built.load(Ordering::SeqCst);
                 self.timeouts
                     .note_circ_timeout(n_built as u8, self.runtime.now() - start_time);
+                if should_ignore_indeterminate_failure(
+                    &Error::CircTimeout(unique_id),
+                    tor_proto::time_since_last_incoming_traffic(),
+                    timeout,
+                ) {
+                    guard_status.ignore_indeterminate_status();
+                }
                 Err(Error::CircTimeout(unique_id))
             }
-            Err(e) => Err(e),
+            Err(e) => {
+                if should_ignore_indeterminate_failure(
+                    &e,
+                    tor_proto::time_since_last_incoming_traffic(),
+                    timeout,
+                ) {
+                    guard_status.ignore_indeterminate_status();
+                }
+                Err(e)
+            }
         }
     }
 
@@ -370,6 +387,18 @@ impl<R: Runtime, C: Buildable + Sync + Send + 'static> Builder<R, C> {
     pub(crate) fn estimator(&self) -> &timeouts::Estimator {
         &self.timeouts
     }
+}
+
+/// Return true if `error` should avoid counting against the guard.
+fn should_ignore_indeterminate_failure(
+    error: &Error,
+    time_since_last_incoming_traffic: Option<std::time::Duration>,
+    timeout: Duration,
+) -> bool {
+    matches!(
+        error,
+        Error::CircTimeout(_) | Error::Protocol { peer: None, .. }
+    ) && time_since_last_incoming_traffic.is_some_and(|duration| duration >= timeout)
 }
 
 /// A factory object to build circuits.
@@ -856,6 +885,24 @@ mod test {
             assert!(duration_close_to(end - start, Duration::from_secs(1)));
             assert!(duration_close_to(end2 - start, Duration::from_secs(10)));
         });
+    }
+
+    #[test]
+    fn ignore_indeterminate_failure_when_traffic_is_stale() {
+        assert!(should_ignore_indeterminate_failure(
+            &Error::CircTimeout(None),
+            Some(std::time::Duration::from_secs(30)),
+            Duration::from_secs(10),
+        ));
+    }
+
+    #[test]
+    fn keep_indeterminate_failure_when_traffic_is_recent() {
+        assert!(!should_ignore_indeterminate_failure(
+            &Error::CircTimeout(None),
+            Some(std::time::Duration::from_secs(3)),
+            Duration::from_secs(10),
+        ));
     }
 
     /// Get a pair of timeouts that we've encoded as an Ed25519 identity.
