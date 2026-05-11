@@ -38,7 +38,6 @@ experimental = [
     "incomplete",
     "hs-dir",
     "hs-pow-full",
-    "ns-vote",
     "retain-unknown",
 ]
 
@@ -47,13 +46,10 @@ build_docs = ["__is_experimental"]
 
 encode = []
 
-incomplete = ["encode", "ns-vote", "__is_experimental"]
+incomplete = ["encode", "__is_experimental"]
 
 # Expose interfaces useful for testing
 testing = ["hex-literal", "visibility"]
-
-# Enable support for votes.  Very very experimental!
-ns-vote = ["incomplete", "__is_experimental"]
 
 # Client-side, directory-side, and service-side support for onion services.
 # Experimental: not covered by semver guarantees.
