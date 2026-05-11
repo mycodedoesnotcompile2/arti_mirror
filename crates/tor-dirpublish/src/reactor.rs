@@ -19,7 +19,7 @@ use postage::watch;
 use tor_basic_utils::retry::RetryDelay;
 use tor_error::warn_report;
 use tor_rtcompat::SleepProvider;
-use tracing::{debug, trace, warn};
+use tracing::{Level, debug, span, trace, warn};
 use web_time_compat::Instant;
 
 use crate::{
@@ -363,7 +363,7 @@ where
     /// Run forever, handling changes in the [`PublishDirective`], uploading documents, and reporting status.
     #[allow(clippy::cognitive_complexity)]
     pub(crate) async fn run(mut self) {
-        let _span = tracing::span!(tracing::Level::TRACE, "Publishing {}", self.description);
+        let _span = span!(Level::TRACE, "Publishing {}", self.description);
 
         // The first time we start, we begin uploading.
         self.launch_ready_requests(self.runtime.now());
