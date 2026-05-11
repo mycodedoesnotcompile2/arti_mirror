@@ -59,8 +59,8 @@ pub enum UploadError {
     SendRequest(#[source] Box<tor_dirclient::RequestError>),
 
     /// The upload failed for some other non-retriable reason.
-    #[error("Directory upload failed nonretriably")]
-    FailedPermanently(#[source] Arc<dyn TorError>),
+    #[error("Document upload failed; cannot retry at this target")]
+    DocumentFailedPermanently(#[source] Arc<dyn TorError>),
 
     /// The upload failed for some other retriable reason.
     ///
@@ -203,7 +203,7 @@ impl UploadError {
     pub(crate) fn is_retriable(&self) -> bool {
         match self {
             UploadError::Rejected(_) => false,
-            UploadError::FailedPermanently(_) => false,
+            UploadError::DocumentFailedPermanently(_) => false,
 
             UploadError::Connect(_) => true,
             UploadError::InvalidResponse(_) => true,
@@ -250,7 +250,7 @@ impl tor_error::HasKind for UploadError {
             E::Timeout => EK::TorNetworkTimeout,
             E::Deferred { .. } => EK::RelayTooBusy,
             E::SendRequest(e) => e.kind(),
-            E::FailedPermanently(e) => e.kind(),
+            E::DocumentFailedPermanently(e) => e.kind(),
             E::Other(e) => e.kind(),
             E::Bug(e) => e.kind(),
         }

@@ -51,9 +51,9 @@ impl<R: Runtime> Uploader for DirectHttpUploader<R> {
         doc: Arc<dyn tor_dirclient::request::Requestable>,
     ) -> Result<(), UploadError> {
         if doc.anonymized() != tor_dirclient::AnonymizedRequest::Direct {
-            return Err(UploadError::FailedPermanently(
-                Arc::new(HttpUploadError::RequiresAnonymity) as _,
-            ));
+            return Err(UploadError::DocumentFailedPermanently(Arc::new(
+                HttpUploadError::RequiresAnonymity,
+            ) as _));
         }
 
         let mut conn = self.connect(target.as_ref()).await?;
@@ -102,7 +102,7 @@ impl<R: Runtime> DirectHttpUploader<R> {
             }
         }
         Err(last_error.unwrap_or_else(|| {
-            UploadError::FailedPermanently(Arc::new(HttpUploadError::NoAddress) as _)
+            UploadError::DocumentFailedPermanently(Arc::new(HttpUploadError::NoAddress) as _)
         }))
     }
 }
