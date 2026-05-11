@@ -752,9 +752,19 @@ macro_rules! upload_request {
         $(
             $(#[$m:meta])*
             pub struct $t:ident (
+                // Does this request require anonymity?
+                // This should be a variant of AnonymizedRequest.
                 $anonymity:ident,
+                // To what URI at the server should the document be posted?
+                // This should begin with "/tor">
                 $uri:expr,
-                $max_hdr_len:expr
+                // Total maximum length of the _response_ that we'll accept.
+                // If the response is larger than this, we'll abort the request.
+                //
+                // Note that expected response body for a POST is typically _empty_,
+                // but this needs to be nonzero in order to account for
+                // the status line and headers.
+                $max_response_len:expr
             )
         );*
         $(;)?
@@ -786,10 +796,7 @@ macro_rules! upload_request {
                 }
 
                 fn max_response_len(&self) -> usize {
-                    // We expect the response _body_ to be empty, but the max_response_len
-                    // is not zero because it represents the _total_ length of the response
-                    // (which includes the length of the status line and headers).
-                    $max_hdr_len
+                    $max_response_len
                 }
 
                 fn anonymized(&self) -> AnonymizedRequest {
@@ -809,10 +816,13 @@ upload_request! {
     pub struct HsDescUploadRequest(
         Anonymized,
         "/tor/hs/3/publish",
-        // A real Tor POST response will always be less than this length, which
+        // A real Tor POST _response_ will always be less than this length, which
         // will fit into 3 DATA messages at most. (The reply will be a single
         // HTTP line, followed by a Date header.)
         // Do not increase this limit without thinking about side channels!
+        //
+        // (Note that the body will be empty, but we need to allow some space
+        // to account for the status line and headers.)
         1024
     )
 }
