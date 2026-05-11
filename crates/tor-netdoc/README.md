@@ -84,13 +84,6 @@ not be used.  Use of such features is (even more) at your own risk.
 
 #### Deprecated features
 
-`routerdesc`: previously needed to enable support for the "router
-descriptor" document type.  This support is now enabled unconditionally.
-
-`plain-consensus`: previously needed to enable support for the "plain
-(unflavoured) consensus" document type.  This support is now enabled
-unconditionally.
-
 `build_docs`: enable code to construct the objects representing different
 network documents, with builder patterns.
 
