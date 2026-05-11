@@ -48,7 +48,6 @@ encode = []
 
 incomplete = ["encode", "__is_experimental"]
 
-# Expose interfaces useful for testing
 testing = ["hex-literal", "visibility"]
 
 # Client-side, directory-side, and service-side support for onion services.

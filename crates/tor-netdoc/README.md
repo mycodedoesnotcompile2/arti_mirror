@@ -74,6 +74,9 @@ the parsers for the documents themselves.
 
 `encode`: enable support for encoding documents, in general.
 
+`testing`: Test data and other features useful for testing.
+Likely to change without warning and not covered by out stability policy.
+
 There are also other features includijng experimental ones
 which aren't documented here and shouldn't be relied on.
 
