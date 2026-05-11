@@ -946,26 +946,21 @@ impl Reactor {
                 hop,
                 done,
             } => {
-                // XXXX fix indentation
-                {
-                    {
-                        let circ = self
-                            .circuits
-                            .leg_mut(leg)
-                            .ok_or_else(|| internal!("leg disappeared?!"))?;
-                        let cell_hop = cell.hop.expect("missing hop in client SendRelayCell?!");
-                        let relay_format = circ
-                            .hop_mut(cell_hop)
-                            // TODO: Is this the right error type here? Or should there be a "HopDisappeared"?
-                            .ok_or(Error::NoSuchHop)?
-                            .relay_cell_format();
+                let circ = self
+                    .circuits
+                    .leg_mut(leg)
+                    .ok_or_else(|| internal!("leg disappeared?!"))?;
+                let cell_hop = cell.hop.expect("missing hop in client SendRelayCell?!");
+                let relay_format = circ
+                    .hop_mut(cell_hop)
+                    // TODO: Is this the right error type here? Or should there be a "HopDisappeared"?
+                    .ok_or(Error::NoSuchHop)?
+                    .relay_cell_format();
 
-                        let outcome = self.circuits.send_relay_cell_on_leg(cell, Some(leg)).await;
-                        // don't care if receiver goes away.
-                        let _ = done.send(outcome.clone().map(|_| (stream_id, hop, relay_format)));
-                        outcome?;
-                    }
-                }
+                let outcome = self.circuits.send_relay_cell_on_leg(cell, Some(leg)).await;
+                // don't care if receiver goes away.
+                let _ = done.send(outcome.clone().map(|_| (stream_id, hop, relay_format)));
+                outcome?;
             }
             RunOnceCmdInner::CloseStream {
                 hop,
