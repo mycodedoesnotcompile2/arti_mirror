@@ -75,6 +75,10 @@ the parsers for the documents themselves.
 `hs-pow-full`: Hidden Services proof-of-work schemes.
 Brings in pow support crates as dependencies.
 
+`retain-unknown`: Ability to round-trip network status documents (as eg an authority needs to),
+by retaining during parsing information which we can see, but not understand.
+Enables the `Retained` variant of the `Unknown` enum.
+
 `testing`: Test data and other features useful for testing.
 Likely to change without warning and not covered by out stability policy.
 

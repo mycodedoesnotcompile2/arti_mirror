@@ -58,8 +58,6 @@ hs-service = ["hs-common", "encode"]
 hs-common = ["tor-hscrypto", "tor-linkspec", "tor-units"]
 
 hs-pow-full = ["tor-hscrypto/hs-pow-full", "__is_experimental"]
-
-# Ability to round-trip network status documents (as eg an authority needs to)
 retain-unknown = ["__is_experimental"]
 
 # Enable experimental APIs that are not yet officially supported.
