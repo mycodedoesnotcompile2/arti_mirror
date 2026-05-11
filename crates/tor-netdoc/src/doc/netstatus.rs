@@ -737,10 +737,12 @@ impl SignatureItemParseable for Signature {
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct SignatureGroup {
-    /// The sha256 of the document itself
-    pub sha256: Option<[u8; 32]>,
-    /// The sha1 of the document itself
-    pub sha1: Option<[u8; 20]>,
+    /// The document hashes of the signed part of the document
+    ///
+    /// The pre-parse2 parser always sets `hashes.sha1` and `hashes.sha1_unnamed`
+    /// to the same value, which is wrong. which is
+    /// [bug #2530](https://gitlab.torproject.org/tpo/core/arti/-/work_items/2530)
+    pub hashes: DirectorySignaturesHashesAccu,
     /// The signatures listed on the document.
     pub signatures: Vec<Signature>,
 }
@@ -1924,8 +1926,9 @@ impl SignatureGroup {
             use KeywordOrString as KOS;
 
             let d: Option<&[u8]> = match sig.digest_algo.algorithm() {
-                KOS::Known(DSHA::Sha256) => self.sha256.as_ref().map(|a| &a[..]),
-                KOS::Known(DSHA::Sha1) => self.sha1.as_ref().map(|a| &a[..]),
+                KOS::Known(DSHA::Sha256) => self.hashes.sha256.as_ref().map(|a| &a[..]),
+                // TODO #2530 this needs to depend on whether `sha1` was stated (!)
+                KOS::Known(DSHA::Sha1) => self.hashes.sha1.as_ref().map(|a| &a[..]),
                 _ => None, // We don't know how to find this digest.
             };
             if d.is_none() {

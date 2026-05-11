@@ -25,3 +25,4 @@ ADDED: `netstatus::{plain,md,vote}::Footer` for the network status footer sectio
 ADDED: `NetworkStatusVersion`
 ADDED: `NetworkStatusVersion`
 ADDED: `DirectorySignaturesHashesAccu` fields are now pub.
+BREAKING: `SignatureGroup` contains `DirectorySignaturesHashesAccu`, instead of hash fields
