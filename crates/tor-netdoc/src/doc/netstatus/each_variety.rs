@@ -102,3 +102,24 @@ pub struct Preamble {
     #[deftly(netdoc(skip))]
     pub __non_exhaustive: (),
 }
+
+/// The footer of a network status document.
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:footer>>
+#[derive(Clone, Debug, Deftly)]
+#[derive_deftly(Constructor, NetdocEncodable, NetdocParseable)]
+#[allow(clippy::exhaustive_structs)]
+pub struct Footer {
+    /// Intro item
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:directory-footer>
+    pub directory_footer: (),
+
+    /// Fields that appear in consensuses (only)
+    #[deftly(constructor, netdoc(flatten))]
+    pub consensus: ns_type!(ConsensusFooterFields, ConsensusFooterFields, NotPresent),
+
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
+}

@@ -109,7 +109,7 @@ ns_export_each_flavor! {
 }
 
 ns_export_each_variety! {
-    ty: RouterStatus, Preamble;
+    ty: Footer, RouterStatus, Preamble;
 }
 
 #[deprecated]

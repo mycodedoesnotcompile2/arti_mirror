@@ -24,6 +24,13 @@ pub type Router = ns_type!(
     crate::doc::netstatus::MdRouterStatus,
 );
 
+/// The real footer type.
+pub type NddDirectoryFooter = ns_type!(
+    crate::doc::netstatus::VoteFooter,
+    crate::doc::netstatus::PlainFooter,
+    crate::doc::netstatus::MdFooter,
+);
+
 /// Network status document (vote, consensus, or microdescriptor consensus) - body
 ///
 /// The preamble items are members of this struct.
@@ -153,15 +160,6 @@ pub struct NdiVotingDelay {
     pub vote_seconds: u32,
     /// DistSeconds
     pub dist_seconds: u32,
-}
-
-/// `directory-footer` section
-#[derive(Deftly, Clone, Debug)]
-#[derive_deftly(NetdocParseable)]
-#[non_exhaustive]
-pub struct NddDirectoryFooter {
-    /// `directory-footer`
-    pub directory_footer: (),
 }
 
 /// `dir-source`
