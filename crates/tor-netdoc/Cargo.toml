@@ -41,13 +41,9 @@ experimental = [
     "retain-unknown",
 ]
 
-# Enable code to build the objects that represent different network documents.
 build_docs = ["__is_experimental"]
-
 encode = []
-
 incomplete = ["encode", "__is_experimental"]
-
 testing = ["hex-literal", "visibility"]
 
 # Client-side, directory-side, and service-side support for onion services.
@@ -61,7 +57,6 @@ hs-dir = ["hs-common", "__is_experimental"]
 hs-client = ["hs-common"]
 hs-service = ["hs-common", "encode"]
 hs-common = ["tor-hscrypto", "tor-linkspec", "tor-units"]
-# Testing only : expose code to parse inner layers of onion service descriptors.
 
 # Onion service proof of work schemes
 hs-pow-full = ["tor-hscrypto/hs-pow-full", "__is_experimental"]
