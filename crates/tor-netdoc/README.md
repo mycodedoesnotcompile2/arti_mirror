@@ -72,6 +72,9 @@ the parsers for the documents themselves.
 
 `hs-service`: enable support for generating hidden service descriptors.
 
+`hs-pow-full`: Hidden Services proof-of-work schemes.
+Brings in pow support crates as dependencies.
+
 `testing`: Test data and other features useful for testing.
 Likely to change without warning and not covered by out stability policy.
 
