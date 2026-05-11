@@ -244,13 +244,16 @@ impl ActionOutcome {
 }
 
 /// The type returned by one of the action futures in `PublishReactor.inflight`.
-///
-/// Its elements are:
-///  - An `Arc<T>` to tell us which target the the action was for.
-///  - An `ActionNum` to identify whether the action was the latest one for the target.
-///  - A `DocVersion` to identify which document was the most recent when the action was launched.
-///  - An `ActionOutcome` containing the result of the action.
-type TaskResult<T> = (Arc<T>, ActionNum, DocVersion, ActionOutcome);
+struct TaskResult<T: ?Sized> {
+    /// Which target were we taking this action for?
+    target: Arc<T>,
+    /// An `ActionNum` to identify whether the action was the latest one for the target.
+    action: ActionNum,
+    /// Which document was the most recent when the action was launched?
+    doc_version: DocVersion,
+    /// The result of the action.
+    outcome: ActionOutcome,
+}
 
 /// Backend data that we use to publish a document (or series of documents).
 pub(crate) struct PublishReactor<R: SleepProvider, D: ?Sized, T, UP: ?Sized>
@@ -393,7 +396,7 @@ where
 
                 // Some action has finished; update accordingly.
                 publication_result = self.inflight.next() => {
-                    let (target, action, doc_version, outcome) = publication_result.expect("Stream ended unexpectedly.");
+                    let TaskResult {target, action, doc_version, outcome } = publication_result.expect("Stream ended unexpectedly.");
 
                     let Some(status) = self.target_status.get_mut(&target) else {
                         // The target isn't here, so we don't care about what happened with it.
@@ -633,13 +636,11 @@ where
         let action = ActionNum::next();
         let future = Arc::clone(&self.uploader)
             .upload(target.clone(), document)
-            .map(move |res| {
-                (
-                    target,
-                    action,
-                    doc_version,
-                    ActionOutcome::from_upload_result(res),
-                )
+            .map(move |res| TaskResult {
+                target,
+                action,
+                doc_version,
+                outcome: ActionOutcome::from_upload_result(res),
             });
         self.inflight.push(Box::pin(future));
 
@@ -664,10 +665,12 @@ where
         );
 
         let doc_version = self.latest_document.version;
-        let future = self
-            .runtime
-            .sleep(delay)
-            .map(move |()| (target, action, doc_version, ActionOutcome::DoneSleeping));
+        let future = self.runtime.sleep(delay).map(move |()| TaskResult {
+            target,
+            action,
+            doc_version,
+            outcome: ActionOutcome::DoneSleeping,
+        });
         self.inflight.push(Box::pin(future));
     }
 }
