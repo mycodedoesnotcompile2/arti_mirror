@@ -364,7 +364,6 @@ where
     }
 
     /// Run forever, handling changes in the [`PublishDirective`], uploading documents, and reporting status.
-    #[allow(clippy::cognitive_complexity)]
     pub(crate) async fn run(mut self) {
         let _span = span!(Level::TRACE, "Publishing {}", self.description);
 
@@ -396,71 +395,99 @@ where
 
                 // Some action has finished; update accordingly.
                 publication_result = self.inflight.next() => {
-                    let TaskResult {target, action, doc_version, outcome } = publication_result.expect("Stream ended unexpectedly.");
-
-                    let Some(status) = self.target_status.get_mut(&target) else {
-                        // The target isn't here, so we don't care about what happened with it.
-                        trace!(?target, ?outcome, "Ignoring result for removed target.");
-                        continue 'mainloop;
-                    };
-                    if Some(action) != status.latest_action {
-                        // There is a more recent inflight action for this target;
-                        // ignore the results of this one.
-                        //
-                        // (See note on `Publish.inflight` about why we can have multiple inflight
-                        // actions.)
-                        //
-                        // We use a != comparison here rather than < since we allow the action
-                        // identifier space to wrap around.
-                        trace!(?target, ?outcome, "Ignoring result for superseded action.");
-                        continue 'mainloop;
-                    }
-                    match outcome {
-                        ActionOutcome::Published => {
-                            if doc_version != self.latest_document.version {
-                                // We aren't tracking this particular document any more;
-                                // this was a stale upload.
-                                continue 'mainloop;
-                            }
-
-                            trace!(?target, "Document published");
-                            status.set_published();
-                        }
-                        ActionOutcome::Rejected(rejection) => {
-                            if doc_version != self.latest_document.version {
-                                // We aren't tracking this particular document any more;
-                                // this was a stale upload.
-                                continue 'mainloop;
-                            }
-
-                            warn!("{} upload rejected. The target ({:?}) said {}", &self.description, &target, &rejection);
-
-                            status.set_rejected(rejection);
-                        }
-                        ActionOutcome::DoneSleeping => {
-                            // It's time to try a new upload to this target.
-                            self.launch_one(&target, self.runtime.now());
-                        }
-                        ActionOutcome::Err(e) if ! e.is_retriable() => {
-                            warn_report!(&e, "Attempt to publish {} to {:?} failed. Not retriable.", &self.description, &target);
-                            status.set_permanently_failed(e);
-                        }
-                        ActionOutcome::Err(e) => {
-                            // We failed to upload: we log the error and wait until it's time to
-                            // retry.
-
-                            // TODO: This might need to be downgraded, but for now we'll leave it as-is.
-                            warn_report!(&e, "Attempt to publish {} to {:?} failed. We'll retry later.", &self.description, &target);
-                            self.begin_sleeping(target, e.suggested_delay(), self.runtime.now());
-                        }
-
-                    }
-                    self.recalculate_status();
+                    let task_result = publication_result.expect("Stream ended unexpectedly.");
+                    self.handle_task_result(task_result);
                 }
             }
         }
 
         self.status.borrow_mut().shutdown = true;
+    }
+
+    /// Called when a task in `self.inflight` produces a result.
+    ///
+    /// Update our status and launch new tasks as appropriate.
+    #[allow(clippy::cognitive_complexity)]
+    fn handle_task_result(&mut self, task_result: TaskResult<T>) {
+        let TaskResult {
+            target,
+            action,
+            doc_version,
+            outcome,
+        } = task_result;
+
+        let Some(status) = self.target_status.get_mut(&target) else {
+            // The target isn't here, so we don't care about what happened with it.
+            trace!(?target, ?outcome, "Ignoring result for removed target.");
+            return;
+        };
+        if Some(action) != status.latest_action {
+            // There is a more recent inflight action for this target;
+            // ignore the results of this one.
+            //
+            // (See note on `Publish.inflight` about why we can have multiple inflight
+            // actions.)
+            //
+            // We use a != comparison here rather than < since we allow the action
+            // identifier space to wrap around.
+            trace!(?target, ?outcome, "Ignoring result for superseded action.");
+            return;
+        }
+
+        match outcome {
+            ActionOutcome::Published => {
+                if doc_version != self.latest_document.version {
+                    // We aren't tracking this particular document any more;
+                    // this was a stale upload.
+                    return;
+                }
+
+                trace!(?target, "Document published");
+                status.set_published();
+            }
+            ActionOutcome::Rejected(rejection) => {
+                if doc_version != self.latest_document.version {
+                    // We aren't tracking this particular document any more;
+                    // this was a stale upload.
+                    return;
+                }
+
+                warn!(
+                    "{} upload rejected. The target ({:?}) said {}",
+                    &self.description, &target, &rejection
+                );
+
+                status.set_rejected(rejection);
+            }
+            ActionOutcome::DoneSleeping => {
+                // It's time to try a new upload to this target.
+                self.launch_one(&target, self.runtime.now());
+            }
+            ActionOutcome::Err(e) if !e.is_retriable() => {
+                warn_report!(
+                    &e,
+                    "Attempt to publish {} to {:?} failed. Not retriable.",
+                    &self.description,
+                    &target
+                );
+                status.set_permanently_failed(e);
+            }
+            ActionOutcome::Err(e) => {
+                // We failed to upload: we log the error and wait until it's time to
+                // retry.
+
+                // TODO: This might need to be downgraded, but for now we'll leave it as-is.
+                warn_report!(
+                    &e,
+                    "Attempt to publish {} to {:?} failed. We'll retry later.",
+                    &self.description,
+                    &target
+                );
+                self.begin_sleeping(target, e.suggested_delay(), self.runtime.now());
+            }
+        }
+
+        self.recalculate_status();
     }
 
     /// Called when we have received a new [`PublishDirective`] from the publisher.
