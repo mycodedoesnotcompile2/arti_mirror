@@ -266,6 +266,7 @@ impl ConsensusBuilder {
 
         let footer = ConsensusFooterFields {
             bandwidth_weights: self.weights.clone(),
+            __non_exhaustive: (),
         };
 
         let mut relays = self.relays.clone();

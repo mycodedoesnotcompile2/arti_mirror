@@ -1109,13 +1109,19 @@ pub struct VoteAuthoritySection {
 /// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:footer>
 ///
 /// Not the whole footer, because it lacks the `directory-footer` item.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
+#[derive(Debug, Clone, Deftly)]
+#[derive_deftly(Constructor, NetdocEncodableFields, NetdocParseableFields)]
+#[allow(clippy::exhaustive_structs)]
 pub struct ConsensusFooterFields {
     /// `bandwidth-weights`
     ///
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:bandwidth-weights>
+    #[deftly(netdoc(default))]
     pub bandwidth_weights: NetParams<i32>,
+
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
 }
 
 /// A consensus document that lists relays along with their
@@ -1680,7 +1686,10 @@ impl ConsensusFooterFields {
             .unwrap_or("")
             .parse()?;
 
-        Ok(ConsensusFooterFields { bandwidth_weights })
+        Ok(ConsensusFooterFields {
+            bandwidth_weights,
+            __non_exhaustive: (),
+        })
     }
 }
 
