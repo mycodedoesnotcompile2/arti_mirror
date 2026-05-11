@@ -24,7 +24,13 @@ pub use fingerprint::{Base64Fingerprint, Fingerprint};
 
 pub use identified_digest::{DigestName, IdentifiedDigest};
 
-pub use ignored_impl::{Ignored, IgnoredItemOrObjectValue, NotPresent, NotPresentEachValue};
+pub use ignored_impl::{
+    Ignored,
+    IgnoredItemOrObjectValue,
+    NoMoreArguments,
+    NotPresent,
+    NotPresentEachValue,
+};
 
 use crate::NormalItemArgument;
 use crate::encode::{
@@ -672,6 +678,13 @@ mod ignored_impl {
     /// This type is uninhabited.
     pub struct IgnoredItemOrObjectValue(Void);
 
+    /// Indicates that no further arguments are allowed in a network document Item line
+    ///
+    /// Unlike [`NotPresent`], this fails during parsing if there are any more arguments.
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Default)]
+    #[allow(clippy::exhaustive_structs)]
+    pub struct NoMoreArguments;
+
     impl ItemSetMethods for P2MultiplicitySelector<NotPresent> {
         type Each = NotPresentEachValue;
         type Field = NotPresent;
@@ -828,6 +841,22 @@ mod ignored_impl {
         }
         fn write_object_onto(&self, _: &mut Vec<u8>) -> Result<(), Bug> {
             void::unreachable(self.0)
+        }
+    }
+
+    impl ItemArgumentParseable for NoMoreArguments {
+        fn from_args(args: &mut ArgumentStream) -> Result<NoMoreArguments, ArgumentError> {
+            if args.next().is_some() {
+                Err(ArgumentError::Unexpected)
+            } else {
+                Ok(NoMoreArguments)
+            }
+        }
+    }
+
+    impl ItemArgument for NoMoreArguments {
+        fn write_arg_onto(&self, _: &mut ItemEncoder) -> Result<(), Bug> {
+            Ok(())
         }
     }
 }

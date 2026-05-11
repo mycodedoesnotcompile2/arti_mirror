@@ -26,3 +26,4 @@ ADDED: `NetworkStatusVersion`
 ADDED: `NetworkStatusVersion`
 ADDED: `DirectorySignaturesHashesAccu` fields are now pub.
 BREAKING: `SignatureGroup` contains `DirectorySignaturesHashesAccu`, instead of hash fields
+ADDED: `NoMoreArguments` parsing/encoding helper type.
