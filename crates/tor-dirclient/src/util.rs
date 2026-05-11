@@ -2,10 +2,10 @@
 
 use std::fmt::Write;
 
-use crate::body::RequestBody;
+use crate::body::{EncodedRequest, RequestBody};
 
 /// Encode an HTTP request in a quick and dirty HTTP 1.0 format.
-pub(crate) fn encode_request(req: &http::Request<RequestBody>) -> RequestBody {
+pub(crate) fn encode_request(req: &http::Request<RequestBody>) -> EncodedRequest {
     let mut s = format!("{} {} HTTP/1.0\r\n", req.method(), req.uri());
 
     for (key, val) in req.headers().iter() {
@@ -26,9 +26,8 @@ pub(crate) fn encode_request(req: &http::Request<RequestBody>) -> RequestBody {
 
     s.push_str("\r\n");
 
-    let mut body = RequestBody::new();
-    body.push_str(s);
-    body.push_body(req.body());
+    let mut body = EncodedRequest::from_header(s);
+    body.set_body(req.body().clone());
 
     body
 }
@@ -60,6 +59,8 @@ mod test {
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use std::sync::Arc;
+
     use super::*;
 
     fn build_request(body: String, headers: &[(&str, &str)]) -> http::Request<RequestBody> {
@@ -69,7 +70,9 @@ mod test {
             builder = builder.header(*name, *value);
         }
 
-        builder.body(body.into()).unwrap()
+        let body = RequestBody::from(Arc::<str>::from(body));
+
+        builder.body(body).unwrap()
     }
 
     #[test]

@@ -282,9 +282,9 @@ where
     let encoded = util::encode_request(&req);
 
     // Write the request.
-    for chunk in encoded {
+    for chunk in encoded.iter() {
         stream
-            .write_all(chunk.as_ref())
+            .write_all(chunk)
             .await
             .map_err(RequestError::from)
             .map_err(wrap_err)?;

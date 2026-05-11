@@ -1,115 +1,92 @@
 //! Declare a type to represent the encoding of a request or its body.
 
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 
-/// The encoding of a request or its body.
-///
-/// This type is meant to avoid copies in the case where we want
-/// to upload a document in the body of a request.
+/// The body of an HTTP request.
 #[derive(Clone, Debug, Default)]
-pub struct RequestBody {
-    /// A list containing an `Arc<[u8]>` for each section of the request.
-    inner: Vec<Arc<[u8]>>,
-}
+pub struct RequestBody(
+    /// Whenever we make a request with a body, it is an _upload_ request.
+    /// Therefore, we would like to make sure the uploaded document is shared
+    /// among all the requests that we make, to avoid copies.
+    //
+    // NOTE: We will someday to support uploading multiple documents in one request
+    // as we do for routerdescs and extrainfo documents.
+    // When we reach that point, we will want to alter this type, unless it turns out that
+    // we always encode the multiple documents as a single string.
+    Option<Arc<str>>,
+);
 
 impl RequestBody {
-    /// Create a new empty [`RequestBody`].
-    pub fn new() -> Self {
-        Self::default()
+    /// Create a new empty RequestBody.
+    pub fn new_empty() -> Self {
+        Self(None)
     }
 
-    /// Return true if this [`RequestBody`] is empty.
-    pub fn is_empty(&self) -> bool {
-        self.inner.iter().all(|s| s.is_empty())
-    }
-
-    /// Return the number of bytes in this [`RequestBody`]
-    pub fn len(&self) -> usize {
-        self.inner.iter().map(|s| s.len()).sum()
-    }
-
-    /// Return a [`String`] holding all the contents of this [`RequestBody`].
-    ///
-    /// Try to avoid calling this method: it can copy more than we would want.
-    pub fn to_owned(&self) -> Vec<u8> {
-        self.to_cow_str().into_owned()
-    }
-
-    /// Return a [`Cow`] containing this body.
-    ///
-    /// This method avoids copying when the body has only a single chunk,
-    /// but otherwise it needs to allocate a new string and copy everything into it.
-    pub fn to_cow_str(&self) -> Cow<'_, [u8]> {
-        match &self.inner[..] {
-            [] => (&[]).into(),
-            [s] => s.as_ref().into(),
-            _ => {
-                let mut s = Vec::new();
-                for chunk in &self.inner {
-                    s.extend_from_slice(&chunk[..]);
-                }
-                s.into()
-            }
-        }
-    }
-
-    /// Add `s` to the end of this [`RequestBody`].
-    pub fn push_arc(&mut self, s: Arc<str>) {
-        self.inner.push(s.into());
-    }
-
-    /// Add `s` to the end of this [`RequestBody`].
-    pub fn push_str(&mut self, s: String) {
-        self.inner.push(s.into_bytes().into());
-    }
-
-    /// Add the contents of `b` to the end of this [`RequestBody`].
-    pub fn push_body(&mut self, b: &RequestBody) {
-        self.inner.extend(b.iter().cloned());
-    }
-
-    /// Return an iterator over the chunks of this [`RequestBody`].
-    pub fn iter(&self) -> impl Iterator<Item = &Arc<[u8]>> + '_ {
-        self.inner.iter()
-    }
-}
-
-impl IntoIterator for RequestBody {
-    type Item = Arc<[u8]>;
-
-    type IntoIter = std::vec::IntoIter<Arc<[u8]>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.inner.into_iter()
-    }
-}
-
-impl From<String> for RequestBody {
-    fn from(s: String) -> Self {
-        Self {
-            inner: vec![s.into_bytes().into()],
-        }
-    }
-}
-
-impl<'a> From<&'a str> for RequestBody {
-    fn from(s: &'a str) -> Self {
-        Self {
-            inner: vec![s.as_bytes().into()],
-        }
+    /// Return a reference to the bytes in this body, if there are any.
+    fn as_bytes(&self) -> Option<&[u8]> {
+        self.0.as_ref().map(|s| s.as_bytes())
     }
 }
 
 impl From<Arc<str>> for RequestBody {
-    fn from(s: Arc<str>) -> Self {
-        Self {
-            inner: vec![s.into()],
-        }
+    fn from(value: Arc<str>) -> Self {
+        Self((!value.is_empty()).then_some(value))
     }
 }
 
-impl From<RequestBody> for Vec<u8> {
-    fn from(body: RequestBody) -> Self {
-        body.to_owned()
+impl RequestBody {
+    /// Return true if this [`RequestBody`] is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.as_ref().is_none_or(|s| s.is_empty())
+    }
+
+    /// Return the number of bytes in this [`RequestBody`].
+    pub fn len(&self) -> usize {
+        self.0.as_ref().map(|s| s.len()).unwrap_or(0)
+    }
+}
+
+/// The encoding of a http request.
+///
+/// This type is meant to avoid copies in the case where we want
+/// to upload a document in the body of a request.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct EncodedRequest {
+    /// The request header.  We generate this fresh for each request.
+    header: String,
+
+    /// The request body.  This can be shared by multiple requests
+    /// (and generally is, for uploads).
+    body: RequestBody,
+}
+
+impl EncodedRequest {
+    /// Create a new EncodedRequest from a header.
+    pub(crate) fn from_header(header: String) -> Self {
+        Self {
+            header,
+            body: RequestBody::default(),
+        }
+    }
+
+    /// Return a [`Vec`] holding all the contents of this [`RequestBody`].
+    ///
+    /// This method is testing-only: it can copy more than we would want.
+    #[cfg(test)]
+    pub(crate) fn to_owned(&self) -> Vec<u8> {
+        let mut v = self.header.as_bytes().to_owned();
+        v.extend_from_slice(self.body.as_bytes().unwrap_or(&[]));
+        v
+    }
+
+    /// Set the body in this request.
+    pub(crate) fn set_body(&mut self, body: RequestBody) {
+        self.body = body;
+    }
+
+    /// Return an iterator over the byte slices that make up this request.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &'_ [u8]> {
+        use std::iter;
+        iter::once(self.header.as_bytes()).chain(self.body.as_bytes())
     }
 }

@@ -289,7 +289,7 @@ impl sealed::RequestableInner for ConsensusRequest {
             req = req.header("X-Or-Diff-From-Consensus", &ids);
         }
 
-        Ok(req.body(RequestBody::new())?)
+        Ok(req.body(RequestBody::default())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -370,7 +370,7 @@ impl sealed::RequestableInner for AuthCertRequest {
         let req = http::Request::builder().method("GET").uri(uri);
         let req = add_common_headers(req, self.anonymized());
 
-        Ok(req.body(RequestBody::new())?)
+        Ok(req.body(RequestBody::default())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -430,7 +430,7 @@ impl sealed::RequestableInner for MicrodescRequest {
 
         let req = add_common_headers(req, self.anonymized());
 
-        Ok(req.body(RequestBody::new())?)
+        Ok(req.body(RequestBody::default())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -519,7 +519,7 @@ impl sealed::RequestableInner for RouterDescRequest {
         let req = http::Request::builder().method("GET").uri(uri);
         let req = add_common_headers(req, self.anonymized());
 
-        Ok(req.body(RequestBody::new())?)
+        Ok(req.body(RequestBody::default())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -574,7 +574,7 @@ impl sealed::RequestableInner for RoutersOwnDescRequest {
         let req = http::Request::builder().method("GET").uri(uri);
         let req = add_common_headers(req, self.anonymized());
 
-        Ok(req.body(RequestBody::new())?)
+        Ok(req.body(RequestBody::default())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -656,7 +656,7 @@ impl sealed::RequestableInner for ExtraInfoRequest {
 
         let req = http::Request::builder().method("GET").uri(uri);
         let req = add_common_headers(req, self.anonymized());
-        Ok(req.body(RequestBody::new())?)
+        Ok(req.body(RequestBody::default())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -729,7 +729,7 @@ impl sealed::RequestableInner for HsDescDownloadRequest {
         let uri = format!("/tor/hs/3/{}", hsid);
         let req = http::Request::builder().method("GET").uri(uri);
         let req = add_common_headers(req, self.anonymized());
-        Ok(req.body(RequestBody::new())?)
+        Ok(req.body(RequestBody::default())?)
     }
 
     fn partial_response_body_ok(&self) -> bool {
@@ -778,7 +778,7 @@ macro_rules! upload_request {
 
                     let req = http::Request::builder().method("POST").uri(URI);
                     let req = add_common_headers(req, self.anonymized());
-                    Ok(req.body(RequestBody::from(self.0.clone()))?)
+                    Ok(req.body(RequestBody::from(Arc::clone(&self.0)))?)
                 }
 
                 fn partial_response_body_ok(&self) -> bool {
