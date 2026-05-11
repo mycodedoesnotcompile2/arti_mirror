@@ -1437,22 +1437,23 @@ impl Circuit {
         rate_limit_notifier: watch::Sender<StreamRateLimit>,
         drain_rate_requester: NotifySender<DrainRateRequest>,
         cmd_checker: AnyCmdChecker,
-    ) -> StdResult<Result<(SendRelayCell, StreamId)>, Bug> {
+    ) -> Result<(SendRelayCell, StreamId)> {
         let Some(hop) = self.hop_mut(hop_num) else {
             return Err(internal!(
                 "{}: Attempting to send a BEGIN cell to an unknown hop {hop_num:?}",
                 self.unique_id,
-            ));
+            )
+            .into());
         };
 
-        Ok(hop.begin_stream(
+        hop.begin_stream(
             message,
             sender,
             rx,
             rate_limit_notifier,
             drain_rate_requester,
             cmd_checker,
-        ))
+        )
     }
 
     /// Close the specified stream

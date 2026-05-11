@@ -500,18 +500,12 @@ impl<'a> ControlHandler<'a> {
                     cmd_checker,
                 );
 
-                // XXXX remove double result
                 let (cell, stream_id) = match result {
-                    Ok(Ok((cell, stream_id))) => (cell, stream_id),
-                    Ok(Err(e)) => {
-                        // don't care if receiver goes away.
-                        let _ = done.send(Err(e.clone()));
-                        return Err(e.into());
-                    }
+                    Ok((cell, stream_id)) => (cell, stream_id),
                     Err(e) => {
                         // don't care if receiver goes away.
-                        let _ = done.send(Err(e.clone().into()));
-                        return Err(e.into());
+                        let _ = done.send(Err(e.clone()));
+                        return Err(e);
                     }
                 };
 
