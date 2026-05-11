@@ -18,3 +18,4 @@ ADDED: `Ed25519FamilyCert` type
 ADDED: `Bandwidth` type
 ADDED: `RouterDesc::bandwidth` field
 ADDED: `NetworkStatusVersion`
+BREAKING: `Footer` renamed to `ConsensusFooterFields`

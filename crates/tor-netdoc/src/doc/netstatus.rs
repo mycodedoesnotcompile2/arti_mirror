@@ -1104,10 +1104,12 @@ pub struct VoteAuthoritySection {
     pub __non_exhaustive: (),
 }
 
-/// The signed footer of a consensus netstatus.
+/// Fields in the footer of a consensus
+///
+/// Not the whole footer, because it lacks the `directory-footer` item.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct Footer {
+pub struct ConsensusFooterFields {
     /// Weights to be applied to certain classes of relays when choosing
     /// for different roles.
     ///
@@ -1666,9 +1668,9 @@ mod encode_impls {
     }
 }
 
-impl Footer {
+impl ConsensusFooterFields {
     /// Parse a directory footer from a footer section.
-    fn from_section(sec: &Section<'_, NetstatusKwd>) -> Result<Footer> {
+    fn from_section(sec: &Section<'_, NetstatusKwd>) -> Result<ConsensusFooterFields> {
         use NetstatusKwd::*;
         sec.required(DIRECTORY_FOOTER)?;
 
@@ -1678,7 +1680,7 @@ impl Footer {
             .unwrap_or("")
             .parse()?;
 
-        Ok(Footer { weights })
+        Ok(ConsensusFooterFields { weights })
     }
 }
 
