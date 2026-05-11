@@ -33,7 +33,6 @@ full = [
 ]
 experimental = [
     "build_docs",
-    "dangerous-expose-struct-fields",
     "experimental-api",
     "incomplete",
     "hs-dir",
@@ -70,8 +69,6 @@ retain-unknown = ["__is_experimental"]
 # feature voids your "semver warrantee".
 experimental-api = ["testing", "__is_experimental"]
 
-# Obsolete cargo feature.  The items exposed by this are now exposed by default.
-dangerous-expose-struct-fields = ["__is_experimental"]
 __is_experimental = []
 
 [dependencies]
