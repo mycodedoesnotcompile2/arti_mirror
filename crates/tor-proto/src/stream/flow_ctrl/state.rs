@@ -22,10 +22,10 @@ use crate::util::notify::NotifySender;
 #[derive(Debug)]
 enum StreamFlowCtrlInner {
     /// "legacy" sendme-window-based flow control.
-    WindowBased(WindowFlowCtrl),
+    Window(WindowFlowCtrl),
     /// XON/XOFF flow control.
     #[cfg(feature = "flowctl-cc")]
-    XonXoffBased(XonXoffFlowCtrl),
+    XonXoff(XonXoffFlowCtrl),
 }
 
 /// Manages the circuit reactor's flow control for a stream.
@@ -44,7 +44,7 @@ impl StreamFlowCtrl {
     /// Returns a new sendme-window-based [`StreamFlowCtrl`].
     pub(crate) fn new_window(window: sendme::StreamSendWindow) -> Self {
         Self {
-            inner: StreamFlowCtrlInner::WindowBased(WindowFlowCtrl::new(window)),
+            inner: StreamFlowCtrlInner::Window(WindowFlowCtrl::new(window)),
         }
     }
 
@@ -57,7 +57,7 @@ impl StreamFlowCtrl {
         drain_rate_requester: NotifySender<DrainRateRequest>,
     ) -> Self {
         Self {
-            inner: StreamFlowCtrlInner::XonXoffBased(XonXoffFlowCtrl::new(
+            inner: StreamFlowCtrlInner::XonXoff(XonXoffFlowCtrl::new(
                 params,
                 use_sidechannel_mitigations,
                 rate_limit_updater,
@@ -72,12 +72,12 @@ impl StreamFlowCtrl {
     /// that is designed to be used for half-streams.
     pub(crate) fn half_stream(self) -> HalfStreamFlowCtrl {
         let inner = match self.inner {
-            StreamFlowCtrlInner::WindowBased(x) => {
-                HalfStreamFlowCtrlInner::WindowBased(HalfStreamWindowFlowCtrl::new(x))
+            StreamFlowCtrlInner::Window(x) => {
+                HalfStreamFlowCtrlInner::Window(HalfStreamWindowFlowCtrl::new(x))
             }
             #[cfg(feature = "flowctl-cc")]
-            StreamFlowCtrlInner::XonXoffBased(x) => {
-                HalfStreamFlowCtrlInner::XonXoffBased(HalfStreamXonXoffFlowCtrl::new(x))
+            StreamFlowCtrlInner::XonXoff(x) => {
+                HalfStreamFlowCtrlInner::XonXoff(HalfStreamXonXoffFlowCtrl::new(x))
             }
         };
 
@@ -182,10 +182,10 @@ pub(crate) struct HalfStreamFlowCtrl {
 #[derive(Debug)]
 enum HalfStreamFlowCtrlInner {
     /// "legacy" sendme-window-based flow control.
-    WindowBased(HalfStreamWindowFlowCtrl),
+    Window(HalfStreamWindowFlowCtrl),
     /// XON/XOFF flow control.
     #[cfg(feature = "flowctl-cc")]
-    XonXoffBased(HalfStreamXonXoffFlowCtrl),
+    XonXoff(HalfStreamXonXoffFlowCtrl),
 }
 
 /// Methods that can be called on a [`HalfStreamFlowCtrl`].
