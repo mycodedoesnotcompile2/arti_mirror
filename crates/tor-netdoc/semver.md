@@ -22,3 +22,6 @@ BREAKING: `Footer` renamed to `ConsensusFooterFields`
 BREAKING: `Footer.weights` renamed to `ConsensusFooterFields.bandwidth_weights`
 ADDED: `ConsensusFooterFields` implements  construction, encoding, and parsing
 ADDED: `netstatus::{plain,md,vote}::Footer` for the network status footer sections
+ADDED: `NetworkStatusVersion`
+ADDED: `NetworkStatusVersion`
+ADDED: `DirectorySignaturesHashesAccu` fields are now pub.

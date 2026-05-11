@@ -554,7 +554,7 @@ define_derive_deftly! {
     pub struct DirectorySignaturesHashesAccu {
       $(
         ${vattrs doc}
-        $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
+        pub $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
       )
 
       /// `sha1` but without the algorithm name
@@ -566,7 +566,7 @@ define_derive_deftly! {
       /// So we mustn't use the `sha1` field for both implicit and explicit use of SHA-1,
       /// or multiple signatures with different syntax would overwrite each others'
       /// different hashes.
-      sha1_unnamed: Option<[u8; 20]>,
+      pub sha1_unnamed: Option<[u8; 20]>,
     }
 
     impl DirectorySignaturesHashesAccu {
