@@ -181,7 +181,9 @@ enum RunOnceCmdInner {
     /// Uses the provided stream ID, and sends the provided message to that hop.
     BeginStream {
         /// The cell to send.
-        cell: Result<(SendRelayCell, StreamId)>,
+        cell: SendRelayCell,
+        /// The ID of the stream to return on the oneshot channel.
+        stream_id: StreamId,
         /// The location of the hop on the tunnel. We don't use this (and `Circuit`s shouldn't need
         /// to worry about legs anyways), but need it so that we can pass it back in `done` to the
         /// caller.
@@ -940,11 +942,13 @@ impl Reactor {
             RunOnceCmdInner::BeginStream {
                 leg,
                 cell,
+                stream_id,
                 hop,
                 done,
             } => {
-                match cell {
-                    Ok((cell, stream_id)) => {
+                // XXXX fix indentation
+                {
+                    {
                         let circ = self
                             .circuits
                             .leg_mut(leg)
@@ -960,11 +964,6 @@ impl Reactor {
                         // don't care if receiver goes away.
                         let _ = done.send(outcome.clone().map(|_| (stream_id, hop, relay_format)));
                         outcome?;
-                    }
-                    Err(e) => {
-                        // don't care if receiver goes away.
-                        let _ = done.send(Err(e.clone()));
-                        return Err(e.into());
                     }
                 }
             }
