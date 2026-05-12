@@ -730,6 +730,10 @@ impl SignatureItemParseable for Signature {
 }
 
 /// A collection of signatures that can be checked on a networkstatus document
+///
+/// This is derived from the signatures section of a netstatus,
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:signature>,
+/// but it is not isomorphic to it, and is not directly parseable.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct SignatureGroup {
