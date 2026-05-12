@@ -1309,9 +1309,9 @@ mod edcert {
         /// 2. MUST have a valid signature by the identity key.
         /// 3. MUST be valid at `now`.
         /// 4. MUST be of [`CertType::IDENTITY_V_SIGNING`].
-        /// X. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
-        /// 5. Both keys MUST be different.
-        /// 6. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+        /// 5. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
+        /// 6. Both keys MUST be different.
+        /// 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
         pub fn verify(
             cert: KeyUnknownCert,
             post_tolerance: Duration,
@@ -1334,18 +1334,18 @@ mod edcert {
             // Bug is alright because .should_have_signing_key() assured us.
             let id_ed25519 = *cert.signing_key().ok_or(VerifyFailed::Bug)?;
 
-            // X. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
+            // 5. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
             let sign_ed25519 = *cert
                 .subject_key()
                 .as_ed25519()
                 .ok_or(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData))?;
 
-            // 5. Both keys MUST be different.
+            // 6. Both keys MUST be different.
             if id_ed25519 == sign_ed25519 {
                 return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
             }
 
-            // 6. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+            // 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
             // Unsure if this check is required or implied by (2) but defensive
             // programming does not hurt.
             if ed25519::PublicKey::try_from(id_ed25519).is_err()
@@ -1428,10 +1428,10 @@ mod edcert {
         /// 2. MUST have a valid signature by the family key.
         /// 3. MUST be valid at `now`.
         /// 4. MUST be of of [`CertType::FAMILY_V_IDENTITY`].
-        /// X. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
-        /// 5. `id_ed25519` MUST be the certified key.
-        /// 6. Both keys MUST be different.
-        /// 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+        /// 5. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
+        /// 6. `id_ed25519` MUST be the certified key.
+        /// 7. Both keys MUST be different.
+        /// 8. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
         pub fn verify(
             id_ed25519: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
@@ -1454,23 +1454,23 @@ mod edcert {
             // Bug is alright because .should_have_signing_key() assured us.
             let family_ed25519 = *cert.signing_key().ok_or(VerifyFailed::Bug)?;
 
-            // X. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
+            // 5. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
             let certified_key = *cert
                 .subject_key()
                 .as_ed25519()
                 .ok_or(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData))?;
 
-            // 5. `id_ed25519` MUST be the certified key.
+            // 6. `id_ed25519` MUST be the certified key.
             if certified_key != id_ed25519 {
                 return Err(VerifyFailed::VerifyFailed);
             }
 
-            // 6. Both keys MUST be different.
+            // 7. Both keys MUST be different.
             if id_ed25519 == family_ed25519 {
                 return Err(ErrorProblem::ObjectInvalidData.into());
             }
 
-            // 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+            // 8. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
             if ed25519::PublicKey::try_from(family_ed25519).is_err()
                 || ed25519::PublicKey::try_from(id_ed25519).is_err()
             {
