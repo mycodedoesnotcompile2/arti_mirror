@@ -38,6 +38,13 @@ pub type NetworkStatusSignatures = ns_type!(
     crate::doc::netstatus::md::NetworkStatusSignatures,
 );
 
+/// The real variety keyword.
+pub type FlavorKeyword = ns_type!(
+    crate::doc::netstatus::vote::VarietyKeyword,
+    crate::doc::netstatus::plain::VarietyKeyword,
+    crate::doc::netstatus::md::VarietyKeyword,
+);
+
 /// Network status document (vote, consensus, or microdescriptor consensus) - body
 ///
 /// The preamble items are members of this struct.
@@ -48,7 +55,7 @@ pub type NetworkStatusSignatures = ns_type!(
 #[non_exhaustive]
 pub struct NetworkStatus {
     /// `network-status-version`
-    pub network_status_version: (NdaNetworkStatusVersion, NdaNetworkStatusVersionFlavour),
+    pub network_status_version: (NdaNetworkStatusVersion, FlavorKeyword),
 
     /// `vote-status`
     pub vote_status: NdiVoteStatus,
@@ -99,32 +106,6 @@ pub struct NdiVoteStatus {
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct NdaVoteStatus {}
-
-/// `network-status-version` _flavour_ value
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct NdaNetworkStatusVersionFlavour {}
-
-/// The argument in `network-status-version` that is there iff it's a microdesc consensus.
-const NDA_NETWORK_STATUS_VERSION_FLAVOUR: Option<&str> = ns_expr!(None, None, Some("microdesc"));
-
-impl ItemArgumentParseable for NdaNetworkStatusVersionFlavour {
-    fn from_args<'s>(args: &mut ArgumentStream<'s>) -> Result<Self, AE> {
-        let exp: Option<&str> = NDA_NETWORK_STATUS_VERSION_FLAVOUR;
-        if let Some(exp) = exp {
-            let got = args.next().ok_or(AE::Missing)?;
-            if got != exp {
-                return Err(AE::Invalid);
-            };
-        } else {
-            // NS consensus, or vote.  Reject additional arguments, since they
-            // might be an unknown flavour.  See
-            //   https://gitlab.torproject.org/tpo/core/torspec/-/issues/359
-            args.reject_extra_args()?;
-        }
-        Ok(Self {})
-    }
-}
 
 /// The document type argument in `vote-status`
 const NDA_VOTE_STATUS: &str = ns_expr!("vote", "consensus", "consensus");
