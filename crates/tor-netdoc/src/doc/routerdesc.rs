@@ -107,62 +107,138 @@ pub struct RouterAnnotation {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct RouterDesc {
+    // === Virtual items ===
+    // These items do not correspond to any actual item within the router
+    // descriptor from a netdoc point of view.  They cannot persist this way
+    // in parse2 and are already grouped together this way to indicate this
+    // change.  For example, `family_ids` is computed on the fly and is not
+    // present in normal router descriptors.  Although `orport`, `nickname`
+    // and other members are present in a router descriptor, they are only
+    // present as arguments, not as independent items.
+    //
+    //
     /// Human-readable nickname for this relay.
     ///
     /// This is not secure, and not guaranteed to be unique.
     pub nickname: Nickname,
+
     /// IPv4 address for this relay.
     pub ipv4addr: Option<net::Ipv4Addr>,
+
     /// IPv4 ORPort for this relay.
     pub orport: u16,
-    /// IPv6 address and port for this relay.
-    // TODO: we don't use a socketaddrv6 because we don't care about
-    // the flow and scope fields.  We should decide whether that's a
-    // good idea.
-    pub ipv6addr: Option<(net::Ipv6Addr, u16)>,
+
     /// Directory port for contacting this relay for direct HTTP
     /// directory downloads.
     pub dirport: u16,
-    /// Declared uptime for this relay, in seconds.
-    pub uptime: Option<u64>,
-    /// Time when this router descriptor was published.
-    pub published: time::SystemTime,
-    /// Ed25519 identity certificate (identity key authenticating a
-    /// signing key)
-    pub identity_cert: tor_cert::Ed25519Cert,
-    /// RSA identity key for this relay. (Deprecated; never use this without
-    /// the ed25519 identity as well).
-    pub rsa_identity_key: ll::pk::rsa::PublicKey,
-    /// RSA identity key for this relay. (Deprecated; never use this without
-    /// the ed25519 identity as well).
-    pub rsa_identity: ll::pk::rsa::RsaIdentity,
-    /// Key for extending a circuit to this relay using the ntor protocol.
-    pub ntor_onion_key: ll::pk::curve25519::PublicKey,
-    /// Key for extending a circuit to this relay using the
-    /// (deprecated) TAP protocol.
-    pub tap_onion_key: Option<ll::pk::rsa::PublicKey>,
-    /// List of subprotocol versions supported by this relay.
-    pub proto: tor_protover::Protocols,
-    /// True if this relay says it's a directory cache.
-    pub is_dircache: bool,
-    /// True if this relay says that it caches extrainfo documents.
-    pub is_extrainfo_cache: bool,
-    /// Declared family members for this relay.  If two relays are in the
-    /// same family, they shouldn't be used in the same circuit.
-    pub family: Arc<RelayFamily>,
+
     /// Declared (and proven) family IDs for this relay. If two relays
     /// share a family ID, they shouldn't be used in the same circuit.
     family_ids: Vec<RelayFamilyId>,
-    /// Software and version that this relay says it's running.
+
+    // === Real items ===
+    // These items are real and correspond to actual items found in router
+    // descriptors, although potentially not under the same name.
+    //
+    //
+    /// `identity-ed25519` --- Specify the router's ed25519 identity.
+    ///
+    /// * `identity-ed25519\n<certificate object>`
+    /// * Exactly once, in second position in document.
+    pub identity_ed25519: tor_cert::Ed25519Cert,
+
+    /// `platform` --- Describe the platform on which this relay is running.
+    ///
+    /// * `platform <rest of line>`
+    /// * At most once.
     pub platform: Option<RelayPlatform>,
-    /// A complete address-level policy for which IPv4 addresses this relay
-    /// says it supports.
+
+    /// `published` --- Time this descriptor (and extra-info) was generated.
+    ///
+    /// * `published <date> <time>`
+    /// * Exactly once.
+    pub published: time::SystemTime,
+
+    /// `fingerprint` --- Redundant hash of ASN-1 encoding of router identity key.
+    ///
+    /// * `fingerprint <spaced fingerprint>`
+    /// * At most once.
+    pub fingerprint: ll::pk::rsa::RsaIdentity,
+
+    /// `uptime` --- How long this relay has been continously running
+    ///
+    /// * `uptime <number>`
+    /// * At most once.
+    pub uptime: Option<u64>,
+
+    /// `onion-key` --- Relay's obsolete RSA tap key.
+    ///
+    /// * `onion-key\n<rsa public key>`
+    /// * At most once.
+    /// * No extra arguments.
+    pub onion_key: Option<ll::pk::rsa::PublicKey>,
+
+    /// `ntor-onion-key` --- The circuit extension key.
+    ///
+    /// * `ntor-onion-key <base64 padded key>`
+    /// * Exactly once.
+    pub ntor_onion_key: ll::pk::curve25519::PublicKey,
+
+    /// `signing-key` --- Obsolete RSA identity key.
+    ///
+    /// * `signing-key\n<rsa public key>`
+    pub signing_key: ll::pk::rsa::PublicKey,
+
+    /// `accept, reject` --- Exit policy.
+    ///
+    /// * `accept exitpattern`
+    /// * `reject exitpattern`
+    /// * Any number of times.
     // TODO: these polices can get bulky too. Perhaps we should
     // de-duplicate them too.
     pub ipv4_policy: AddrPolicy,
-    /// A summary of which ports this relay is willing to connect to
-    /// on IPv6.
+
+    /// `ipv6-policy` --- Exit plicy summary for IPv6
+    ///
+    /// * `ipv6-policy <accept/reject> PortList`
+    /// * At most once.
     pub ipv6_policy: Arc<PortPolicy>,
+
+    /// `family` --- Group relays for the purpose of path selection.
+    ///
+    /// * `family <LongIdent> ...`
+    /// * One or more `LongIdent` arguments.
+    /// * At most once.
+    pub family: Arc<RelayFamily>,
+
+    /// `caches-extra-info` --- Router provides extra-info as a dirmirror.
+    ///
+    /// * `caches-extra-info`
+    /// * At most once.
+    /// * No extra arguments.
+    pub caches_extra_info: bool,
+
+    /// `or-address` --- Alternative ORport address and port
+    ///
+    /// * `or-address <address>:<port>`.
+    /// * Any number of times.
+    // TODO: we don't use a socketaddrv6 because we don't care about
+    // the flow and scope fields.  We should decide whether that's a
+    // good idea.
+    pub or_address: Option<(net::Ipv6Addr, u16)>,
+
+    /// `tunnelled-dir-server` --- Accepts a `BEGIN_DIR` relay message.
+    ///
+    /// * `tunnelled-dir-server`
+    /// * At most once.
+    /// * No extra arguments.
+    pub tunnelled_dir_server: bool,
+
+    /// `proto` --- Subprotocol capabilities supported.
+    ///
+    /// * `proto <entries>`
+    /// * Exactly once.
+    pub proto: tor_protover::Protocols,
 }
 
 /// Signatures of a [`RouterDesc`].
@@ -385,12 +461,12 @@ const ROUTER_PRE_VALIDITY_SECONDS: u64 = 86400;
 impl RouterDesc {
     /// Return a reference to this relay's RSA identity.
     pub fn rsa_identity(&self) -> &RsaIdentity {
-        &self.rsa_identity
+        &self.fingerprint
     }
 
     /// Return a reference to this relay's Ed25519 identity.
     pub fn ed_identity(&self) -> &Ed25519Identity {
-        self.identity_cert
+        self.identity_ed25519
             .signing_key()
             .expect("No ed25519 identity key on identity cert")
     }
@@ -417,7 +493,7 @@ impl RouterDesc {
         self.ipv4addr
             .map(|a| net::SocketAddr::new(a.into(), self.orport))
             .into_iter()
-            .chain(self.ipv6addr.map(net::SocketAddr::from))
+            .chain(self.or_address.map(net::SocketAddr::from))
     }
 
     /// Return the declared family of this descriptor.
@@ -839,23 +915,24 @@ impl RouterDesc {
             nickname,
             ipv4addr,
             orport,
-            ipv6addr,
             dirport,
-            uptime,
-            published,
-            identity_cert,
-            rsa_identity_key,
-            rsa_identity,
-            ntor_onion_key,
-            tap_onion_key,
-            proto,
-            is_dircache,
-            is_extrainfo_cache,
-            family,
             family_ids,
+
+            identity_ed25519: identity_cert,
             platform,
+            published,
+            fingerprint: rsa_identity,
+            uptime,
+            onion_key: tap_onion_key,
+            ntor_onion_key,
+            signing_key: rsa_identity_key,
             ipv4_policy,
             ipv6_policy: ipv6_policy.intern(),
+            family,
+            caches_extra_info: is_extrainfo_cache,
+            or_address: ipv6addr,
+            tunnelled_dir_server: is_dircache,
+            proto,
         };
 
         let time_gated = timed::TimerangeBound::new(desc, start_time..expiry);
@@ -1048,7 +1125,7 @@ mod test {
                 "[2a01:4f9:2a:2145::2]:443".parse().unwrap(),
             ]
         );
-        assert!(rd.tap_onion_key.is_some());
+        assert!(rd.onion_key.is_some());
 
         Ok(())
     }
@@ -1059,7 +1136,7 @@ mod test {
         let rd = RouterDesc::parse(TESTDATA2)?
             .check_signature()?
             .dangerously_assume_timely();
-        assert!(rd.tap_onion_key.is_none());
+        assert!(rd.onion_key.is_none());
 
         Ok(())
     }
