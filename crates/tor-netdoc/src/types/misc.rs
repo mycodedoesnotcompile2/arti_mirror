@@ -3050,7 +3050,13 @@ mod test {
 
         let tests: [(_, _, CertifiedKey, _, _); _] = [
             // Violate absence of `signed-with-ed25519-key`.
-            (T::cert_type(), expiry, certified_pk.into(), None, &signing_key),
+            (
+                T::cert_type(),
+                expiry,
+                certified_pk.into(),
+                None,
+                &signing_key,
+            ),
             // ---
             // Testing a violation of the signature is hard because the encoder
             // refuses to emit such a thing.
