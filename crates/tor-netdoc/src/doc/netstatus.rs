@@ -1106,15 +1106,15 @@ pub struct VoteAuthoritySection {
 
 /// Fields in the footer of a consensus
 ///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:footer>
+///
 /// Not the whole footer, because it lacks the `directory-footer` item.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct ConsensusFooterFields {
-    /// Weights to be applied to certain classes of relays when choosing
-    /// for different roles.
+    /// `bandwidth-weights`
     ///
-    /// For example, we want to avoid choosing exits for non-exit
-    /// roles when overall the proportion of exits is small.
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:bandwidth-weights>
     pub bandwidth_weights: NetParams<i32>,
 }
 
