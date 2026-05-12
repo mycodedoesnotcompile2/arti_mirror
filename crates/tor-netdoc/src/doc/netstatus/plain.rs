@@ -8,6 +8,9 @@ use super::*;
 // Import `each_variety.rs`, appropriately variegated
 ns_do_variety_plain! {}
 
+/// Used for reporting errors when parsing this document type
+const NETSTATUS_DOCTYPE_FOR_ERROR: &str = "plain consensus";
+
 /// The optional `ns` keyword in a plain consensus heading line
 ///
 /// This type is one of the fields in `NetworkStatusVersionItem`.

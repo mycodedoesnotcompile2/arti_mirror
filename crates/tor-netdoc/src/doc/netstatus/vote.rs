@@ -8,6 +8,9 @@ use super::*;
 // Import `each_variety.rs`, appropriately variegated
 ns_do_variety_vote! {}
 
+/// Used for reporting errors when parsing this document type
+const NETSTATUS_DOCTYPE_FOR_ERROR: &str = "network status vote";
+
 /// The forbidden flavor keyword in a vote consensus heading line
 ///
 /// This type is one of the fields in `NetworkStatusVersionItem`.
