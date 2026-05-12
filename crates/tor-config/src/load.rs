@@ -712,8 +712,7 @@ mod test {
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
     use crate::*;
-    use derive_builder::Builder;
-    use serde::{Deserialize, Serialize};
+    use derive_deftly::Deftly;
 
     fn parse_test_set(l: &[&str]) -> BTreeSet<DisfavouredKey> {
         l.iter()
@@ -793,29 +792,25 @@ mod test {
         chk(r#"[10].bar"#, &[AI(10), me("bar")]); // weird
     }
 
-    #[derive(Debug, Clone, Builder, Eq, PartialEq)]
-    #[builder(build_fn(error = "ConfigBuildError"))]
-    #[builder(derive(Debug, Serialize, Deserialize))]
+    #[derive(Debug, Clone, Deftly, Eq, PartialEq)]
+    #[derive_deftly(TorConfig)]
     struct TestConfigA {
-        #[builder(default)]
+        #[deftly(tor_config(default))]
         a: String,
     }
-    impl_standard_builder! { TestConfigA }
     impl TopLevel for TestConfigA {
         type Builder = TestConfigABuilder;
     }
 
-    #[derive(Debug, Clone, Builder, Eq, PartialEq)]
-    #[builder(build_fn(error = "ConfigBuildError"))]
-    #[builder(derive(Debug, Serialize, Deserialize))]
+    #[derive(Debug, Clone, Deftly, Eq, PartialEq)]
+    #[derive_deftly(TorConfig)]
     struct TestConfigB {
-        #[builder(default)]
+        #[deftly(tor_config(default))]
         b: String,
 
-        #[builder(default)]
+        #[deftly(tor_config(default))]
         old: bool,
     }
-    impl_standard_builder! { TestConfigB }
     impl TopLevel for TestConfigB {
         type Builder = TestConfigBBuilder;
         const DEPRECATED_KEYS: &'static [&'static str] = &["old"];
@@ -858,14 +853,12 @@ mod test {
         let _ = TestConfigB::builder();
     }
 
-    #[derive(Debug, Clone, Builder, Eq, PartialEq)]
-    #[builder(build_fn(error = "ConfigBuildError"))]
-    #[builder(derive(Debug, Serialize, Deserialize))]
+    #[derive(Debug, Clone, Deftly, Eq, PartialEq)]
+    #[derive_deftly(TorConfig)]
     struct TestConfigC {
-        #[builder(default)]
+        #[deftly(tor_config(default))]
         c: u32,
     }
-    impl_standard_builder! { TestConfigC }
     impl TopLevel for TestConfigC {
         type Builder = TestConfigCBuilder;
     }
