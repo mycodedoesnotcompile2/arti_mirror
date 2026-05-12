@@ -945,7 +945,10 @@ pub struct SharedRandCommitV1 {
     commit: FixedB64<40>,
 
     /// Reveal
-    reveal: Option<B64>,
+    ///
+    /// `TIMESTAMP || random number`, as per
+    /// <https://spec.torproject.org/srv-spec/specification.html#COMMITREVEAL>
+    reveal: Option<FixedB64<40>>,
 
     #[doc(hidden)]
     #[deftly(netdoc(skip))]
