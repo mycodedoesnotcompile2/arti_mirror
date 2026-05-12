@@ -181,7 +181,9 @@ enum RunOnceCmdInner {
     /// Uses the provided stream ID, and sends the provided message to that hop.
     BeginStream {
         /// The cell to send.
-        cell: Result<(SendRelayCell, StreamId)>,
+        cell: SendRelayCell,
+        /// The ID of the stream to return on the oneshot channel.
+        stream_id: StreamId,
         /// The location of the hop on the tunnel. We don't use this (and `Circuit`s shouldn't need
         /// to worry about legs anyways), but need it so that we can pass it back in `done` to the
         /// caller.
@@ -940,33 +942,25 @@ impl Reactor {
             RunOnceCmdInner::BeginStream {
                 leg,
                 cell,
+                stream_id,
                 hop,
                 done,
             } => {
-                match cell {
-                    Ok((cell, stream_id)) => {
-                        let circ = self
-                            .circuits
-                            .leg_mut(leg)
-                            .ok_or_else(|| internal!("leg disappeared?!"))?;
-                        let cell_hop = cell.hop.expect("missing hop in client SendRelayCell?!");
-                        let relay_format = circ
-                            .hop_mut(cell_hop)
-                            // TODO: Is this the right error type here? Or should there be a "HopDisappeared"?
-                            .ok_or(Error::NoSuchHop)?
-                            .relay_cell_format();
+                let circ = self
+                    .circuits
+                    .leg_mut(leg)
+                    .ok_or_else(|| internal!("leg disappeared?!"))?;
+                let cell_hop = cell.hop.expect("missing hop in client SendRelayCell?!");
+                let relay_format = circ
+                    .hop_mut(cell_hop)
+                    // TODO: Is this the right error type here? Or should there be a "HopDisappeared"?
+                    .ok_or(Error::NoSuchHop)?
+                    .relay_cell_format();
 
-                        let outcome = self.circuits.send_relay_cell_on_leg(cell, Some(leg)).await;
-                        // don't care if receiver goes away.
-                        let _ = done.send(outcome.clone().map(|_| (stream_id, hop, relay_format)));
-                        outcome?;
-                    }
-                    Err(e) => {
-                        // don't care if receiver goes away.
-                        let _ = done.send(Err(e.clone()));
-                        return Err(e.into());
-                    }
-                }
+                let outcome = self.circuits.send_relay_cell_on_leg(cell, Some(leg)).await;
+                // don't care if receiver goes away.
+                let _ = done.send(outcome.clone().map(|_| (stream_id, hop, relay_format)));
+                outcome?;
             }
             RunOnceCmdInner::CloseStream {
                 hop,

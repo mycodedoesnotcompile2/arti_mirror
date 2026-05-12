@@ -490,7 +490,7 @@ impl<'a> ControlHandler<'a> {
                     }
                 };
 
-                let cell = circ.begin_stream(
+                let result = circ.begin_stream(
                     hop_num,
                     message,
                     sender,
@@ -498,10 +498,21 @@ impl<'a> ControlHandler<'a> {
                     rate_limit_notifier,
                     drain_rate_requester,
                     cmd_checker,
-                )?;
+                );
+
+                let (cell, stream_id) = match result {
+                    Ok((cell, stream_id)) => (cell, stream_id),
+                    Err(e) => {
+                        // don't care if receiver goes away.
+                        let _ = done.send(Err(e.clone()));
+                        return Err(e);
+                    }
+                };
+
                 Ok(Some(RunOnceCmdInner::BeginStream {
                     leg: leg_id,
                     cell,
+                    stream_id,
                     hop: hop_location,
                     done,
                 }))
