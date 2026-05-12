@@ -2,7 +2,7 @@
 //! different kinds of network failure.
 
 use anyhow::{Result, anyhow};
-use rand::Rng;
+use rand::RngExt;
 use std::sync::{Arc, Mutex};
 use tor_dirmgr::filter::DirFilter;
 use tor_netdoc::{

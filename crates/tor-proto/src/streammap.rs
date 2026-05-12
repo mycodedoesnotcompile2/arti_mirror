@@ -23,7 +23,7 @@ use std::task::{Poll, Waker};
 use tor_error::{bad_api_usage, internal};
 use web_time_compat::Instant;
 
-use rand::Rng;
+use rand::RngExt;
 
 use tracing::debug;
 

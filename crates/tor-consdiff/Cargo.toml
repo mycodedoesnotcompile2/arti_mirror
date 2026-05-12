@@ -32,7 +32,7 @@ tor-llcrypto = { path = "../tor-llcrypto", version = "0.42.0" }
 tor-netdoc = { path = "../tor-netdoc", version = "0.42.0", features = ["incomplete"] }
 
 [dev-dependencies]
-rand = "0.9"
+rand = "0.10.1"
 tor-basic-utils = { path = "../tor-basic-utils", version = "0.42.0" }
 
 [package.metadata.docs.rs]

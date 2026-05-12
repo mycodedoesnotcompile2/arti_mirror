@@ -57,7 +57,7 @@ derive_more = { version = "2.0.1", features = ["full"] }
 educe = "0.4.22"
 itertools = "0.14.0"
 paste = "1.0.3"
-rand = "0.9.1"
+rand = "0.10.1"
 smallvec = "1.10"
 thiserror = "2"
 tor-basic-utils = { path = "../tor-basic-utils", version = "0.42.0" }

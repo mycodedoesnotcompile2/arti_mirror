@@ -165,7 +165,7 @@ pub trait RngExt: Rng {
     ///
     /// If the supplied range is empty, returns `None`.
     ///
-    /// (This is a non-panicking version of [`Rng::gen_range`].)
+    /// (This is a non-panicking version of [`rand::RngExt::random_range`].)
     ///
     /// ### Example
     ///
@@ -205,8 +205,9 @@ pub trait RngExt: Rng {
         if range.is_empty() {
             None
         } else {
+            use rand::RngExt;
             #[allow(clippy::disallowed_methods)]
-            Some(Rng::random_range(self, range))
+            Some(self.random_range(range))
         }
     }
 

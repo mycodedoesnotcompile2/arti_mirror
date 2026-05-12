@@ -60,9 +60,11 @@ ed25519-dalek = { version = "2.2", features = ["batch", "hazmat"] }
 educe = "0.4.22"
 hex = "0.4"
 openssl = { version = "0.10.48", optional = true }
-rand = "0.9.1"
-rand_core = "0.9.3"
+rand = "0.10.1"
+rand_core = "0.10.1"
 rand_core_06 = { package = "rand_core", version = "0.6", default-features = false }
+rand_jitter = { version = "0.6", features = ["std"] }
+reseeding_rng = "0.10.6"
 rsa = "0.9.0"
 safelog = { version = "0.8.2", path = "../safelog" }
 serde = "1.0.103"
@@ -82,7 +84,7 @@ zeroize = "1"
 [dev-dependencies]
 cipher = "0.4.1"
 hex-literal = "1.0"
-rand = "0.9.1"
+rand = "0.10.1"
 serde_test = "1.0.124"
 tor-basic-utils = { path = "../tor-basic-utils", version = "0.42.0" }
 [package.metadata.docs.rs]
@@ -92,8 +94,7 @@ all-features = true
 rdrand = "0.8"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-rand_chacha = "0.9"
-rand_jitter = { version = "0.5", features = ["std"] }
+rand_chacha = "0.10.0"
 
 [target.wasm32-unknown-unknown.dependencies]
 getrandom = { version = "0.4.0", features = ["wasm_js"] }

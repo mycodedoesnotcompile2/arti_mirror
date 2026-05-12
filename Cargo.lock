@@ -279,7 +279,7 @@ dependencies = [
  "float-ord",
  "fs-mistrust",
  "futures",
- "rand 0.9.4",
+ "rand 0.10.1",
  "serde",
  "serde_json",
  "tokio",
@@ -311,7 +311,7 @@ dependencies = [
  "libc",
  "once_cell",
  "postage",
- "rand 0.9.4",
+ "rand 0.10.1",
  "safelog",
  "serde",
  "serde_json",
@@ -373,7 +373,7 @@ dependencies = [
  "fs-mistrust",
  "futures",
  "libc",
- "rand 0.9.4",
+ "rand 0.10.1",
  "rustls",
  "safelog",
  "serde",
@@ -425,8 +425,8 @@ dependencies = [
  "mio",
  "paste",
  "percent-encoding",
- "rand 0.9.4",
- "rand_chacha 0.9.0",
+ "rand 0.10.1",
+ "rand_chacha 0.10.0",
  "serde",
  "serde_json",
  "socketpair",
@@ -455,7 +455,7 @@ dependencies = [
  "futures-await-test",
  "oneshot-fused-workaround",
  "pin-project",
- "rand 0.9.4",
+ "rand 0.10.1",
  "serde",
  "serde_json",
  "slotmap-careful",
@@ -488,7 +488,7 @@ dependencies = [
  "clap",
  "futures",
  "pin-project",
- "rand 0.9.4",
+ "rand 0.10.1",
  "tokio",
  "tor-basic-utils",
  "tor-config",
@@ -1935,7 +1935,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a93511fd122bc7b22e361806e84f1c31a53894f0564a4ba7f28e799104318c7"
 dependencies = [
  "heck",
- "indexmap 2.14.0",
+ "indexmap 1.9.3",
  "itertools 0.14.0",
  "proc-macro-crate",
  "proc-macro2",
@@ -2986,7 +2986,7 @@ dependencies = [
  "fixed-capacity-vec",
  "hex",
  "hex-literal",
- "rand_core 0.9.5",
+ "rand_core 0.10.1",
  "thiserror 2.0.18",
 ]
 
@@ -3631,8 +3631,7 @@ version = "0.1.0"
 dependencies = [
  "base32",
  "clap",
- "rand 0.9.4",
- "rand_core 0.9.5",
+ "rand 0.10.1",
  "ssh-key-fork-arti",
  "tor-basic-utils",
  "tor-keymgr",
@@ -5077,6 +5076,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_chacha"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e6af7f3e25ded52c41df4e0b1af2d047e45896c2f3281792ed68a1c243daedb"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.10.1",
+]
+
+[[package]]
 name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5122,12 +5131,12 @@ dependencies = [
 
 [[package]]
 name = "rand_jitter"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b16df48f071248e67b8fc5e866d9448d45c08ad8b672baaaf796e2f15e606ff0"
+checksum = "a02dd27aa28665e46e60168c8f355240c73b8a344d2557a92318849441ffda33"
 dependencies = [
  "libc",
- "rand_core 0.9.5",
+ "rand_core 0.10.1",
  "winapi",
 ]
 
@@ -5318,6 +5327,15 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "reseeding_rng"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35d8fa137e1f0bbc1139893fcf4fff5f099d76658e6da2b10fadd04f0cadc2d4"
+dependencies = [
+ "rand_core 0.10.1",
 ]
 
 [[package]]
@@ -6872,8 +6890,8 @@ dependencies = [
  "itertools 0.14.0",
  "libc",
  "paste",
- "rand 0.9.4",
- "rand_chacha 0.9.0",
+ "rand 0.10.1",
+ "rand_chacha 0.10.0",
  "serde",
  "serde-value",
  "serde_json",
@@ -6916,7 +6934,7 @@ dependencies = [
  "hex-literal",
  "itertools 0.14.0",
  "paste",
- "rand 0.9.4",
+ "rand 0.10.1",
  "smallvec",
  "thiserror 2.0.18",
  "tor-basic-utils",
@@ -6944,7 +6962,7 @@ dependencies = [
  "ecdsa",
  "hex-literal",
  "humantime",
- "rand 0.9.4",
+ "rand 0.10.1",
  "thiserror 2.0.18",
  "tor-basic-utils",
  "tor-bytes",
@@ -6963,7 +6981,7 @@ dependencies = [
  "ecdsa",
  "p256",
  "pem",
- "rand 0.9.4",
+ "rand 0.10.1",
  "rsa",
  "thiserror 2.0.18",
  "tor-basic-utils",
@@ -6993,7 +7011,7 @@ dependencies = [
  "oneshot-fused-workaround",
  "percent-encoding",
  "postage",
- "rand 0.9.4",
+ "rand 0.10.1",
  "safelog",
  "serde",
  "serde_with",
@@ -7051,7 +7069,7 @@ dependencies = [
  "once_cell",
  "oneshot-fused-workaround",
  "pin-project",
- "rand 0.9.4",
+ "rand 0.10.1",
  "retry-error",
  "safelog",
  "serde",
@@ -7148,7 +7166,7 @@ dependencies = [
  "digest 0.10.7",
  "hex",
  "imara-diff",
- "rand 0.9.4",
+ "rand 0.10.1",
  "static_assertions",
  "thiserror 2.0.18",
  "tor-basic-utils",
@@ -7232,7 +7250,7 @@ dependencies = [
  "oneshot-fused-workaround",
  "paste",
  "postage",
- "rand 0.9.4",
+ "rand 0.10.1",
  "rusqlite",
  "safelog",
  "scopeguard",
@@ -7279,7 +7297,7 @@ dependencies = [
  "event-listener 5.4.1",
  "futures",
  "postage",
- "rand 0.9.4",
+ "rand 0.10.1",
  "safelog",
  "thiserror 2.0.18",
  "tor-basic-utils",
@@ -7311,7 +7329,7 @@ dependencies = [
  "lzma-rs",
  "r2d2",
  "r2d2_sqlite",
- "rand 0.9.4",
+ "rand 0.10.1",
  "retry-error",
  "rusqlite",
  "saturating-time",
@@ -7414,7 +7432,7 @@ dependencies = [
  "oneshot-fused-workaround",
  "pin-project",
  "postage",
- "rand 0.9.4",
+ "rand 0.10.1",
  "safelog",
  "serde",
  "serde_json",
@@ -7456,7 +7474,7 @@ dependencies = [
  "itertools 0.14.0",
  "oneshot-fused-workaround",
  "postage",
- "rand 0.9.4",
+ "rand 0.10.1",
  "retry-error",
  "safelog",
  "slotmap-careful",
@@ -7508,7 +7526,7 @@ dependencies = [
  "humantime",
  "itertools 0.14.0",
  "paste",
- "rand 0.9.4",
+ "rand 0.10.1",
  "safelog",
  "serde",
  "signature",
@@ -7584,8 +7602,8 @@ dependencies = [
  "once_cell",
  "oneshot-fused-workaround",
  "postage",
- "rand 0.9.4",
- "rand_core 0.9.5",
+ "rand 0.10.1",
+ "rand_core 0.10.1",
  "retry-error",
  "rmp-serde",
  "safelog",
@@ -7636,7 +7654,7 @@ dependencies = [
  "derive_more",
  "downcast-rs",
  "paste",
- "rand 0.9.4",
+ "rand 0.10.1",
  "rsa",
  "signature",
  "ssh-key-fork-arti",
@@ -7668,7 +7686,7 @@ dependencies = [
  "inventory",
  "itertools 0.14.0",
  "paste",
- "rand 0.9.4",
+ "rand 0.10.1",
  "safelog",
  "serde",
  "serde_json",
@@ -7742,12 +7760,13 @@ dependencies = [
  "hex",
  "hex-literal",
  "openssl",
- "rand 0.9.4",
- "rand_chacha 0.9.0",
+ "rand 0.10.1",
+ "rand_chacha 0.10.0",
+ "rand_core 0.10.1",
  "rand_core 0.6.4",
- "rand_core 0.9.5",
  "rand_jitter",
  "rdrand",
+ "reseeding_rng",
  "rsa",
  "safelog",
  "serde",
@@ -7794,7 +7813,7 @@ dependencies = [
  "itertools 0.14.0",
  "paste",
  "pin-project",
- "rand 0.9.4",
+ "rand 0.10.1",
  "safelog",
  "serde",
  "serde_json",
@@ -7844,7 +7863,7 @@ dependencies = [
  "itertools 0.14.0",
  "num_enum",
  "postage",
- "rand 0.9.4",
+ "rand 0.10.1",
  "serde",
  "strum",
  "thiserror 2.0.18",
@@ -7887,7 +7906,7 @@ dependencies = [
  "paste",
  "pem",
  "phf",
- "rand 0.9.4",
+ "rand 0.10.1",
  "saturating-time",
  "serde",
  "serde_json",
@@ -7988,8 +8007,9 @@ dependencies = [
  "pin-project",
  "polyval",
  "postage",
+ "rand 0.10.1",
  "rand 0.9.4",
- "rand_core 0.9.5",
+ "rand_core 0.10.1",
  "regex",
  "safelog",
  "serde",
@@ -8097,7 +8117,7 @@ dependencies = [
 name = "tor-relay-selection"
 version = "0.42.0"
 dependencies = [
- "rand 0.9.4",
+ "rand 0.10.1",
  "serde",
  "tor-basic-utils",
  "tor-geoip",
@@ -8118,7 +8138,7 @@ dependencies = [
  "fs-mistrust",
  "fslock-guard",
  "hex-literal",
- "rand 0.9.4",
+ "rand 0.10.1",
  "safelog",
  "serde",
  "serde_json",
@@ -8220,7 +8240,7 @@ dependencies = [
  "oneshot-fused-workaround",
  "pin-project",
  "priority-queue",
- "rand 0.9.4",
+ "rand 0.10.1",
  "slotmap-careful",
  "strum",
  "thiserror 2.0.18",
