@@ -16,6 +16,34 @@ ns_use_this_variety! {
     pub use [crate::doc::netstatus::rs]::?::{RouterStatus};
 }
 
+/// `network-status-version` intro item in a consensus
+///
+/// This is hard to parse because it's so irregular (even, ambiguous).
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:network-status-version>
+///
+/// <https://spec.torproject.org/dir-spec/computing-consensus.html#flavor:microdesc>
+///
+/// <https://gitlab.torproject.org/tpo/core/torspec/-/work_items/359>
+#[derive(Clone, Debug, Deftly, Default)]
+#[derive_deftly(Constructor, ItemValueEncodable, ItemValueParseable)]
+#[allow(clippy::exhaustive_structs)]
+pub struct NetworkStatusVersionItem {
+    /// The version number, always `3`
+    pub version: NetworkStatusVersion,
+
+    /// The `flavor` argument
+    ///
+    ///  * In a plain consensus, this is an optional `ns`.
+    ///  * In an md consensus, this is always `microdesc`.
+    ///  * In a vote, there is no variety, but to avoid ambiguity, we reject.
+    pub variety: VarietyKeyword,
+
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
+}
+
 /// The preamble of a network status document, except for the intro and `vote-status` items.
 ///
 /// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:preable>

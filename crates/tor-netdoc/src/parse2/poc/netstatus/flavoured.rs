@@ -38,11 +38,11 @@ pub type NetworkStatusSignatures = ns_type!(
     crate::doc::netstatus::md::NetworkStatusSignatures,
 );
 
-/// The real variety keyword.
-pub type FlavorKeyword = ns_type!(
-    crate::doc::netstatus::vote::VarietyKeyword,
-    crate::doc::netstatus::plain::VarietyKeyword,
-    crate::doc::netstatus::md::VarietyKeyword,
+/// The real `network-status-version` item type.
+pub type NetworkStatusVersionItem = ns_type!(
+    crate::doc::netstatus::vote::NetworkStatusVersionItem,
+    crate::doc::netstatus::plain::NetworkStatusVersionItem,
+    crate::doc::netstatus::md::NetworkStatusVersionItem,
 );
 
 /// Network status document (vote, consensus, or microdescriptor consensus) - body
@@ -55,7 +55,7 @@ pub type FlavorKeyword = ns_type!(
 #[non_exhaustive]
 pub struct NetworkStatus {
     /// `network-status-version`
-    pub network_status_version: (NdaNetworkStatusVersion, FlavorKeyword),
+    pub network_status_version: NetworkStatusVersionItem,
 
     /// `vote-status`
     pub vote_status: NdiVoteStatus,

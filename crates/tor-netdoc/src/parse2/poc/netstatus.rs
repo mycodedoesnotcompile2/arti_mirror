@@ -8,7 +8,6 @@ use authcert::{AuthCert as DirAuthKeyCert, AuthCertKeyIds};
 pub use doc::netstatus::Signature as NdiDirectorySignature;
 use doc::netstatus::{
     ConsensusAuthoritySection, DirectorySignaturesHashesAccu, VoteAuthoritySection,
-    NetworkStatusVersion as NdaNetworkStatusVersion,
 };
 
 mod ns_per_flavour_macros;
