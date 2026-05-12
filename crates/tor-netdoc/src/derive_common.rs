@@ -22,7 +22,7 @@ define_derive_deftly! {
     ///
     ///  * Each field must impl `Default` or be annotated `#[deftly(constructor)]`
     ///
-    ///  * `Thing` should contain `#[doc(hidden)] pub __non_exhaustive: ()`
+    ///  * `Thing` must contain `#[doc(hidden)] pub __non_exhaustive: ()`
     ///    rather than being `#[non_exhaustive]`.
     ///    (Because struct literal syntax is not available otherwise.)
     ///
@@ -102,6 +102,14 @@ define_derive_deftly! {
     ${defcond F_DEFAULT_EXPR fmeta(constructor(default))}
     ${defcond F_DEFAULT_TRAIT not(fmeta(constructor))}
     ${defcond F_REQUIRED not(any(F_DEFAULT_EXPR, F_DEFAULT_TRAIT))}
+
+    ${for fields {
+        ${loop_exactly_1 "need a `__non_exhaustive` field (instead of `#[non_exhaustive]`"}
+        ${when all(
+            approx_equal($fname, __non_exhaustive),
+            approx_equal({}, ${tattrs non_exhaustive}),
+        )}
+    }}
 
     $/// Constructor (required fields) for `$tname`
     $///
