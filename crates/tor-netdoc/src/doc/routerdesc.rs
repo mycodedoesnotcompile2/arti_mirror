@@ -460,8 +460,9 @@ const ROUTER_PRE_VALIDITY_SECONDS: u64 = 86400;
 
 impl RouterDesc {
     /// Return a reference to this relay's RSA identity.
-    pub fn rsa_identity(&self) -> &RsaIdentity {
-        &self.fingerprint
+    pub fn rsa_identity(&self) -> RsaIdentity {
+        // XXX: Obtain from signing key instead.
+        self.fingerprint
     }
 
     /// Return a reference to this relay's Ed25519 identity.
