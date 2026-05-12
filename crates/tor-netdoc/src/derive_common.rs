@@ -171,6 +171,137 @@ define_derive_deftly! {
     }
 }
 
+define_derive_deftly! {
+    /// Derive all parsing and encoding for a fixed string
+    ///
+    /// Usually, use the more-cooked [`define_fixed_string!`] macro instead.
+    ///
+    /// # Input
+    ///
+    /// Typically, a unit struct.
+    /// (Can be applied to any ZST struct that implements `Default`.)
+    ///
+    /// # Required attribute
+    ///
+    ///  * `#[deftly(fixed_string = EXPR))]` where `EXPR` is a `&str` expression.
+    ///
+    /// # Generated items
+    ///
+    /// Implementations of [`FromStr`, `Display`, and `NormalItemArgument`].
+    /// Therefore also [`ItemArgument`](crate::encode::ItemArgument)
+    /// and [`ItemArgumentParseable`](crate::parse2::ItemArgumentParseable).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use derive_deftly::Deftly;
+    /// use tor_netdoc::derive_deftly_template_FixedString;
+    ///
+    /// #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
+    /// #[derive_deftly(FixedString)]
+    /// #[deftly(fixed_string = "sha3-256")]
+    /// #[allow(clippy::exhaustive_structs)]
+    /// pub struct SharedRandV1AlgName;
+    /// ```
+    export FixedString for struct, beta_deftly, meta_quoted retain:
+
+    // Bind `fixed`.  Ensures the type is as expected.
+    ${define LET_FIXED {
+        let fixed: &str = ${tmeta(fixed_string) as expr};
+    }}
+
+    ${define FMT { ::std::fmt} }
+    ${define ERR { $crate::ExpectedFixedString } }
+
+    impl<$tgens> $FMT::Display for $ttype where $twheres {
+        fn fmt(&self, f: &mut $FMT::Formatter) -> $FMT::Result {
+            $LET_FIXED
+            $FMT::Display::fmt(fixed, f)
+        }
+    }
+
+    impl<$tgens> ::std::str::FromStr for $ttype where $twheres {
+        type Err = $ERR;
+
+        fn from_str(s: &str) -> ::std::result::Result<Self, $ERR> {
+            $LET_FIXED
+            if s == fixed {
+                Ok(::std::default::Default::default())
+            } else {
+                Err($ERR {
+                    got: s.to_string(),
+                    expected: fixed,
+                })
+            }
+        }
+    }
+
+    impl<$tgens> $crate::NormalItemArgument for $ttype where $twheres {}
+}
+
+/// Define a ZST struct for a fixed argument string in a netdoc item
+///
+/// Convenience macro to define a unit struct, derive many traits,
+/// and derive
+/// [`FixedString`](derive_deftly_template_FixedString).
+///
+/// # Example
+///
+/// ```
+/// use tor_netdoc::define_fixed_string;
+/// use tor_netdoc::derive_deftly_template_FixedString; // sadly, needed for Reasons
+///
+/// define_fixed_string! {
+///     /// The shared random algorithm name for the V1 shared random protocol
+///     ///
+///     /// This is a fixed string, since the version defines the hash algorithm.
+///     SharedRandV1AlgName = "sha3-256";
+/// }
+///
+/// assert_eq!("sha3-256".parse::<SharedRandV1AlgName>(), Ok(SharedRandV1AlgName));
+/// assert_eq!(SharedRandV1AlgName.to_string(), "sha3-256");
+/// ```
+///
+/// # Input
+///
+/// ```rust,ignore
+/// define_fixed_string! {
+///     #[ATTRIBUTES...]
+///     TYPE_NAME = STRING_LITERAL;
+/// }
+/// ```
+///
+/// # Generated items
+///
+/// ```rust,ignore
+/// #[ATTRIBUTES...]
+/// pub struct TYPE_NAME;
+/// ```
+///
+/// Implementations of `Default`, `Debug`, `Clone`, `Copy`,
+/// `Eq`, `PartialEq`, `Ord`, `PartialOrd`, `Hash`.
+///
+/// Implementations of [`FromStr`, `Display`, and `NormalItemArgument`].
+/// Therefore also [`ItemArgument`](crate::encode::ItemArgument)
+/// and [`ItemArgumentParseable`](crate::parse2::ItemArgumentParseable).
+//
+// This macro exists mostly to encapsulate this astonishing list of traits to derive!
+#[macro_export]
+macro_rules! define_fixed_string {
+    {
+        $( #[ $($attr:tt)* ] )*
+        $name:ident = $string:expr;
+    } => {
+        $( #[ $($attr)* ] )*
+        #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
+        #[derive($crate::derive_deftly::Deftly)]
+        #[derive_deftly(FixedString)]
+        #[deftly(fixed_string = ($string))]
+        #[allow(clippy::exhaustive_structs)]
+        pub struct $name;
+    };
+}
+
 /// Macro to help check that netdoc items in a derive input are in the right order
 ///
 /// Used only by the `NetdocParseable` derive-deftly macro.
