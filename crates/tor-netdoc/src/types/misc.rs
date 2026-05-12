@@ -1409,6 +1409,9 @@ mod edcert {
     #[allow(clippy::exhaustive_structs)]
     pub struct Ed25519FamilyCert {
         /// The public key of the family.
+        // TODO: We probably want to add a getter for this returning the
+        // family name as in:
+        // <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:family-cert>
         pub family_ed25519: ed25519::Ed25519Identity,
     }
 
