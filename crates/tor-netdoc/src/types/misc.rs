@@ -1789,7 +1789,7 @@ mod boolean {
     use crate::{Error, NetdocErrorKind as EK, NormalItemArgument, Pos};
 
     /// A boolean that is represented by a `0` (false) or `1` (true).
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deftly)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct NumericBoolean(pub bool);
