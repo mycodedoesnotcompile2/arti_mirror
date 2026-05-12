@@ -187,6 +187,9 @@ impl FromIterator<RelayFamilyId> for RelayFamilyIds {
     /// Automatically dedups and sorts.
     fn from_iter<T: IntoIterator<Item = RelayFamilyId>>(iter: T) -> Self {
         let mut res = Self(iter.into_iter().collect());
+        // TODO: We should really reconsider this because it does not achieve
+        // the same as subsequent calls to push.  As outlined above, we probably
+        // want to switch to a BTreeSet in the long run anyways.
         res.sort();
         res.dedup();
         res
