@@ -30,6 +30,7 @@ use crate::crypto::cell::HopNum;
 use crate::crypto::handshake::ntor_v3::NtorV3PublicKey;
 use crate::memquota::CircuitAccount;
 use crate::stream::CloseStreamBehavior;
+use crate::stream::queue::StreamQueueReceiver;
 use crate::streammap;
 use crate::tunnel::{TunnelId, TunnelScopedCircId};
 use crate::util::err::ReactorError;
@@ -190,8 +191,10 @@ enum RunOnceCmdInner {
         hop: HopLocation,
         /// The circuit leg to begin the stream on.
         leg: UniqId,
+        /// The receiver for stream messages incoming from the Tor network.
+        receiver: StreamQueueReceiver,
         /// Oneshot channel to notify on completion, with the allocated stream ID.
-        done: ReactorResultChannel<(StreamId, HopLocation, RelayCellFormat)>,
+        done: ReactorResultChannel<(StreamId, HopLocation, RelayCellFormat, StreamQueueReceiver)>,
     },
     /// Consider sending an XON message with the given `rate`.
     MaybeSendXon {
@@ -944,6 +947,7 @@ impl Reactor {
                 cell,
                 stream_id,
                 hop,
+                receiver,
                 done,
             } => {
                 let circ = self
@@ -959,7 +963,11 @@ impl Reactor {
 
                 let outcome = self.circuits.send_relay_cell_on_leg(cell, Some(leg)).await;
                 // don't care if receiver goes away.
-                let _ = done.send(outcome.clone().map(|_| (stream_id, hop, relay_format)));
+                let _ = done.send(
+                    outcome
+                        .clone()
+                        .map(|_| (stream_id, hop, relay_format, receiver)),
+                );
                 outcome?;
             }
             RunOnceCmdInner::CloseStream {

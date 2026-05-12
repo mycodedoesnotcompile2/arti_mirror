@@ -8,7 +8,6 @@ use crate::memquota::{CircuitAccount, SpecificAccount as _, StreamAccount};
 use crate::stream::CloseStreamBehavior;
 use crate::stream::cmdcheck::StreamStatus;
 use crate::stream::flow_ctrl::state::StreamRateLimit;
-use crate::stream::queue::stream_queue;
 use crate::streammap;
 use crate::util::err::ReactorError;
 use crate::util::notify::NotifySender;
@@ -419,14 +418,6 @@ impl StreamReactor {
         let memquota =
             StreamAccount::new(&self.memquota).map_err(|e| ReactorError::Err(e.into()))?;
 
-        let (sender, receiver) = stream_queue(
-            #[cfg(not(feature = "flowctl-cc"))]
-            crate::stream::STREAM_READER_BUFFER,
-            &memquota,
-            &self.time_provider,
-        )
-        .map_err(|e| ReactorError::Err(e.into()))?;
-
         let (msg_tx, msg_rx) = MpscSpec::new(CIRCUIT_BUFFER_SIZE)
             .new_mq(self.time_provider.clone(), memquota.as_raw_account())
             .map_err(|e| ReactorError::Err(e.into()))?;
@@ -440,8 +431,9 @@ impl StreamReactor {
         let drain_rate_request_rx = drain_rate_request_tx.subscribe();
 
         let cmd_checker = InboundDataCmdChecker::new_connected();
-        self.hop.add_ent_with_id(
-            sender,
+        let receiver = self.hop.add_ent_with_id(
+            &memquota,
+            &self.time_provider,
             msg_rx,
             rate_limit_tx,
             drain_rate_request_tx,

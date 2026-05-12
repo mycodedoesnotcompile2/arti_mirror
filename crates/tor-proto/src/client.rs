@@ -33,7 +33,6 @@ use crate::stream::STREAM_READER_BUFFER;
 use crate::stream::cmdcheck::AnyCmdChecker;
 use crate::stream::flow_ctrl::state::StreamRateLimit;
 use crate::stream::flow_ctrl::xon_xoff::reader::XonXoffReaderCtrl;
-use crate::stream::queue::stream_queue;
 use crate::stream::{RECV_WINDOW_INIT, StreamComponents, StreamTarget, Tunnel};
 use crate::util::notify::NotifySender;
 use crate::{Error, ResolveError, Result};
@@ -376,12 +375,6 @@ impl ClientTunnel {
         let time_prov = self.circ.time_provider.clone();
 
         let memquota = StreamAccount::new(self.circ.mq_account())?;
-        let (sender, receiver) = stream_queue(
-            #[cfg(not(feature = "flowctl-cc"))]
-            STREAM_READER_BUFFER,
-            &memquota,
-            &time_prov,
-        )?;
         let (tx, rx) = oneshot::channel();
         let (msg_tx, msg_rx) =
             MpscSpec::new(CIRCUIT_BUFFER_SIZE).new_mq(time_prov, memquota.as_raw_account())?;
@@ -399,7 +392,7 @@ impl ClientTunnel {
             .unbounded_send(CtrlMsg::BeginStream {
                 hop,
                 message: begin_msg,
-                sender,
+                memquota: memquota.clone(),
                 rx: msg_rx,
                 rate_limit_notifier: rate_limit_tx,
                 drain_rate_requester: drain_rate_request_tx,
@@ -408,7 +401,8 @@ impl ClientTunnel {
             })
             .map_err(|_| Error::CircuitClosed)?;
 
-        let (stream_id, hop, relay_cell_format) = rx.await.map_err(|_| Error::CircuitClosed)??;
+        let (stream_id, hop, relay_cell_format, receiver) =
+            rx.await.map_err(|_| Error::CircuitClosed)??;
 
         let target = StreamTarget {
             tunnel: Tunnel::Client(self.clone()),
