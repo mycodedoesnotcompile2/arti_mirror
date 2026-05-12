@@ -3079,6 +3079,15 @@ mod test {
                 Some(&signing_pk),
                 &signing_key,
             ),
+            // Violate certified key type.
+            (
+                T::cert_type(),
+                expiry,
+                // Just pass a different CertifiedKey variant here.
+                CertifiedKey::RsaSha256Digest(certified_pk.into()),
+                Some(&signing_pk),
+                &signing_key,
+            ),
             // Violate both keys must be different.
             (
                 T::cert_type(),
