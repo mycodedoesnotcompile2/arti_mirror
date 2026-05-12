@@ -42,7 +42,7 @@ experimental = ["testing"]
 # Support for using bridges as a client. Note that this is not the same as
 # the pt-client feature, since here we are not concerned with
 # pluggable transports necessarily.
-bridge-client = ["tor-netdoc/routerdesc", "tor-protover"]
+bridge-client = ["tor-protover"]
 # Support for pluggable transports.
 pt-client = ["bridge-client", "tor-linkspec/pt-client"]
 # Vanguards support

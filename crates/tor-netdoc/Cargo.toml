@@ -18,9 +18,6 @@ full = [
     "encode",
     "hs-client",
     "hs-service",
-    "routerdesc",
-    "ns_consensus",
-    "plain-consensus",
     "tor-basic-utils/full",
     "tor-bytes/full",
     "tor-cert/full",
@@ -36,38 +33,17 @@ full = [
 ]
 experimental = [
     "build_docs",
-    "dangerous-expose-struct-fields",
     "experimental-api",
     "incomplete",
     "hs-dir",
     "hs-pow-full",
-    "ns-vote",
-    "parse2",
     "retain-unknown",
 ]
 
-# Enable code to build the objects that represent different network documents.
 build_docs = ["__is_experimental"]
-
 encode = []
-
-incomplete = ["encode", "ns-vote", "parse2", "__is_experimental"]
-
-# Enable the "router descriptor" document type, which is needed by relays and
-# bridge clients.
-routerdesc = ["plain-consensus", "encode"]
-
-# Expose interfaces useful for testing
+incomplete = ["encode", "__is_experimental"]
 testing = ["hex-literal", "visibility"]
-
-# Enable the "ns consensus" document type, which some relays cache and serve.
-plain-consensus = ["routerdesc", "encode"]
-ns_consensus = ["plain-consensus"] # deprecated
-# Enable support for votes.  Very very experimental!
-ns-vote = ["incomplete", "__is_experimental"]
-
-# Enable the `parse` derive-based netdoc parser
-parse2 = ["incomplete", "__is_experimental"]
 
 # Client-side, directory-side, and service-side support for onion services.
 # Experimental: not covered by semver guarantees.
@@ -80,12 +56,8 @@ hs-dir = ["hs-common", "__is_experimental"]
 hs-client = ["hs-common"]
 hs-service = ["hs-common", "encode"]
 hs-common = ["tor-hscrypto", "tor-linkspec", "tor-units"]
-# Testing only : expose code to parse inner layers of onion service descriptors.
 
-# Onion service proof of work schemes
 hs-pow-full = ["tor-hscrypto/hs-pow-full", "__is_experimental"]
-
-# Ability to round-trip network status documents (as eg an authority needs to)
 retain-unknown = ["__is_experimental"]
 
 # Enable experimental APIs that are not yet officially supported.
@@ -94,8 +66,6 @@ retain-unknown = ["__is_experimental"]
 # feature voids your "semver warrantee".
 experimental-api = ["testing", "__is_experimental"]
 
-# Obsolete cargo feature.  The items exposed by this are now exposed by default.
-dangerous-expose-struct-fields = ["__is_experimental"]
 __is_experimental = []
 
 [dependencies]
