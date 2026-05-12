@@ -2319,7 +2319,7 @@ mod test {
     use base64ct::Encoding;
     use tor_basic_utils::test_rng::testing_rng;
     use tor_cert::{CertType, CertifiedKey, Ed25519Cert, KeyUnknownCert};
-    use tor_llcrypto::pk::ed25519::{self, Ed25519PublicKey};
+    use tor_llcrypto::pk::ed25519::{self, Ed25519Identity, Ed25519PublicKey};
 
     use super::*;
     use crate::{Pos, Result, parse2::VerifyFailed, types::EmbeddedCert};
@@ -3048,9 +3048,9 @@ mod test {
         let certified_key = ed25519::Keypair::generate(&mut rng);
         let certified_pk = ed25519::Ed25519Identity::from(certified_key.public_key());
 
-        let tests = [
+        let tests: [(_, _, CertifiedKey, _, _); _] = [
             // Violate absence of `signed-with-ed25519-key`.
-            (T::cert_type(), expiry, certified_pk, None, &signing_key),
+            (T::cert_type(), expiry, certified_pk.into(), None, &signing_key),
             // ---
             // Testing a violation of the signature is hard because the encoder
             // refuses to emit such a thing.
@@ -3060,7 +3060,7 @@ mod test {
                 T::cert_type(),
                 // We achieve this by setting expiry to now.
                 now,
-                certified_pk,
+                certified_pk.into(),
                 Some(&signing_pk),
                 &signing_key,
             ),
@@ -3069,7 +3069,7 @@ mod test {
                 // Just picking something completely out of place here.
                 CertType::NTOR_CC_IDENTITY,
                 expiry,
-                certified_pk,
+                certified_pk.into(),
                 Some(&signing_pk),
                 &signing_key,
             ),
@@ -3078,7 +3078,7 @@ mod test {
                 T::cert_type(),
                 expiry,
                 // Just pass the signing key twice.
-                signing_pk,
+                signing_pk.into(),
                 Some(&signing_pk),
                 &signing_key,
             ),
@@ -3092,13 +3092,23 @@ mod test {
             let mut builder = Ed25519Cert::builder()
                 .cert_type(ctype)
                 .expiration(expiry)
-                .cert_key(certified_key.into())
+                .cert_key(certified_key.clone())
                 .clone();
             if let Some(signing_key) = signing_key {
                 builder = builder.signing_key(*signing_key).clone();
             }
             let cert = Ed25519Cert::decode(&builder.encode_and_sign(signing_kp).unwrap()).unwrap();
-            T::verify(certified_key, cert, Duration::ZERO, now).unwrap_err();
+
+            // We purposely always create an Ed25519Identity here from the bytes
+            // in order to make it possible to test for invalid certified
+            // key types.
+            T::verify(
+                Ed25519Identity::from_bytes(certified_key.as_bytes()).unwrap(),
+                cert,
+                Duration::ZERO,
+                now,
+            )
+            .unwrap_err();
         }
     }
 
