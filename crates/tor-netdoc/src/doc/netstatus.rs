@@ -861,10 +861,6 @@ pub struct VoteAuthorityEntry {
     #[deftly(constructor)]
     pub contact: ContactInfo,
 
-    /// Global shared-random values
-    #[deftly(netdoc(flatten))]
-    pub shared_rand: SharedRandStatuses,
-
     /// `legacy-dir-key` - superseded authority identity key
     ///
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:legacy-dir-key>
@@ -880,6 +876,10 @@ pub struct VoteAuthorityEntry {
     ///
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-commit>
     pub shared_rand_commit: Vec<SharedRandCommit>,
+
+    /// Global shared-random values
+    #[deftly(netdoc(flatten))]
+    pub shared_rand: SharedRandStatuses,
 
     #[doc(hidden)]
     #[deftly(netdoc(skip))]
