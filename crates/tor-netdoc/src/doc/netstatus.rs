@@ -893,6 +893,8 @@ pub struct VoteAuthorityEntry {
 // We could have done `shared_rand_participate: Option<()>` in VoteAuthorityEntry,
 // but then we might end up with variables of type `&Option<()>` etc.
 // whose meaning has been detached from its type.
+//
+// TODO DIRAUTH rework this according to the API design conclusion from !3977 when there is one
 #[derive(Debug, Clone, Deftly)]
 #[derive_deftly(Constructor, ItemValueEncodable, ItemValueParseable)]
 #[allow(clippy::exhaustive_structs)]
