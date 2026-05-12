@@ -147,7 +147,7 @@ pub struct RouterDesc {
     ///
     /// * `published <date> <time>`
     /// * Exactly once.
-    pub published: time::SystemTime,
+    pub published: Iso8601TimeSp,
 
     /// `fingerprint` --- Redundant hash of ASN-1 encoding of router identity key.
     ///
@@ -474,7 +474,7 @@ impl RouterDesc {
 
     /// Return the publication
     pub fn published(&self) -> time::SystemTime {
-        self.published
+        self.published.0
     }
 
     /// Return an iterator of every `SocketAddr` at which this descriptor says
@@ -686,8 +686,7 @@ impl RouterDesc {
         let published = body
             .required(PUBLISHED)?
             .args_as_str()
-            .parse::<Iso8601TimeSp>()?
-            .into();
+            .parse::<Iso8601TimeSp>()?;
 
         // ntor key
         let ntor_onion_key: Curve25519Public = body.required(NTOR_ONION_KEY)?.parse_arg(0)?;
@@ -887,7 +886,8 @@ impl RouterDesc {
         let identity_cert = identity_cert.dangerously_assume_timely();
         let crosscert_cert = crosscert_cert.dangerously_assume_timely();
         let mut expirations = vec![
-            published + time::Duration::new(ROUTER_EXPIRY_SECONDS, 0),
+            // XXX: Use saturating time.
+            published.0 + time::Duration::new(ROUTER_EXPIRY_SECONDS, 0),
             identity_cert.expiry(),
             crosscert_cert.expiry(),
         ];
@@ -904,7 +904,8 @@ impl RouterDesc {
         #[allow(clippy::unwrap_used)]
         let expiry = *expirations.iter().min().unwrap();
 
-        let start_time = published - time::Duration::new(ROUTER_PRE_VALIDITY_SECONDS, 0);
+        // XXX: Use saturating time.
+        let start_time = published.0 - time::Duration::new(ROUTER_PRE_VALIDITY_SECONDS, 0);
 
         let desc = RouterDesc {
             family_ids,

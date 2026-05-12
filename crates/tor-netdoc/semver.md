@@ -11,3 +11,4 @@ ADDED: `Fingerprint` et al implement `Ord` and `PartialOrd`
 ADDED: `B16, B16U, B64, B16Fixed` et al implement `Ord` and `PartialOrd`
 BREAKING: `netstatus::Preamble*` now contain new `SharedRandStatuses`, not individual fields
 BREAKING: `nickname`, `ipv4addr`, `orport`, and `dirport` moved `RouterDesc::router`
+BREAKING: `RouterDesc::published` now stored in a `Iso8601TimeSp`
