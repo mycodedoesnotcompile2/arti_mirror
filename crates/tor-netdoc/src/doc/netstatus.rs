@@ -935,8 +935,14 @@ pub struct SharedRandCommitV1 {
     h_kp_auth_id_rsa: Fingerprint,
 
     /// Commitment
+    ///
+    /// `TIMESTAMP || SHA3_256(REVEAL)`, as per
+    /// <https://spec.torproject.org/srv-spec/specification.html#COMMITREVEAL>
+    //
+    // TOOD we would like to replace this with a type that separates out the pieces!
+    // But that would need a FixedB64 generic over some tor-bytes trait, or something.
     #[deftly(constructor)]
-    commit: B64,
+    commit: FixedB64<40>,
 
     /// Reveal
     reveal: Option<B64>,
