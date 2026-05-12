@@ -8,6 +8,7 @@ use authcert::{AuthCert as DirAuthKeyCert, AuthCertKeyIds};
 pub use doc::netstatus::Signature as NdiDirectorySignature;
 use doc::netstatus::{
     ConsensusAuthoritySection, DirectorySignaturesHashesAccu, VoteAuthoritySection,
+    VoteStatusConsensus, VoteStatusVote,
 };
 
 mod ns_per_flavour_macros;
@@ -35,14 +36,6 @@ pub struct NdiR {
     /// identity
     pub identity: String, // In non-demo, use a better type
 }
-
-/// Unsupported `vote-status` value
-///
-/// This message is not normally actually shown since our `ErrorProblem` doesn't contain it.
-#[derive(Clone, Debug, Error)]
-#[non_exhaustive]
-#[error("invalid value for vote-status in network status document")]
-pub struct InvalidNetworkStatusVoteStatus {}
 
 /// Meat of the verification functions for network documents
 ///

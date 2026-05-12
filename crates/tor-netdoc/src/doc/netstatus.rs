@@ -138,6 +138,20 @@ define_fixed_string! {
     NetworkStatusVersion = "3";
 }
 
+define_fixed_string! {
+    /// The `status` value in a `vote-status` line in a consensus
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:vote-status>
+    VoteStatusConsensus = "consensus";
+}
+
+define_fixed_string! {
+    /// The `vote` value in a `vote-status` line in a vote
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:vote-status>
+    VoteStatusVote = "vote";
+}
+
 /// `publiscation` field in routerstatus entry intro item other than in votes
 ///
 /// Two arguments which are both ignored.

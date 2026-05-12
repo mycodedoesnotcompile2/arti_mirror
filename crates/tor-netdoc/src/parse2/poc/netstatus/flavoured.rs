@@ -99,35 +99,8 @@ pub struct NetworkStatus {
 #[non_exhaustive]
 pub struct NdiVoteStatus {
     /// status
-    pub status: NdaVoteStatus,
+    pub status: ns_type!(VoteStatusVote, VoteStatusConsensus, VoteStatusConsensus),
 }
-
-/// `vote-status` status argument (for a specific flavour)
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct NdaVoteStatus {}
-
-/// The document type argument in `vote-status`
-const NDA_VOTE_STATUS: &str = ns_expr!("vote", "consensus", "consensus");
-
-impl FromStr for NdaVoteStatus {
-    type Err = InvalidNetworkStatusVoteStatus;
-    fn from_str(s: &str) -> Result<Self, InvalidNetworkStatusVoteStatus> {
-        if s == NDA_VOTE_STATUS {
-            Ok(Self {})
-        } else {
-            Err(InvalidNetworkStatusVoteStatus {})
-        }
-    }
-}
-
-impl Display for NdaVoteStatus {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        Display::fmt(NDA_VOTE_STATUS, f)
-    }
-}
-
-impl NormalItemArgument for NdaVoteStatus {}
 
 /// `voting-delay` value
 #[derive(Deftly, Clone, Debug, Hash, Eq, PartialEq)]
