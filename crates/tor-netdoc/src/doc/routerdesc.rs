@@ -887,7 +887,9 @@ impl RouterDesc {
         let identity_cert = identity_cert.dangerously_assume_timely();
         let crosscert_cert = crosscert_cert.dangerously_assume_timely();
         let mut expirations = vec![
-            published.0.saturating_add(time::Duration::new(ROUTER_EXPIRY_SECONDS, 0)),
+            published
+                .0
+                .saturating_add(time::Duration::new(ROUTER_EXPIRY_SECONDS, 0)),
             identity_cert.expiry(),
             crosscert_cert.expiry(),
         ];
@@ -904,7 +906,9 @@ impl RouterDesc {
         #[allow(clippy::unwrap_used)]
         let expiry = *expirations.iter().min().unwrap();
 
-        let start_time = published.0.saturating_sub(time::Duration::new(ROUTER_PRE_VALIDITY_SECONDS, 0));
+        let start_time = published
+            .0
+            .saturating_sub(time::Duration::new(ROUTER_PRE_VALIDITY_SECONDS, 0));
 
         let desc = RouterDesc {
             family_ids,
