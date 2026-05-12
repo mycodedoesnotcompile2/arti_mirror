@@ -24,9 +24,13 @@ zstd = ["async-compression/zstd"]
 # Enable support for router descriptor downloads.
 routerdesc = []
 
+# Enable support for relay-only operations.
+relay = []
+
 full = [
     "hs-client",
     "hs-service",
+    "relay",
     "xz",
     "zstd",
     "routerdesc",
