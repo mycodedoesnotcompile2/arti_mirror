@@ -8,6 +8,7 @@ use authcert::{AuthCert as DirAuthKeyCert, AuthCertKeyIds};
 pub use doc::netstatus::Signature as NdiDirectorySignature;
 use doc::netstatus::{
     ConsensusAuthoritySection, DirectorySignaturesHashesAccu, VoteAuthoritySection,
+    NetworkStatusVersion as NdaNetworkStatusVersion,
 };
 
 mod ns_per_flavour_macros;
@@ -16,17 +17,6 @@ pub use ns_per_flavour_macros::*;
 ns_per_flavour_macros::ns_export_flavoured_types! {
     NetworkStatus, NetworkStatusUnverified, Router,
 }
-
-/// `network-status-version` version value
-#[derive(Debug, Clone, Copy, Eq, PartialEq, strum::EnumString, strum::Display)]
-#[non_exhaustive]
-pub enum NdaNetworkStatusVersion {
-    /// The currently supported version, `3`
-    #[strum(serialize = "3")]
-    V3,
-}
-
-impl NormalItemArgument for NdaNetworkStatusVersion {}
 
 /// `params` value
 #[derive(Clone, Debug, Default, Deftly)]

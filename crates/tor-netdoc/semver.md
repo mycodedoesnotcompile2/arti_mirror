@@ -17,3 +17,4 @@ ADDED: `Ed25519IdentityCert` type
 ADDED: `Ed25519FamilyCert` type
 ADDED: `Bandwidth` type
 ADDED: `RouterDesc::bandwidth` field
+ADDED: `NetworkStatusVersion`

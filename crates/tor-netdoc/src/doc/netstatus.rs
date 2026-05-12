@@ -125,6 +125,19 @@ pub use rs::{RouterStatusMdDigestsVote, SoftwareVersion};
 
 pub use dir_source::{ConsensusAuthoritySection, DirSource, SupersededAuthorityKey};
 
+define_fixed_string! {
+    /// `network-status-version` version value
+    ///
+    /// This is the fixed string `3`.
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:network-status-version>
+    //
+    // IMO this is nicer than the formulation with an enum.
+    // In practice we are not going to support other versions with the same parsing approach;
+    // probably not even with the same code.
+    NetworkStatusVersion = "3";
+}
+
 /// `publiscation` field in routerstatus entry intro item other than in votes
 ///
 /// Two arguments which are both ignored.
