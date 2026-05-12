@@ -114,6 +114,10 @@ impl FlowCtrlHooks for StreamFlowCtrl {
     fn maybe_send_xoff(&mut self, buffer_len: usize) -> Result<Option<Xoff>> {
         self.inner.maybe_send_xoff(buffer_len)
     }
+
+    fn inbound_queue_max_len(&self) -> usize {
+        self.inner.inbound_queue_max_len()
+    }
 }
 
 /// Methods that can be called on a [`StreamFlowCtrl`].
@@ -168,6 +172,14 @@ pub(crate) trait FlowCtrlHooks {
     /// If we should, then returns the XOFF message that should be sent.
     /// Returns an error if XON/XOFF messages aren't supported for this type of flow control.
     fn maybe_send_xoff(&mut self, buffer_len: usize) -> Result<Option<Xoff>>;
+
+    /// The max queue length that should be used for stream messages incoming from the Tor network.
+    ///
+    /// This is the queue length between the user-facing stream reader (`DataReader`)
+    /// and the circuit reactor.
+    ///
+    /// If the queue would ever exceed this many messages, the stream should be closed.
+    fn inbound_queue_max_len(&self) -> usize;
 }
 
 /// Manages flow control for a half-stream (`HalfStream`).
