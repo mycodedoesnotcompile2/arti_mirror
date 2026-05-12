@@ -404,6 +404,7 @@ impl Preamble {
         let shared_rand = SharedRandStatuses {
             shared_rand_previous_value,
             shared_rand_current_value,
+            __non_exhaustive: (),
         };
 
         let preamble = Preamble {
