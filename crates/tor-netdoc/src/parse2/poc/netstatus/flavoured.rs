@@ -31,6 +31,13 @@ pub type NddDirectoryFooter = ns_type!(
     crate::doc::netstatus::MdFooter,
 );
 
+/// The real signatures section type.
+pub type NetworkStatusSignatures = ns_type!(
+    crate::doc::netstatus::vote::NetworkStatusSignatures,
+    crate::doc::netstatus::plain::NetworkStatusSignatures,
+    crate::doc::netstatus::md::NetworkStatusSignatures,
+);
+
 /// Network status document (vote, consensus, or microdescriptor consensus) - body
 ///
 /// The preamble items are members of this struct.
@@ -73,16 +80,6 @@ pub struct NetworkStatus {
     /// `directory-footer` section (which we handle as a sub-document)
     #[deftly(netdoc(subdoc))]
     pub directory_footer: Option<NddDirectoryFooter>,
-}
-
-/// Signatures on a network status document
-#[derive(Deftly, Clone, Debug)]
-#[derive_deftly(NetdocParseableSignatures)]
-#[deftly(netdoc(signatures(hashes_accu = "DirectorySignaturesHashesAccu")))]
-#[non_exhaustive]
-pub struct NetworkStatusSignatures {
-    /// `directory-signature`s
-    pub directory_signature: ns_type!(NdiDirectorySignature, Vec<NdiDirectorySignature>),
 }
 
 /// `vote-status` value

@@ -123,3 +123,13 @@ pub struct Footer {
     #[deftly(netdoc(skip))]
     pub __non_exhaustive: (),
 }
+
+/// Signatures on a network status document
+#[derive(Deftly, Clone, Debug)]
+#[derive_deftly(NetdocParseableSignatures)]
+#[deftly(netdoc(signatures(hashes_accu = "DirectorySignaturesHashesAccu")))]
+#[non_exhaustive]
+pub struct NetworkStatusSignatures {
+    /// `directory-signature`s
+    pub directory_signature: ns_type!(Vec<Signature>, Vec<Signature>, Signature),
+}
