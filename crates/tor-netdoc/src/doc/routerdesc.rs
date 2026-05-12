@@ -163,7 +163,7 @@ pub struct RouterDesc {
     ///
     /// * `fingerprint <spaced fingerprint>`
     /// * At most once.
-    pub fingerprint: ll::pk::rsa::RsaIdentity,
+    pub fingerprint: Option<SpFingerprint>,
 
     /// `uptime` --- How long this relay has been continously running
     ///
@@ -921,7 +921,7 @@ impl RouterDesc {
             identity_ed25519: identity_cert,
             platform,
             published,
-            fingerprint: rsa_identity,
+            fingerprint: Some(rsa_identity.into()),
             uptime,
             onion_key: tap_onion_key,
             ntor_onion_key,
