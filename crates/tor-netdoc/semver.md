@@ -19,3 +19,4 @@ ADDED: `Bandwidth` type
 ADDED: `RouterDesc::bandwidth` field
 ADDED: `NetworkStatusVersion`
 BREAKING: `Footer` renamed to `ConsensusFooterFields`
+BREAKING: `Footer.weights` renamed to `ConsensusFooterFields.bandwidth_weights`

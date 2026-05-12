@@ -1115,7 +1115,7 @@ pub struct ConsensusFooterFields {
     ///
     /// For example, we want to avoid choosing exits for non-exit
     /// roles when overall the proportion of exits is small.
-    pub weights: NetParams<i32>,
+    pub bandwidth_weights: NetParams<i32>,
 }
 
 /// A consensus document that lists relays along with their
@@ -1674,13 +1674,13 @@ impl ConsensusFooterFields {
         use NetstatusKwd::*;
         sec.required(DIRECTORY_FOOTER)?;
 
-        let weights = sec
+        let bandwidth_weights = sec
             .maybe(BANDWIDTH_WEIGHTS)
             .args_as_str()
             .unwrap_or("")
             .parse()?;
 
-        Ok(ConsensusFooterFields { weights })
+        Ok(ConsensusFooterFields { bandwidth_weights })
     }
 }
 
