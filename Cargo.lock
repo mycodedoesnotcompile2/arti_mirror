@@ -366,6 +366,7 @@ version = "0.42.0"
 dependencies = [
  "anyhow",
  "base64ct",
+ "cfg-if",
  "clap",
  "derive-deftly",
  "derive_more",
@@ -373,6 +374,7 @@ dependencies = [
  "fs-mistrust",
  "futures",
  "libc",
+ "metrics-exporter-prometheus",
  "rand 0.10.1",
  "rustls",
  "safelog",
