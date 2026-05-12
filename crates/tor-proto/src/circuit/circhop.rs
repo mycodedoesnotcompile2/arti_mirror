@@ -394,11 +394,7 @@ impl CircHopOutbound {
         drain_rate_requester: NotifySender<DrainRateRequest>,
         cmd_checker: AnyCmdChecker,
     ) -> Result<(SendRelayCell, StreamId)> {
-        let flow_ctrl = self.build_flow_ctrl(
-            Arc::clone(&self.flow_ctrl_params),
-            rate_limit_updater,
-            drain_rate_requester,
-        )?;
+        let flow_ctrl = self.build_flow_ctrl(rate_limit_updater, drain_rate_requester)?;
         let r =
             self.map
                 .lock()
@@ -597,11 +593,7 @@ impl CircHopOutbound {
         hop_map.add_ent_with_id(
             sink,
             rx,
-            self.build_flow_ctrl(
-                Arc::clone(&self.flow_ctrl_params),
-                rate_limit_updater,
-                drain_rate_requester,
-            )?,
+            self.build_flow_ctrl(rate_limit_updater, drain_rate_requester)?,
             stream_id,
             cmd_checker,
         )?;
@@ -614,10 +606,11 @@ impl CircHopOutbound {
     #[cfg_attr(feature = "flowctl-cc", expect(clippy::unnecessary_wraps))]
     fn build_flow_ctrl(
         &self,
-        params: Arc<FlowCtrlParameters>,
         rate_limit_updater: watch::Sender<StreamRateLimit>,
         drain_rate_requester: NotifySender<DrainRateRequest>,
     ) -> Result<StreamFlowCtrl> {
+        let params = Arc::clone(&self.flow_ctrl_params);
+
         if self
             .ccontrol()
             .lock()
