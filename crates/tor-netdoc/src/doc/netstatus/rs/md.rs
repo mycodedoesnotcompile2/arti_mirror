@@ -34,6 +34,18 @@ pub(crate) mod doc_digest_item_m {
     use crate::parse2::UnparsedItem;
     use std::result::Result;
 
+    /// Output the whole `m` item value
+    #[cfg(feature = "incomplete")] // untested
+    #[expect(dead_code)] // will be used when we encode a whole routerstatus
+    #[allow(clippy::unnecessary_wraps)]
+    pub(crate) fn write_item_value_onto(
+        digest: &FixedB64<DOC_DIGEST_LEN>,
+        out: ItemEncoder,
+    ) -> Result<(), Bug> {
+        out.arg(digest);
+        Ok(())
+    }
+
     /// Parse the whole `m` item value
     pub(crate) fn from_unparsed(mut item: UnparsedItem) -> Result<FixedB64<DOC_DIGEST_LEN>, EP> {
         item.check_no_object()?;

@@ -13,6 +13,7 @@ pub(crate) mod vote;
 use super::{ConsensusFlavor, ConsensusMethods, consensus_methods_comma_separated};
 use crate::doc::netstatus::NetstatusKwd;
 use crate::doc::netstatus::{IgnoredPublicationTimeSp, Protocols, RelayWeight};
+use crate::encode::ItemEncoder;
 use crate::parse::parser::Section;
 use crate::parse2::ItemArgumentParseable;
 use crate::types::misc::*;
@@ -24,7 +25,7 @@ use itertools::chain;
 use std::sync::Arc;
 use std::{net, time};
 use tor_basic_utils::intern::InternCache;
-use tor_error::internal;
+use tor_error::{Bug, internal};
 use tor_llcrypto::pk::rsa::RsaIdentity;
 
 /// A version as presented in a router status.
