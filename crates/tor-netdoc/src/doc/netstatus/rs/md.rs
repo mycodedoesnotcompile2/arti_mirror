@@ -37,7 +37,6 @@ pub(crate) mod doc_digest_parse2_real_item {
     /// Parse the whole `m` item
     pub(crate) fn from_unparsed(mut item: UnparsedItem) -> Result<FixedB64<DOC_DIGEST_LEN>, EP> {
         item.check_no_object()?;
-        FixedB64::from_args(item.args_mut())
-            .map_err(item.args().error_handler("doc_digest"))
+        FixedB64::from_args(item.args_mut()).map_err(item.args().error_handler("doc_digest"))
     }
 }
