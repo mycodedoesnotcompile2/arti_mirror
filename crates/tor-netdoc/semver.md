@@ -29,4 +29,4 @@ ADDED: `NoMoreArguments` parsing/encoding helper type (`NoFurtherArguments` now 
 ADDED: encoding implementation for `IgnoredPublicationTimeSp`
 ADDED: encoding implementation for `rs::SoftwareVersion`
 BREAKING: `NetdocParseableFields::finish` has an additional `ItemStream` argument
-
+BREAKING: parsing/encoding impls for `NetParams` made generic

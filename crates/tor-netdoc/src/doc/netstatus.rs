@@ -1623,7 +1623,11 @@ mod parse2_impls {
     };
     use std::result::Result;
 
-    impl ItemValueParseable for NetParams<i32> {
+    // The NormalItemArgument bound ensures that this is applied only to sane types eg integers
+    impl<T: FromStr + NormalItemArgument> ItemValueParseable for NetParams<T>
+    where
+        T::Err: std::error::Error,
+    {
         fn from_unparsed(item: parse2::UnparsedItem<'_>) -> Result<Self, EP> {
             item.check_no_object()?;
             item.args_copy()
@@ -1675,7 +1679,8 @@ mod encode_impls {
         tor_error::Bug,
     };
 
-    impl ItemValueEncodable for NetParams<i32> {
+    // The NormalItemArgument bound ensures that this is applied only to sane types eg integers
+    impl<T: NormalItemArgument + Ord + Display> ItemValueEncodable for NetParams<T> {
         fn write_item_value_onto(&self, mut out: ItemEncoder) -> Result<(), Bug> {
             for (k, v) in self.iter().collect::<BTreeSet<_>>() {
                 if k.is_empty()
