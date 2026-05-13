@@ -757,6 +757,23 @@ pub struct SharedRandStatus {
     pub timestamp: Option<Iso8601TimeNoSp>,
 }
 
+/// The two shared random values, `shared-rand-*-value`
+///
+/// As found in the consensus preamble
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-current-value>
+/// and a vote's authority section
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#authority-item-shared-rand-value>
+#[derive(Debug, Clone, Default, Deftly)]
+#[non_exhaustive]
+#[derive_deftly(Constructor, NetdocEncodableFields, NetdocParseableFields)]
+pub struct SharedRandStatuses {
+    /// Global shared-random value for the previous shared-random period.
+    pub shared_rand_previous_value: Option<SharedRandStatus>,
+
+    /// Global shared-random value for the current shared-random period.
+    pub shared_rand_current_value: Option<SharedRandStatus>,
+}
+
 /// Recognized weight fields on a single relay in a consensus
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy)]
@@ -832,9 +849,6 @@ pub struct ConsensusAuthorityEntry {
 /// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:authority-entry>
 ///
 /// See also [`ConsensusAuthorityEntry`]
-///
-/// TODO DIRAUTH not all fields are here yet.
-// They have individual comments, below.
 #[derive(Debug, Clone, Deftly)]
 #[derive_deftly(Constructor, NetdocEncodable, NetdocParseable)]
 #[allow(clippy::exhaustive_structs)]
@@ -847,15 +861,140 @@ pub struct VoteAuthorityEntry {
     #[deftly(constructor)]
     pub contact: ContactInfo,
 
-    // TODO DIRAUTH missing field legacy-dir-key
-    // TODO DIRAUTH missing field shared-rand-participate
-    // TODO DIRAUTH missing field shared-rand-commit
-    // TODO DIRAUTH missing field shared-rand-previous-value
-    // TODO DIRAUTH missing field shared-rand-current-value
-    //
+    /// `legacy-dir-key` - superseded authority identity key
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:legacy-dir-key>
+    #[deftly(netdoc(single_arg))]
+    pub legacy_dir_key: Option<Fingerprint>,
+
+    /// `shared-rand-participate` - Indicate shared random participation
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-participate>
+    pub shared_rand_participate: Option<SharedRandParticipate>,
+
+    /// `shared-rand-commit` - Shared random commitment
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-commit>
+    pub shared_rand_commit: Vec<SharedRandCommit>,
+
+    /// Global shared-random values
+    #[deftly(netdoc(flatten))]
+    pub shared_rand: SharedRandStatuses,
+
     #[doc(hidden)]
     #[deftly(netdoc(skip))]
     pub __non_exhaustive: (),
+}
+
+/// `shared-rand-participate` in a vote authority entry
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-participate>
+//
+// We could have done `shared_rand_participate: Option<()>` in VoteAuthorityEntry,
+// but then we might end up with variables of type `&Option<()>` etc.
+// whose meaning has been detached from its type.
+//
+// TODO DIRAUTH rework this according to the API design conclusion from !3977 when there is one
+#[derive(Debug, Clone, Deftly)]
+#[derive_deftly(Constructor, ItemValueEncodable, ItemValueParseable)]
+#[allow(clippy::exhaustive_structs)]
+pub struct SharedRandParticipate {
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
+}
+
+/// `shared-rand-commit` in a vote authority entry
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-commit>
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deftly)]
+// If new protocols use this item with a different version, we'll call it an API break.
+#[allow(clippy::exhaustive_enums)]
+pub enum SharedRandCommit {
+    /// Version 1, the only one supported
+    V1(SharedRandCommitV1),
+
+    /// Other versions.  Cannot be encoded.
+    // It's not clear that future versions will use this version mechanism.  torspec#408.
+    Unknown {},
+}
+
+/// `shared-rand-commit` in a vote authority entry
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:shared-rand-commit>
+///
+/// Version and hash are not explicitly represented.  See torspec#407.
+///
+/// `ItemValueEncodable` and `ItemValueParseable` impls do not include the fixed arguments;
+/// in a netdoc, this type should be used within `SharedRandCommit::V1`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deftly)]
+#[derive_deftly(Constructor, ItemValueEncodable, ItemValueParseable)]
+#[allow(clippy::exhaustive_structs)]
+pub struct SharedRandCommitV1 {
+    /// Authority id key, recapitulated.
+    // TODO this field shouldn't here at all torspec#407
+    #[deftly(constructor)]
+    h_kp_auth_id_rsa: Fingerprint,
+
+    /// Commitment
+    ///
+    /// `TIMESTAMP || SHA3_256(REVEAL)`, as per
+    /// <https://spec.torproject.org/srv-spec/specification.html#COMMITREVEAL>
+    //
+    // TOOD we would like to replace this with a type that separates out the pieces!
+    // But that would need a FixedB64 generic over some tor-bytes trait, or something.
+    #[deftly(constructor)]
+    commit: FixedB64<40>,
+
+    /// Reveal
+    ///
+    /// `TIMESTAMP || random number`, as per
+    /// <https://spec.torproject.org/srv-spec/specification.html#COMMITREVEAL>
+    reveal: Option<FixedB64<40>>,
+
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
+}
+
+impl SharedRandCommitV1 {
+    /// The fixed arguments that precede the actual value in `shared-rand-commit 1 ...`
+    const FIXED_ARGUMENTS: &[&str] = &["1", "sha3-256"];
+}
+impl ItemValueEncodable for SharedRandCommit {
+    fn write_item_value_onto(&self, mut out: ItemEncoder) -> StdResult<(), Bug> {
+        match self {
+            SharedRandCommit::V1(values) => {
+                for fixed in SharedRandCommitV1::FIXED_ARGUMENTS {
+                    out.args_raw_string(fixed);
+                }
+                values.write_item_value_onto(out)
+            }
+            SharedRandCommit::Unknown {} => Err(internal!("encoding SharedRandCommit::Unknown")),
+        }
+    }
+}
+impl ItemValueParseable for SharedRandCommit {
+    fn from_unparsed(mut item: UnparsedItem<'_>) -> StdResult<Self, ErrorProblem> {
+        let mut fixed = SharedRandCommitV1::FIXED_ARGUMENTS.iter().copied();
+        let args = item.args_mut();
+        let version = args
+            .next()
+            .ok_or_else(|| args.handle_error("version", ArgumentError::Missing))?;
+        if version != fixed.next().expect("nonempty") {
+            return Ok(SharedRandCommit::Unknown {});
+        }
+        for exp in fixed {
+            let got = args
+                .next()
+                .ok_or_else(|| args.handle_error(exp, ArgumentError::Missing))?;
+            if got != exp {
+                return Err(args.handle_error(exp, ArgumentError::Invalid))?;
+            }
+        }
+        let values = SharedRandCommitV1::from_unparsed(item)?;
+        Ok(SharedRandCommit::V1(values))
+    }
 }
 
 // For `ConsensusAuthoritySection`, see `dir_source.rs`.

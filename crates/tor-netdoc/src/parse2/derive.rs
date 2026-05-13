@@ -226,7 +226,7 @@ define_derive_deftly_module! {
         ${for fields {
           ${when F_FLATTEN}
 
-          if $ftype::is_item_keyword(kw) {
+          if <$ftype>::is_item_keyword(kw) {
               dtrace!(${concat "is flatten in " $fname}, kw);
               let item = $THIS_ITEM;
               <$ftype as NetdocParseableFields>::accumulate_item($F_ACCUMULATE_VAR, item)?;

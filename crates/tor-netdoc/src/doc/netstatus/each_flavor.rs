@@ -67,13 +67,13 @@ impl Consensus {
     /// Return the latest shared random value, if the consensus
     /// contains one.
     pub fn shared_rand_cur(&self) -> Option<&SharedRandStatus> {
-        self.preamble.shared_rand_current_value.as_ref()
+        self.preamble.shared_rand.shared_rand_current_value.as_ref()
     }
 
     /// Return the previous shared random value, if the consensus
     /// contains one.
     pub fn shared_rand_prev(&self) -> Option<&SharedRandStatus> {
-        self.preamble.shared_rand_previous_value.as_ref()
+        self.preamble.shared_rand.shared_rand_previous_value.as_ref()
     }
 
     /// Return a [`ProtoStatus`] that lists the network's current requirements and
@@ -401,6 +401,11 @@ impl Preamble {
             None
         };
 
+        let shared_rand = SharedRandStatuses {
+            shared_rand_previous_value,
+            shared_rand_current_value,
+        };
+
         let preamble = Preamble {
             lifetime,
             client_versions,
@@ -412,8 +417,7 @@ impl Preamble {
             published: NotPresent,
             consensus_methods: NotPresent,
             known_flags: DocRelayFlags::new_empty_unknown_discarded(),
-            shared_rand_previous_value,
-            shared_rand_current_value,
+            shared_rand,
             __non_exhaustive: (),
         };
 

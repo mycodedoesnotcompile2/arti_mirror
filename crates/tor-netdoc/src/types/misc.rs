@@ -52,7 +52,7 @@ use crate::parse2::{
 use derive_deftly::{Deftly, define_derive_deftly, define_derive_deftly_module};
 use digest::Digest as _;
 use educe::Educe;
-use std::cmp::{self, PartialOrd};
+use std::cmp::{self, Ordering, PartialOrd};
 use std::fmt::{self, Display};
 use std::iter;
 use std::marker::PhantomData;
@@ -179,7 +179,7 @@ define_derive_deftly! {
     ///
     /// # Generated code
     ///
-    ///  * impls of `ConstantTimeEq`, `Eq`, `PartialEq`
+    ///  * impls of `ConstantTimeEq`, `Eq`, `PartialEq`, `Ord`, `PartialOrd`
     ///  * `as_bytes()` method
     ${TRANSPARENT_DOCS_IMPLS}
     ///  * impls of `AsMut<field>`, `AsRef<field>`, `AsRef<[u8]>`, `AsMut<[u8]>`
@@ -211,6 +211,18 @@ define_derive_deftly! {
         }
     }
     impl<$tgens> Eq for $ttype {}
+    impl<$tgens> PartialOrd for $ttype {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+    impl<$tgens> Ord for $ttype {
+        fn cmp(&self, other: &Self) -> Ordering {
+          $(
+            self.$fname.cmp(&other.$fname)
+          )
+        }
+    }
 
     impl<$tgens> $ttype {
         /// Return the byte array from this object.
@@ -588,6 +600,9 @@ mod ignored_impl {
     ///    **rejects** an object - failing the parse if one is present.
     ///    (Functions similarly to `Option<Void>`, but prefer `NotPresent` as it's clearer.)
     ///
+    ///  * When used as a sub-document (ie, `netdoc(flatten)` when deriving a document trait),
+    ///    it recognises, and encodes as, no fields.
+    ///
     /// There are bespoke impls of the multiplicity traits
     /// `ItemSetMethods` and `ObjectSetMethods`:
     /// don't wrap this type in `Option` or `Vec`.
@@ -596,7 +611,7 @@ mod ignored_impl {
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Default)]
     #[allow(clippy::exhaustive_structs)]
     #[derive(Deftly)]
-    #[derive_deftly(NetdocParseableFields)]
+    #[derive_deftly(NetdocEncodableFields, NetdocParseableFields)]
     pub struct NotPresent;
 
     /// Ignored part of a network document.
@@ -1402,7 +1417,7 @@ mod fingerprint {
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html?highlight=fingerprint#item:fingerprint>
     ///
     /// Netdoc parsing adapter for [`RsaIdentity`]
-    #[derive(Debug, Clone, Eq, PartialEq, Hash, Deftly)]
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct SpFingerprint(pub RsaIdentity);
@@ -1410,7 +1425,7 @@ mod fingerprint {
     /// A hex-encoded fingerprint with no spaces.
     ///
     /// Netdoc parsing adapter for [`RsaIdentity`]
-    #[derive(Debug, Clone, Eq, PartialEq, Hash, Deftly)]
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct Fingerprint(pub RsaIdentity);
@@ -1418,7 +1433,7 @@ mod fingerprint {
     /// A base64-encoded fingerprint (unpadded)
     ///
     /// Netdoc parsing adapter for [`RsaIdentity`]
-    #[derive(Debug, Clone, Eq, PartialEq, Hash, Deftly)]
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct Base64Fingerprint(pub RsaIdentity);
@@ -1426,7 +1441,7 @@ mod fingerprint {
     /// A "long identity" in the format used for Family members.
     ///
     /// Netdoc parsing adapter for [`RsaIdentity`]
-    #[derive(Debug, Clone, Eq, PartialEq, Hash, Deftly)]
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub(crate) struct LongIdent(pub RsaIdentity);
