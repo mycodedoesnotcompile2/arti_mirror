@@ -184,10 +184,12 @@ struct ClientInner<R: Runtime> {
     /// Location on disk where we store persistent data (cooked state manager).
     statemgr: UsingStateMgr,
     /// Client address configuration
-    addrcfg: Arc<MutCfg<ClientAddrConfig>>,
+    addrcfg: MutCfg<ClientAddrConfig>,
     /// Client DNS configuration
-    timeoutcfg: Arc<MutCfg<StreamTimeoutConfig>>,
+    timeoutcfg: MutCfg<StreamTimeoutConfig>,
     /// Software status configuration.
+    //
+    // TODO #1960: remove.
     software_status_cfg: Arc<MutCfg<SoftwareStatusOverrideConfig>>,
     /// Mutex used to serialize concurrent attempts to reconfigure a TorClient.
     ///
@@ -202,7 +204,7 @@ struct ClientInner<R: Runtime> {
     status_receiver: status::BootstrapEvents,
 
     /// mutex used to prevent two tasks from trying to bootstrap at once.
-    bootstrap_in_progress: Arc<AsyncMutex<()>>,
+    bootstrap_in_progress: AsyncMutex<()>,
 
     /// Whether or not we should call `bootstrap` before doing things that require
     /// bootstrapping. If this is `false`, we will just call `wait_for_bootstrap`
@@ -213,14 +215,13 @@ struct ClientInner<R: Runtime> {
     //
     // The sent value is `Option`, so that `None` is sent when the sender, here,
     // is dropped,.  That shuts down the monitoring task.
-    dormant: Arc<Mutex<DropNotifyWatchSender<Option<DormantMode>>>>,
+    dormant: Mutex<DropNotifyWatchSender<Option<DormantMode>>>,
 
     /// The path resolver given to us by a [`TorClientConfig`].
     ///
     /// We must not add our own variables to it since `TorClientConfig` uses it to perform its own
     /// path expansions. If we added our own variables, it would introduce an inconsistency where
     /// paths expanded by the `TorClientConfig` would expand differently than when expanded by us.
-    // This is an Arc so that we can make cheap clones of it.
     path_resolver: Arc<tor_config_path::CfgPathResolver>,
 }
 
@@ -1089,13 +1090,13 @@ impl<R: Runtime> TorClient<R> {
             inert_client,
             guardmgr,
             statemgr,
-            addrcfg: Arc::new(addr_cfg.into()),
-            timeoutcfg: Arc::new(timeout_cfg.into()),
+            addrcfg: addr_cfg.into(),
+            timeoutcfg: timeout_cfg.into(),
             reconfigure_lock: Arc::new(Mutex::new(())),
             status_receiver,
-            bootstrap_in_progress: Arc::new(AsyncMutex::new(())),
+            bootstrap_in_progress: AsyncMutex::new(()),
             should_bootstrap: autobootstrap,
-            dormant: Arc::new(Mutex::new(dormant_send)),
+            dormant: Mutex::new(dormant_send),
             #[cfg(feature = "onion-service-service")]
             state_directory,
             path_resolver,
