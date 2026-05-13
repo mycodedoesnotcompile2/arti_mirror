@@ -202,6 +202,12 @@ pub trait RngExt: Rng {
         T: rand::distr::uniform::SampleUniform,
         R: rand::distr::uniform::SampleRange<T>,
     {
+        #[allow(clippy::disallowed_methods)]
+        {
+            // Prove that rand::RngExt::random_range exists.  See arti.git/clippy.toml.
+            let _ = |r: &mut rand::rngs::ThreadRng| rand::RngExt::random_range::<u8, _>(r, 0..10);
+        }
+
         if range.is_empty() {
             None
         } else {
