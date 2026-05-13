@@ -1659,11 +1659,11 @@ mod parse2_impls {
     impl ItemValueParseable for RelayWeight {
         fn from_unparsed(item: parse2::UnparsedItem<'_>) -> Result<Self, EP> {
             item.check_no_object()?;
-            (|| {
-                let params = item.args_copy().into_remaining().parse()?;
-                Self::from_net_params(&params)
-            })()
-            .map_err(item.invalid_argument_handler("weights"))
+            let params = NetParams::from_unparsed(item)?;
+            let effective = (&params)
+                .try_into()
+                .map_err(|_| EP::OtherBadDocument("invalid information in `w` item"))?;
+            Ok(effective)
         }
     }
 
