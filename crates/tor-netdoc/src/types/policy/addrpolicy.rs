@@ -7,8 +7,8 @@ use std::str::FromStr;
 
 use crate::NormalItemArgument;
 use crate::parse2::{
-    ErrorProblem as EP, ItemArgumentParseable, KeywordRef, NetdocParseableFields, UnparsedItem,
-    ItemStream,
+    ErrorProblem as EP, ItemArgumentParseable, ItemStream, KeywordRef, NetdocParseableFields,
+    UnparsedItem,
 };
 
 use super::{PolicyError, PortRange, RuleKind};
