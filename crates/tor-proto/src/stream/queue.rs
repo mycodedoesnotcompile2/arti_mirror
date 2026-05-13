@@ -6,7 +6,7 @@
 //! messages. So the idea is that the "queue" (ex: [`StreamQueueReceiver`]) just holds data and the
 //! "channel" (ex: `StreamReceiver`) adds the Tor logic.
 //!
-//! The main purpose of these types are so that we can count how many bytes of stream data are
+//! The main purpose of these types is so that we can count how many bytes of stream data are
 //! stored for the stream. Ideally we'd use a channel type that tracks and reports this as part of
 //! its implementation, but popular channel implementations don't seem to do that.
 
