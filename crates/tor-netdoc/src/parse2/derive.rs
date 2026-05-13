@@ -1306,7 +1306,7 @@ define_derive_deftly! {
                               return Err(EP::ObjectIncorrectLabel)
                           }
                       } else {
-                          selector.check_label(object.label())?;
+                          selector.${paste_spanned $fname check_label}(object.label())?;
                       }}
                       ${if fmeta(netdoc(with)) {
                           ${fmeta(netdoc(with)) as path}::${paste_spanned $fname try_from}

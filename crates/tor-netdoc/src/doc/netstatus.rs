@@ -64,17 +64,20 @@ pub use proto_statuses_parse2_encode::ProtoStatusesNetdocParseAccumulator;
 #[cfg(feature = "incomplete")]
 use crate::doc::authcert::EncodedAuthCert;
 
-use crate::doc::authcert::{AuthCert, AuthCertKeyIds};
-use crate::encode::{ItemValueEncodable, NetdocEncodable, NetdocEncoder};
+use crate::doc::authcert::{self, AuthCert, AuthCertKeyIds};
+use crate::encode::{
+    ItemArgument, ItemEncoder, ItemValueEncodable, NetdocEncodable, NetdocEncoder,
+};
 use crate::parse::keyword::Keyword;
 use crate::parse::parser::{Section, SectionRules, SectionRulesBuilder};
 use crate::parse::tokenize::{Item, ItemResult, NetDocReader};
 use crate::parse2::{
-    self, ArgumentStream, ErrorProblem, IsStructural, ItemStream, ItemValueParseable, KeywordRef,
-    NetdocParseable, StopAt,
+    self, ArgumentError, ArgumentStream, ErrorProblem, IsStructural, ItemArgumentParseable,
+    ItemStream, ItemValueParseable, KeywordRef, NetdocParseable, SignatureHashInputs,
+    SignatureItemParseable, StopAt, UnparsedItem,
 };
-use crate::types::misc::*;
 use crate::types::relay_flags::{self, DocRelayFlags};
+use crate::types::{self, *};
 use crate::util::PeekableIterator;
 use crate::{Error, KeywordEncodable, NetdocErrorKind as EK, NormalItemArgument, Pos, Result};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -519,24 +522,198 @@ impl ConsensusFlavor {
     }
 }
 
-define_directory_signature_hash_algo! {
-    #[derive_deftly_adhoc] // TODO DIRAUTH; suppresses complaints about attrs used only in poc
+define_derive_deftly! {
+    /// Bespoke derives applied to [`DirectorySignatureHashAlgo`]
+    ///
+    /// Generates:
+    ///
+    ///  * [`DirectorySignaturesHashesAccu`]
+    ///  * [`DirectorySignaturesHashesAccu::update_from`]
+    ///  * [`DirectorySignaturesHashesAccu::hash_slice_for_verification`]
+    DirectorySignaturesHashesAccu:
+
+    ${define FNAME ${paste ${snake_case $vname}} }
+
+    /// `directory-signature`a hash algorithm argument
+    #[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Deftly)]
+    #[derive_deftly(AsMutSelf)]
+    #[non_exhaustive]
+    pub struct DirectorySignaturesHashesAccu {
+      $(
+        ${vattrs doc}
+        $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
+      )
+
+      /// `sha1` but without the algorithm name
+      ///
+      /// This is needed because the hash includes the whole signature item keyword line,
+      /// and therefore a signature with the `sha1` explicitly stated,
+      /// and one without, have different hashes!
+      ///
+      /// So we mustn't use the `sha1` field for both implicit and explicit use of SHA-1,
+      /// or multiple signatures with different syntax would overwrite each others'
+      /// different hashes.
+      sha1_unnamed: Option<[u8; 20]>,
+    }
+
+    impl DirectorySignaturesHashesAccu {
+        /// Calculate the hash for a signature item and update this accumulator
+        fn update_from(
+            &mut self,
+            algo: &DigestAlgoInSignature,
+            body: &SignatureHashInputs,
+        ) {
+            // Update the hash in self.$UPDATE according to algorithm $AGLO
+            // (uses dynamic bindings of those parameters)
+            ${define HASH {
+                // Avoid recalculating if we don't need to
+                self.$UPDATE.get_or_insert_with(|| {
+                    let mut h = tor_llcrypto::d::$ALGO::new();
+                    h.update(body.body().body());
+                    h.update(body.signature_item_kw_spc);
+                    h.finalize().into()
+                });
+            }}
+
+            match &**algo {
+              $(
+                Some(KeywordOrString::Known($vtype)) => {
+                    ${define UPDATE $FNAME}
+                    ${define ALGO $vname}
+                    $HASH
+                }
+              )
+                None => {
+                    ${define UPDATE sha1_unnamed}
+                    ${define ALGO Sha1}
+                    $HASH
+                }
+                Some(KeywordOrString::Unknown(..)) => {}
+            }
+        }
+
+        /// Return the hash value for a specific algorithm, as a slice
+        ///
+        /// `None` if the value wasn't computed.
+        /// That shouldn't happen.
+        // TODO DIRAUTH make private when poc's verification is abolished
+        pub(crate) fn hash_slice_for_verification(
+            &self,
+            algo: &DigestAlgoInSignature,
+        ) -> Option<&[u8]> {
+            match &**algo {
+              $(
+                Some(KeywordOrString::Known($vtype)) => Some(self.$FNAME.as_ref()?),
+              )
+                None => Some(self.sha1_unnamed.as_ref()?),
+                Some(KeywordOrString::Unknown(..)) => None,
+            }
+        }
+    }
 }
 
+/// `directory-signature` hash algorithm argument
+#[derive(Clone, Copy, Debug, Eq, PartialEq, strum::Display, strum::EnumString, Deftly)]
+#[derive_deftly(DirectorySignaturesHashesAccu)]
+#[non_exhaustive]
+#[strum(serialize_all = "snake_case")]
+pub enum DirectorySignatureHashAlgo {
+    /// SHA-1
+    #[deftly(hash_len = "20")]
+    Sha1,
+    /// SHA-256
+    #[deftly(hash_len = "32")]
+    Sha256,
+}
+
+/// `algorithm` field in a `directory-signature` item
+///
+/// This is extremely bizarre: it's an *optional item at the start of the arguments*!
+// TODO SPEC #350
+///
+/// So we parse it with some kind of nightmarish lookahead.
+///
+/// Additionally, to be able to convey the signatures accurately, without breaking them,
+/// we must remember whether the argument was present.
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:directory-signature>
+#[derive(Debug, Clone, derive_more::Deref, derive_more::DerefMut)]
+#[allow(clippy::exhaustive_structs)]
+pub struct DigestAlgoInSignature(pub Option<KeywordOrString<DirectorySignatureHashAlgo>>);
+
+impl ItemArgumentParseable for DigestAlgoInSignature {
+    fn from_args<'s>(args: &mut ArgumentStream<'s>) -> StdResult<Self, ArgumentError> {
+        let v = if args
+            .clone()
+            .next()
+            // Treat it as a fingerprint if it doesn't have any non-hex characters
+            // (including lowercase ones).  If we reuse this item for new algorithms
+            // they should have at least one letter g-z in their name.
+            .and_then(|s| s.chars().all(|c| c.is_ascii_hexdigit()).then_some(()))
+            .is_some()
+        {
+            // next argument looks enough like a fingerprint that we don't treat as an algo name
+            None
+        } else {
+            Some(KeywordOrString::from_args(args)?)
+        };
+        Ok(DigestAlgoInSignature(v))
+    }
+}
+impl ItemArgument for DigestAlgoInSignature {
+    fn write_arg_onto(&self, out: &mut ItemEncoder<'_>) -> StdResult<(), Bug> {
+        if let Some(y) = &self.0 {
+            y.write_arg_onto(out)?;
+        }
+        Ok(())
+    }
+}
+impl DigestAlgoInSignature {
+    /// Return the actual algorithm
+    ///
+    /// This handles the defaulting, where an absent argument means `sha1`.
+    pub fn algorithm(&self) -> &KeywordOrString<DirectorySignatureHashAlgo> {
+        self.as_ref()
+            .unwrap_or(&KeywordOrString::Known(DirectorySignatureHashAlgo::Sha1))
+    }
+}
+
+impl NormalItemArgument for DirectorySignatureHashAlgo {}
+
 /// The signature of a single directory authority on a networkstatus document.
-#[derive(Debug, Clone)]
+///
+/// Implements `ItemValueParseable` which parses without hashing anything;
+/// this is mostly useful for use by the `SignatureItemParseable` implementation.
+#[derive(Debug, Clone, Deftly)]
+#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 #[non_exhaustive]
 pub struct Signature {
     /// The name of the digest algorithm used to make the signature.
     ///
     /// Currently sha1 and sh256 are recognized.  Here we only support
     /// sha256.
-    pub digest_algo: KeywordOrString<DirectorySignatureHashAlgo>,
+    pub digest_algo: DigestAlgoInSignature,
     /// Fingerprints of the keys for the authority that made
     /// this signature.
+    #[deftly(netdoc(with = authcert::keyids_directory_signature_args))]
     pub key_ids: AuthCertKeyIds,
     /// The signature itself.
+    #[deftly(netdoc(object(label = "SIGNATURE"), with = types::raw_data_object))]
     pub signature: Vec<u8>,
+}
+
+impl SignatureItemParseable for Signature {
+    type HashAccu = DirectorySignaturesHashesAccu;
+
+    fn from_unparsed_and_body(
+        item: UnparsedItem,
+        body: &SignatureHashInputs<'_>,
+        hash: &mut Self::HashAccu,
+    ) -> StdResult<Self, ErrorProblem> {
+        let signature = Signature::from_unparsed(item)?;
+        hash.update_from(&signature.digest_algo, body);
+        Ok(signature)
+    }
 }
 
 /// A collection of signatures that can be checked on a networkstatus document
@@ -1258,7 +1435,7 @@ mod parse2_impls {
     use super::*;
     pub(super) use parse2::{
         ArgumentError as AE, ArgumentStream, ErrorProblem as EP, ItemArgumentParseable,
-        ItemValueParseable, NetdocParseableFields, UnparsedItem,
+        ItemValueParseable, NetdocParseableFields,
     };
     use std::result::Result;
 
@@ -1463,6 +1640,7 @@ impl Signature {
         };
 
         let digest_algo = digest_algo.to_string().parse().void_unwrap();
+        let digest_algo = DigestAlgoInSignature(Some(digest_algo));
         let id_fingerprint = id_fp.parse::<Fingerprint>()?.into();
         let sk_fingerprint = sk_fp.parse::<Fingerprint>()?.into();
         let key_ids = AuthCertKeyIds {
@@ -1574,7 +1752,7 @@ impl SignatureGroup {
             use DirectorySignatureHashAlgo as DSHA;
             use KeywordOrString as KOS;
 
-            let d: Option<&[u8]> = match sig.digest_algo {
+            let d: Option<&[u8]> = match sig.digest_algo.algorithm() {
                 KOS::Known(DSHA::Sha256) => self.sha256.as_ref().map(|a| &a[..]),
                 KOS::Known(DSHA::Sha1) => self.sha1.as_ref().map(|a| &a[..]),
                 _ => None, // We don't know how to find this digest.
