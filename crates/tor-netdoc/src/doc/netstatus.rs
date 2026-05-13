@@ -1588,8 +1588,9 @@ impl RelayWeight {
         }
 
         let params = item.args_as_str().parse()?;
+        let effective = RelayWeight::from_net_params(&params).map_err(|e| e.at_pos(item.pos()))?;
 
-        Self::from_net_params(&params).map_err(|e| e.at_pos(item.pos()))
+        Ok(effective)
     }
 
     /// Parse a routerweight from partially-parsed `w` line in the form of a `NetParams`
