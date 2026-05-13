@@ -31,3 +31,4 @@ ADDED: encoding implementation for `rs::SoftwareVersion`
 BREAKING: `NetdocParseableFields::finish` has an additional `ItemStream` argument
 BREAKING: parsing/encoding impls for `NetParams` made generic
 ADDED: `Unknown::into_retained` now available (always fails) even without `retain-unknown`
+ADDED: `TryFrom<&NetParams<u32>> for RelayWeight`

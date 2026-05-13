@@ -1596,6 +1596,25 @@ impl RelayWeight {
     ///
     /// This function is the common part shared between `parse2` and `parse`.
     fn from_net_params(params: &NetParams<u32>) -> Result<RelayWeight> {
+        params
+            .try_into()
+            .map_err(|e: InvalidRelayWeights| EK::BadArgument.with_msg(e.to_string()))
+    }
+}
+
+/// Error processing a `w` line's netparams into an effective relay weight
+#[derive(Debug, Clone, thiserror::Error)]
+#[non_exhaustive]
+pub enum InvalidRelayWeights {
+    /// Invalid value for `Unmeasured`
+    #[error("invalid value for Unmeasured")]
+    InvalidUnmeasured,
+}
+
+impl TryFrom<&NetParams<u32>> for RelayWeight {
+    type Error = InvalidRelayWeights;
+
+    fn try_from(params: &NetParams<u32>) -> StdResult<RelayWeight, InvalidRelayWeights> {
         let bw = params.params.get("Bandwidth");
         let unmeas = params.params.get("Unmeasured");
 
@@ -1607,7 +1626,7 @@ impl RelayWeight {
         match unmeas {
             None | Some(0) => Ok(RelayWeight::Measured(bw)),
             Some(1) => Ok(RelayWeight::Unmeasured(bw)),
-            _ => Err(EK::BadArgument.with_msg("unmeasured value")),
+            _ => Err(InvalidRelayWeights::InvalidUnmeasured),
         }
     }
 }
