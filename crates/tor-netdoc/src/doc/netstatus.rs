@@ -867,15 +867,13 @@ pub enum RelayWeight {
     Measured(u32),
 }
 
-impl RelayWeight {
-    /// Return true if this weight is the result of a successful measurement
-    pub fn is_measured(&self) -> bool {
-        matches!(self, RelayWeight::Measured(_))
-    }
-    /// Return true if this weight is nonzero
-    pub fn is_nonzero(&self) -> bool {
-        !matches!(self, RelayWeight::Unmeasured(0) | RelayWeight::Measured(0))
-    }
+/// Error processing a `w` line's netparams into an effective relay weight
+#[derive(Debug, Clone, thiserror::Error)]
+#[non_exhaustive]
+pub enum InvalidRelayWeights {
+    /// Invalid value for `Unmeasured`
+    #[error("invalid value for Unmeasured")]
+    InvalidUnmeasured,
 }
 
 /// Authority entry in a consensus - deprecated compatibility type alias
@@ -1617,12 +1615,6 @@ impl ConsensusAuthorityEntry {
     }
 }
 
-impl Default for RelayWeight {
-    fn default() -> RelayWeight {
-        RelayWeight::Unmeasured(0)
-    }
-}
-
 impl RelayWeights {
     /// Return a new `RelayWeights` containing no information
     ///
@@ -1677,8 +1669,17 @@ impl RelayWeights {
     const KEYWORD: &str = "w";
 }
 
-// XXXX put in sensible order so there's one impl block for each type
 impl RelayWeight {
+    /// Return true if this weight is the result of a successful measurement
+    pub fn is_measured(&self) -> bool {
+        matches!(self, RelayWeight::Measured(_))
+    }
+
+    /// Return true if this weight is nonzero
+    pub fn is_nonzero(&self) -> bool {
+        !matches!(self, RelayWeight::Unmeasured(0) | RelayWeight::Measured(0))
+    }
+
     /// Parse a routerweight from partially-parsed `w` line in the form of a `NetParams`
     ///
     /// This function is the common part shared between `parse2` and `parse`.
@@ -1689,13 +1690,10 @@ impl RelayWeight {
     }
 }
 
-/// Error processing a `w` line's netparams into an effective relay weight
-#[derive(Debug, Clone, thiserror::Error)]
-#[non_exhaustive]
-pub enum InvalidRelayWeights {
-    /// Invalid value for `Unmeasured`
-    #[error("invalid value for Unmeasured")]
-    InvalidUnmeasured,
+impl Default for RelayWeight {
+    fn default() -> RelayWeight {
+        RelayWeight::Unmeasured(0)
+    }
 }
 
 impl TryFrom<&NetParams<u32>> for RelayWeight {
