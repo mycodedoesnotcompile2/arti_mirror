@@ -873,6 +873,9 @@ cli-help:
 # TODO: in the future we may want to build and run the fuzz tests, but checking is good enough for now
 # https://gitlab.torproject.org/tpo/core/arti/-/issues/1350
 fuzz-check:
+  rules:
+   # Job never runs.  See arti#2526, https://github.com/rust-fuzz/cargo-fuzz/issues/442.
+   - when: never
   stage: test
   # cargo-fuzz needs nightly
   image: docker.io/rustlang/rust:nightly
