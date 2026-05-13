@@ -87,10 +87,6 @@ use tor_persist::TestingStateMgr as UsingStateMgr;
 /// While it's running, it will fetch directory information, build
 /// circuits, and make connections for you.
 ///
-/// Cloning this object makes a new reference to the same underlying
-/// handles: it's usually better to clone the `TorClient` than it is to
-/// create a new one.
-///
 /// # In the Arti RPC System
 ///
 /// An open client on the Tor network.
@@ -740,8 +736,8 @@ impl StreamPrefs {
     /// and sets it for these preferences.
     ///
     /// This connection preference is orthogonal to isolation established by
-    /// [`TorClient::isolated_client`].  Connections made with an `isolated_client` (and its
-    /// clones) will not share circuits with the original client, even if the same
+    /// [`TorClient::isolated_client`].  Connections made with an `isolated_client`
+    ///  will not share circuits with the original client, even if the same
     /// `isolation` is specified via the `ConnectionPrefs` in force.
     pub fn new_isolation_group(&mut self) -> &mut Self {
         self.isolation = StreamIsolationPreference::Explicit(Box::new(IsolationToken::new()));
@@ -751,12 +747,12 @@ impl StreamPrefs {
     /// Indicate which other connections might use the same circuit
     /// as this one.
     ///
-    /// By default all connections made on all clones of a `TorClient` may share connections.
+    /// By default all connections made on a `TorClient` may share connections.
     /// Connections made with a particular `isolation` may share circuits with each other.
     ///
     /// This connection preference is orthogonal to isolation established by
-    /// [`TorClient::isolated_client`].  Connections made with an `isolated_client` (and its
-    /// clones) will not share circuits with the original client, even if the same
+    /// [`TorClient::isolated_client`].  Connections made with an `isolated_client`
+    /// will not share circuits with the original client, even if the same
     /// `isolation` is specified via the `ConnectionPrefs` in force.
     pub fn set_isolation<T>(&mut self, isolation: T) -> &mut Self
     where
@@ -1128,12 +1124,8 @@ impl<R: Runtime> TorClient<R> {
 
     /// Bootstrap a connection to the Tor network, with a client created by `create_unbootstrapped`.
     ///
-    /// Since cloned copies of a `TorClient` share internal state, you can bootstrap a client by
-    /// cloning it and running this function in a background task (or similar). This function
-    /// only needs to be called on one client in order to bootstrap all of its clones.
-    ///
     /// Returns once there is enough directory material to connect safely over the Tor network.
-    /// If the client or one of its clones has already been bootstrapped, returns immediately with
+    /// If the client has already been bootstrapped, returns immediately with
     /// success. If a bootstrap is in progress, waits for it to finish, then retries it if it
     /// failed (returning success if it succeeded).
     ///
@@ -1223,9 +1215,6 @@ impl<R: Runtime> TorClient<R> {
     /// Calling this function is usually preferable to creating a
     /// completely separate TorClient instance, since it can share its
     /// internals with the existing `TorClient`.
-    ///
-    /// (Connections made with clones of the returned `TorClient` may
-    /// share circuits with each other.)
     #[must_use]
     pub fn isolated_client(&self) -> Arc<TorClient<R>> {
         let result = TorClient {
@@ -1428,7 +1417,7 @@ impl<R: Runtime> TorClient<R> {
     /// Provides a new handle on this client, but with adjusted default preferences.
     ///
     /// Connections made with e.g. [`connect`](TorClient::connect) on the returned handle will use
-    /// `connect_prefs`.  This is a convenience wrapper for `clone` and `set_connect_prefs`.
+    /// `connect_prefs`.
     #[must_use]
     pub fn with_prefs(&self, connect_prefs: StreamPrefs) -> Arc<Self> {
         let result = TorClient {
