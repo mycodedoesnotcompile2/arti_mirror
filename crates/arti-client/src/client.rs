@@ -1595,25 +1595,12 @@ impl<R: Runtime> TorClient<R> {
         Ok(stream?)
     }
 
-    // XXXX no longer reachable
-    /// Sets the default preferences for future connections made with this client.
-    ///
-    /// The preferences set with this function will be inherited by clones of this client, but
-    /// updates to the preferences in those clones will not propagate back to the original.  I.e.,
-    /// the preferences are copied by `clone`.
-    ///
-    /// Connection preferences always override configuration, even configuration set later
-    /// (eg, by a config reload).
-    pub fn set_stream_prefs(&mut self, connect_prefs: StreamPrefs) {
-        self.connect_prefs = connect_prefs;
-    }
-
     /// Provides a new handle on this client, but with adjusted default preferences.
     ///
     /// Connections made with e.g. [`connect`](TorClient::connect) on the returned handle will use
     /// `connect_prefs`.  This is a convenience wrapper for `clone` and `set_connect_prefs`.
     #[must_use]
-    pub fn clone_with_prefs(&self, connect_prefs: StreamPrefs) -> Arc<Self> {
+    pub fn with_prefs(&self, connect_prefs: StreamPrefs) -> Arc<Self> {
         let result = TorClient {
             client_isolation: self.client_isolation,
             connect_prefs,
