@@ -97,6 +97,8 @@ pub(crate) mod test {
     #[cfg(feature = "relay")]
     use crate::relay::{CircNetParameters, CongestionControlNetParams};
 
+    pub(crate) use super::circ_sender::test::fake_mpsc;
+
     /// Return a new [`CircNetParameters`] using default values for unit tests. They are based on
     /// consensus defaults but should not be considered to be accurate from the one used on the
     /// production network.

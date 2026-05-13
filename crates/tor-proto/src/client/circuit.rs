@@ -85,9 +85,6 @@ use tor_memquota::derive_deftly_template_HasMemoryCost;
 
 use crate::crypto::handshake::ntor::NtorPublicKey;
 
-#[cfg(test)]
-use crate::stream::{StreamMpscReceiver, StreamMpscSender};
-
 pub use crate::crypto::binding::CircuitBinding;
 pub use path::{Path, PathEntry};
 
@@ -1011,6 +1008,7 @@ pub(crate) mod test {
     use crate::channel::test::{CodecResult, new_reactor};
     use crate::circuit::CircuitRxSender;
     use crate::circuit::reactor::test::rmsg_to_ccmsg;
+    use crate::circuit::test::fake_mpsc;
     use crate::client::circuit::padding::new_padding;
     use crate::client::stream::DataStream;
     use crate::congestion::params::CongestionControlParams;
@@ -1039,7 +1037,6 @@ pub(crate) mod test {
     };
     use tor_cell::relaycell::{RelayMsg, UnparsedRelayMsg};
     use tor_linkspec::OwnedCircTarget;
-    use tor_memquota::HasMemoryCost;
     use tor_rtcompat::Runtime;
     use tor_rtcompat::SpawnExt;
     use tracing::trace;
@@ -1097,14 +1094,6 @@ pub(crate) mod test {
         hex!("395cb26b83b3cd4b91dba9913e562ae87d21ecdd56843da7ca939a6a69001253");
     const EXAMPLE_ED_ID: [u8; 32] = [6; 32];
     const EXAMPLE_RSA_ID: [u8; 20] = [10; 20];
-
-    /// Make an MPSC queue, of the type we use in Channels, but a fake one for testing
-    #[cfg(test)]
-    pub(crate) fn fake_mpsc<T: HasMemoryCost + Debug + Send>(
-        buffer: usize,
-    ) -> (StreamMpscSender<T>, StreamMpscReceiver<T>) {
-        crate::fake_mpsc(buffer)
-    }
 
     /// return an example OwnedCircTarget that can get used for an ntor handshake.
     fn example_target() -> OwnedCircTarget {

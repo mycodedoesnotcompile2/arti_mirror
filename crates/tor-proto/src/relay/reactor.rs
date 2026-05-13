@@ -207,12 +207,12 @@ pub(crate) mod test {
 
     use super::*;
     use crate::circuit::reactor::test::{AllowAllStreamsFilter, rmsg_to_ccmsg};
+    use crate::circuit::test::fake_mpsc;
     use crate::circuit::{CircParameters, CircuitRxSender};
     use crate::client::circuit::padding::new_padding;
     use crate::congestion::test_utils::params::build_cc_vegas_params;
     use crate::crypto::cell::RelayCellBody;
     use crate::crypto::cell::{InboundRelayLayer, OutboundRelayLayer};
-    use crate::fake_mpsc;
     use crate::memquota::SpecificAccount as _;
     use crate::relay::channel::test::{DummyChan, DummyChanProvider, working_dummy_channel};
     use crate::stream::flow_ctrl::params::FlowCtrlParameters;
