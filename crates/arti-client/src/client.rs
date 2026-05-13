@@ -1153,104 +1153,6 @@ impl<R: Runtime> TorClient<R> {
     }
 }
 
-// XXXX collect all impl<R> Client<R> sections into one.
-impl<R: Runtime> ClientInner<R> {
-    /// Implementation of `bootstrap`, split out in order to avoid manually specifying
-    /// double error conversions.
-    async fn bootstrap_inner(&self) -> StdResult<(), ErrorDetail> {
-        // Make sure we have a bridge descriptor manager, which is active iff required
-        #[cfg(feature = "bridge-client")]
-        {
-            let mut dormant = self.dormant.lock().expect("dormant lock poisoned");
-            let dormant = dormant.borrow();
-            let dormant = dormant.ok_or_else(|| internal!("dormant dropped"))?.into();
-
-            let mut bdm = self.bridge_desc_mgr.lock().expect("bdm lock poisoned");
-            if bdm.is_none() {
-                let new_bdm = Arc::new(BridgeDescMgr::new(
-                    &Default::default(),
-                    self.runtime.clone(),
-                    self.dirmgr_store.clone(),
-                    self.circmgr.clone(),
-                    dormant,
-                )?);
-                self.guardmgr
-                    .install_bridge_desc_provider(&(new_bdm.clone() as _))
-                    .map_err(ErrorDetail::GuardMgrSetup)?;
-                // If ^ that fails, we drop the BridgeDescMgr again.  It may do some
-                // work but will hopefully eventually quit.
-                *bdm = Some(new_bdm);
-            }
-        }
-
-        // Wait for an existing bootstrap attempt to finish first.
-        //
-        // This is a futures::lock::Mutex, so it's okay to await while we hold it.
-        let _bootstrap_lock = self.bootstrap_in_progress.lock().await;
-
-        if self
-            .statemgr
-            .try_lock()
-            .map_err(ErrorDetail::StateAccess)?
-            .held()
-        {
-            debug!("It appears we have the lock on our state files.");
-        } else {
-            info!(
-                "Another process has the lock on our state files. We'll proceed in read-only mode."
-            );
-        }
-
-        // If we fail to bootstrap (i.e. we return before the disarm() point below), attempt to
-        // unlock the state files.
-        let unlock_guard = util::StateMgrUnlockGuard::new(&self.statemgr);
-
-        self.dirmgr
-            .bootstrap()
-            .await
-            .map_err(ErrorDetail::DirMgrBootstrap)?;
-
-        // Since we succeeded, disarm the unlock guard.
-        unlock_guard.disarm();
-
-        Ok(())
-    }
-
-    /// ## For `BootstrapBehavior::OnDemand` clients
-    ///
-    /// Initiate a bootstrap by calling `bootstrap` (which is idempotent, so attempts to
-    /// bootstrap twice will just do nothing).
-    ///
-    /// ## For `BootstrapBehavior::Manual` clients
-    ///
-    /// Check whether a bootstrap is in progress; if one is, wait until it finishes
-    /// and then return. (Otherwise, return immediately.)
-    #[instrument(skip_all, level = "trace")]
-    async fn wait_for_bootstrap(&self) -> StdResult<(), ErrorDetail> {
-        match self.should_bootstrap {
-            BootstrapBehavior::OnDemand => {
-                self.bootstrap_inner().await?;
-            }
-            BootstrapBehavior::Manual => {
-                // Grab the lock, and immediately release it.  That will ensure that nobody else is trying to bootstrap.
-                self.bootstrap_in_progress.lock().await;
-            }
-        }
-        self.dormant
-            .lock()
-            .map_err(|_| internal!("dormant poisoned"))?
-            .try_maybe_send(|dormant| {
-                Ok::<_, Bug>(Some({
-                    match dormant.ok_or_else(|| internal!("dormant dropped"))? {
-                        DormantMode::Soft => DormantMode::Normal,
-                        other @ DormantMode::Normal => other,
-                    }
-                }))
-            })?;
-        Ok(())
-    }
-}
-
 impl<R: Runtime> TorClient<R> {
     /// Change the configuration of this TorClient to `new_config`.
     ///
@@ -1308,80 +1210,7 @@ impl<R: Runtime> TorClient<R> {
 
         Ok(())
     }
-}
 
-impl<R: Runtime> ClientInner<R> {
-    /// This is split out from `reconfigure` so we can do the all-or-nothing
-    /// check without recursion. the caller to this method must hold the
-    /// `reconfigure_lock`.
-    #[instrument(level = "trace", skip_all)]
-    fn reconfigure_inner(
-        &self,
-        new_config: &TorClientConfig,
-        how: tor_config::Reconfigure,
-        _reconfigure_lock_guard: &std::sync::MutexGuard<'_, ()>,
-    ) -> crate::Result<()> {
-        // We ignore 'new_config.path_resolver' here since CfgPathResolver does not impl PartialEq
-        // and we have no way to compare them, but this field is explicitly documented as being
-        // non-reconfigurable anyways.
-
-        let dir_cfg = new_config.dir_mgr_config().map_err(wrap_err)?;
-        let state_cfg = new_config
-            .storage
-            .expand_state_dir(&self.path_resolver)
-            .map_err(wrap_err)?;
-        let addr_cfg = &new_config.address_filter;
-        let timeout_cfg = &new_config.stream_timeouts;
-
-        // TODO wasm: This ins't really how things should be long term,
-        // but once we have a more generic notion of configuring storage
-        // we can change this to comply with it.
-        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-        if state_cfg != self.statemgr.path() {
-            how.cannot_change("storage.state_dir").map_err(wrap_err)?;
-        }
-
-        self.memquota
-            .reconfigure(new_config.system.memory.clone(), how)
-            .map_err(wrap_err)?;
-
-        let retire_circuits = self
-            .circmgr
-            .reconfigure(new_config, how)
-            .map_err(wrap_err)?;
-
-        #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
-        if retire_circuits != RetireCircuits::None {
-            self.hs_circ_pool.retire_all_circuits().map_err(wrap_err)?;
-        }
-
-        self.dirmgr.reconfigure(&dir_cfg, how).map_err(wrap_err)?;
-
-        let netparams = self.dirmgr.params();
-
-        self.chanmgr
-            .reconfigure(&new_config.channel, how, netparams)
-            .map_err(wrap_err)?;
-
-        #[cfg(feature = "pt-client")]
-        self.pt_mgr
-            .reconfigure(how, new_config.bridges.transports.clone())
-            .map_err(wrap_err)?;
-
-        if how == tor_config::Reconfigure::CheckAllOrNothing {
-            return Ok(());
-        }
-
-        self.addrcfg.replace(addr_cfg.clone());
-        self.timeoutcfg.replace(timeout_cfg.clone());
-        self.software_status_cfg
-            .replace(new_config.use_obsolete_software.clone());
-
-        Ok(())
-    }
-}
-
-impl<R: Runtime> TorClient<R> {
     /// Return a new isolated `TorClient` handle.
     ///
     /// The two `TorClient`s will share internal state and configuration, but
@@ -2188,6 +2017,172 @@ impl<R: Runtime> TorClient<R> {
     #[cfg(feature = "onion-service-cli-extra")]
     pub fn keymgr(&self) -> crate::Result<&KeyMgr> {
         self.client.inert_client.keymgr()
+    }
+}
+
+impl<R: Runtime> ClientInner<R> {
+    /// Implementation of `bootstrap`, split out in order to avoid manually specifying
+    /// double error conversions.
+    async fn bootstrap_inner(&self) -> StdResult<(), ErrorDetail> {
+        // Make sure we have a bridge descriptor manager, which is active iff required
+        #[cfg(feature = "bridge-client")]
+        {
+            let mut dormant = self.dormant.lock().expect("dormant lock poisoned");
+            let dormant = dormant.borrow();
+            let dormant = dormant.ok_or_else(|| internal!("dormant dropped"))?.into();
+
+            let mut bdm = self.bridge_desc_mgr.lock().expect("bdm lock poisoned");
+            if bdm.is_none() {
+                let new_bdm = Arc::new(BridgeDescMgr::new(
+                    &Default::default(),
+                    self.runtime.clone(),
+                    self.dirmgr_store.clone(),
+                    self.circmgr.clone(),
+                    dormant,
+                )?);
+                self.guardmgr
+                    .install_bridge_desc_provider(&(new_bdm.clone() as _))
+                    .map_err(ErrorDetail::GuardMgrSetup)?;
+                // If ^ that fails, we drop the BridgeDescMgr again.  It may do some
+                // work but will hopefully eventually quit.
+                *bdm = Some(new_bdm);
+            }
+        }
+
+        // Wait for an existing bootstrap attempt to finish first.
+        //
+        // This is a futures::lock::Mutex, so it's okay to await while we hold it.
+        let _bootstrap_lock = self.bootstrap_in_progress.lock().await;
+
+        if self
+            .statemgr
+            .try_lock()
+            .map_err(ErrorDetail::StateAccess)?
+            .held()
+        {
+            debug!("It appears we have the lock on our state files.");
+        } else {
+            info!(
+                "Another process has the lock on our state files. We'll proceed in read-only mode."
+            );
+        }
+
+        // If we fail to bootstrap (i.e. we return before the disarm() point below), attempt to
+        // unlock the state files.
+        let unlock_guard = util::StateMgrUnlockGuard::new(&self.statemgr);
+
+        self.dirmgr
+            .bootstrap()
+            .await
+            .map_err(ErrorDetail::DirMgrBootstrap)?;
+
+        // Since we succeeded, disarm the unlock guard.
+        unlock_guard.disarm();
+
+        Ok(())
+    }
+
+    /// ## For `BootstrapBehavior::OnDemand` clients
+    ///
+    /// Initiate a bootstrap by calling `bootstrap` (which is idempotent, so attempts to
+    /// bootstrap twice will just do nothing).
+    ///
+    /// ## For `BootstrapBehavior::Manual` clients
+    ///
+    /// Check whether a bootstrap is in progress; if one is, wait until it finishes
+    /// and then return. (Otherwise, return immediately.)
+    #[instrument(skip_all, level = "trace")]
+    async fn wait_for_bootstrap(&self) -> StdResult<(), ErrorDetail> {
+        match self.should_bootstrap {
+            BootstrapBehavior::OnDemand => {
+                self.bootstrap_inner().await?;
+            }
+            BootstrapBehavior::Manual => {
+                // Grab the lock, and immediately release it.  That will ensure that nobody else is trying to bootstrap.
+                self.bootstrap_in_progress.lock().await;
+            }
+        }
+        self.dormant
+            .lock()
+            .map_err(|_| internal!("dormant poisoned"))?
+            .try_maybe_send(|dormant| {
+                Ok::<_, Bug>(Some({
+                    match dormant.ok_or_else(|| internal!("dormant dropped"))? {
+                        DormantMode::Soft => DormantMode::Normal,
+                        other @ DormantMode::Normal => other,
+                    }
+                }))
+            })?;
+        Ok(())
+    }
+
+    /// This is split out from `reconfigure` so we can do the all-or-nothing
+    /// check without recursion. the caller to this method must hold the
+    /// `reconfigure_lock`.
+    #[instrument(level = "trace", skip_all)]
+    fn reconfigure_inner(
+        &self,
+        new_config: &TorClientConfig,
+        how: tor_config::Reconfigure,
+        _reconfigure_lock_guard: &std::sync::MutexGuard<'_, ()>,
+    ) -> crate::Result<()> {
+        // We ignore 'new_config.path_resolver' here since CfgPathResolver does not impl PartialEq
+        // and we have no way to compare them, but this field is explicitly documented as being
+        // non-reconfigurable anyways.
+
+        let dir_cfg = new_config.dir_mgr_config().map_err(wrap_err)?;
+        let state_cfg = new_config
+            .storage
+            .expand_state_dir(&self.path_resolver)
+            .map_err(wrap_err)?;
+        let addr_cfg = &new_config.address_filter;
+        let timeout_cfg = &new_config.stream_timeouts;
+
+        // TODO wasm: This ins't really how things should be long term,
+        // but once we have a more generic notion of configuring storage
+        // we can change this to comply with it.
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        if state_cfg != self.statemgr.path() {
+            how.cannot_change("storage.state_dir").map_err(wrap_err)?;
+        }
+
+        self.memquota
+            .reconfigure(new_config.system.memory.clone(), how)
+            .map_err(wrap_err)?;
+
+        let retire_circuits = self
+            .circmgr
+            .reconfigure(new_config, how)
+            .map_err(wrap_err)?;
+
+        #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
+        if retire_circuits != RetireCircuits::None {
+            self.hs_circ_pool.retire_all_circuits().map_err(wrap_err)?;
+        }
+
+        self.dirmgr.reconfigure(&dir_cfg, how).map_err(wrap_err)?;
+
+        let netparams = self.dirmgr.params();
+
+        self.chanmgr
+            .reconfigure(&new_config.channel, how, netparams)
+            .map_err(wrap_err)?;
+
+        #[cfg(feature = "pt-client")]
+        self.pt_mgr
+            .reconfigure(how, new_config.bridges.transports.clone())
+            .map_err(wrap_err)?;
+
+        if how == tor_config::Reconfigure::CheckAllOrNothing {
+            return Ok(());
+        }
+
+        self.addrcfg.replace(addr_cfg.clone());
+        self.timeoutcfg.replace(timeout_cfg.clone());
+        self.software_status_cfg
+            .replace(new_config.use_obsolete_software.clone());
+
+        Ok(())
     }
 }
 
