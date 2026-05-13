@@ -1692,6 +1692,13 @@ mod encode_impls {
             Ok(())
         }
     }
+
+    impl ItemArgument for IgnoredPublicationTimeSp {
+        fn write_arg_onto(&self, out: &mut ItemEncoder) -> Result<(), Bug> {
+            out.args_raw_string(&"2000-01-01 00:00:01");
+            Ok(())
+        }
+    }
 }
 
 impl ConsensusFooterFields {
