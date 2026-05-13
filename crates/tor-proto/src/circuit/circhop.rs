@@ -12,7 +12,7 @@ use crate::stream::SEND_WINDOW_INIT;
 use crate::stream::StreamMpscReceiver;
 use crate::stream::cmdcheck::{AnyCmdChecker, StreamStatus};
 use crate::stream::flow_ctrl::params::FlowCtrlParameters;
-use crate::stream::flow_ctrl::state::{StreamFlowCtrl, StreamRateLimit};
+use crate::stream::flow_ctrl::state::{FlowCtrlHooks, StreamFlowCtrl, StreamRateLimit};
 use crate::stream::flow_ctrl::xon_xoff::reader::DrainRateRequest;
 use crate::stream::queue::{StreamQueueReceiver, stream_queue};
 use crate::streammap::{
@@ -399,12 +399,9 @@ impl CircHopOutbound {
     ) -> Result<(SendRelayCell, StreamId, StreamQueueReceiver)> {
         let flow_ctrl = self.build_flow_ctrl(rate_limit_updater, drain_rate_requester)?;
 
-        let (sender, receiver) = stream_queue(
-            #[cfg(not(feature = "flowctl-cc"))]
-            crate::stream::STREAM_READER_BUFFER,
-            memquota,
-            time_prov,
-        )?;
+        let stream_queue_max_len = flow_ctrl.inbound_queue_max_len();
+
+        let (sender, receiver) = stream_queue(stream_queue_max_len, memquota, time_prov)?;
 
         let r =
             self.map
@@ -605,12 +602,9 @@ impl CircHopOutbound {
     ) -> Result<StreamQueueReceiver> {
         let flow_ctrl = self.build_flow_ctrl(rate_limit_updater, drain_rate_requester)?;
 
-        let (sender, receiver) = stream_queue(
-            #[cfg(not(feature = "flowctl-cc"))]
-            crate::stream::STREAM_READER_BUFFER,
-            memquota,
-            time_prov,
-        )?;
+        let stream_queue_max_len = flow_ctrl.inbound_queue_max_len();
+
+        let (sender, receiver) = stream_queue(stream_queue_max_len, memquota, time_prov)?;
 
         let mut hop_map = self.map.lock().expect("lock poisoned");
         hop_map.add_ent_with_id(sender, rx, flow_ctrl, stream_id, cmd_checker)?;

@@ -20,35 +20,30 @@ use tor_async_utils::SinkTrySend;
 use tor_async_utils::peekable_stream::UnobtrusivePeekableStream;
 use tor_async_utils::stream_peek::StreamUnobtrusivePeeker;
 use tor_cell::relaycell::UnparsedRelayMsg;
-use tor_memquota::mq_queue::{self, ChannelSpec, MpscSpec, MpscUnboundedSpec};
+use tor_memquota::mq_queue::{self, ChannelSpec, MpscSpec};
 use tor_rtcompat::DynTimeProvider;
 
 use crate::memquota::{SpecificAccount, StreamAccount};
 
-// TODO(arti#534): remove these type aliases when we remove the "flowctl-cc" feature,
-// and just use `MpscUnboundedSpec` everywhere
-#[cfg(feature = "flowctl-cc")]
-/// Alias for the memquota mpsc spec.
-type Spec = MpscUnboundedSpec;
-#[cfg(not(feature = "flowctl-cc"))]
 /// Alias for the memquota mpsc spec.
 type Spec = MpscSpec;
 
-/// Create a new stream queue for incoming messages.
+/// Create a new stream queue for incoming messages
+/// (messages arriving on the stream from the Tor network).
 pub(crate) fn stream_queue(
-    #[cfg(not(feature = "flowctl-cc"))] size: usize,
+    size: usize,
     memquota: &StreamAccount,
     time_prov: &DynTimeProvider,
 ) -> Result<(StreamQueueSender, StreamQueueReceiver), tor_memquota::Error> {
-    let (sender, receiver) = {
-        cfg_if::cfg_if! {
-            if #[cfg(not(feature = "flowctl-cc"))] {
-                MpscSpec::new(size).new_mq(time_prov.clone(), memquota.as_raw_account())?
-            } else {
-                MpscUnboundedSpec::new().new_mq(time_prov.clone(), memquota.as_raw_account())?
-            }
-        }
-    };
+    // Note that the size here may be very large,
+    // for example when used with XON/XOFF flow control.
+    //
+    // Someday if we remove support for window-based flow control
+    // and only support XON/XOFF flow control,
+    // we may want to make this unbounded instead.
+    // https://gitlab.torproject.org/tpo/core/arti/-/work_items/2412
+    let (sender, receiver) =
+        MpscSpec::new(size).new_mq(time_prov.clone(), memquota.as_raw_account())?;
 
     let receiver = StreamUnobtrusivePeeker::new(receiver);
     let counter = Arc::new(Mutex::new(0));
@@ -64,16 +59,13 @@ pub(crate) fn stream_queue(
 /// For testing purposes, create a stream queue with a no-op memquota account and a fake time
 /// provider.
 #[cfg(test)]
-pub(crate) fn fake_stream_queue(
-    #[cfg(not(feature = "flowctl-cc"))] size: usize,
-) -> (StreamQueueSender, StreamQueueReceiver) {
+pub(crate) fn fake_stream_queue(size: usize) -> (StreamQueueSender, StreamQueueReceiver) {
     // The fake Account doesn't care about the data ages, so this will do.
     //
     // This would be wrong to use generally in tests, where we might want to mock time,
     // since we end up, here with totally *different* mocked time.
     // But it's OK here, and saves passing a runtime parameter into this function.
     stream_queue(
-        #[cfg(not(feature = "flowctl-cc"))]
         size,
         &StreamAccount::new_noop(),
         &DynTimeProvider::new(tor_rtmock::MockRuntime::default()),
