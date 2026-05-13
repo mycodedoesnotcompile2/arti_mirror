@@ -843,6 +843,13 @@ pub struct SharedRandStatuses {
 // (ie, in clients) each routerstatus entry stored in memory does not need to record
 // whether `w` was present, merely what the implications were.
 ///
+/// # Encoding
+///
+/// Encoding requires knowing whether a `w` line is to be included, and its contents,
+/// so is implemented only with if `effective` is `Unknown::Retained`.
+/// The encoding impl is only compiled in with `"retain-unknown"`,
+/// and throws [`Bug`] if applied to a `RelayWeights` whose `params` are `Discarded`.
+///
 /// # Constructors
 ///
 /// An "empty" `RelayWeights` can be constructed with [`RelayWeights::new_no_info`].
@@ -1842,6 +1849,16 @@ mod encode_impls {
         crate::encode::{ItemEncoder, ItemValueEncodable, NetdocEncodableFields},
         tor_error::Bug,
     };
+
+    #[cfg(feature = "incomplete")] // untested
+    impl NetdocEncodableFields for RelayWeights {
+        fn encode_fields(&self, out: &mut NetdocEncoder) -> Result<(), Bug> {
+            if let Some(w) = self.params.as_ref().into_retained()? {
+                w.write_item_value_onto(out.item(Self::KEYWORD))?;
+            }
+            Ok(())
+        }
+    }
 
     // The NormalItemArgument bound ensures that this is applied only to sane types eg integers
     impl<T: NormalItemArgument + Ord + Display> ItemValueEncodable for NetParams<T> {
