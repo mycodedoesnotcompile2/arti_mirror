@@ -128,7 +128,8 @@ pub(crate) fn run<R: Runtime>(
         KeysSubcommand::ListKeystores => run_list_keystores(&client_builder.create_inert()?),
         KeysSubcommand::CheckIntegrity(args) => run_check_integrity(
             &args,
-            &rt.reenter_block_on(client_builder.create_bootstrapped())?,
+            rt.reenter_block_on(client_builder.create_bootstrapped())?
+                .as_ref(),
             config,
             client_config,
         ),

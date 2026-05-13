@@ -84,7 +84,7 @@ impl ArtiRpcSession {
     ) -> Arc<Self> {
         let _ = auth; // This is currently unused; any authentication gives the same result.
         let client = client_root.isolated_client();
-        let session = arti_rpcserver::RpcSession::new_with_client(Arc::new(client));
+        let session = arti_rpcserver::RpcSession::new_with_client(client);
         if listener_info.allow_superuser == SuperuserPermission::Allowed {
             session.provide_superuser_permission(Arc::new(RpcSuperuser::new(client_root.clone())) as _);
         }

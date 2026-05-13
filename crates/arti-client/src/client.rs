@@ -824,7 +824,7 @@ impl TorClient<PreferredRuntime> {
     /// The process [**may not fork**](tor_rtcompat#do-not-fork)
     /// (except, very carefully, before exec)
     /// after calling this function, because it creates a [`PreferredRuntime`].
-    pub async fn create_bootstrapped(config: TorClientConfig) -> crate::Result<Self> {
+    pub async fn create_bootstrapped(config: TorClientConfig) -> crate::Result<Arc<Self>> {
         let runtime = PreferredRuntime::current()
             .expect("TorClient could not get an asynchronous runtime; are you running in the right context?");
 
@@ -879,7 +879,7 @@ impl<R: Runtime> TorClient<R> {
         autobootstrap: BootstrapBehavior,
         dirmgr_builder: &dyn crate::builder::DirProviderBuilder<R>,
         dirmgr_extensions: tor_dirmgr::config::DirMgrExtensions,
-    ) -> StdResult<Self, ErrorDetail> {
+    ) -> StdResult<Arc<Self>, ErrorDetail> {
         if crate::util::running_as_setuid() {
             return Err(tor_error::bad_api_usage!(
                 "Arti does not support running in a setuid or setgid context."
@@ -1064,7 +1064,7 @@ impl<R: Runtime> TorClient<R> {
         let client_isolation = IsolationToken::new();
         let inert_client = InertTorClient::new(config)?;
 
-        Ok(TorClient {
+        Ok(Arc::new(TorClient {
             runtime,
             client_isolation,
             connect_prefs: Default::default(),
@@ -1095,7 +1095,7 @@ impl<R: Runtime> TorClient<R> {
             state_directory,
             path_resolver,
             software_status_cfg,
-        })
+        }))
     }
 
     /// Construct a state manager from the client configuration.
@@ -1374,10 +1374,10 @@ impl<R: Runtime> TorClient<R> {
     /// (Connections made with clones of the returned `TorClient` may
     /// share circuits with each other.)
     #[must_use]
-    pub fn isolated_client(&self) -> TorClient<R> {
+    pub fn isolated_client(&self) -> Arc<TorClient<R>> {
         let mut result = self.clone();
         result.client_isolation = IsolationToken::new();
-        result
+        Arc::new(result)
     }
 
     /// Launch an anonymized connection to the provided address and port over
@@ -1567,6 +1567,7 @@ impl<R: Runtime> TorClient<R> {
         Ok(stream?)
     }
 
+    // XXXX no longer reachable
     /// Sets the default preferences for future connections made with this client.
     ///
     /// The preferences set with this function will be inherited by clones of this client, but
@@ -1584,10 +1585,10 @@ impl<R: Runtime> TorClient<R> {
     /// Connections made with e.g. [`connect`](TorClient::connect) on the returned handle will use
     /// `connect_prefs`.  This is a convenience wrapper for `clone` and `set_connect_prefs`.
     #[must_use]
-    pub fn clone_with_prefs(&self, connect_prefs: StreamPrefs) -> Self {
+    pub fn clone_with_prefs(&self, connect_prefs: StreamPrefs) -> Arc<Self> {
         let mut result = self.clone();
         result.set_stream_prefs(connect_prefs);
-        result
+        Arc::new(result)
     }
 
     /// On success, return a list of IP addresses.

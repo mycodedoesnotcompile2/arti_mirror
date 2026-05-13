@@ -139,7 +139,7 @@ async fn run_proxy<R: ToplevelRuntime>(
 
     #[allow(unused_mut)]
     let mut reconfigurable_modules: Vec<Arc<dyn reload_cfg::ReconfigurableModule>> = vec![
-        Arc::new(client.clone()),
+        Arc::clone(&client) as _,
         Arc::new(reload_cfg::Application::new(arti_config.clone())),
     ];
 
