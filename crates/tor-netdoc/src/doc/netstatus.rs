@@ -1693,6 +1693,13 @@ mod encode_impls {
         }
     }
 
+    impl ItemValueEncodable for rs::SoftwareVersion {
+        fn write_item_value_onto(&self, mut out: ItemEncoder) -> Result<(), Bug> {
+            out.args_raw_string(self);
+            Ok(())
+        }
+    }
+
     impl ItemArgument for IgnoredPublicationTimeSp {
         fn write_arg_onto(&self, out: &mut ItemEncoder) -> Result<(), Bug> {
             out.args_raw_string(&"2000-01-01 00:00:01");
