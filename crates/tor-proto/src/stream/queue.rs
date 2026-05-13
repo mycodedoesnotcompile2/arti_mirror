@@ -25,9 +25,6 @@ use tor_rtcompat::DynTimeProvider;
 
 use crate::memquota::{SpecificAccount, StreamAccount};
 
-/// Alias for the memquota mpsc spec.
-type Spec = MpscSpec;
-
 /// Create a new stream queue for incoming messages
 /// (messages arriving on the stream from the Tor network).
 pub(crate) fn stream_queue(
@@ -79,7 +76,7 @@ pub(crate) fn fake_stream_queue(size: usize) -> (StreamQueueSender, StreamQueueR
 pub(crate) struct StreamQueueSender {
     /// The inner sender.
     #[pin]
-    sender: mq_queue::Sender<UnparsedRelayMsg, Spec>,
+    sender: mq_queue::Sender<UnparsedRelayMsg, MpscSpec>,
     /// Number of bytes within the queue.
     counter: Arc<Mutex<usize>>,
 }
@@ -95,7 +92,7 @@ pub(crate) struct StreamQueueReceiver {
     // TODO(arti#534): the possible extra msg held by the `StreamUnobtrusivePeeker` isn't tracked by
     // memquota
     #[pin]
-    receiver: StreamUnobtrusivePeeker<mq_queue::Receiver<UnparsedRelayMsg, Spec>>,
+    receiver: StreamUnobtrusivePeeker<mq_queue::Receiver<UnparsedRelayMsg, MpscSpec>>,
     /// Number of bytes within the queue.
     counter: Arc<Mutex<usize>>,
 }
