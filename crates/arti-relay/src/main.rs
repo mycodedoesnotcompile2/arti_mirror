@@ -83,7 +83,7 @@ use tor_relay_crypto::pk::{RelayIdentityKeypair, RelayIdentityRsaKeypair};
 use tor_rtcompat::SpawnExt;
 use tor_rtcompat::tokio::TokioRustlsRuntime;
 use tor_rtcompat::{Runtime, ToplevelRuntime};
-use tracing::{debug, info, trace};
+use tracing::{debug, info, trace, warn};
 use tracing_subscriber::FmtSubscriber;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -250,9 +250,7 @@ fn start_relay(_args: cli::RunArgs, global_args: cli::GlobalArgs) -> anyhow::Res
                     ))?;
                 info!("Arti Prometheus metrics export scraper endpoint http://{listen}");
             } else {
-                return Err(anyhow::anyhow!(
-        "`metrics.prometheus.listen` config set but `metrics` cargo feature compiled out in `arti-relay` crate"
-                ));
+                warn!("`metrics.prometheus.listen` config set but `metrics` cargo feature compiled out in `arti-relay` crate");
             }
         }
     }
