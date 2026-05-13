@@ -28,3 +28,5 @@ BREAKING: `SignatureGroup` contains `DirectorySignaturesHashesAccu`, instead of 
 ADDED: `NoMoreArguments` parsing/encoding helper type (`NoFurtherArguments` now a deprecated alias)
 ADDED: encoding implementation for `IgnoredPublicationTimeSp`
 ADDED: encoding implementation for `rs::SoftwareVersion`
+BREAKING: `NetdocParseableFields::finish` has an additional `ItemStream` argument
+

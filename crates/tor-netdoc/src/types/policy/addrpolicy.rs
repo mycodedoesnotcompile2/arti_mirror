@@ -8,6 +8,7 @@ use std::str::FromStr;
 use crate::NormalItemArgument;
 use crate::parse2::{
     ErrorProblem as EP, ItemArgumentParseable, KeywordRef, NetdocParseableFields, UnparsedItem,
+    ItemStream,
 };
 
 use super::{PolicyError, PortRange, RuleKind};
@@ -102,7 +103,7 @@ impl NetdocParseableFields for AddrPolicy {
         Ok(())
     }
 
-    fn finish(acc: Self::Accumulator) -> Result<Self, EP> {
+    fn finish(acc: Self::Accumulator, _: &ItemStream) -> Result<Self, EP> {
         Ok(acc)
     }
 }

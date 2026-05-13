@@ -1777,8 +1777,8 @@ mod proto_statuses_parse2_encode {
             ) -> Result<(), EP> {
                 ProtoStatusesParseHelper::accumulate_item(acc, item)
             }
-            fn finish(acc: Self::Accumulator) -> Result<Self, EP> {
-                let parse = ProtoStatusesParseHelper::finish(acc)?;
+            fn finish(acc: Self::Accumulator, items: &ItemStream<'_>) -> Result<Self, EP> {
+                let parse = ProtoStatusesParseHelper::finish(acc, items)?;
                 let mut out = ProtoStatuses::default();
                 $(
                     out.$cr.$rr = parse.[< $rr _ $cr _protocols >];
