@@ -84,6 +84,7 @@ pub struct RouterStatusIntroItem {
 // use longer names in the struct and specify the keyword separately.
 #[derive(Debug, Clone, Deftly)]
 #[derive_deftly(NetdocParseable)]
+#[cfg_attr(feature = "incomplete", derive_deftly(NetdocEncodable))] // untested
 #[non_exhaustive]
 pub struct RouterStatus {
     /// `r` --- Introduce a routerstatus entry
