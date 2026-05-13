@@ -842,8 +842,18 @@ pub struct SharedRandStatuses {
 // This representation also means so that if retaining unknown information is compiled out
 // (ie, in clients) each routerstatus entry stored in memory does not need to record
 // whether `w` was present, merely what the implications were.
-//
-// XXXX make some constructors other than the parsing ones
+///
+/// # Constructors
+///
+/// An "empty" `RelayWeights` can be constructed with [`RelayWeights::new_no_info`].
+///
+/// A `RelayWeights` containing only the effective `RelayWeight`
+/// can be constructed using [`RelayWeights::from_effective`].
+///
+/// With `"retain-unknown"`:
+/// a `RelayWeights` can be constructed from a [`NetParams<u32>`] using `TryFrom`;
+/// and, implements `Default`, which yields a `RelayWeights`
+/// representing the (known) absence of a `w` line.
 //
 // Fields are private to maintain the invariant.
 #[derive(Debug, Clone)]
@@ -1626,6 +1636,14 @@ impl RelayWeights {
         }
     }
 
+    /// Return a new `RelayWeights` containing only the effective weight
+    pub fn from_effective(effective: RelayWeight) -> Self {
+        RelayWeights {
+            effective,
+            params: Unknown::new_discard(),
+        }
+    }
+
     /// Get the effective relay weight (bandwidth estimate) for path selection.
     ///
     /// Invariant: consistent with from [`params`](RelayWeights::params),
@@ -1667,6 +1685,16 @@ impl RelayWeights {
 
     /// The keyword for parsing and encoding
     const KEYWORD: &str = "w";
+}
+
+#[cfg(feature = "retain-unknown")]
+impl Default for RelayWeights {
+    fn default() -> Self {
+        RelayWeights {
+            effective: RelayWeight::default(),
+            params: Unknown::Retained(None),
+        }
+    }
 }
 
 impl RelayWeight {
@@ -1713,6 +1741,18 @@ impl TryFrom<&NetParams<u32>> for RelayWeight {
             Some(1) => Ok(RelayWeight::Unmeasured(bw)),
             _ => Err(InvalidRelayWeights::InvalidUnmeasured),
         }
+    }
+}
+
+#[cfg(feature = "retain-unknown")]
+impl TryFrom<NetParams<u32>> for RelayWeights {
+    type Error = InvalidRelayWeights;
+
+    fn try_from(params: NetParams<u32>) -> StdResult<RelayWeights, InvalidRelayWeights> {
+        Ok(RelayWeights {
+            effective: (&params).try_into()?,
+            params: Unknown::Retained(Some(params)),
+        })
     }
 }
 
