@@ -34,7 +34,7 @@ pub(crate) mod doc_digest_item_m {
     use crate::parse2::UnparsedItem;
     use std::result::Result;
 
-    /// Parse the whole `m` item
+    /// Parse the whole `m` item value
     pub(crate) fn from_unparsed(mut item: UnparsedItem) -> Result<FixedB64<DOC_DIGEST_LEN>, EP> {
         item.check_no_object()?;
         FixedB64::from_args(item.args_mut()).map_err(item.args().error_handler("doc_digest"))
