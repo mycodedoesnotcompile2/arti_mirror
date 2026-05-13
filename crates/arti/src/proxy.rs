@@ -291,7 +291,7 @@ mod socks_and_rpc {}
 /// Information used to implement a proxy listener.
 struct ProxyContext<R: Runtime> {
     /// A TorClient to use (by default) to anonymize requests.
-    tor_client: TorClient<R>,
+    tor_client: Arc<TorClient<R>>,
     /// If present, an RpcMgr to use when for attaching requests to RPC
     /// sessions.
     #[cfg(feature = "rpc")]
@@ -363,7 +363,7 @@ fn accept_err_is_fatal(err: &IoError) -> bool {
 #[must_use]
 pub(crate) struct StreamProxy<R: Runtime> {
     /// A tor client to use when relaying traffic.
-    tor_client: TorClient<R>,
+    tor_client: Arc<TorClient<R>>,
     /// The listeners that we've actually bound to.
     listeners: Vec<<R as NetStreamProvider>::Listener>,
     /// The protocols we respond to.
@@ -384,7 +384,7 @@ pub(crate) struct StreamProxy<R: Runtime> {
 #[instrument(skip_all, level = "trace")]
 pub(crate) async fn bind_proxy<R: Runtime>(
     runtime: R,
-    tor_client: TorClient<R>,
+    tor_client: Arc<TorClient<R>>,
     listen: Listen,
     protocols: ListenProtocols,
     rpc_mgr: Option<Arc<RpcMgr>>,
@@ -476,7 +476,7 @@ impl<R: Runtime> StreamProxy<R> {
 #[cfg_attr(feature = "experimental-api", visibility::make(pub))]
 #[instrument(skip_all, level = "trace")]
 pub(crate) async fn run_proxy_with_listeners<R: Runtime>(
-    tor_client: TorClient<R>,
+    tor_client: Arc<TorClient<R>>,
     listeners: Vec<<R as tor_rtcompat::NetStreamProvider>::Listener>,
     protocols: ListenProtocols,
     rpc_mgr: Option<Arc<RpcMgr>>,

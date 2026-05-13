@@ -139,14 +139,14 @@ async fn run_proxy<R: ToplevelRuntime>(
 
     #[allow(unused_mut)]
     let mut reconfigurable_modules: Vec<Arc<dyn reload_cfg::ReconfigurableModule>> = vec![
-        Arc::new(client.clone()),
+        Arc::clone(&client) as _,
         Arc::new(reload_cfg::Application::new(arti_config.clone())),
     ];
 
     cfg_if::cfg_if! {
         if #[cfg(feature = "onion-service-service")] {
             let onion_services =
-                onion_proxy::ProxySet::launch_new(&client, arti_config.onion_services.clone())?;
+                onion_proxy::ProxySet::launch_new(Arc::clone(&client), arti_config.onion_services.clone())?;
             let launched_onion_svc = !onion_services.is_empty();
             reconfigurable_modules.push(Arc::new(onion_services));
         } else {
