@@ -246,6 +246,7 @@ impl ConsensusBuilder {
         let shared_rand = SharedRandStatuses {
             shared_rand_previous_value: self.shared_rand_previous_value.clone(),
             shared_rand_current_value: self.shared_rand_current_value.clone(),
+            __non_exhaustive: (),
         };
 
         let preamble = Preamble {

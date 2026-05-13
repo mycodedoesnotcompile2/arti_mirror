@@ -764,14 +764,18 @@ pub struct SharedRandStatus {
 /// and a vote's authority section
 /// <https://spec.torproject.org/dir-spec/consensus-formats.html#authority-item-shared-rand-value>
 #[derive(Debug, Clone, Default, Deftly)]
-#[non_exhaustive]
 #[derive_deftly(Constructor, NetdocEncodableFields, NetdocParseableFields)]
+#[allow(clippy::exhaustive_structs)]
 pub struct SharedRandStatuses {
     /// Global shared-random value for the previous shared-random period.
     pub shared_rand_previous_value: Option<SharedRandStatus>,
 
     /// Global shared-random value for the current shared-random period.
     pub shared_rand_current_value: Option<SharedRandStatus>,
+
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
 }
 
 /// Recognized weight fields on a single relay in a consensus
