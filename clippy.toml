@@ -6,6 +6,7 @@ disallowed-types = [
 # Sometimes clippy doesn't find the method and falsely claims it doesn't exist
 #     https://github.com/rust-lang/rust-clippy/issues/17006
 # In that case, we write `allow-invalid = true` and have code in-tree that checks that the method *does* exist.
+# (See tor_basic_utils::RngExt::gen_range_checked for an example.)
 # That will detect if the method has been renamed, so that our prohibition remains effective.
 # (It's not perfect: the crate might provide aliases, wrappers, or other methods with the same problem).
 disallowed-methods = [
