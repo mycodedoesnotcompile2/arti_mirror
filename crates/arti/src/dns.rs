@@ -70,7 +70,7 @@ struct DnsResponseTarget<U> {
 
 /// Run a DNS query over tor, returning either a list of answers, or a DNS error code.
 async fn do_query<R>(
-    tor_client: TorClient<R>,
+    tor_client: &TorClient<R>,
     queries: &[Query],
     prefs: &StreamPrefs,
 ) -> Result<Vec<Record>, ResponseCode>
@@ -156,7 +156,7 @@ where
 /// the Tor network and send the response back.
 #[allow(clippy::cognitive_complexity)] // TODO: Refactor
 async fn handle_dns_req<R, U>(
-    tor_client: TorClient<R>,
+    tor_client: &TorClient<R>,
     socket_id: usize,
     packet: &[u8],
     addr: SocketAddr,
@@ -307,12 +307,7 @@ impl<R: Runtime> DnsProxy<R> {
             tor_client,
             udp_sockets,
         } = self;
-        run_dns_resolver_with_listeners(
-            tor_client.runtime().clone(),
-            tor_client.as_ref(),
-            udp_sockets,
-        )
-        .await
+        run_dns_resolver_with_listeners(tor_client.runtime().clone(), tor_client, udp_sockets).await
     }
 
     /// Return a list of the port addresses that we have bound.
@@ -333,7 +328,7 @@ impl<R: Runtime> DnsProxy<R> {
 /// Inner task: Receive incoming DNS requests and process them.
 async fn run_dns_resolver_with_listeners<R: Runtime>(
     runtime: R,
-    tor_client: &TorClient<R>,
+    tor_client: Arc<TorClient<R>>,
     listeners: Vec<<R as tor_rtcompat::UdpProvider>::UdpSocket>,
 ) -> Result<()> {
     let mut incoming = futures::stream::select_all(
@@ -371,7 +366,7 @@ async fn run_dns_resolver_with_listeners<R: Runtime>(
             let pending_requests = pending_requests.clone();
             async move {
                 let res = handle_dns_req(
-                    client_ref,
+                    &client_ref,
                     id,
                     &packet[..size],
                     addr,

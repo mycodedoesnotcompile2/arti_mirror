@@ -102,10 +102,6 @@ use tor_persist::TestingStateMgr as UsingStateMgr;
 /// to create a new `TorClient` whose stream will not share circuits with any other Tor client.
 ///
 /// This ObjectID for this object can be used as the target of a SOCKS stream.
-// TODO(nickm): This type now has 5 Arcs inside it, and 2 types that have
-// implicit Arcs inside them! maybe it's time to replace much of the insides of
-// this with an Arc<TorClientInner>?
-#[derive(Clone)]
 #[cfg_attr(
     feature = "rpc",
     derive(Deftly),
@@ -113,8 +109,6 @@ use tor_persist::TestingStateMgr as UsingStateMgr;
     deftly(rpc(expose_outside_of_session))
 )]
 pub struct TorClient<R: Runtime> {
-    /// Asynchronous runtime object.
-    runtime: R,
     /// Default isolation token for streams through this client.
     ///
     /// This is eventually used for `owner_token` in `tor-circmgr/src/usage.rs`, and is orthogonal
@@ -123,6 +117,19 @@ pub struct TorClient<R: Runtime> {
     client_isolation: IsolationToken,
     /// Connection preferences.  Starts out as `Default`,  Inherited by our clones.
     connect_prefs: StreamPrefs,
+
+    /// Inner structure respresenting all components shared across different
+    /// TorClients.
+    client: Arc<ClientInner<R>>,
+}
+
+/// Inner, shared pieces of a `TorClient`, used to implement client functionality.
+///
+/// In the future, we might choose to expose this along with APIs.
+struct ClientInner<R: Runtime> {
+    /// Asynchronous runtime object.
+    runtime: R,
+
     /// Memory quota tracker
     memquota: Arc<MemoryQuotaTracker>,
     /// Channel manager, used by circuits etc.,
@@ -1064,10 +1071,8 @@ impl<R: Runtime> TorClient<R> {
         let client_isolation = IsolationToken::new();
         let inert_client = InertTorClient::new(config)?;
 
-        Ok(Arc::new(TorClient {
+        let client = Arc::new(ClientInner {
             runtime,
-            client_isolation,
-            connect_prefs: Default::default(),
             memquota,
             chanmgr,
             circmgr,
@@ -1095,6 +1100,12 @@ impl<R: Runtime> TorClient<R> {
             state_directory,
             path_resolver,
             software_status_cfg,
+        });
+
+        Ok(Arc::new(TorClient {
+            client_isolation,
+            connect_prefs: Default::default(),
+            client,
         }))
     }
 
@@ -1134,9 +1145,15 @@ impl<R: Runtime> TorClient<R> {
     /// again later to attempt to bootstrap another time.
     #[instrument(skip_all, level = "trace")]
     pub async fn bootstrap(&self) -> crate::Result<()> {
-        self.bootstrap_inner().await.map_err(ErrorDetail::into)
+        self.client
+            .bootstrap_inner()
+            .await
+            .map_err(ErrorDetail::into)
     }
+}
 
+// XXXX collect all impl<R> Client<R> sections into one.
+impl<R: Runtime> ClientInner<R> {
     /// Implementation of `bootstrap`, split out in order to avoid manually specifying
     /// double error conversions.
     async fn bootstrap_inner(&self) -> StdResult<(), ErrorDetail> {
@@ -1231,7 +1248,9 @@ impl<R: Runtime> TorClient<R> {
             })?;
         Ok(())
     }
+}
 
+impl<R: Runtime> TorClient<R> {
     /// Change the configuration of this TorClient to `new_config`.
     ///
     /// The `how` describes whether to perform an all-or-nothing
@@ -1267,12 +1286,12 @@ impl<R: Runtime> TorClient<R> {
         // safely let two threads change them at once.  If we did, then we'd
         // introduce time-of-check/time-of-use bugs in checking our configuration,
         // deciding how to change it, then applying the changes.
-        let guard = self.reconfigure_lock.lock().expect("Poisoned lock");
+        let guard = self.client.reconfigure_lock.lock().expect("Poisoned lock");
 
         match how {
             tor_config::Reconfigure::AllOrNothing => {
                 // We have to check before we make any changes.
-                self.reconfigure_inner(
+                self.client.reconfigure_inner(
                     new_config,
                     tor_config::Reconfigure::CheckAllOrNothing,
                     &guard,
@@ -1284,11 +1303,13 @@ impl<R: Runtime> TorClient<R> {
         }
 
         // Actually reconfigure
-        self.reconfigure_inner(new_config, how, &guard)?;
+        self.client.reconfigure_inner(new_config, how, &guard)?;
 
         Ok(())
     }
+}
 
+impl<R: Runtime> ClientInner<R> {
     /// This is split out from `reconfigure` so we can do the all-or-nothing
     /// check without recursion. the caller to this method must hold the
     /// `reconfigure_lock`.
@@ -1357,7 +1378,9 @@ impl<R: Runtime> TorClient<R> {
 
         Ok(())
     }
+}
 
+impl<R: Runtime> TorClient<R> {
     /// Return a new isolated `TorClient` handle.
     ///
     /// The two `TorClient`s will share internal state and configuration, but
@@ -1375,8 +1398,11 @@ impl<R: Runtime> TorClient<R> {
     /// share circuits with each other.)
     #[must_use]
     pub fn isolated_client(&self) -> Arc<TorClient<R>> {
-        let mut result = self.clone();
-        result.client_isolation = IsolationToken::new();
+        let result = TorClient {
+            client_isolation: IsolationToken::new(),
+            connect_prefs: self.connect_prefs.clone(),
+            client: Arc::clone(&self.client),
+        };
         Arc::new(result)
     }
 
@@ -1474,8 +1500,9 @@ impl<R: Runtime> TorClient<R> {
         macro_rules! begin_stream {
             ($tunnel:expr, $addr:expr, $port:expr, $stream_params:expr) => {{
                 let fut = $tunnel.begin_stream($addr, $port, $stream_params);
-                self.runtime
-                    .timeout(self.timeoutcfg.get().connect_timeout, fut)
+                self.client
+                    .runtime
+                    .timeout(self.client.timeoutcfg.get().connect_timeout, fut)
                     .await
                     .map_err(|_| ErrorDetail::ExitTimeout)?
                     .map_err(|cause| ErrorDetail::StreamFailed {
@@ -1485,7 +1512,7 @@ impl<R: Runtime> TorClient<R> {
             }};
         }
 
-        let stream = match addr.into_stream_instructions(&self.addrcfg.get(), prefs)? {
+        let stream = match addr.into_stream_instructions(&self.client.addrcfg.get(), prefs)? {
             StreamInstructions::Exit {
                 hostname: addr,
                 port,
@@ -1518,12 +1545,12 @@ impl<R: Runtime> TorClient<R> {
             } => {
                 use safelog::DisplayRedacted as _;
 
-                self.wait_for_bootstrap().await?;
+                self.client.wait_for_bootstrap().await?;
                 let netdir = self.netdir(Timeliness::Timely, "connect to a hidden service")?;
 
                 let mut hs_client_secret_keys_builder = HsClientSecretKeysBuilder::default();
 
-                if let Some(keymgr) = &self.inert_client.keymgr {
+                if let Some(keymgr) = &self.client.inert_client.keymgr {
                     let desc_enc_key_spec = HsClientDescEncKeypairSpecifier::new(hsid);
 
                     let ks_hsc_desc_enc =
@@ -1543,6 +1570,7 @@ impl<R: Runtime> TorClient<R> {
                     .map_err(ErrorDetail::Configuration)?;
 
                 let tunnel = self
+                    .client
                     .hsclient
                     .get_or_launch_tunnel(
                         &netdir,
@@ -1586,8 +1614,11 @@ impl<R: Runtime> TorClient<R> {
     /// `connect_prefs`.  This is a convenience wrapper for `clone` and `set_connect_prefs`.
     #[must_use]
     pub fn clone_with_prefs(&self, connect_prefs: StreamPrefs) -> Arc<Self> {
-        let mut result = self.clone();
-        result.set_stream_prefs(connect_prefs);
+        let result = TorClient {
+            client_isolation: self.client_isolation,
+            connect_prefs,
+            client: Arc::clone(&self.client),
+        };
         Arc::new(result)
     }
 
@@ -1609,14 +1640,15 @@ impl<R: Runtime> TorClient<R> {
         // should be a method on `Host`, not `TorAddr`.  -Diziet.
         let addr = (hostname, 1).into_tor_addr().map_err(wrap_err)?;
 
-        match addr.into_resolve_instructions(&self.addrcfg.get(), prefs)? {
+        match addr.into_resolve_instructions(&self.client.addrcfg.get(), prefs)? {
             ResolveInstructions::Exit(hostname) => {
                 let circ = self.get_or_launch_exit_tunnel(&[], prefs).await?;
 
                 let resolve_future = circ.resolve(&hostname);
                 let addrs = self
+                    .client
                     .runtime
-                    .timeout(self.timeoutcfg.get().resolve_timeout, resolve_future)
+                    .timeout(self.client.timeoutcfg.get().resolve_timeout, resolve_future)
                     .await
                     .map_err(|_| ErrorDetail::ExitTimeout)?
                     .map_err(|cause| ErrorDetail::StreamFailed {
@@ -1651,9 +1683,10 @@ impl<R: Runtime> TorClient<R> {
 
         let resolve_ptr_future = circ.resolve_ptr(addr);
         let hostnames = self
+            .client
             .runtime
             .timeout(
-                self.timeoutcfg.get().resolve_ptr_timeout,
+                self.client.timeoutcfg.get().resolve_ptr_timeout,
                 resolve_ptr_future,
             )
             .await
@@ -1672,7 +1705,7 @@ impl<R: Runtime> TorClient<R> {
     /// built with the `experimental-api` feature.
     #[cfg(feature = "experimental-api")]
     pub fn dirmgr(&self) -> &Arc<dyn tor_dirmgr::DirProvider> {
-        &self.dirmgr
+        &self.client.dirmgr
     }
 
     /// Return a reference to this client's circuit manager.
@@ -1681,7 +1714,7 @@ impl<R: Runtime> TorClient<R> {
     /// built with the `experimental-api` feature.
     #[cfg(feature = "experimental-api")]
     pub fn circmgr(&self) -> &Arc<tor_circmgr::CircMgr<R>> {
-        &self.circmgr
+        &self.client.circmgr
     }
 
     /// Return a reference to this client's channel manager.
@@ -1690,7 +1723,7 @@ impl<R: Runtime> TorClient<R> {
     /// built with the `experimental-api` feature.
     #[cfg(feature = "experimental-api")]
     pub fn chanmgr(&self) -> &Arc<tor_chanmgr::ChanMgr<R>> {
-        &self.chanmgr
+        &self.client.chanmgr
     }
 
     /// Return a reference to this client's circuit pool.
@@ -1704,7 +1737,7 @@ impl<R: Runtime> TorClient<R> {
         any(feature = "onion-service-client", feature = "onion-service-service")
     ))]
     pub fn hs_circ_pool(&self) -> &Arc<tor_circmgr::hspool::HsCircPool<R>> {
-        &self.hs_circ_pool
+        &self.client.hs_circ_pool
     }
 
     /// Return a reference to the runtime being used by this client.
@@ -1715,7 +1748,7 @@ impl<R: Runtime> TorClient<R> {
     // We provide it simply to save callers who have a TorClient from
     // having to separately keep their own handle,
     pub fn runtime(&self) -> &R {
-        &self.runtime
+        &self.client.runtime
     }
 
     /// Return a netdir that is timely according to the rules of `timeliness`.
@@ -1728,7 +1761,7 @@ impl<R: Runtime> TorClient<R> {
         action: &'static str,
     ) -> StdResult<Arc<tor_netdir::NetDir>, ErrorDetail> {
         use tor_netdir::Error as E;
-        match self.dirmgr.netdir(timeliness) {
+        match self.client.dirmgr.netdir(timeliness) {
             Ok(netdir) => Ok(netdir),
             Err(E::NoInfo) | Err(E::NotEnoughInfo) => {
                 Err(ErrorDetail::BootstrapRequired { action })
@@ -1747,10 +1780,11 @@ impl<R: Runtime> TorClient<R> {
     ) -> StdResult<ClientDataTunnel, ErrorDetail> {
         // TODO HS probably this netdir ought to be made in connect_with_prefs
         // like for StreamInstructions::Hs.
-        self.wait_for_bootstrap().await?;
+        self.client.wait_for_bootstrap().await?;
         let dir = self.netdir(Timeliness::Timely, "build a circuit")?;
 
         let tunnel = self
+            .client
             .circmgr
             .get_or_launch_exit(
                 dir.as_ref().into(),
@@ -1826,6 +1860,7 @@ impl<R: Runtime> TorClient<R> {
         }
 
         let keymgr = self
+            .client
             .inert_client
             .keymgr
             .as_ref()
@@ -1833,7 +1868,7 @@ impl<R: Runtime> TorClient<R> {
                 action: "launch onion service",
             })?
             .clone();
-        let state_dir = self.state_directory.clone();
+        let state_dir = self.client.state_directory.clone();
 
         let service = tor_hsservice::OnionService::builder()
             .config(config) // TODO #1186: Allow override of KeyMgr for "ephemeral" operation?
@@ -1844,10 +1879,10 @@ impl<R: Runtime> TorClient<R> {
             .map_err(ErrorDetail::LaunchOnionService)?;
         Ok(service
             .launch(
-                self.runtime.clone(),
-                self.dirmgr.clone().upcast_arc(),
-                self.hs_circ_pool.clone(),
-                Arc::clone(&self.path_resolver),
+                self.client.runtime.clone(),
+                self.client.dirmgr.clone().upcast_arc(),
+                self.client.hs_circ_pool.clone(),
+                Arc::clone(&self.client.path_resolver),
             )
             .map_err(ErrorDetail::LaunchOnionService)?)
     }
@@ -1895,6 +1930,7 @@ impl<R: Runtime> TorClient<R> {
         let selector = KeystoreSelector::Primary;
 
         let _kp = self
+            .client
             .inert_client
             .keymgr
             .as_ref()
@@ -1939,7 +1975,8 @@ impl<R: Runtime> TorClient<R> {
         selector: KeystoreSelector,
         hsid: HsId,
     ) -> crate::Result<HsClientDescEncKey> {
-        self.inert_client
+        self.client
+            .inert_client
             .generate_service_discovery_key(selector, hsid)
     }
 
@@ -1982,7 +2019,8 @@ impl<R: Runtime> TorClient<R> {
         selector: KeystoreSelector,
         hsid: HsId,
     ) -> crate::Result<HsClientDescEncKey> {
-        self.inert_client
+        self.client
+            .inert_client
             .rotate_service_discovery_key(selector, hsid)
     }
 
@@ -2024,7 +2062,7 @@ impl<R: Runtime> TorClient<R> {
         hsid: HsId,
         hs_client_desc_enc_secret_key: HsClientDescEncSecretKey,
     ) -> crate::Result<HsClientDescEncKey> {
-        self.inert_client.insert_service_discovery_key(
+        self.client.inert_client.insert_service_discovery_key(
             selector,
             hsid,
             hs_client_desc_enc_secret_key,
@@ -2045,7 +2083,7 @@ impl<R: Runtime> TorClient<R> {
         &self,
         hsid: HsId,
     ) -> crate::Result<Option<HsClientDescEncKey>> {
-        self.inert_client.get_service_discovery_key(hsid)
+        self.client.inert_client.get_service_discovery_key(hsid)
     }
 
     /// Removes the service discovery keypair for the service with the specified `hsid`.
@@ -2074,7 +2112,8 @@ impl<R: Runtime> TorClient<R> {
         selector: KeystoreSelector,
         hsid: HsId,
     ) -> crate::Result<Option<()>> {
-        self.inert_client
+        self.client
+            .inert_client
             .remove_service_discovery_key(selector, hsid)
     }
 
@@ -2112,7 +2151,7 @@ impl<R: Runtime> TorClient<R> {
     /// Return a current [`status::BootstrapStatus`] describing how close this client
     /// is to being ready for user traffic.
     pub fn bootstrap_status(&self) -> status::BootstrapStatus {
-        self.status_receiver.inner.borrow().clone()
+        self.client.status_receiver.inner.borrow().clone()
     }
 
     /// Return a stream of [`status::BootstrapStatus`] events that will be updated
@@ -2123,7 +2162,7 @@ impl<R: Runtime> TorClient<R> {
     //
     // TODO(nickm): will this also need to implement Send and 'static?
     pub fn bootstrap_events(&self) -> status::BootstrapEvents {
-        self.status_receiver.clone()
+        self.client.status_receiver.clone()
     }
 
     /// Change the client's current dormant mode, putting background tasks to sleep
@@ -2135,6 +2174,7 @@ impl<R: Runtime> TorClient<R> {
     /// See the [`DormantMode`] documentation for more details.
     pub fn set_dormant(&self, mode: DormantMode) {
         *self
+            .client
             .dormant
             .lock()
             .expect("dormant lock poisoned")
@@ -2153,13 +2193,13 @@ impl<R: Runtime> TorClient<R> {
         // The statemgr won't actually be unlocked until it is finally
         // dropped, which will happen when this TorClient is
         // dropped—which is what we want.
-        self.statemgr.wait_for_unlock()
+        self.client.statemgr.wait_for_unlock()
     }
 
     /// Getter for keymgr.
     #[cfg(feature = "onion-service-cli-extra")]
     pub fn keymgr(&self) -> crate::Result<&KeyMgr> {
-        self.inert_client.keymgr()
+        self.client.inert_client.keymgr()
     }
 }
 

@@ -78,7 +78,7 @@ impl ArtiRpcSession {
     /// The session receives a new isolated TorClient, based on `client_root`.
     pub(super) fn new<R: Runtime>(
         auth: &RpcAuthentication,
-        client_root: &TorClient<R>,
+        client_root: &Arc<TorClient<R>>,
         arti_state: &Arc<RpcVisibleArtiState>,
         listener_info: &RpcConnInfo,
     ) -> Arc<Self> {
