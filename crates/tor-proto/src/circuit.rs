@@ -4,6 +4,7 @@
 
 pub(crate) mod cell_sender;
 pub(crate) mod celltypes;
+pub(crate) mod circ_sender;
 pub(crate) mod circhop;
 pub(crate) mod create;
 pub(crate) mod padding;
