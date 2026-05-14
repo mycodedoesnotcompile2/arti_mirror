@@ -412,7 +412,7 @@ pub(crate) mod test {
             &mut self,
             rt: &MockRuntime,
             expected_hs_type: HandshakeType,
-        ) {
+        ) -> Option<CircId> {
             // First, check that the reactor actually sent a CREATE2 to the next hop...
             let (circid, msg) = self.read_outbound().into_circid_and_msg();
             let _create2 = match msg {
@@ -429,6 +429,8 @@ pub(crate) mod test {
             // the responding relay
             self.write_outbound(circid, chanmsg::AnyChanMsg::Created2(created2));
             rt.advance_until_stalled().await;
+
+            circid
         }
 
         /// Whether the circuit is closing (e.g. due to a proto violation).
@@ -582,7 +584,7 @@ pub(crate) mod test {
             assert!(ctrl.outbound_chan_launched());
             assert!(!ctrl.is_closing());
 
-            ctrl.do_create2_handshake(&rt, handshake_type).await;
+            let _circid = ctrl.do_create2_handshake(&rt, handshake_type).await;
             assert!(logs_contain("Got CREATED2 response from next hop"));
             assert!(logs_contain("Extended circuit to the next hop"));
 
