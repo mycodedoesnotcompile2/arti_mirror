@@ -482,21 +482,35 @@ pub(crate) mod test {
         ]
     }
 
-    /// Assert that the next cell on the inbound (towards the client) channel
-    /// is a DESTROY cell, and that the relay circuit is shutting down.
+    /// Assert that we have sent a DESTROY cell with the specified `reason`
+    /// both towards the "client" and towards the "next hop", if there is one,
+    /// and that the relay circuit is shutting down.
     ///
     /// The test is expected to drain the inbound Tor "channel"
     /// of any non-ending cells it might be expecting before calling this function.
     fn assert_destroy_sent(ctrl: &mut ReactorTestCtrl, reason: DestroyReason) {
         assert!(ctrl.is_closing());
 
-        let cell = ctrl.read_inbound();
+        macro_rules! assert_cell_is_destroy {
+            ($cell:expr) => {{
+                match $cell.msg() {
+                    chanmsg::AnyChanMsg::Destroy(d) => {
+                        assert_eq!(d.reason(), reason);
+                    }
+                    _ => panic!("unexpected ending {:?}", $cell),
+                }
+            }};
+        }
 
-        match cell.msg() {
-            chanmsg::AnyChanMsg::Destroy(d) => {
-                assert_eq!(d.reason(), reason);
-            }
-            _ => panic!("unexpected ending {cell:?}"),
+        // We *always* send a DESTROY towards the client
+        // when killing the circuit
+        let cell = ctrl.read_inbound();
+        assert_cell_is_destroy!(cell);
+
+        // If there's an outbound channel, ensure we sent a DESTROY over it too.
+        if ctrl.outbound_chan_launched() {
+            let cell = ctrl.read_outbound();
+            assert_cell_is_destroy!(cell);
         }
     }
 
