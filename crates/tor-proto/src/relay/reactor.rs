@@ -482,13 +482,12 @@ pub(crate) mod test {
         ]
     }
 
-    /// Assert that the relay circuit is shutting down.
+    /// Assert that the next cell on the inbound (towards the client) channel
+    /// is a DESTROY cell, and that the relay circuit is shutting down.
     ///
-    /// Also asserts that the next cell on the inbound channel
-    /// is a DESTROY with the specified `reason`.
     /// The test is expected to drain the inbound Tor "channel"
     /// of any non-ending cells it might be expecting before calling this function.
-    fn assert_circuit_destroyed(ctrl: &mut ReactorTestCtrl, reason: DestroyReason) {
+    fn assert_destroy_sent(ctrl: &mut ReactorTestCtrl, reason: DestroyReason) {
         assert!(ctrl.is_closing());
 
         let cell = ctrl.read_inbound();
@@ -515,7 +514,7 @@ pub(crate) mod test {
 
             assert!(logs_contain("got EXTEND2 in a RELAY cell?!"));
             assert!(!ctrl.outbound_chan_launched());
-            assert_circuit_destroyed(&mut ctrl, DestroyReason::NONE);
+            assert_destroy_sent(&mut ctrl, DestroyReason::NONE);
         });
     }
 
@@ -645,7 +644,7 @@ pub(crate) mod test {
             assert!(logs_contain(
                 "Asked to forward cell before the circuit was extended?!"
             ));
-            assert_circuit_destroyed(&mut ctrl, DestroyReason::NONE);
+            assert_destroy_sent(&mut ctrl, DestroyReason::NONE);
         });
     }
 
@@ -670,7 +669,7 @@ pub(crate) mod test {
             assert!(logs_contain(
                 "Invalid stream ID [scrubbed] for relay command BEGIN"
             ));
-            assert_circuit_destroyed(&mut ctrl, DestroyReason::NONE);
+            assert_destroy_sent(&mut ctrl, DestroyReason::NONE);
         });
     }
 
