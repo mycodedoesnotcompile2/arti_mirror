@@ -379,6 +379,11 @@ pub(crate) mod test {
                 .unwrap();
         }
 
+        /// Simulate the sending of a forward channel message through our relay.
+        async fn send_fwd_cmsg(&mut self, msg: chanmsg::AnyChanMsg) {
+            self.circmsg_send.send(msg).await.unwrap();
+        }
+
         /// Whether the reactor opened an outbound channel
         /// (i.e. a channel to the next relay in the circuit).
         fn outbound_chan_launched(&self) -> bool {
