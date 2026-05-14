@@ -231,7 +231,7 @@ pub(crate) mod test {
     use tor_rtcompat::{DynTimeProvider, Runtime};
     use tor_rtmock::MockRuntime;
 
-    use chanmsg::{AnyChanMsg, DestroyReason, HandshakeType};
+    use chanmsg::{AnyChanMsg, Destroy, DestroyReason, HandshakeType};
     use relaymsg::SendmeTag;
 
     use std::net::IpAddr;
@@ -701,6 +701,65 @@ pub(crate) mod test {
             assert!(logs_contain(
                 "Invalid stream ID [scrubbed] for relay command BEGIN"
             ));
+            assert_destroy_sent(&mut ctrl, DestroyReason::NONE);
+        });
+    }
+
+    #[traced_test]
+    #[test]
+    fn destroy_from_client() {
+        tor_rtmock::MockRuntime::test_with_various(|rt| async move {
+            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            rt.advance_until_stalled().await;
+
+            // Simulate the client sending us a DESTROY cell
+            let destroy = Destroy::new(DestroyReason::PROTOCOL);
+            ctrl.send_fwd_cmsg(destroy.into()).await;
+            rt.advance_until_stalled().await;
+
+            assert!(logs_contain(
+                "Received outbound DESTROY, circuit shutting down"
+            ));
+
+            // Ensure the destroy reason (PROTOCOL) is not propagated
+            assert_destroy_sent(&mut ctrl, DestroyReason::NONE);
+        });
+    }
+
+    #[traced_test]
+    #[test]
+    fn destroy_from_next_hop() {
+        tor_rtmock::MockRuntime::test_with_various(|rt| async move {
+            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            rt.advance_until_stalled().await;
+
+            // Extend the circuit by another hop
+            let linkspecs = dummy_linkspecs();
+            let handshake_type = HandshakeType::NTOR_V3;
+            let extend2 = relaymsg::Extend2::new(linkspecs, handshake_type, vec![]).into();
+            ctrl.send_fwd(None, extend2, Recognized::Yes, true).await;
+            rt.advance_until_stalled().await;
+            let circid = ctrl.do_create2_handshake(&rt, handshake_type).await;
+            assert!(logs_contain("Extended circuit to the next hop"));
+            assert!(ctrl.outbound_chan_launched());
+
+            // Simulate the client sending us a DESTROY cell
+            let destroy = Destroy::new(DestroyReason::PROTOCOL);
+            ctrl.write_outbound(circid, destroy.into());
+            rt.advance_until_stalled().await;
+
+            // We have *not* received an outbound destroy
+            assert!(!logs_contain(
+                "Received outbound DESTROY, circuit shutting down"
+            ));
+
+            // We received an inbound one (from the next hop)
+            assert!(logs_contain(
+                "Received inbound DESTROY, circuit shutting down"
+            ));
+
+            // Ensure the destroy reason (PROTOCOL) is not propagated
+            // This will check that we've sent a DESTROY cell in both directions.
             assert_destroy_sent(&mut ctrl, DestroyReason::NONE);
         });
     }
