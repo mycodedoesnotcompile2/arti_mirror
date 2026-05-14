@@ -262,8 +262,7 @@ impl Forward {
     }
 
     /// Handle a TRUNCATE cell.
-    #[allow(clippy::unused_async)] // TODO(relay)
-    async fn handle_truncate(&mut self) -> StdResult<(), ReactorError> {
+    fn handle_truncate(&mut self) -> StdResult<(), ReactorError> {
         // This is not strictly spec compliant,
         // but since none of our implementations use TRUNCATE,
         // we deem it a proto violation and shut down the circuit.
@@ -312,7 +311,7 @@ impl ForwardHandler for Forward {
         match msg.cmd() {
             RelayCmd::DROP => self.handle_drop(),
             RelayCmd::EXTEND2 => self.extend_handler.handle_extend2(runtime, early, msg),
-            RelayCmd::TRUNCATE => self.handle_truncate().await,
+            RelayCmd::TRUNCATE => self.handle_truncate(),
             cmd => Err(internal!("relay cmd {cmd} not supported").into()),
         }
     }
