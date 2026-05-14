@@ -140,8 +140,8 @@ pub struct RouterStatus {
     /// `w` --- Bandwidth estimates
     ///
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:w>
-    #[deftly(netdoc(keyword = "w"))]
-    pub weight: RelayWeight,
+    #[deftly(netdoc(flatten))]
+    pub weight: RelayWeights,
 }
 
 impl RouterStatus {

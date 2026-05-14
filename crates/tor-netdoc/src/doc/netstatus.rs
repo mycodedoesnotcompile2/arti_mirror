@@ -811,7 +811,53 @@ pub struct SharedRandStatuses {
     pub __non_exhaustive: (),
 }
 
+/// Relay weight information - `w` item in routerstatus
+///
+/// This is a combination of two representations of (subsets of) the same information,
+/// from an optional `w` in the document.
+///
+///  * [`effective`](RelayWeights::effective):
+///
+///    Always contains the effective weight, as [`RelayWeight`].
+///    This is what is used by clients.
+///    It does not record whether a `w` line was actually present.
+///
+///  * [`params`](RelayWeights::params):
+///
+///    Can represent the presence and whole contents of the `w` line,
+///    including all the known and unknown parameters.
+///    This is within [`Unknown`], so it is only present with crate `feature = "retain-unknown"`,
+///    and only some constructors/parsers record it.
+///
+/// # Parsing
+///
+/// Parsing is done with `NetdocParseableFields` rather than `ItemValueParseable`.
+/// The `params` are [`Retained`](Unknown::Retained) if `retain_unknown_values` is
+/// selected in [`parse2::ParseOptions`].
+//
+// We use NetdocParseableFields because the containing document, RouterStatus,
+// contains `RelayWeights` rather than `Option<RelayWeights>`.
+// The item parsing multiplicity machinery would see plain `RelayWeights` as a required item.
+//
+// This representation also means so that if retaining unknown information is compiled out
+// (ie, in clients) each routerstatus entry stored in memory does not need to record
+// whether `w` was present, merely what the implications were.
+//
+// XXXX make some constructors other than the parsing ones
+//
+// Fields are private to maintain the invariant.
+#[derive(Debug, Clone)]
+pub struct RelayWeights {
+    /// The effective relay weight
+    effective: RelayWeight,
+
+    /// The complete parameter set, if available and `w` was present.
+    params: Unknown<Option<NetParams<u32>>>,
+}
+
 /// Recognized weight fields on a single relay in a consensus
+///
+/// The part of a `w` item that we understand as a client.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy)]
 pub enum RelayWeight {
@@ -1577,9 +1623,40 @@ impl Default for RelayWeight {
     }
 }
 
-impl RelayWeight {
+impl RelayWeights {
+    /// Return a new `RelayWeights` containing no information
+    ///
+    /// As if parsed from a document with no `w` line, discarding unknown information.
+    pub fn new_no_info() -> Self {
+        RelayWeights {
+            effective: RelayWeight::default(),
+            params: Unknown::new_discard(),
+        }
+    }
+
+    /// Get the effective relay weight (bandwidth estimate) for path selection.
+    ///
+    /// Invariant: consistent with from [`params`](RelayWeights::params),
+    /// if `parsed` isn't [`Discarded`](Unknown::Discarded).
+    //
+    // We open-code this rather than deriving it so we can provide better docs.
+    pub fn effective(&self) -> RelayWeight {
+        self.effective
+    }
+
+    /// Get the complete parameter set, if this information is available.
+    ///
+    /// After parsing, this is the parsed but not interpreted `w` item,
+    /// or `None` if the document contained no `w` item.
+    //
+    // We open-code this rather than deriving it because we want to return
+    // `Unknown<&...>` rather than `&Unknown<..>`, which the user would just have to .as_ref().
+    pub fn params(&self) -> Unknown<&Option<NetParams<u32>>> {
+        self.params.as_ref()
+    }
+
     /// Parse a routerweight from a "w" line.
-    fn from_item(item: &Item<'_, NetstatusKwd>) -> Result<RelayWeight> {
+    fn from_item(item: &Item<'_, NetstatusKwd>) -> Result<RelayWeights> {
         if item.kwd() != NetstatusKwd::RS_W {
             return Err(
                 Error::from(internal!("Wrong keyword {:?} on W line", item.kwd()))
@@ -1590,9 +1667,18 @@ impl RelayWeight {
         let params = item.args_as_str().parse()?;
         let effective = RelayWeight::from_net_params(&params).map_err(|e| e.at_pos(item.pos()))?;
 
-        Ok(effective)
+        Ok(RelayWeights {
+            effective,
+            params: Unknown::new_discard(),
+        })
     }
 
+    /// The keyword for parsing and encoding
+    const KEYWORD: &str = "w";
+}
+
+// XXXX put in sensible order so there's one impl block for each type
+impl RelayWeight {
     /// Parse a routerweight from partially-parsed `w` line in the form of a `NetParams`
     ///
     /// This function is the common part shared between `parse2` and `parse`.
@@ -1657,14 +1743,34 @@ mod parse2_impls {
         }
     }
 
-    impl ItemValueParseable for RelayWeight {
-        fn from_unparsed(item: parse2::UnparsedItem<'_>) -> Result<Self, EP> {
+    impl NetdocParseableFields for RelayWeights {
+        type Accumulator = Option<NetParams<u32>>;
+
+        fn is_item_keyword(kw: KeywordRef) -> bool {
+            kw == Self::KEYWORD
+        }
+
+        fn accumulate_item(acc: &mut Self::Accumulator, item: UnparsedItem) -> Result<(), EP> {
+            if acc.is_some() {
+                return Err(EP::ItemRepeated);
+            }
             item.check_no_object()?;
             let params = NetParams::from_unparsed(item)?;
-            let effective = (&params)
-                .try_into()
-                .map_err(|_| EP::OtherBadDocument("invalid information in `w` item"))?;
-            Ok(effective)
+            *acc = Some(params);
+            Ok(())
+        }
+
+        fn finish(params: Self::Accumulator, items: &ItemStream) -> Result<Self, EP> {
+            let effective = params
+                .as_ref()
+                .map(TryFrom::try_from)
+                .transpose()
+                .map_err(|_| EP::OtherBadDocument("invalid information in `w` item"))?
+                .unwrap_or_default();
+
+            let params = items.parse_options().retain_unknown_values.map(|()| params);
+
+            Ok(RelayWeights { effective, params })
         }
     }
 
@@ -2210,34 +2316,34 @@ mod test {
     #[test]
     fn test_weight() {
         let w = gettok("w Unmeasured=1 Bandwidth=6\n").unwrap();
-        let w = RelayWeight::from_item(&w).unwrap();
-        assert!(!w.is_measured());
-        assert!(w.is_nonzero());
+        let w = RelayWeights::from_item(&w).unwrap();
+        assert!(!w.effective.is_measured());
+        assert!(w.effective.is_nonzero());
 
         let w = gettok("w Bandwidth=10\n").unwrap();
-        let w = RelayWeight::from_item(&w).unwrap();
-        assert!(w.is_measured());
-        assert!(w.is_nonzero());
+        let w = RelayWeights::from_item(&w).unwrap();
+        assert!(w.effective.is_measured());
+        assert!(w.effective.is_nonzero());
 
-        let w = RelayWeight::default();
-        assert!(!w.is_measured());
-        assert!(!w.is_nonzero());
+        let w = RelayWeights::new_no_info();
+        assert!(!w.effective.is_measured());
+        assert!(!w.effective.is_nonzero());
 
         let w = gettok("w Mustelid=66 Cheato=7 Unmeasured=1\n").unwrap();
-        let w = RelayWeight::from_item(&w).unwrap();
-        assert!(!w.is_measured());
-        assert!(!w.is_nonzero());
+        let w = RelayWeights::from_item(&w).unwrap();
+        assert!(!w.effective.is_measured());
+        assert!(!w.effective.is_nonzero());
 
         let w = gettok("r foo\n").unwrap();
-        let w = RelayWeight::from_item(&w);
+        let w = RelayWeights::from_item(&w);
         assert!(w.is_err());
 
         let w = gettok("r Bandwidth=6 Unmeasured=Frog\n").unwrap();
-        let w = RelayWeight::from_item(&w);
+        let w = RelayWeights::from_item(&w);
         assert!(w.is_err());
 
         let w = gettok("r Bandwidth=6 Unmeasured=3\n").unwrap();
-        let w = RelayWeight::from_item(&w);
+        let w = RelayWeights::from_item(&w);
         assert!(w.is_err());
     }
 

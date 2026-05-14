@@ -22,7 +22,7 @@ impl RouterStatus {
     }
     /// Return the declared weight of this routerstatus in the directory.
     pub fn weight(&self) -> &RelayWeight {
-        &self.weight
+        &self.weight.effective
     }
     /// Return the protovers that this routerstatus says it implements.
     pub fn protovers(&self) -> &Protocols {
@@ -151,9 +151,9 @@ impl RouterStatus {
         // W line
         let weight = sec
             .get(RS_W)
-            .map(RelayWeight::from_item)
+            .map(RelayWeights::from_item)
             .transpose()?
-            .unwrap_or_default();
+            .unwrap_or(RelayWeights::new_no_info());
 
         // No p line
         // no ID line
