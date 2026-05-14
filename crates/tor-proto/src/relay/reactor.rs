@@ -424,11 +424,29 @@ pub(crate) mod test {
             };
 
             let handshake = vec![];
-            let created2 = chanmsg::Created2::new(handshake);
+            let created2 = chanmsg::Created2::new(handshake.clone());
             // ...and then finalize the handshake by pretending to be
             // the responding relay
             self.write_outbound(circid, chanmsg::AnyChanMsg::Created2(created2));
             rt.advance_until_stalled().await;
+
+            // Make sure we actually did send an EXTENDED2 towards the client
+            let msg = self.read_inbound();
+            let rmsg = match msg.msg() {
+                chanmsg::AnyChanMsg::Relay(r) => AnyRelayMsgOuter::decode_singleton(
+                    RelayCellFormat::V0,
+                    r.clone().into_relay_body(),
+                )
+                .unwrap(),
+                _ => panic!("unexpected forwarded {msg:?}"),
+            };
+
+            match rmsg.msg() {
+                relaymsg::AnyRelayMsg::Extended2(e) => {
+                    assert_eq!(e.clone().into_body(), handshake);
+                }
+                _ => panic!("unexpected relay message {rmsg:?}"),
+            }
 
             circid
         }
