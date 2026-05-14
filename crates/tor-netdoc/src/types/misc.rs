@@ -942,10 +942,10 @@ impl<T> Unknown<T> {
     /// Obtain the `Retained` data
     ///
     /// Treats lack of retention as an internal error.
-    #[cfg(feature = "retain-unknown")]
     pub fn into_retained(self) -> Result<T, Bug> {
         match self {
             Unknown::Discarded(_) => Err(internal!("Unknown::retained but data not collected")),
+            #[cfg(feature = "retain-unknown")]
             Unknown::Retained(t) => Ok(t),
         }
     }
