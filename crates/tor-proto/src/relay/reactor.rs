@@ -766,6 +766,26 @@ pub(crate) mod test {
 
     #[traced_test]
     #[test]
+    fn truncate() {
+        tor_rtmock::MockRuntime::test_with_various(|rt| async move {
+            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            rt.advance_until_stalled().await;
+
+            // Simulate the client sending us a TRUNCATE cell
+            let truncate = relaymsg::Truncate::default().into();
+            ctrl.send_fwd(None, truncate, Recognized::Yes, false).await;
+            rt.advance_until_stalled().await;
+
+            assert!(logs_contain(
+                "Circuit protocol violation: TRUNCATE not allowed"
+            ));
+
+            assert_destroy_sent(&mut ctrl, DestroyReason::NONE);
+        });
+    }
+
+    #[traced_test]
+    #[test]
     #[ignore] // TODO(relay): Sad trombone, this is not yet supported
     fn data_stream() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {

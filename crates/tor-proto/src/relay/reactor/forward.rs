@@ -264,12 +264,12 @@ impl Forward {
     /// Handle a TRUNCATE cell.
     #[allow(clippy::unused_async)] // TODO(relay)
     async fn handle_truncate(&mut self) -> StdResult<(), ReactorError> {
-        // TODO(relay): when we implement this, we should try to do better than C Tor:
-        // if we have some cells queued for the next hop in the circuit,
-        // we should try to flush them *before* tearing it down.
+        // This is not strictly spec compliant,
+        // but since none of our implementations use TRUNCATE,
+        // we deem it a proto violation and shut down the circuit.
         //
-        // See https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3487#note_3296035
-        Err(internal!("TRUNCATE is not implemented").into())
+        // TODO(spec): codify this in the spec
+        Err(Error::CircProto("TRUNCATE not allowed".into()).into())
     }
 
     /// Handle a DESTROY cell originating from the client.
