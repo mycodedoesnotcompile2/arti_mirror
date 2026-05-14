@@ -32,7 +32,7 @@ use tor_rtcompat::Runtime;
 
 use futures::channel::mpsc;
 use futures::{SinkExt as _, future};
-use tracing::trace;
+use tracing::{debug, trace};
 
 use std::result::Result as StdResult;
 use std::sync::Arc;
@@ -274,8 +274,20 @@ impl Forward {
 
     /// Handle a DESTROY cell originating from the client.
     #[allow(clippy::needless_pass_by_value)] // TODO(relay)
-    fn handle_destroy_cell(&mut self, _cell: Destroy) -> StdResult<(), ReactorError> {
-        Err(internal!("DESTROY is not implemented").into())
+    fn handle_destroy_cell(&mut self, cell: Destroy) -> StdResult<(), ReactorError> {
+        debug!(
+            circ_id = %self.unique_id,
+            reason = %cell.reason(),
+            "Received outbound DESTROY, circuit shutting down",
+        );
+
+        // TODO(relay): if the DESTROY cell has a reason other than PROTOCOL,
+        // here, and in the backward reactor, we should flush all pending cells
+        // *before* shutting down.
+
+        // We don't need to send a DESTROY cell down the channel,
+        // because that's handled implicitly by our Drop implementation
+        Err(ReactorError::Shutdown)
     }
 
     /// Handle a PADDING_NEGOTIATE cell originating from the client.
