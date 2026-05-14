@@ -273,8 +273,7 @@ impl Forward {
     }
 
     /// Handle a DESTROY cell originating from the client.
-    #[allow(clippy::needless_pass_by_value)] // TODO(relay)
-    fn handle_destroy_cell(&mut self, cell: Destroy) -> StdResult<(), ReactorError> {
+    fn handle_destroy_cell(&mut self, cell: &Destroy) -> StdResult<(), ReactorError> {
         debug!(
             circ_id = %self.unique_id,
             reason = %cell.reason(),
@@ -329,7 +328,7 @@ impl ForwardHandler for Forward {
             Relay(r) => self.handle_relay_cell(hop_mgr, r, false),
             RelayEarly(r) => self.handle_relay_cell(hop_mgr, r.into(), true),
             Destroy(d) => {
-                self.handle_destroy_cell(d)?;
+                self.handle_destroy_cell(&d)?;
                 Ok(None)
             }
             PaddingNegotiate(p) => {
