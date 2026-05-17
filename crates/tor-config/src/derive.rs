@@ -479,6 +479,11 @@ pub mod doc_generated_code {}
 /// the `build()` method will set its value to the value of the provided expression.
 /// The expression may invoke a function, but cannot use `self`.
 ///
+/// The type of the default must match the type of the field _in the builder_.
+/// Usually this is the same type as in the built configuration, but for some
+/// ["magic" types](crate::derive::doc_magic_types), the two can differ.
+/// (If this is the case, we note the fact with the "magic" type's documentation.)
+///
 /// For each field, you must specify exactly one of
 /// [`default`], [`default =`], [`no_default`], [`build`], [`try_build`], or [`sub_builder`].
 ///
@@ -1078,6 +1083,9 @@ pub mod doc_differences {}
 /// `impl `[`PossiblyBoundsChecked`]`<T>` as its argument.
 /// This trait is implemented by `T` and by [`NonZero`]`<T>`.
 ///
+/// The default for a `NonZero<T>` should be of type `T`.
+/// (Passing the value `0` will cause a test failure.)
+///
 /// When the build() function is called, it returns an error if the provided
 /// value was zero.
 ///
@@ -1310,11 +1318,10 @@ macro_rules! nonzero_typemagic {
     { @setter_arg_type {$t:ty} } => { impl $crate::setter_traits::PossiblyBoundsChecked<$t> };
     { @setter_cvt {$t:ty} {$e:expr} } => { $e.to_unchecked() };
     { @build_field {$t:ty} {$e:expr} {$fname:expr}} => {
-        $e.map(|v|
-            v.try_into().map_err(|_| $crate::ConfigBuildError::Invalid {
+        $e.try_into().map_err(|_| $crate::ConfigBuildError::Invalid {
                 field: $fname.to_string(),
                 problem: "value not allowed to be zero".to_string()
-        })).transpose()?
+        })?
     };
     { @check_type {$t:ty} } => {};
     { @setter_docs {$t:ty} } => {
@@ -1335,14 +1342,13 @@ macro_rules! opt_nz_typemagic {
     { @setter_cvt {$t:ty} {$e:expr} } => { $e.to_option_unchecked() };
     { @build_field {$t:ty} {$e:expr} {$fname:expr}} => {
         match $e {
-            Some(Some(v)) => match v.try_into() {
-                Ok(n) => Some(Some(n)),
+            Some(v) => match v.try_into() {
+                Ok(n) => Some(n),
                 Err(_) => return Err( $crate::ConfigBuildError::Invalid {
                     field: $fname.to_string(),
                     problem: "value not allowed to be zero".to_string()
                 })
             }
-            Some(None) => Some(None),
             None => None,
         }
     };
@@ -2163,13 +2169,13 @@ define_derive_deftly! {
         ${fmeta(tor_config(sub_builder(build_fn))) as path, default build}
     }}
 
-    // Expands to an expression of type Option<$ftype> for the current field,
+    // Expands to an expression of type Option<$ftype> for a field named "value",
     // taking type-based magic into account.
     ${define BLD_MAGIC_CVT {
         ${if fmeta(tor_config(no_magic)) {
-            self.$fname.clone()
+            value.clone()
         } else {
-            $E::bld_magic_cvt!({self.$fname} {${concat $fname}} {$ftype})
+            $E::bld_magic_cvt!({value} {${concat $fname}} {$ftype})
         }}
     }}
 
@@ -2191,8 +2197,11 @@ define_derive_deftly! {
             }
             all(fmeta(tor_config(default)), not(any(fmeta(tor_config(list)),
                                                     fmeta(tor_config(map))))) {
-                $BLD_MAGIC_CVT.unwrap_or_else(
-                    || ${fmeta(tor_config(default)) as expr, default {Default::default()}})
+                {
+                    let value = self.$fname.clone().unwrap_or_else(
+                        || ${fmeta(tor_config(default)) as expr, default {Default::default()}});
+                    $BLD_MAGIC_CVT
+                }
             }
             fmeta(tor_config(build)) {
                 (${fmeta(tor_config(build)) as expr})(self)
@@ -2201,9 +2210,11 @@ define_derive_deftly! {
                 (${fmeta(tor_config(try_build)) as expr})(self)?
             }
             fmeta(tor_config(no_default)) {
-                $BLD_MAGIC_CVT.ok_or_else(
-                    || { ($BLD_MISSING_FIELD)(stringify!($fname)) }
-                )?
+                {
+                    let value = self.$fname.clone().ok_or_else(
+                        || { ($BLD_MISSING_FIELD)(stringify!($fname)) })?;
+                    $BLD_MAGIC_CVT
+                }
             }
             else {
                 ${error "Every field must have default, no_default, try_build, build, or sub_builder."}
@@ -2486,10 +2497,10 @@ mod test {
         #[derive(Deftly, Clone, Debug, PartialEq)]
         #[derive_deftly(TorConfig)]
         pub(super) struct Magic {
-            #[deftly(tor_config(default = "nz(7)"))]
+            #[deftly(tor_config(default = "7"))]
             pub(super) nzu8: NonZeroU8,
 
-            #[deftly(tor_config(default = "nz(123)"))]
+            #[deftly(tor_config(default = "123"))]
             pub(super) nzu8_2: NonZero<u8>,
 
             #[deftly(tor_config(default))]
@@ -2497,10 +2508,6 @@ mod test {
 
             #[deftly(tor_config(default))]
             pub(super) s: String,
-        }
-
-        fn nz(x: u8) -> NonZeroU8 {
-            x.try_into().unwrap()
         }
 
         #[derive(Deftly, Clone, Debug, PartialEq)]
@@ -2602,7 +2609,7 @@ mod test {
             pub(super) a: Option<u32>,
             #[deftly(tor_config(default = "Some(123)"))]
             pub(super) b: Option<u32>,
-            #[deftly(tor_config(default = "Some(nz(42))"))]
+            #[deftly(tor_config(default = "Some(42)"))]
             pub(super) nz: Option<NonZeroU8>,
             #[deftly(tor_config(default))]
             pub(super) s: Option<String>,
