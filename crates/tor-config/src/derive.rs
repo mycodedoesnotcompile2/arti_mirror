@@ -844,6 +844,31 @@ pub mod doc_generated_code {}
 /// }
 /// ```
 ///
+/// <div id="fmeta:apply_field_default">
+///
+/// ### `deftly(tor_config(apply_field_default = { FIELD_DEFAULT }))` — Apply a default for a specialized builder.
+///
+/// </div>
+///
+/// By default, the builder's generated [`apply_defaults()`] method
+/// does nothing for fields with [`build`] or [`try_build`] attributes,
+/// and recursively calls [`apply_defaults()`]
+/// for [`sub_builder`] fields.
+///
+/// This attribute replaces that behavior for a single field.
+/// FIELD_DEFAULT must be an expression that expands to a closure taking `&mut Self` as an argument.
+/// It must check that checks whether the field is set,
+/// and sets it to a reasonable default otherwise.
+/// It must return Result<(), E>, where E is some type implementing `Into<ConfigBuildError>`.
+/// Within `FIELD_DEFAUlt`, `self` refers to the `Builder`.
+/// The [`build`] or [`try_build`] functions for that field may assume
+/// that the FIELD_DEFAULT has already been executed.
+///
+/// The code in this attribute is invoked after earlier fields are set to their defaults,
+/// and before later fields are set to theirs.
+///
+/// It is an error to use this attribute along with [`default`] or [`no_default`].
+///
 /// <div id="fmeta:field_vis">
 ///
 /// ### `deftly(tor_config(field(vis = "..")))` — Change the visibility of a field in the builder
@@ -999,6 +1024,7 @@ pub mod doc_generated_code {}
 /// This attribute disables [type-based magic behavior](crate::derive::doc_magic_types)
 /// for the current field.
 ///
+/// [`apply_defaults()`]: crate::load::ConfigBuilder::apply_defaults
 /// [`build_fn(error)`]:  crate::derive::doc_ref_attrs#tmeta:build_fn_error
 /// [`build_fn(missing_field)`]:  crate::derive::doc_ref_attrs#tmeta:build_fn_missing_field
 /// [`build`]: crate::derive::doc_ref_attrs#fmeta:build
@@ -2326,7 +2352,16 @@ define_derive_deftly! {
             use $E::ConfigBuilder as _;
             $(
                 ${IF_CFG}
-                ${if any(fmeta(tor_config(sub_builder)),
+                ${if fmeta(tor_config(apply_field_default)) {
+                    ${if any(fmeta(tor_config(default)),
+                             fmeta(tor_config(no_default))) {
+                        ${error "Cannot use apply_field_default with default or no_default."}
+                    }}
+                    {
+                        let closure = ${fmeta(tor_config(apply_field_default)) as expr};
+                        (closure)(self)?;
+                    }
+                } else if any(fmeta(tor_config(sub_builder)),
                         fmeta(tor_config(list)),
                         fmeta(tor_config(map))) {
                     self.$fname.apply_defaults()?;
