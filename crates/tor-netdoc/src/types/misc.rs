@@ -1374,18 +1374,8 @@ mod edcert {
                 .encode_and_sign(id_ed25519)
                 .map_err(into_internal!("failed to encode and sign identity cert"))?;
 
-            // Do a round-trip decoding and verification.  The decoding is
-            // required for the result, whereas the verification is for
-            // defensive programming.
             let cert =
                 Ed25519Cert::decode(&cert).map_err(into_internal!("decode just encoded cert"))?;
-            Self::verify(
-                cert.clone(),
-                // Required because expiry itself is excluding.
-                Duration::from_secs(1),
-                expiry,
-            )
-            .map_err(into_internal!("round trip verification failed"))?;
 
             Ok(EmbeddedCert::new(
                 Self {
@@ -1497,18 +1487,8 @@ mod edcert {
                 .encode_and_sign(family_ed25519)
                 .map_err(into_internal!("failed to encode and sign family cert"))?;
 
-            // Do a round-trip decoding and verification similar to
-            // Ed25519IdentityCert::new_signed().
             let cert =
                 Ed25519Cert::decode(&cert).map_err(into_internal!("decode just encoded cert"))?;
-            Self::verify(
-                id_ed25519,
-                cert.clone(),
-                // Required because expiry itself is excluding.
-                Duration::from_secs(1),
-                expiry,
-            )
-            .map_err(into_internal!("round trip verification failed"))?;
 
             Ok(EmbeddedCert::new(
                 Self {
