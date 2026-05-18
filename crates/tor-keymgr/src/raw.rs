@@ -23,6 +23,17 @@ pub(crate) enum RawEntryId {
 
     /// An entry of an in-memory ephemeral key storage
     /// [`ArtiEphemeralKeystore`](crate::ArtiEphemeralKeystore)
+    ///
+    // TODO: the concept of a "raw identifier" doesn't really make sense
+    // in the context of the `ArtiEphemeralKeystore`,
+    // which is why this "raw" identifier is of exactly the same type
+    // (`(ArtiPath, KeystoreItemType)`) as its non-"raw" counterpart.
+    // Ephemeral keystores are just in-memory key-value mappings;
+    // unlike file system-based keystores, these don't have entries with "raw"
+    // identifiers that need to be validated and parsed before they can be used.
+    //
+    // We might want to remove this variant entirely,
+    // and make `RawEntryId` optional in e.g. `KeystoreEntry`.
     #[display("{} {:?}", _0.0, _0.1)]
     Ephemeral((ArtiPath, KeystoreItemType)),
     // TODO: when/if we add support for non on-disk keystores,
