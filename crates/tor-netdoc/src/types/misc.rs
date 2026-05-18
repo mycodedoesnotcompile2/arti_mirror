@@ -681,6 +681,8 @@ mod ignored_impl {
     /// Indicates that no further arguments are allowed in a network document Item line
     ///
     /// Unlike [`NotPresent`], this fails during parsing if there are any more arguments.
+    ///
+    /// Should appear only at the end of the argument list.
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Default)]
     #[allow(clippy::exhaustive_structs)]
     pub struct NoMoreArguments;
@@ -846,11 +848,7 @@ mod ignored_impl {
 
     impl ItemArgumentParseable for NoMoreArguments {
         fn from_args(args: &mut ArgumentStream) -> Result<NoMoreArguments, ArgumentError> {
-            if args.next().is_some() {
-                Err(ArgumentError::Unexpected)
-            } else {
-                Ok(NoMoreArguments)
-            }
+            Ok(args.reject_extra_args()?)
         }
     }
 

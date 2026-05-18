@@ -25,4 +25,4 @@ ADDED: `netstatus::{plain,md,vote}::Footer` for the network status footer sectio
 ADDED: `NetworkStatusVersion`
 ADDED: `DirectorySignaturesHashesAccu` fields are now pub.
 BREAKING: `SignatureGroup` contains `DirectorySignaturesHashesAccu`, instead of hash fields
-ADDED: `NoMoreArguments` parsing/encoding helper type.
+ADDED: `NoMoreArguments` parsing/encoding helper type (`NoFurtherArguments` now a deprecated alias)
