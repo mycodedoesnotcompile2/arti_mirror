@@ -46,9 +46,10 @@ use crate::{AllowAnnotations, Error, KeywordEncodable, NetdocErrorKind as EK, Re
 
 use derive_deftly::Deftly;
 use ll::pk::ed25519::Ed25519Identity;
+use saturating_time::SaturatingTime;
 use std::sync::Arc;
 use std::sync::LazyLock;
-use std::{net, time};
+use std::{iter, net, time};
 use tor_cert::CertType;
 use tor_checkable::{Timebound, signed, timed};
 use tor_error::{internal, into_internal};
@@ -117,21 +118,6 @@ pub struct RouterDesc {
     // present as arguments, not as independent items.
     //
     //
-    /// Human-readable nickname for this relay.
-    ///
-    /// This is not secure, and not guaranteed to be unique.
-    pub nickname: Nickname,
-
-    /// IPv4 address for this relay.
-    pub ipv4addr: Option<net::Ipv4Addr>,
-
-    /// IPv4 ORPort for this relay.
-    pub orport: u16,
-
-    /// Directory port for contacting this relay for direct HTTP
-    /// directory downloads.
-    pub dirport: u16,
-
     /// Declared (and proven) family IDs for this relay. If two relays
     /// share a family ID, they shouldn't be used in the same circuit.
     family_ids: Vec<RelayFamilyId>,
@@ -141,6 +127,11 @@ pub struct RouterDesc {
     // descriptors, although potentially not under the same name.
     //
     //
+    /// `router` --- Introduce a router descriptor.
+    /// * `router <nickname> <address> <orport> <socksport> <dirport>`
+    /// * At start, exactly once.
+    pub router: RouterDescIntroItem,
+
     /// `identity-ed25519` --- Specify the router's ed25519 identity.
     ///
     /// * `identity-ed25519\n<certificate object>`
@@ -157,7 +148,7 @@ pub struct RouterDesc {
     ///
     /// * `published <date> <time>`
     /// * Exactly once.
-    pub published: time::SystemTime,
+    pub published: Iso8601TimeSp,
 
     /// `fingerprint` --- Redundant hash of ASN-1 encoding of router identity key.
     ///
@@ -182,7 +173,7 @@ pub struct RouterDesc {
     ///
     /// * `ntor-onion-key <base64 padded key>`
     /// * Exactly once.
-    pub ntor_onion_key: ll::pk::curve25519::PublicKey,
+    pub ntor_onion_key: Curve25519Public,
 
     /// `signing-key` --- Obsolete RSA identity key.
     ///
@@ -479,21 +470,22 @@ impl RouterDesc {
 
     /// Return a reference to this relay's Ntor onion key.
     pub fn ntor_onion_key(&self) -> &ll::pk::curve25519::PublicKey {
-        &self.ntor_onion_key
+        &self.ntor_onion_key.0
     }
 
     /// Return the publication
     pub fn published(&self) -> time::SystemTime {
-        self.published
+        self.published.0
     }
 
     /// Return an iterator of every `SocketAddr` at which this descriptor says
     /// its relay can be reached.
     pub fn or_ports(&self) -> impl Iterator<Item = net::SocketAddr> + '_ {
-        self.ipv4addr
-            .map(|a| net::SocketAddr::new(a.into(), self.orport))
-            .into_iter()
-            .chain(self.or_address.map(net::SocketAddr::from))
+        iter::once(net::SocketAddr::new(
+            self.router.address.into(),
+            self.router.orport,
+        ))
+        .chain(self.or_address.map(net::SocketAddr::from))
     }
 
     /// Return the declared family of this descriptor.
@@ -539,6 +531,10 @@ impl RouterDesc {
     ///
     /// Does not actually check liveness or signatures; you need to do that
     /// yourself before you can do the output.
+    ///
+    /// The following fields are not parsed with the legacy parser and their
+    /// default value is used instead.
+    /// * [`RouterDescIntroItem::socksport`] in [`RouterDesc::router`]
     pub fn parse(s: &str) -> Result<UncheckedRouterDesc> {
         let mut reader = crate::parse::tokenize::NetDocReader::new(s)?;
         let result = Self::parse_internal(&mut reader).map_err(|e| e.within(s))?;
@@ -677,7 +673,7 @@ impl RouterDesc {
                         .with_msg(e.to_string())
                         .at_pos(rtrline.pos())
                 })?,
-                Some(rtrline.parse_arg::<net::Ipv4Addr>(1)?),
+                rtrline.parse_arg::<net::Ipv4Addr>(1)?,
                 rtrline.parse_arg(2)?,
                 // Skipping socksport.
                 rtrline.parse_arg(4)?,
@@ -691,12 +687,10 @@ impl RouterDesc {
         let published = body
             .required(PUBLISHED)?
             .args_as_str()
-            .parse::<Iso8601TimeSp>()?
-            .into();
+            .parse::<Iso8601TimeSp>()?;
 
         // ntor key
         let ntor_onion_key: Curve25519Public = body.required(NTOR_ONION_KEY)?.parse_arg(0)?;
-        let ntor_onion_key: ll::pk::curve25519::PublicKey = ntor_onion_key.into();
         // ntor crosscert
         let crosscert_cert: tor_cert::UncheckedCert = {
             let cc = body.required(NTOR_ONION_KEY_CROSSCERT)?;
@@ -705,7 +699,7 @@ impl RouterDesc {
                 return Err(EK::BadArgument.at_pos(cc.arg_pos(0)).with_msg("not 0 or 1"));
             }
             let ntor_as_ed: ll::pk::ed25519::PublicKey =
-                ll::pk::keymanip::convert_curve25519_to_ed25519_public(&ntor_onion_key, sign)
+                ll::pk::keymanip::convert_curve25519_to_ed25519_public(&ntor_onion_key.0, sign)
                     .ok_or_else(|| {
                         EK::BadArgument
                             .at_pos(cc.pos())
@@ -892,7 +886,9 @@ impl RouterDesc {
         let identity_cert = identity_cert.dangerously_assume_timely();
         let crosscert_cert = crosscert_cert.dangerously_assume_timely();
         let mut expirations = vec![
-            published + time::Duration::new(ROUTER_EXPIRY_SECONDS, 0),
+            published
+                .0
+                .saturating_add(time::Duration::new(ROUTER_EXPIRY_SECONDS, 0)),
             identity_cert.expiry(),
             crosscert_cert.expiry(),
         ];
@@ -909,15 +905,20 @@ impl RouterDesc {
         #[allow(clippy::unwrap_used)]
         let expiry = *expirations.iter().min().unwrap();
 
-        let start_time = published - time::Duration::new(ROUTER_PRE_VALIDITY_SECONDS, 0);
+        let start_time = published
+            .0
+            .saturating_sub(time::Duration::new(ROUTER_PRE_VALIDITY_SECONDS, 0));
 
         let desc = RouterDesc {
-            nickname,
-            ipv4addr,
-            orport,
-            dirport,
             family_ids,
 
+            router: RouterDescIntroItem {
+                nickname,
+                address: ipv4addr,
+                orport,
+                socksport: 0,
+                dirport,
+            },
             identity_ed25519: identity_cert,
             platform,
             published,
@@ -1082,9 +1083,9 @@ mod test {
             .check_signature()?
             .dangerously_assume_timely();
 
-        assert_eq!(rd.nickname.as_str(), "Akka");
-        assert_eq!(rd.orport, 443);
-        assert_eq!(rd.dirport, 0);
+        assert_eq!(rd.router.nickname.as_str(), "Akka");
+        assert_eq!(rd.router.orport, 443);
+        assert_eq!(rd.router.dirport, 0);
         assert_eq!(rd.uptime, Some(1036923));
         assert_eq!(
             rd.family.as_ref(),
