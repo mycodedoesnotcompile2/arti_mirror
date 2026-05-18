@@ -151,6 +151,11 @@ impl Ord for RelayFamilyId {
 impl NormalItemArgument for RelayFamilyId {}
 
 /// A list of multiple [`RelayFamilyId`] entries as found in microdescs.
+///
+/// Using the [`FromIterator`] implementation for [`RelayFamilyId`] leads the
+/// result to get deduplicated and sorted automatically using
+/// [`RelayFamilyIds::dedup()`] and [`RelayFamilyIds::sort()`], as those calls
+/// are effectively required for a useful use of this type.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deftly, derive_more::AsRef)]
 #[derive_deftly(ItemValueParseable)]
 pub struct RelayFamilyIds(
@@ -182,9 +187,6 @@ impl RelayFamilyIds {
 }
 
 impl FromIterator<RelayFamilyId> for RelayFamilyIds {
-    /// Creates a [`RelayFamilyIds`] from an iterator.
-    ///
-    /// Automatically dedups and sorts.
     fn from_iter<T: IntoIterator<Item = RelayFamilyId>>(iter: T) -> Self {
         let mut res = Self(iter.into_iter().collect());
         // TODO: We should really reconsider this because it does not achieve
