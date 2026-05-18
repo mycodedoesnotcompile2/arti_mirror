@@ -186,7 +186,7 @@ impl DirFilter for BadMicrodescDigestsFilter {
         let (mut consensus, (start_time, end_time)) = consensus.dangerously_into_parts();
         let mut rng = rand::rng();
         for rs in consensus.consensus.relays.iter_mut() {
-            rs.m = rng.random();
+            rs.m.0 = rng.random();
         }
 
         Ok(UncheckedMdConsensus::new_from_start_end(

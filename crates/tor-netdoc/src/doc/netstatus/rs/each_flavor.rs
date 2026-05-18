@@ -180,16 +180,17 @@ impl RouterStatus {
             let m_doc_digest = NotPresent;
         ) };
 
+        #[allow(clippy::useless_conversion)] // sometimes doc_digest needs into
         Ok(RouterStatus {
             r: RouterStatusIntroItem {
                 nickname,
                 identity,
                 or_port,
-                doc_digest: r_doc_digest,
+                doc_digest: r_doc_digest.into(),
                 publication: IgnoredPublicationTimeSp,
                 ip,
             },
-            m: m_doc_digest,
+            m: m_doc_digest.into(),
             a,
             flags,
             version,
