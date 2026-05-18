@@ -417,7 +417,7 @@ where
     resolve_inner(input, true)
 }
 
-/// Results of a successful `resolve_return_disfavoured`
+/// Results of a successful [`resolve_return_results`].
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct ResolutionResults<T> {
