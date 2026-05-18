@@ -106,6 +106,9 @@ define_derive_deftly_module! {
         }
     }
 
+    // TODO: This implementation is probably a bug, as it forbids to derive
+    // Transparent on types like `struct Foo<T>(T)`, namely `T` not being
+    // covered by something else, like `PhantomData<T>` or `Vec<T>`.
     impl<$tgens> From<$ttype> for $ftype {
         fn from(self_: $ttype) -> $ftype {
             self_.$fname
