@@ -65,6 +65,7 @@ static OTHER_VERSION_CACHE: InternCache<str> = InternCache::new();
 ///    and across multiple instances of it within a `RouterStatus`.
 #[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Deftly)]
 #[derive_deftly(ItemValueParseable)]
+#[cfg_attr(feature = "incomplete", derive_deftly(ItemValueEncodable))] // untested
 #[non_exhaustive]
 pub struct RouterStatusMdDigestsVote {
     /// The methods for which this document is applicable.
