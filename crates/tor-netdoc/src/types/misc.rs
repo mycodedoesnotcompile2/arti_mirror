@@ -25,7 +25,8 @@ pub use fingerprint::{Base64Fingerprint, Fingerprint};
 pub use identified_digest::{DigestName, IdentifiedDigest};
 
 pub use ignored_impl::{
-    Ignored, IgnoredItemOrObjectValue, NoMoreArguments, NotPresent, NotPresentEachValue,
+    Ignored, IgnoredItemOrObjectValue, ItemPresent, NoMoreArguments, NotPresent,
+    NotPresentEachValue,
 };
 
 use crate::NormalItemArgument;
@@ -686,6 +687,71 @@ mod ignored_impl {
     #[allow(clippy::exhaustive_structs)]
     pub struct NoMoreArguments;
 
+    /// An item that only matters in terms of presence of absence.
+    ///
+    /// Useful for items such as `tunnelled-dir-server` where the mere presence
+    /// implies a truthful value.
+    ///
+    /// This wrapper implements [`ItemValueParseable`] and [`ItemValueEncodable`]
+    /// rejecting all arguments and objects and just expecting/emitting the
+    /// keyword (or not).
+    ///
+    /// # Examples
+    ///
+    /// The following shows an except from a hypothetical netdoc with a
+    /// [`ItemPresent`] item.
+    ///
+    /// ```
+    /// use derive_deftly::Deftly;
+    /// use tor_netdoc::types::*;
+    /// use tor_netdoc::parse2::*;
+    /// use tor_netdoc::*;
+    ///
+    /// #[derive(Debug, Default)]
+    /// struct Hello;
+    ///
+    /// #[derive(Deftly, Debug)]
+    /// #[derive_deftly(NetdocParseable)]
+    /// struct TestDoc {
+    ///     intro: Ignored,
+    ///     hello: Option<ItemPresent<Hello>>,
+    /// }
+    ///
+    /// // hello is not present.
+    /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\n", "")).unwrap();
+    /// assert!(doc.hello.is_none());
+    ///
+    /// // hello is present.
+    /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\nhello\n", "")).unwrap();
+    /// assert!(doc.hello.is_some());
+    ///
+    /// // hello has arguments (or an object) which is not allowed.
+    /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\nhello world\n", "")).unwrap_err();
+    ///
+    /// // hello is present twice which is not allowed.
+    /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\nhello\nhello\n", "")).unwrap_err();
+    /// ```
+    //
+    // We cannot derive Transparent here, because it is not possible to
+    // implement `From<ItemPresent<T>> for T` due to orphan rule.
+    //
+    // Otherwise, a downstream crate could for example implement
+    // `From<ItemPresent<U>> for U` with `U` being a locally defined type,
+    // leading to a conflicting implementation.  A solution would be to cover
+    // `T` behind another generic type such as `PhantomData`, as this can't be
+    // a type in a downstream crate, but that level of indirection feels wrong.
+    #[derive(Debug, Copy, Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+    //
+    #[derive(
+        derive_more::From,
+        derive_more::Deref,
+        derive_more::DerefMut,
+        derive_more::AsRef,
+        derive_more::AsMut,
+    )]
+    #[allow(clippy::exhaustive_structs)]
+    pub struct ItemPresent<T: Default>(pub T);
+
     impl ItemSetMethods for P2MultiplicitySelector<NotPresent> {
         type Each = NotPresentEachValue;
         type Field = NotPresent;
@@ -853,6 +919,21 @@ mod ignored_impl {
 
     impl ItemArgument for NoMoreArguments {
         fn write_arg_onto(&self, _: &mut ItemEncoder) -> Result<(), Bug> {
+            Ok(())
+        }
+    }
+
+    impl<T: Default> ItemValueParseable for ItemPresent<T> {
+        fn from_unparsed(mut item: UnparsedItem<'_>) -> StdResult<Self, EP> {
+            item.check_no_object()?;
+            item.args_mut().reject_extra_args()?;
+            Ok(Self::default())
+        }
+    }
+
+    impl<T: Default> ItemValueEncodable for ItemPresent<T> {
+        fn write_item_value_onto(&self, out: ItemEncoder) -> StdResult<(), Bug> {
+            out.finish();
             Ok(())
         }
     }
