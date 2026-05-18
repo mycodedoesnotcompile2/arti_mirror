@@ -9,8 +9,8 @@ use std::error::Error as StdError;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::{KeyPath, KeyPathError, KeystoreId};
 use crate::raw::RawEntryId;
+use crate::{KeyPath, KeyPathError, KeystoreId};
 
 /// An Error type for this crate.
 #[derive(thiserror::Error, Debug, Clone)]

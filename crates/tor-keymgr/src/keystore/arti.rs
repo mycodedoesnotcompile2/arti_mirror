@@ -17,7 +17,7 @@ use crate::keystore::{EncodableItem, ErasedKey, KeySpecifier, Keystore};
 use crate::raw::RawEntryId;
 use crate::{
     ArtiPath, ArtiPathUnavailableError, KeystoreEntry, KeystoreId, Result, UnknownKeyTypeError,
-    UnrecognizedEntryError, UnrecognizedEntry, arti_path,
+    UnrecognizedEntry, UnrecognizedEntryError, arti_path,
 };
 use certs::UnparsedCert;
 use err::ArtiNativeKeystoreError;

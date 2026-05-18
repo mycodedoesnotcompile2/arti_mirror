@@ -8,8 +8,8 @@ use crate::keystore::fs_utils::{FilesystemAction, FilesystemError, checked_op};
 use crate::keystore::{EncodableItem, ErasedKey, KeySpecifier, Keystore, KeystoreId};
 use crate::raw::RawEntryId;
 use crate::{
-    CTorPath, KeyPath, KeystoreEntry, KeystoreEntryResult, Result, UnrecognizedEntryError,
-    UnrecognizedEntry,
+    CTorPath, KeyPath, KeystoreEntry, KeystoreEntryResult, Result, UnrecognizedEntry,
+    UnrecognizedEntryError,
 };
 
 use fs_mistrust::Mistrust;
