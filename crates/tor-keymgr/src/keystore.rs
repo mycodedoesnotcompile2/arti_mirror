@@ -43,6 +43,18 @@ pub trait Keystore: Send + Sync + 'static {
     /// The specified `raw_id` is allowed to represent an unrecognized
     /// or nonexistent entry.
     ///
+    /// Implementations that do not have `RawEntryId`s
+    /// that are deserializable from string will return an error.
+    //
+    // TODO: currently, the only such implementation is the EphemeralKeystore.
+    // If we ever decide to remove EphemeralKeystore
+    // (see https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/2580),
+    // we should consider rethinking this API too.
+    //
+    // For example, we might want to remove this function altogether,
+    // and let the user create the RawEntryId instead.
+    //
+    ///
     /// Returns a `RawEntryId` that is specific to this [`Keystore`] implementation.
     ///
     /// Returns an error if `raw_id` cannot be converted to
