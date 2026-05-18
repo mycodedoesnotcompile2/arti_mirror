@@ -643,7 +643,7 @@ mod ignored_impl {
 
     impl ItemSetMethods for P2MultiplicitySelector<NotPresent> {
         type Each = Ignored;
-        type Field = NotPresent;
+        type Field = NotPresent; // XXXX should match encode::MultiplicityMethods
         fn can_accumulate(self, _acc: &Option<NotPresent>) -> Result<(), EP> {
             Ok(())
         }
@@ -658,6 +658,7 @@ mod ignored_impl {
         }
     }
 
+    // XXXX should be done via an ArgumentSetMethods impl
     impl ItemArgumentParseable for NotPresent {
         fn from_args(_: &mut ArgumentStream) -> Result<NotPresent, ArgumentError> {
             Ok(NotPresent)
@@ -666,7 +667,7 @@ mod ignored_impl {
 
     impl ObjectSetMethods for P2MultiplicitySelector<NotPresent> {
         type Field = NotPresent;
-        type Each = Void;
+        type Each = Void; // XXXX should match encode::OptionalityMethods
         fn resolve_option(self, _found: Option<Void>) -> Result<NotPresent, EP> {
             Ok(NotPresent)
         }
@@ -677,7 +678,7 @@ mod ignored_impl {
 
     impl<'f> encode::MultiplicityMethods<'f> for EMultiplicitySelector<NotPresent> {
         type Field = NotPresent;
-        type Each = Void;
+        type Each = Void; // XXXX should match parse2's ItemSetMethods, ArgumentSetMethods
         fn iter_ordered(self, _: &'f Self::Field) -> impl Iterator<Item = &'f Self::Each> {
             iter::empty()
         }
@@ -685,7 +686,7 @@ mod ignored_impl {
 
     impl encode::OptionalityMethods for EMultiplicitySelector<NotPresent> {
         type Field = NotPresent;
-        type Each = Void;
+        type Each = Void; // XXXX should match parse2's ObjectSetMethods
         fn as_option<'f>(self, _: &'f Self::Field) -> Option<&'f Self::Each> {
             None
         }
