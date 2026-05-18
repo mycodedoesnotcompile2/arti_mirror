@@ -229,6 +229,12 @@ macro_rules! define_map_builder {
                     .collect()
             }
         }
+        impl $crate::load::Builder for $btype {
+            type Built = $maptype;
+            fn build(&self) -> ::std::result::Result<$maptype, $crate::ConfigBuildError> {
+                $btype :: build(self)
+            }
+        }
         $(
             // This section is expanded when we have a defaults_fn().
             impl ::std::default::Default for $btype {

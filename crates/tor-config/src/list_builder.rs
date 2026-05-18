@@ -302,6 +302,15 @@ macro_rules! define_list_builder_helper {
             }
         }
 
+        impl $( < $($generics)* > )? $crate::load::Builder
+        for $ListBuilder $( < $($generics)* > )?
+        $( where $($where_clauses)* )? {
+            type Built = $Built;
+            fn build(&self) -> ::std::result::Result<$Built, $crate::ConfigBuildError> {
+                $ListBuilder :: build(self)
+            }
+        }
+
         impl $( < $($generics)* > )? $crate::extend_builder::ExtendBuilder
         for $ListBuilder $( < $($generics)* > )?
         $( where $($where_clauses)* )? {
