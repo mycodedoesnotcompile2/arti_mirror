@@ -2525,7 +2525,12 @@ mod test {
     use tor_llcrypto::pk::ed25519::{self, Ed25519Identity, Ed25519PublicKey};
 
     use super::*;
-    use crate::{Pos, Result, parse2::VerifyFailed, types::EmbeddedCert};
+    use crate::{
+        Pos, Result,
+        encode::NetdocEncodable,
+        parse2::{ErrorProblem, ParseInput, VerifyFailed},
+        types::EmbeddedCert,
+    };
 
     /// Decode s as a multi-line base64 string, ignoring ascii whitespace.
     fn base64_decode_ignore_ws(s: &str) -> std::result::Result<Vec<u8>, base64ct::Error> {
@@ -3085,6 +3090,89 @@ mod test {
             parse2(&vec!["ZZZZ"; 10].join(" ")).unwrap_err(),
             ErrorProblem::InvalidArgument { .. }
         ));
+    }
+
+    /// Verifies the parsing of [`ItemPresent`].
+    #[test]
+    fn item_present_parse2() {
+        #[derive(Default)]
+        struct Token;
+
+        #[derive(Deftly)]
+        #[derive_deftly(NetdocParseable)]
+        struct TestDoc {
+            #[allow(unused)]
+            intro: Ignored,
+            foo: Option<ItemPresent<Token>>,
+        }
+
+        // The test cases with their respective result; boolean indicating that
+        // it was present.
+        let tests = [
+            // Test valid present.
+            ("intro\nfoo\n", Ok(true)),
+            // Test valid absent.
+            ("intro\n", Ok(false)),
+            // Test repeated.
+            ("intro\nfoo\nfoo\n", Err(ErrorProblem::ItemRepeated)),
+            // Test repeated with unknown.
+            ("intro\nbar\nfoo\nfoo\n", Err(ErrorProblem::ItemRepeated)),
+            // Test with argument.
+            (
+                "intro\nfoo bar\n",
+                Err(ErrorProblem::UnexpectedArgument { column: 5 }),
+            ),
+            // Test with two arguments.
+            (
+                "intro\nfoo bar baz\n",
+                Err(ErrorProblem::UnexpectedArgument { column: 5 }),
+            ),
+            // Test with object.
+            (
+                "intro\n-----BEGIN RSA PUBLIC KEY-----\n-----END RSA PUBLIC KEY-----\n",
+                Err(ErrorProblem::ObjectUnexpected),
+            ),
+        ];
+
+        for (input, expect) in tests {
+            println!("{input:?}, {expect:?}");
+
+            // Convert the result by calling .is_present() and extracting EP.
+            let got = parse2::parse_netdoc::<TestDoc>(&ParseInput::new(input, ""))
+                .map(|x| x.foo.is_some())
+                .map_err(|e| e.problem);
+            assert_eq!(got, expect);
+        }
+    }
+
+    #[test]
+    fn item_present_encode() {
+        #[derive(Default)]
+        struct Token;
+
+        #[derive(Deftly)]
+        #[derive_deftly(NetdocEncodable)]
+        struct TestDoc {
+            #[allow(unused)]
+            intro: (),
+            foo: Option<ItemPresent<Token>>,
+        }
+
+        let tests = [
+            (Some(ItemPresent(Token)), "intro\nfoo\n"),
+            (None, "intro\n"),
+        ];
+
+        for (present, output) in tests {
+            let mut encoder = NetdocEncoder::new();
+            TestDoc {
+                intro: (),
+                foo: present,
+            }
+            .encode_unsigned(&mut encoder)
+            .unwrap();
+            assert_eq!(encoder.finish().unwrap(), output);
+        }
     }
 
     /// Helper to call methods for edcerts.
