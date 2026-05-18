@@ -84,13 +84,13 @@ pub trait Keystore: Send + Sync + 'static {
         item_type: &KeystoreItemType,
     ) -> Result<Option<()>>;
 
-    /// Remove the specified keystore entry.
+    /// Remove a keystore entry given its [`RawEntryId`].
     ///
-    /// This method accepts both recognized and unrecognized entries, identified
-    /// by a [`RawEntryId`] instance.
+    /// Unlike [`remove`](Keystore::remove), this method can also remove
+    /// entries that are unrecognized
+    /// (i.e. those that do not have a corresponding [`KeySpecifier`] and [`KeystoreItemType`]).
     ///
-    /// If the entry wasn't successfully removed, or if the entry doesn't
-    /// exists, `Err` is returned.
+    /// Returns an error if the entry couldn't be removed, or if the entry doesn't exist.
     #[cfg(feature = "onion-service-cli-extra")]
     fn remove_unchecked(&self, entry_id: &RawEntryId) -> Result<()>;
 
