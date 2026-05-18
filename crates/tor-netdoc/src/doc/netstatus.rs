@@ -125,7 +125,7 @@ pub use rs::{RouterStatusMdDigestsVote, SoftwareVersion};
 
 pub use dir_source::{ConsensusAuthoritySection, DirSource, SupersededAuthorityKey};
 
-define_fixed_string! {
+define_constant_string! {
     /// `network-status-version` version value
     ///
     /// This is the fixed string `3`.
@@ -138,14 +138,14 @@ define_fixed_string! {
     NetworkStatusVersion = "3";
 }
 
-define_fixed_string! {
+define_constant_string! {
     /// The `status` value in a `vote-status` line in a consensus
     ///
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:vote-status>
     VoteStatusConsensus = "consensus";
 }
 
-define_fixed_string! {
+define_constant_string! {
     /// The `vote` value in a `vote-status` line in a vote
     ///
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:vote-status>

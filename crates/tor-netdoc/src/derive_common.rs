@@ -172,9 +172,9 @@ define_derive_deftly! {
 }
 
 define_derive_deftly! {
-    /// Derive all parsing and encoding for a fixed string
+    /// Derive all parsing and encoding for a fixed, constant, string
     ///
-    /// Usually, use the more-cooked [`define_fixed_string!`] macro instead.
+    /// Usually, use the more-cooked [`define_constant_string!`] macro instead.
     ///
     /// # Input
     ///
@@ -183,7 +183,7 @@ define_derive_deftly! {
     ///
     /// # Required attribute
     ///
-    ///  * `#[deftly(fixed_string = EXPR))]` where `EXPR` is a `&str` expression.
+    ///  * `#[deftly(constant_string = EXPR))]` where `EXPR` is a `&str` expression.
     ///
     /// # Generated items
     ///
@@ -195,28 +195,28 @@ define_derive_deftly! {
     ///
     /// ```
     /// use derive_deftly::Deftly;
-    /// use tor_netdoc::derive_deftly_template_FixedString;
+    /// use tor_netdoc::derive_deftly_template_ConstantString;
     ///
     /// #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
-    /// #[derive_deftly(FixedString)]
-    /// #[deftly(fixed_string = "sha3-256")]
+    /// #[derive_deftly(ConstantString)]
+    /// #[deftly(constant_string = "sha3-256")]
     /// #[allow(clippy::exhaustive_structs)]
     /// pub struct SharedRandV1AlgName;
     /// ```
-    export FixedString for struct, beta_deftly, meta_quoted retain:
+    export ConstantString for struct, beta_deftly, meta_quoted retain:
 
-    // Bind `fixed`.  Ensures the type is as expected.
-    ${define LET_FIXED {
-        let fixed: &str = ${tmeta(fixed_string) as expr};
+    // Bind `constant`.  Ensures the type is as expected.
+    ${define LET_CONSTANT {
+        let constant: &str = ${tmeta(constant_string) as expr};
     }}
 
     ${define FMT { ::std::fmt} }
-    ${define ERR { $crate::ExpectedFixedString } }
+    ${define ERR { $crate::ExpectedConstantString } }
 
     impl<$tgens> $FMT::Display for $ttype where $twheres {
         fn fmt(&self, f: &mut $FMT::Formatter) -> $FMT::Result {
-            $LET_FIXED
-            $FMT::Display::fmt(fixed, f)
+            $LET_CONSTANT
+            $FMT::Display::fmt(constant, f)
         }
     }
 
@@ -224,13 +224,13 @@ define_derive_deftly! {
         type Err = $ERR;
 
         fn from_str(s: &str) -> ::std::result::Result<Self, $ERR> {
-            $LET_FIXED
-            if s == fixed {
+            $LET_CONSTANT
+            if s == constant {
                 Ok(::std::default::Default::default())
             } else {
                 Err($ERR {
                     got: s.to_string(),
-                    expected: fixed,
+                    expected: constant,
                 })
             }
         }
@@ -239,22 +239,22 @@ define_derive_deftly! {
     impl<$tgens> $crate::NormalItemArgument for $ttype where $twheres {}
 }
 
-/// Define a ZST struct for a fixed argument string in a netdoc item
+/// Define a ZST struct for a fixed, constant, argument string in a netdoc item
 ///
 /// Convenience macro to define a unit struct, derive many traits,
 /// and derive
-/// [`FixedString`](derive_deftly_template_FixedString).
+/// [`ConstantString`](derive_deftly_template_ConstantString).
 ///
 /// # Example
 ///
 /// ```
-/// use tor_netdoc::define_fixed_string;
-/// use tor_netdoc::derive_deftly_template_FixedString; // sadly, needed for Reasons
+/// use tor_netdoc::define_constant_string;
+/// use tor_netdoc::derive_deftly_template_ConstantString; // sadly, needed for Reasons
 ///
-/// define_fixed_string! {
+/// define_constant_string! {
 ///     /// The shared random algorithm name for the V1 shared random protocol
 ///     ///
-///     /// This is a fixed string, since the version defines the hash algorithm.
+///     /// This is a constant string, since the version defines the hash algorithm.
 ///     SharedRandV1AlgName = "sha3-256";
 /// }
 ///
@@ -265,7 +265,7 @@ define_derive_deftly! {
 /// # Input
 ///
 /// ```rust,ignore
-/// define_fixed_string! {
+/// define_constant_string! {
 ///     #[ATTRIBUTES...]
 ///     TYPE_NAME = STRING_LITERAL;
 /// }
@@ -287,7 +287,7 @@ define_derive_deftly! {
 //
 // This macro exists mostly to encapsulate this astonishing list of traits to derive!
 #[macro_export]
-macro_rules! define_fixed_string {
+macro_rules! define_constant_string {
     {
         $( #[ $($attr:tt)* ] )*
         $name:ident = $string:expr;
@@ -295,8 +295,8 @@ macro_rules! define_fixed_string {
         $( #[ $($attr)* ] )*
         #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
         #[derive($crate::derive_deftly::Deftly)]
-        #[derive_deftly(FixedString)]
-        #[deftly(fixed_string = ($string))]
+        #[derive_deftly(ConstantString)]
+        #[deftly(constant_string = ($string))]
         #[allow(clippy::exhaustive_structs)]
         pub struct $name;
     };

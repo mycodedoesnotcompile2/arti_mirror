@@ -8,7 +8,7 @@ use super::*;
 // Import `each_variety.rs`, appropriately variegated
 ns_do_variety_md! {}
 
-define_fixed_string! {
+define_constant_string! {
     /// The `md` keyword in a microdescriptor consensus heading line
     ///
     /// This type is one of the fields in `NetworkStatusVersionItem`.
