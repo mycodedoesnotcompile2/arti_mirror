@@ -829,9 +829,7 @@ mod tests {
                 }
             })
             .unwrap();
-        key_store
-            .remove_unchecked(&raw_id)
-            .unwrap();
+        key_store.remove_unchecked(&raw_id).unwrap();
         let entries = key_store.list().unwrap();
         // Assert no valid entries are encountered
         assert!(
