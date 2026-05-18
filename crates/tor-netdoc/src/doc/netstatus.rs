@@ -842,7 +842,11 @@ pub struct SharedRandStatuses {
 // This representation also means so that if retaining unknown information is compiled out
 // (ie, in clients) each routerstatus entry stored in memory does not need to record
 // whether `w` was present, merely what the implications were.
-///
+//
+// We can't use ItemValueParseable with #[deftly(netdoc(default))]
+// because `RelayWeightsItem::default()` is a RelayWeightsItem that definitively
+// contains no pazrameters, ie with `Unknown::Retained`,
+// and is therefore only conditionally available.
 /// # Encoding
 ///
 /// Encoding requires knowing whether a `w` line is to be included, and its contents,
