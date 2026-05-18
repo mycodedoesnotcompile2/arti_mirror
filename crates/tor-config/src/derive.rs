@@ -144,6 +144,8 @@ pub mod doc_howto {}
 /// It also has a `new()` method that calls `Default::default()`.
 ///
 /// The builder struct implements
+/// [`Builder`](crate::load::Builder),
+/// [`ConfigBuilder`](crate::load::ConfigBuilder),
 /// [`ExtendBuilder`](crate::extend_builder::ExtendBuilder)
 /// and [`Flattenable`](crate::Flattenable).
 ///
@@ -1177,6 +1179,7 @@ pub mod exports {
         impl_standard_builder,
         load::Buildable as BuildableTrait,
         load::Builder as BuilderTrait,
+        load::ConfigBuilder,
     };
     pub use derive_deftly::Deftly;
     pub use figment;
@@ -1947,6 +1950,18 @@ define_derive_deftly! {
             ${error "With list, must specify list(element(clone)) or list(element(build))"}
         }}
     }}
+    ${define APPLY_DEFAULTS_LIST_ELEMENT {
+        ${select1
+        fmeta(tor_config(list(element(build)))) {
+            |v| $E::ConfigBuilder::apply_defaults(v)
+        }
+        fmeta(tor_config(list(element(clone)))) {
+            |_v| Ok::<_ , $E::ConfigBuildError>(())
+        }
+        else {
+            ${error "With list, must specify list(element(clone)) or list(element(build))"}
+        }}
+    }}
     ${define BLD_LIST_ELT_TYPE {
         ${select1
         fmeta(tor_config(list(element(build)))) {
@@ -1980,6 +1995,7 @@ define_derive_deftly! {
             built: $ftype = $fname;
             default = ${fmeta(tor_config(default)) as expr};
             item_build: $BUILD_LIST_ELEMENT;
+            item_apply_defaults: $APPLY_DEFAULTS_LIST_ELEMENT;
         }
     )
 
@@ -2271,6 +2287,13 @@ define_derive_deftly! {
                 }}
             )
 
+            // TODO: It would be good to call apply_defaults here,
+            // but if we make  change, we will hit extra redundancy:
+            // If build() calls apply_defaults(),
+            // our own apply_defaults will recurse to our sub-builders,
+            // and then the build() functions of our sub-builders will
+            // also invoke their apply_defaults methods.
+
             // Construct the configuration struct.
             let result = $tname {
                 $(
@@ -2290,6 +2313,29 @@ define_derive_deftly! {
             }}
 
             Ok(result)
+        }
+    }
+
+    // -------------------
+    // Implement ConfigBuilder
+
+    impl<$tgens> $E::ConfigBuilder for $<$ttype Builder>
+    where $twheres {
+        fn apply_defaults(&mut self) -> Result<(), $E::ConfigBuildError> {
+            #[allow(unused_imports)]
+            use $E::ConfigBuilder as _;
+            $(
+                ${IF_CFG}
+                ${if any(fmeta(tor_config(sub_builder)),
+                        fmeta(tor_config(list)),
+                        fmeta(tor_config(map))) {
+                    self.$fname.apply_defaults()?;
+                } else if fmeta(tor_config(default)) {
+                    let _ = self.$fname.get_or_insert_with(
+                        || ${fmeta(tor_config(default)) as expr, default {Default::default()}});
+                }}
+            )
+            Ok(())
         }
     }
 

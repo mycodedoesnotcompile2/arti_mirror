@@ -223,6 +223,7 @@ macro_rules! define_list_builder_helper {
         built: $Built:ty = $built:expr;
         default = $default:expr;
         $( item_build: $item_build:expr; )?
+        $( item_apply_defaults: $item_apply_defaults:expr; )?
         $(#[ serde $serde_attrs:tt ] )+
     } => {
         #[derive(Clone, Debug)]
@@ -311,6 +312,28 @@ macro_rules! define_list_builder_helper {
             }
         }
 
+        impl $( < $($generics)* > )? $crate::load::ConfigBuilder
+        for $ListBuilder $( < $($generics)* > )?
+        $( where $($where_clauses)* )? {
+            fn apply_defaults(&mut self) -> ::std::result::Result<(), $crate::ConfigBuildError> {
+                $crate::deps::if_empty!{ { $($item_build)? } {
+                    // There is no per-item build function, so we don't have to apply defaults.
+                } {
+                    // There is a build function, so we call apply_defaults recursively.
+                    #[allow(unused_imports)]
+                    use $crate::load::ConfigBuilder as _;
+                    for val in self.$things.get_or_insert_with(Self::default_list) {
+                        $crate::deps::if_empty!{ { $($item_apply_defaults)? } {
+                            val.apply_defaults()?;
+                        } {
+                            ($($item_apply_defaults)?)(val)?;
+                        }}
+                    }
+                }};
+                Ok(())
+            }
+        }
+
         impl $( < $($generics)* > )? $crate::extend_builder::ExtendBuilder
         for $ListBuilder $( < $($generics)* > )?
         $( where $($where_clauses)* )? {
@@ -339,6 +362,7 @@ macro_rules! define_list_builder_helper {
         built: $Built:ty = $built:expr;
         default = $default:expr;
         $( item_build: $item_build:expr; )?
+        $( item_apply_defaults: $item_apply_defaults:expr; )?
     } => {
         $crate::define_list_builder_helper! {
             $(#[ $docs_and_attrs ])*
@@ -351,6 +375,7 @@ macro_rules! define_list_builder_helper {
             built: $Built = $built;
             default = $default;
             $( item_build: $item_build; )?
+            $( item_apply_defaults: $item_apply_defaults; )?
             #[serde(transparent)]
         }
     };
@@ -517,6 +542,7 @@ define_list_builder_helper! {
     built: Vec<T> = values;
     default = vec![];
     item_build: |item| Ok(item.clone());
+    item_apply_defaults: |_| Ok::<_, crate::ConfigBuildError>(());
 }
 
 /// Configuration item specifiable as a list, or a single multi-line string
@@ -804,6 +830,7 @@ mod test {
         built: List = list;
         default = vec!['a'];
         item_build: |&c| Ok(c);
+        item_apply_defaults: |_| Ok::<_, crate::ConfigBuildError>(());
     }
 
     #[test]

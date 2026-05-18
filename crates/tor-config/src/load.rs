@@ -138,6 +138,27 @@ pub trait Builder {
     fn build(&self) -> Result<Self::Built, ConfigBuildError>;
 }
 
+/// A [`Builder`] as generated and used by our configuration system.
+//
+// (This is a separate type from Builder since we also implement Builder for some
+// non-configuration builders.)
+pub trait ConfigBuilder: Builder {
+    /// Modify `self` by replacing any options that haven't been set with their defaults.
+    ///
+    /// Also, resolves deprecated settings:
+    /// When a deprecated setting is provided, and the modern version is not,
+    /// `apply_defaults` derives the modern value from the deprecated value,
+    /// and writes it into the modern field.
+    /// (If both a deprecated setting, and its modern form, are set
+    /// on entry to `apply_defaults`, the deprecated form is ignored.)
+    ///
+    /// It is not necessary to call this method
+    /// if all you want to do with this builder
+    /// is to call [`build()`](Builder::build) on it:
+    /// `build()` also takes defaults into account.
+    fn apply_defaults(&mut self) -> Result<(), ConfigBuildError>;
+}
+
 /// Collection of configuration settings that can be deserialized and then built
 ///
 /// *Do not implement directly.*

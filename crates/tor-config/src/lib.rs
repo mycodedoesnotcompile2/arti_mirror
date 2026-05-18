@@ -74,7 +74,7 @@ pub mod deps {
     pub use paste::paste;
     pub use serde;
     pub use serde_value;
-    pub use tor_basic_utils::macro_first_nonempty;
+    pub use tor_basic_utils::{if_empty, macro_first_nonempty};
 }
 
 pub use cmdline::CmdLine;
