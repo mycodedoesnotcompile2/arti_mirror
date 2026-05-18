@@ -810,7 +810,7 @@ mod tests {
         let entries = key_store.list().unwrap();
 
         // Remove valid entry
-        let valid_specifier = entries
+        let raw_id = entries
             .iter()
             .find_map(|res| {
                 let Ok(entry) = res else {
@@ -821,8 +821,7 @@ mod tests {
                         let mut path_str = a.to_string();
                         path_str.push('.');
                         path_str.push_str(&entry.key_type().arti_extension());
-                        let raw_id = RawEntryId::Path(PathBuf::from(&path_str));
-                        Some(RawKeystoreEntry::new(raw_id, key_store.id().to_owned()))
+                        Some(RawEntryId::Path(PathBuf::from(&path_str)))
                     }
                     _ => {
                         panic!("Unexpected KeyPath variant encountered")
@@ -831,7 +830,7 @@ mod tests {
             })
             .unwrap();
         key_store
-            .remove_unchecked(valid_specifier.raw_id())
+            .remove_unchecked(&raw_id)
             .unwrap();
         let entries = key_store.list().unwrap();
         // Assert no valid entries are encountered
