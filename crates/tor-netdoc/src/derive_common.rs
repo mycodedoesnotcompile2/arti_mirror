@@ -203,6 +203,8 @@ define_derive_deftly! {
     /// #[allow(clippy::exhaustive_structs)]
     /// pub struct SharedRandV1AlgName;
     /// ```
+    // TODO DIRMIRROR / TODO DIRAUTH use ConstantString for routerdesc::OverloadGeneralVersion?
+    // TODO DIRMIRROR / TODO DIRAUTH use ConstantString for routerdesc::AuthCertVersion?
     export ConstantString for struct, beta_deftly, meta_quoted retain:
 
     // Bind `constant`.  Ensures the type is as expected.
