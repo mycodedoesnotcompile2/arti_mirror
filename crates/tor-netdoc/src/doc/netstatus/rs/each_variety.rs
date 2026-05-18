@@ -28,11 +28,11 @@ use super::*;
 // but not ItemValueParseable, we would use #[deftly(netdoc(single_arg))]
 // but here we can't do that because we can't have variety-dependent attributes.)
 ns_choose! { (
-    use NotPresentEachValue as doc_digest_parse2_m;
+    use NotPresentEachValue as doc_digest_item_m;
 ) (
-    use doc_digest_parse2_real_item as doc_digest_parse2_m; // implemented in rs/md.rs
+    // doc_digest_item_m implemented in rs/md.rs
 ) (
-    use RouterStatusMdDigestsVote as doc_digest_parse2_m;
+    use RouterStatusMdDigestsVote as doc_digest_item_m;
 ) }
 
 /// Type of the referenced document digest in form suitable for parsing and encoding
@@ -100,7 +100,7 @@ pub struct RouterStatus {
     /// `r` item.
     // We call this field `m` rather than `doc_digest` because it's not always the doc digest.
     // TODO SPEC in all but md consensuses the referenced document digest is in the `r` intro item
-    #[deftly(netdoc(with = doc_digest_parse2_m))]
+    #[deftly(netdoc(with = doc_digest_item_m))]
     pub m: ns_type!(NotPresent, DocDigestB64, Vec<RouterStatusMdDigestsVote>),
 
     /// `a` --- Further router address(es) (IPv6)
