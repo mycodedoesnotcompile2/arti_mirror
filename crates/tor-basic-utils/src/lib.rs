@@ -412,6 +412,22 @@ macro_rules! macro_first_nonempty {
     };
 }
 
+/// Helper for assisting with defining macros that need to expand
+/// conditionally when an argument is empty.
+///
+/// ```ignore
+/// if_empty!{ {   } { x } { y } } // => x
+/// if_empty!{ { z } { x } { y } } // => y
+/// // etc.
+/// ```
+///
+/// Note: The `{ y }` argument may be omitted.
+#[macro_export]
+macro_rules! if_empty {
+    { { }                  { $($x:tt)* } $({ $($y:tt)* })? } => { $($x)* };
+    { { $($nonempty:tt)+ } { $($x:tt)* } $({ $($y:tt)* })? } => { $($($y)*)? };
+}
+
 // ----------------------------------------------------------------------
 
 /// Define `Debug` to print as hex
