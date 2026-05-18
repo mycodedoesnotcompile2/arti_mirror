@@ -98,16 +98,6 @@ impl<'a> KeystoreEntry<'a> {
     }
 }
 
-// NOTE: Some methods require a `KeystoreEntryResult<KeystoreEntry>` as an
-// argument (e.g.: `KeyMgr::raw_keystore_entry`). For this reason  implementing
-// `From<KeystoreEntry<'a>> for KeystoreEntryResult<KeystoreEntry<'a>>` makes
-// `KeystoreEntry` more ergonomic.
-impl<'a> From<KeystoreEntry<'a>> for KeystoreEntryResult<KeystoreEntry<'a>> {
-    fn from(val: KeystoreEntry<'a>) -> Self {
-        Ok(val)
-    }
-}
-
 impl KeyMgrBuilder {
     /// Construct a [`KeyMgr`] from this builder.
     pub fn build(self) -> StdResult<KeyMgr, KeyMgrBuilderError> {

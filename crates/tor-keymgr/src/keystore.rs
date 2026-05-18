@@ -16,16 +16,6 @@ use crate::{KeySpecifier, KeystoreEntry, KeystoreId, Result, UnrecognizedEntryEr
 /// A type alias returned by `Keystore::list`.
 pub type KeystoreEntryResult<T> = std::result::Result<T, UnrecognizedEntryError>;
 
-// NOTE: Some methods require a `KeystoreEntryResult<KeystoreEntry>` as an
-// argument (e.g.: `KeyMgr::raw_keystore_entry`). For this reason  implementing
-// `From<UnrecognizedEntryError> for <KeystoreEntryResult<KeystoreEntry>>` makes
-// `UnrecognizedEntryError` more ergonomic.
-impl<'a> From<UnrecognizedEntryError> for KeystoreEntryResult<KeystoreEntry<'a>> {
-    fn from(val: UnrecognizedEntryError) -> Self {
-        Err(val)
-    }
-}
-
 /// A generic key store.
 pub trait Keystore: Send + Sync + 'static {
     /// An identifier for this key store instance.
