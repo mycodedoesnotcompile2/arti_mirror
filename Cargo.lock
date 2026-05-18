@@ -7144,7 +7144,7 @@ name = "tor-config-path"
 version = "0.42.0"
 dependencies = [
  "assert_matches",
- "derive_builder_fork_arti",
+ "derive-deftly",
  "directories",
  "dirs",
  "rmp-serde",

@@ -299,29 +299,23 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
 
-    use crate::ConfigBuildError;
-    use derive_builder::Builder;
+    use crate::derive::prelude::*;
     use derive_deftly::Deftly;
-    use serde::{Deserialize, Serialize};
     use std::collections::BTreeMap;
 
-    #[derive(Clone, Debug, Eq, PartialEq, Builder)]
-    #[builder(derive(Deserialize, Serialize, Debug))]
-    #[builder(build_fn(error = "ConfigBuildError"))]
+    #[derive(Clone, Debug, Eq, PartialEq, Deftly)]
+    #[derive_deftly(TorConfig)]
     struct Outer {
-        #[builder(sub_builder(fn_name = "build"))]
-        #[builder_field_attr(serde(default))]
+        #[deftly(tor_config(sub_builder, no_magic))]
         things: ThingMap,
     }
 
-    #[derive(Clone, Debug, Eq, PartialEq, Builder, Deftly)]
-    #[derive_deftly(ExtendBuilder)]
-    #[builder(derive(Deserialize, Serialize, Debug))]
-    #[builder(build_fn(error = "ConfigBuildError"))]
+    #[derive(Clone, Debug, Eq, PartialEq, Deftly)]
+    #[derive_deftly(TorConfig)]
     struct Inner {
-        #[builder(default)]
+        #[deftly(tor_config(default))]
         fun: bool,
-        #[builder(default)]
+        #[deftly(tor_config(default))]
         explosive: bool,
     }
 

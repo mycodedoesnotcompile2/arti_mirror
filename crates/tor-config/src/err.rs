@@ -165,6 +165,15 @@ pub enum ConfigError {
     },
 }
 
+/// An error that occurred while trying to look up a configuration value.
+#[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ConfigGetValueError {
+    /// Some internal error occurred.
+    #[error("Internal error")]
+    Bug(#[from] tor_error::Bug),
+}
+
 /// Wrapper for our an error type from our underlying configuration library.
 #[derive(Debug, Clone)]
 pub struct ConfigLoadError(figment::Error);
