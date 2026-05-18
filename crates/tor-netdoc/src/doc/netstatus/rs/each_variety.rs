@@ -31,15 +31,12 @@ use super::*;
 ns_choose! { (
     use doc_digest_parse2_real as doc_digest_parse2_r; // implemented here in rs/each_variety.rs
     use NotPresentEachValue as doc_digest_parse2_m;
-    use relay_flags::ConsensusRepr as VarietyRelayFlagsRepr;
 ) (
     use NotPresentEachValue as doc_digest_parse2_r;
     use doc_digest_parse2_real_item as doc_digest_parse2_m; // implemented in rs/md.rs
-    use relay_flags::ConsensusRepr as VarietyRelayFlagsRepr;
 ) (
     use doc_digest_parse2_real as doc_digest_parse2_r; // implemented here in rs/each_variety.rs
     use RouterStatusMdDigestsVote as doc_digest_parse2_m;
-    use relay_flags::NoImplicitRepr as VarietyRelayFlagsRepr;
 ) }
 
 /// Intro item for a router status entry
@@ -120,7 +117,13 @@ pub struct RouterStatus {
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:s>
     #[deftly(netdoc(
         keyword = "s",
-        with = { relay_flags::ParserEncoder::<VarietyRelayFlagsRepr> },
+        with = {
+            relay_flags::ParserEncoder::<ns_type!(
+                relay_flags::ConsensusRepr,
+                relay_flags::ConsensusRepr,
+                relay_flags::NoImplicitRepr,
+            )>
+        },
     ))]
     pub flags: DocRelayFlags,
 
