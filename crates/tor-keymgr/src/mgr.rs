@@ -2,7 +2,7 @@
 //!
 //! See the [`KeyMgr`] docs for more details.
 
-use crate::raw::{RawEntryId, RawKeystoreEntry};
+use crate::raw::RawEntryId;
 use crate::{
     ArtiPath, BoxedKeystore, KeyPath, KeyPathError, KeyPathInfo, KeyPathInfoExtractor,
     KeyPathPattern, KeySpecifier, KeystoreCorruptionError, KeystoreEntryResult, KeystoreId,
@@ -77,7 +77,7 @@ pub struct KeystoreEntry<'a> {
     keystore_id: &'a KeystoreId,
     /// The [`RawEntryId`] of the key, an identifier used in
     /// `arti raw` operations.
-    #[getter(skip)]
+    #[cfg_attr(not(feature = "onion-service-cli-extra"), getter(skip))]
     raw_id: RawEntryId,
 }
 
@@ -95,12 +95,6 @@ impl<'a> KeystoreEntry<'a> {
             keystore_id,
             raw_id,
         }
-    }
-
-    /// Return an instance of [`RawKeystoreEntry`]
-    #[cfg(feature = "onion-service-cli-extra")]
-    pub fn raw_entry(&self) -> RawKeystoreEntry {
-        RawKeystoreEntry::new(self.raw_id.clone(), self.keystore_id.clone())
     }
 }
 

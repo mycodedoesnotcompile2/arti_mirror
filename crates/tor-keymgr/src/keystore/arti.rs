@@ -14,10 +14,10 @@ use std::sync::Arc;
 
 use crate::keystore::fs_utils::{FilesystemAction, FilesystemError, RelKeyPath, checked_op};
 use crate::keystore::{EncodableItem, ErasedKey, KeySpecifier, Keystore};
-use crate::raw::{RawEntryId, RawKeystoreEntry};
+use crate::raw::RawEntryId;
 use crate::{
     ArtiPath, ArtiPathUnavailableError, KeystoreEntry, KeystoreId, Result, UnknownKeyTypeError,
-    UnrecognizedEntryError, arti_path,
+    UnrecognizedEntryError, UnrecognizedEntry, arti_path,
 };
 use certs::UnparsedCert;
 use err::ArtiNativeKeystoreError;
@@ -351,7 +351,7 @@ impl Keystore for ArtiNativeKeystore {
                         err,
                     };
                     let raw_id = RawEntryId::Path(path.into());
-                    let entry = RawKeystoreEntry::new(raw_id, self.id().clone()).into();
+                    let entry = UnrecognizedEntry::new(raw_id, self.id().clone());
                     Some(Err(UnrecognizedEntryError::new(entry, Arc::new(error))))
                 };
 
@@ -789,10 +789,10 @@ mod tests {
             };
             Some(entry.entry())
         });
-        let expected_entry = UnrecognizedEntry::from(RawKeystoreEntry::new(
+        let expected_entry = UnrecognizedEntry::new(
             RawEntryId::Path(PathBuf::from(TEST_SPECIFIER_PATH)),
             key_store.id().clone(),
-        ));
+        );
         assert_eq!(unrecognized_entries.next().unwrap(), &expected_entry);
         assert!(unrecognized_entries.next().is_none());
     }
