@@ -151,9 +151,9 @@ impl RouterStatus {
         // W line
         let weight = sec
             .get(RS_W)
-            .map(RelayWeights::from_item)
+            .map(RelayWeightsItem::from_item)
             .transpose()?
-            .unwrap_or(RelayWeights::new_no_info());
+            .unwrap_or(RelayWeightsItem::new_no_info());
 
         // No p line
         // no ID line

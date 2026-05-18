@@ -141,7 +141,7 @@ pub struct RouterStatus {
     ///
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:w>
     #[deftly(netdoc(flatten))]
-    pub weight: RelayWeights,
+    pub weight: RelayWeightsItem,
 }
 
 impl RouterStatus {

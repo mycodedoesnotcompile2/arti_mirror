@@ -145,7 +145,7 @@ impl RouterStatusBuilder {
             .ok_or(Error::CannotBuild("Missing protocols"))?
             .clone();
         let weight = self.weight.unwrap_or(RelayWeight::Unmeasured(0));
-        let weight = RelayWeights {
+        let weight = RelayWeightsItem {
             effective: weight,
             params: Unknown::new_discard(),
         };
