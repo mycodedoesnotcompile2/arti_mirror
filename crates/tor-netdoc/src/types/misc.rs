@@ -1670,7 +1670,7 @@ mod identified_digest {
     /// The name of a digest algorithm.
     ///
     /// Can represent an unrecognised algorithm, so it's parsed and reproduced.
-    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
+    #[derive(Debug, Clone, Eq, PartialEq, Hash, Deftly)]
     #[derive_deftly(StringReprUnitsOrUnknown)]
     #[non_exhaustive]
     pub enum DigestName {
@@ -1701,6 +1701,17 @@ mod identified_digest {
     #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, thiserror::Error)]
     #[error("invalid syntax, expected ALGORITHM=DIGEST: {0}")]
     pub struct IdentifiedDigestParseError(String);
+
+    impl Ord for DigestName {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.as_ref().cmp(other.as_ref())
+        }
+    }
+    impl PartialOrd for DigestName {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
 
     impl FromStr for IdentifiedDigest {
         type Err = IdentifiedDigestParseError;
