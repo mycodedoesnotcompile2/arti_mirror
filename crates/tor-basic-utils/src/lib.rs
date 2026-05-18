@@ -387,22 +387,22 @@ macro_rules! define_accessor_trait {
 /// Helper for assisting with macro "argument" defaulting
 ///
 /// ```ignore
-/// macro_coalesce_args!{ [ something ]  ... }  // =>   something
-/// macro_coalesce_args!{ [ ], [ other ] ... }  // =>   other
+/// macro_first_nonempty!{ [ something ]  ... }  // =>   something
+/// macro_first_nonempty!{ [ ], [ other ] ... }  // =>   other
 /// // etc.
 /// ```
 ///
 /// ### Usage note
 ///
-/// It is generally possible to avoid use of `macro_coalesce_args`, at the cost of
-/// providing many alternative matcher patterns.  Using `macro_coalesce_args` can make
+/// It is generally possible to avoid use of `macro_first_nonempty`, at the cost of
+/// providing many alternative matcher patterns.  Using `macro_first_nonempty` can make
 /// it possible to provide a single pattern with the optional items in `$( )?`.
 ///
 /// This is valuable because a single pattern with some optional items
 /// makes much better documentation than several patterns which the reader must compare
 /// by eye - and it also simplifies the implementation.
 ///
-/// `macro_coalesce_args` takes each of its possible expansions in `[ ]` and returns
+/// `macro_first_nonempty` takes each of its possible expansions in `[ ]` and returns
 /// the first nonempty one.
 #[macro_export]
 macro_rules! macro_first_nonempty {
