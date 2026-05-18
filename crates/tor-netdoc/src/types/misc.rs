@@ -1645,9 +1645,9 @@ mod identified_digest {
                 )
             }
         }
-        impl Display for $ttype {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                let s: &str = match self {
+        impl AsRef<str> for $ttype {
+            fn as_ref(&self) -> &str {
+                match self {
                     $(
                         ${when v_is_unit}
                         $vtype => $STRING_REPR,
@@ -1656,7 +1656,12 @@ mod identified_digest {
                         ${when not(v_is_unit)}
                         $vpat => f_0,
                     )
-                };
+                }
+            }
+        }
+        impl Display for $ttype {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                let s: &str = self.as_ref();
                 Display::fmt(s, f)
             }
         }
