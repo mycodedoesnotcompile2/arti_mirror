@@ -1681,7 +1681,7 @@ mod identified_digest {
     }
 
     /// A single digest made with a nominated digest algorithm, `ALGORITHM=DIGEST`
-    #[derive(Debug, Clone, Eq, PartialEq, Hash, derive_more::Display)]
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, derive_more::Display)]
     #[display("{alg}={value}")]
     #[non_exhaustive]
     pub struct IdentifiedDigest {
