@@ -24,7 +24,7 @@ pub use fingerprint::{Base64Fingerprint, Fingerprint};
 
 pub use identified_digest::{DigestName, IdentifiedDigest};
 
-pub use ignored_impl::{Ignored, IgnoredItemOrObjectValue, NotPresent};
+pub use ignored_impl::{Ignored, IgnoredItemOrObjectValue, NotPresent, NotPresentEachValue};
 
 use crate::NormalItemArgument;
 use crate::encode::{
@@ -41,6 +41,7 @@ use crate::parse2::{
     self, ArgumentError, ArgumentStream, ItemArgumentParseable, ItemObjectParseable,
     ItemValueParseable, SignatureHashInputs, SignatureItemParseable, UnparsedItem,
     multiplicity::{
+        ArgumentSetMethods,
         ItemSetMethods,
         // `P2` for "parse2`; different from `encode::MultiplicitySelector`
         MultiplicitySelector as P2MultiplicitySelector,
@@ -578,6 +579,7 @@ mod ignored_impl {
     use super::*;
 
     use crate::parse2::ErrorProblem as EP;
+    use ArgumentError as AE;
 
     /// Part of a network document, that isn't actually there.
     ///
@@ -614,6 +616,38 @@ mod ignored_impl {
     #[derive_deftly(NetdocEncodableFields, NetdocParseableFields)]
     pub struct NotPresent;
 
+    /// An individual value that is not present - placeholder type
+    ///
+    /// This is the "single" item type for encoding multiplicity
+    /// (for Items, Arguments or Objects), for [`NotPresent`].
+    ///
+    /// It should not be used directly.
+    ///
+    /// During parsing, each "not present" item is ignored,
+    /// but the multiplicity arrangements involve parsing each value
+    /// and then passing the item value to [`ItemSetMethods::accumulate`]
+    /// where (for [`NotPresentEachValue`]) it is discarded.
+    /// Therefore this type must be inhabited; the item parser discards the unparsed item.
+    ///
+    /// During parsing of arguments, parsing is driven by
+    /// [our `ArgumentSetMethods::parse_with`][`P2MultiplicitySelector::<NotPresent>::parse_with)
+    /// which doesn't need to call any parser.
+    /// So the [`ItemArgumentParseable`] implementation always throws an error.
+    ///
+    /// During parsing of objects, rejection is done by
+    /// [`NotPresentEachValue::check_label`] (and `from_bytes`).
+    ///
+    /// For encoding, there is only one multiplicity system which
+    /// will never call any encoding function, so the encoding functions all throw `Bug`.
+    ///
+    /// This type has a similar role to `IgnoredItemOrObjectValue`,
+    /// but `NotPresentEachValue` is different in detail,
+    /// and (unlike `Ignored`) must support arguments, not just items and objects.
+    #[derive(Debug, Clone, Deftly)]
+    #[non_exhaustive]
+    #[derive_deftly(ItemValueParseable, NetdocParseableFields)]
+    pub struct NotPresentEachValue;
+
     /// Ignored part of a network document.
     ///
     /// With `parse2`, can be used as an item, object, or even flattened-fields.
@@ -638,16 +672,18 @@ mod ignored_impl {
     /// This is the "single" item type for encoding multiplicity for Items or Objects,
     /// for [`Ignored`].
     ///
+    /// It should not be used directly.
+    ///
     /// This type is uninhabited.
     pub struct IgnoredItemOrObjectValue(Void);
 
     impl ItemSetMethods for P2MultiplicitySelector<NotPresent> {
-        type Each = Ignored;
-        type Field = NotPresent; // XXXX should match encode::MultiplicityMethods
+        type Each = NotPresentEachValue;
+        type Field = NotPresent;
         fn can_accumulate(self, _acc: &Option<NotPresent>) -> Result<(), EP> {
             Ok(())
         }
-        fn accumulate(self, _acc: &mut Option<NotPresent>, _item: Ignored) -> Result<(), EP> {
+        fn accumulate(self, _: &mut Option<NotPresent>, _: NotPresentEachValue) -> Result<(), EP> {
             Ok(())
         }
         fn finish(self, _acc: Option<NotPresent>, _: &'static str) -> Result<NotPresent, EP> {
@@ -658,27 +694,70 @@ mod ignored_impl {
         }
     }
 
-    // XXXX should be done via an ArgumentSetMethods impl
-    impl ItemArgumentParseable for NotPresent {
-        fn from_args(_: &mut ArgumentStream) -> Result<NotPresent, ArgumentError> {
+    impl ItemValueEncodable for NotPresentEachValue {
+        fn write_item_value_onto(&self, _out: ItemEncoder) -> Result<(), Bug> {
+            Err(internal!("NotPresentEachValue as ItemValueEncodable"))
+        }
+    }
+
+    impl ArgumentSetMethods for P2MultiplicitySelector<NotPresent> {
+        type Each = NotPresentEachValue;
+        type Field = NotPresent;
+
+        fn parse_with<P>(self, _: &mut ArgumentStream<'_>, _: P) -> Result<Self::Field, AE>
+        where
+            P: for<'s> Fn(&mut ArgumentStream<'s>) -> Result<Self::Each, AE>,
+        {
             Ok(NotPresent)
+        }
+
+        fn debug_core(self) -> &'static str {
+            "NotPresent"
+        }
+    }
+    impl ItemArgument for NotPresentEachValue {
+        fn write_arg_onto(&self, _out: &mut ItemEncoder) -> Result<(), Bug> {
+            Err(internal!("NotPresentEachValue as ItemArgument"))
+        }
+    }
+    impl ItemArgumentParseable for NotPresentEachValue {
+        fn from_args<'s>(_: &mut ArgumentStream<'s>) -> Result<Self, ArgumentError> {
+            // Not quite the right error, but we don't have an ArgumentError::Internal
+            Err(AE::Unexpected)
+        }
+    }
+
+    impl ItemObjectEncodable for NotPresentEachValue {
+        fn label(&self) -> &str {
+            "INTERNAL ERROR"
+        }
+        fn write_object_onto(&self, _b: &mut Vec<u8>) -> Result<(), Bug> {
+            Err(internal!("NotPresentEachValue as ItemObjectEncodable"))
         }
     }
 
     impl ObjectSetMethods for P2MultiplicitySelector<NotPresent> {
         type Field = NotPresent;
-        type Each = Void; // XXXX should match encode::OptionalityMethods
-        fn resolve_option(self, _found: Option<Void>) -> Result<NotPresent, EP> {
+        type Each = NotPresentEachValue;
+        fn resolve_option(self, _found: Option<NotPresentEachValue>) -> Result<NotPresent, EP> {
             Ok(NotPresent)
         }
         fn debug_core(self) -> &'static str {
             "NotPresent"
         }
     }
+    impl ItemObjectParseable for NotPresentEachValue {
+        fn check_label(_label: &str) -> Result<(), EP> {
+            Err(EP::ObjectUnexpected)
+        }
+        fn from_bytes(_input: &[u8]) -> Result<Self, EP> {
+            Err(EP::ObjectUnexpected)
+        }
+    }
 
     impl<'f> encode::MultiplicityMethods<'f> for EMultiplicitySelector<NotPresent> {
         type Field = NotPresent;
-        type Each = Void; // XXXX should match parse2's ItemSetMethods, ArgumentSetMethods
+        type Each = NotPresentEachValue;
         fn iter_ordered(self, _: &'f Self::Field) -> impl Iterator<Item = &'f Self::Each> {
             iter::empty()
         }
@@ -686,7 +765,7 @@ mod ignored_impl {
 
     impl encode::OptionalityMethods for EMultiplicitySelector<NotPresent> {
         type Field = NotPresent;
-        type Each = Void; // XXXX should match parse2's ObjectSetMethods
+        type Each = NotPresentEachValue;
         fn as_option<'f>(self, _: &'f Self::Field) -> Option<&'f Self::Each> {
             None
         }

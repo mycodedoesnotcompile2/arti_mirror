@@ -30,10 +30,10 @@ use super::*;
 // TODO consider introducing newtypes for routerdesc and microdesc hashes?
 ns_choose! { (
     use doc_digest_parse2_real as doc_digest_parse2_r; // implemented here in rs/each_variety.rs
-    use Ignored as doc_digest_parse2_m;
+    use NotPresentEachValue as doc_digest_parse2_m;
     use relay_flags::ConsensusRepr as VarietyRelayFlagsRepr;
 ) (
-    use NotPresent as doc_digest_parse2_r;
+    use NotPresentEachValue as doc_digest_parse2_r;
     use doc_digest_parse2_real_item as doc_digest_parse2_m; // implemented in rs/md.rs
     use relay_flags::ConsensusRepr as VarietyRelayFlagsRepr;
 ) (
