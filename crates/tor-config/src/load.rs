@@ -270,6 +270,10 @@ pub struct ResolveContext {
     ///
     /// Empty is used to disable this feature.
     unrecognized: UnrecognizedKeys,
+
+    /// If present, a [`ConfigurationTree`] to receive all recognized or defaulted
+    /// settings from the input tree.
+    output_tree: Option<ConfigurationTree>,
 }
 
 /// Keys we have *not* recognized so far
@@ -342,6 +346,7 @@ enum PathEntry {
 fn resolve_inner<T>(
     input: ConfigurationTree,
     want_disfavoured: bool,
+    want_output_tree: bool,
 ) -> Result<ResolutionResults<T>, ConfigResolveError>
 where
     T: Resolvable,
@@ -367,6 +372,12 @@ where
             UK::AllKeys
         } else {
             UK::These(BTreeSet::new())
+        },
+
+        output_tree: if want_output_tree {
+            Some(ConfigurationTree::default())
+        } else {
+            None
         },
     };
 
@@ -395,6 +406,7 @@ where
         value,
         unrecognized,
         deprecated,
+        output_tree: lc.output_tree,
     })
 }
 
@@ -418,7 +430,8 @@ where
         value,
         unrecognized,
         deprecated,
-    } = resolve_inner(input, true)?;
+        ..
+    } = resolve_inner(input, true, false)?;
     for depr in deprecated {
         warn!("deprecated configuration key: {}", &depr);
     }
@@ -435,7 +448,7 @@ pub fn resolve_return_results<T>(
 where
     T: Resolvable,
 {
-    resolve_inner(input, true)
+    resolve_inner(input, true, true)
 }
 
 /// Results of a successful [`resolve_return_results`].
@@ -450,6 +463,12 @@ pub struct ResolutionResults<T> {
 
     /// Any config keys which were found, but have been declared deprecated
     pub deprecated: Vec<DisfavouredKey>,
+
+    /// If present, a [`ConfigurationTree`] with all recognized settings and defaulted settings
+    /// from the original input.
+    //
+    // XXXX: Make this optional.
+    pub output_tree: Option<ConfigurationTree>,
 }
 
 /// Deserialize and build overall configuration, silently ignoring unrecognized config keys
@@ -457,7 +476,7 @@ pub fn resolve_ignore_warnings<T>(input: ConfigurationTree) -> Result<T, ConfigR
 where
     T: Resolvable,
 {
-    Ok(resolve_inner(input, false)?.value)
+    Ok(resolve_inner(input, false, false)?.value)
 }
 
 /// Wrapper around T that collects ignored keys as we deserialize it.
@@ -491,7 +510,7 @@ where
 impl<T> Resolvable for T
 where
     T: TopLevel,
-    T::Builder: Builder<Built = Self>,
+    T::Builder: Builder<Built = Self> + ConfigBuilder + Clone + serde::Serialize,
 {
     fn resolve(input: &mut ResolveContext) -> Result<T, ConfigResolveError> {
         let deser = &input.input;
@@ -519,7 +538,15 @@ where
                 }
             }
         };
-        let built = builder.map_err(crate::ConfigError::from_cfg_err)?.build()?;
+        let builder = builder.map_err(crate::ConfigError::from_cfg_err)?;
+
+        if let Some(output_tree) = input.output_tree.take() {
+            let mut with_defaults = builder.clone();
+            with_defaults.apply_defaults()?;
+            input.output_tree = Some(output_tree.merge_from(&with_defaults)?);
+        }
+
+        let built = builder.build()?;
         Ok(built)
     }
 
@@ -923,6 +950,7 @@ mod test {
         let mut ctx = ResolveContext {
             input: cfg,
             unrecognized: UnrecognizedKeys::AllKeys,
+            output_tree: None,
         };
         let _res3 = TestConfigA::resolve(&mut ctx);
         // After resolving A, some fields are unrecognized.
