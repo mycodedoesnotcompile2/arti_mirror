@@ -453,7 +453,8 @@ impl RouterDesc {
 
     /// Return a reference to this relay's Ed25519 identity.
     pub fn ed_identity(&self) -> &Ed25519Identity {
-        &self.identity_ed25519
+        &self
+            .identity_ed25519
             .get()
             .expect("No ed25519 identity key on identity cert")
             .id_ed25519
