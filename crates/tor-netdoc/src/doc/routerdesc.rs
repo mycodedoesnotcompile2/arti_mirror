@@ -793,7 +793,7 @@ impl RouterDesc {
         };
 
         // Family ids (for "happy families")
-        let family_certs: Vec<tor_cert::UncheckedCert> = body
+        let family_certs = body
             .slice(FAMILY_CERT)
             .iter()
             .map(|ent| {
@@ -809,7 +809,7 @@ impl RouterDesc {
                             .with_source(e)
                     })
             })
-            .collect::<Result<_>>()?;
+            .collect::<Result<Vec<_>>>()?;
 
         let mut family_ids: Vec<_> = family_certs
             .iter()
