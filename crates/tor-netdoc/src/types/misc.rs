@@ -497,7 +497,8 @@ mod ed25519impl {
 
     /// An alleged ed25519 public key, encoded in base64 with optional
     /// padding.
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq, Deftly)]
+    #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct Ed25519Public(pub Ed25519Identity);
 
@@ -518,12 +519,6 @@ mod ed25519impl {
     }
 
     impl NormalItemArgument for Ed25519Public {}
-
-    impl From<Ed25519Public> for Ed25519Identity {
-        fn from(pk: Ed25519Public) -> Ed25519Identity {
-            pk.0
-        }
-    }
 
     /// Helper that checks for the presence of `ed25519`.
     #[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::FromStr)]
@@ -1417,7 +1412,7 @@ mod fingerprint {
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html?highlight=fingerprint#item:fingerprint>
     ///
     /// Netdoc parsing adapter for [`RsaIdentity`]
-    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
+    #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct SpFingerprint(pub RsaIdentity);
@@ -1425,7 +1420,7 @@ mod fingerprint {
     /// A hex-encoded fingerprint with no spaces.
     ///
     /// Netdoc parsing adapter for [`RsaIdentity`]
-    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
+    #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct Fingerprint(pub RsaIdentity);
@@ -1433,7 +1428,7 @@ mod fingerprint {
     /// A base64-encoded fingerprint (unpadded)
     ///
     /// Netdoc parsing adapter for [`RsaIdentity`]
-    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
+    #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct Base64Fingerprint(pub RsaIdentity);
@@ -1441,7 +1436,7 @@ mod fingerprint {
     /// A "long identity" in the format used for Family members.
     ///
     /// Netdoc parsing adapter for [`RsaIdentity`]
-    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
+    #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub(crate) struct LongIdent(pub RsaIdentity);
@@ -1784,15 +1779,18 @@ mod contact_info {
 
 /// Types for boolean-like types.
 mod boolean {
-    use std::{fmt::Display, str::FromStr};
-
-    use derive_more::{From, Into};
+    use derive_deftly::Deftly;
+    use std::{
+        fmt::Display,
+        ops::{Deref, DerefMut},
+        str::FromStr,
+    };
 
     use crate::{Error, NetdocErrorKind as EK, NormalItemArgument, Pos};
 
     /// A boolean that is represented by a `0` (false) or `1` (true).
-    // TODO DIRMIRROR: Derive Transparent
-    #[derive(Clone, Copy, Debug, Default, From, Into)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Deftly)]
+    #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct NumericBoolean(pub bool);
 
