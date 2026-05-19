@@ -569,7 +569,19 @@ impl RouterDesc {
         let start_offset = header.required(ROUTER)?.offset_in(s).unwrap();
 
         // ed25519 identity and signing key.
-        let (identity_cert, ed25519_signing_key) = {
+        //
+        // Small digression: This is terrible.  We return a tuple containing
+        // a KeyUnknownCert and an UncheckedCert.  This is because of a parse2
+        // and legacy incongruence.  For parse2, we need the KeyUnknownCert
+        // to properly include it into EmbeddedCert, whereas the legacy parser
+        // will need an UncheckedCert because the verification chain is
+        // performed at the end.  Because tor-cert's method all consume self,
+        // we can not go backwards, meaning we have to store two separate
+        // copies.  It is also not possible to do the conversion to
+        // UncheckedCert later, because then we loose the error context returned
+        // in EK::BadObjectVal if the signed-by extension is missing.
+        //
+        let (ku_identity_cert, identity_cert, ed25519_signing_key) = {
             let cert_tok = header.required(IDENTITY_ED25519)?;
             // Unwrap should be safe because above `required` call should
             // return `Error::MissingToken` if `IDENTITY_ED25519` is not `Ok`
@@ -579,10 +591,11 @@ impl RouterDesc {
                     .with_msg("identity-ed25519")
                     .at_pos(cert_tok.pos()));
             }
-            let cert: tor_cert::UncheckedCert = cert_tok
+            let ku_cert = cert_tok
                 .parse_obj::<UnvalidatedEdCert>("ED25519 CERT")?
                 .check_cert_type(tor_cert::CertType::IDENTITY_V_SIGNING)?
-                .into_unchecked()
+                .into_unchecked();
+            let cert = ku_cert.clone()
                 .should_have_signing_key()
                 .map_err(|err| {
                     EK::BadObjectVal
@@ -600,7 +613,7 @@ impl RouterDesc {
                     .at_pos(cert_tok.pos())
                     .with_msg("invalid ed25519 signing key")
             })?;
-            (cert, sk)
+            (ku_cert, cert, sk)
         };
 
         // master-key-ed25519: required, and should match certificate.
