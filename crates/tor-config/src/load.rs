@@ -340,20 +340,46 @@ enum PathEntry {
     MapEntry(String),
 }
 
+/// A set of options to use for resolving a configuration tree.
+///
+/// These options should not affect the actual configuration objects returned
+/// by [`resolve_return_results`], though they may affect other elements
+/// of [`ResolutionResults`].
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct ConfigResolveOptions {
+    /// If true, we should keep track of which deprecated keys were used.
+    want_disfavoured: bool,
+
+    /// If true, we should return an output_tree value containing the
+    /// all the settings that we used to build the configuration,
+    /// including the default values for any settings that were not present
+    /// in the input.
+    pub want_output_tree: bool,
+}
+
+impl Default for ConfigResolveOptions {
+    fn default() -> Self {
+        Self {
+            want_disfavoured: true,
+            want_output_tree: false,
+        }
+    }
+}
+
 /// Deserialize and build overall configuration from config sources
 ///
 /// Inner function used by all the `resolve_*` family
 fn resolve_inner<T>(
     input: ConfigurationTree,
-    want_disfavoured: bool,
-    want_output_tree: bool,
+    options: &ConfigResolveOptions,
 ) -> Result<ResolutionResults<T>, ConfigResolveError>
 where
     T: Resolvable,
 {
     let mut deprecated = BTreeSet::new();
 
-    if want_disfavoured {
+    if options.want_disfavoured {
         T::enumerate_deprecated_keys(&mut |l: &[&str]| {
             for key in l {
                 match input.0.find_value(key) {
@@ -368,13 +394,13 @@ where
 
     let mut lc = ResolveContext {
         input,
-        unrecognized: if want_disfavoured {
+        unrecognized: if options.want_disfavoured {
             UK::AllKeys
         } else {
             UK::These(BTreeSet::new())
         },
 
-        output_tree: if want_output_tree {
+        output_tree: if options.want_output_tree {
             Some(ConfigurationTree::default())
         } else {
             None
@@ -426,12 +452,16 @@ pub fn resolve<T>(input: ConfigurationTree) -> Result<T, ConfigResolveError>
 where
     T: Resolvable,
 {
+    let options: ConfigResolveOptions = ConfigResolveOptions {
+        want_disfavoured: true,
+        want_output_tree: false,
+    };
     let ResolutionResults {
         value,
         unrecognized,
         deprecated,
         ..
-    } = resolve_inner(input, true, false)?;
+    } = resolve_inner(input, &options)?;
     for depr in deprecated {
         warn!("deprecated configuration key: {}", &depr);
     }
@@ -444,11 +474,12 @@ where
 /// Deserialize and build overall configuration, reporting unrecognized keys in the return value
 pub fn resolve_return_results<T>(
     input: ConfigurationTree,
+    options: &ConfigResolveOptions,
 ) -> Result<ResolutionResults<T>, ConfigResolveError>
 where
     T: Resolvable,
 {
-    resolve_inner(input, true, true)
+    resolve_inner(input, options)
 }
 
 /// Results of a successful [`resolve_return_results`].
@@ -466,8 +497,8 @@ pub struct ResolutionResults<T> {
 
     /// If present, a [`ConfigurationTree`] with all recognized settings and defaulted settings
     /// from the original input.
-    //
-    // XXXX: Make this optional.
+    ///
+    /// This will be `None` unless `want_output_tree` was set in [`ConfigResolveOptions`].
     pub output_tree: Option<ConfigurationTree>,
 }
 
@@ -476,7 +507,11 @@ pub fn resolve_ignore_warnings<T>(input: ConfigurationTree) -> Result<T, ConfigR
 where
     T: Resolvable,
 {
-    Ok(resolve_inner(input, false, false)?.value)
+    let options: ConfigResolveOptions = ConfigResolveOptions {
+        want_disfavoured: false,
+        want_output_tree: false,
+    };
+    Ok(resolve_inner(input, &options)?.value)
 }
 
 /// Wrapper around T that collects ignored keys as we deserialize it.
@@ -883,7 +918,7 @@ mod test {
         let _: (TestConfigA, TestConfigB) = resolve_ignore_warnings(cfg.clone()).unwrap();
 
         let resolved: ResolutionResults<(TestConfigA, TestConfigB)> =
-            resolve_return_results(cfg).unwrap();
+            resolve_return_results(cfg, &Default::default()).unwrap();
         let (a, b) = resolved.value;
 
         let mk_strings =
@@ -935,14 +970,14 @@ mod test {
         {
             // First try "A", then "C".
             let res1: Result<ResolutionResults<(TestConfigA, TestConfigC)>, _> =
-                resolve_return_results(cfg.clone());
+                resolve_return_results(cfg.clone(), &Default::default());
             assert!(res1.is_err());
             assert!(matches!(res1, Err(ConfigResolveError::Deserialize(_))));
         }
         {
             // Now the other order: first try "C", then "A".
             let res2: Result<ResolutionResults<(TestConfigC, TestConfigA)>, _> =
-                resolve_return_results(cfg.clone());
+                resolve_return_results(cfg.clone(), &Default::default());
             assert!(res2.is_err());
             assert!(matches!(res2, Err(ConfigResolveError::Deserialize(_))));
         }

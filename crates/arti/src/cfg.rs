@@ -829,7 +829,7 @@ mod test {
 
             // This tests that the example settings do not *contradict* the defaults.
             let results: ResolutionResults<ArtiCombinedConfig> =
-                tor_config::resolve_return_results(cfg).unwrap();
+                tor_config::resolve_return_results(cfg, &Default::default()).unwrap();
 
             assert_eq!(&results.value, &default, "{which:?} {uncommented:?}");
             assert_eq!(&results.value, &empty_config, "{which:?} {uncommented:?}");
@@ -1645,7 +1645,7 @@ example config file {which:?}, uncommented={uncommented:?}
         fn resolve_return_results<R: tor_config::load::Resolvable>(
             &self,
         ) -> Result<ResolutionResults<R>, ConfigResolveError> {
-            tor_config::load::resolve_return_results(self.parse())
+            tor_config::load::resolve_return_results(self.parse(), &Default::default())
         }
     }
 
