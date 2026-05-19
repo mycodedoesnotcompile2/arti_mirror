@@ -227,6 +227,12 @@ pub struct RouterDesc {
     /// * No extra arguments.
     pub caches_extra_info: bool,
 
+    /// `extra-info-digest` --- Hash of the extra-info document.
+    ///
+    /// * `extra-info-digest <sha1-digest> [ <sha256-digest> ]`.
+    /// * At most once.
+    pub extra_info_digest: Option<ExtraInfoDigests>,
+
     /// `or-address` --- Alternative ORport address and port
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:or-address>
@@ -577,6 +583,7 @@ impl RouterDesc {
     /// * [`RouterDesc::hibernating`]
     /// * [`RouterDesc::overload_general`]
     /// * [`RouterDesc::contact`]
+    /// * [`RouterDesc::extra_info_digest`]
     pub fn parse(s: &str) -> Result<UncheckedRouterDesc> {
         let mut reader = crate::parse::tokenize::NetDocReader::new(s)?;
         let result = Self::parse_internal(&mut reader).map_err(|e| e.within(s))?;
@@ -1004,6 +1011,7 @@ impl RouterDesc {
             family,
             family_cert: embedded_family_certs.into(),
             caches_extra_info: is_extrainfo_cache,
+            extra_info_digest: Default::default(),
             or_address: ipv6addr,
             tunnelled_dir_server: is_dircache,
             proto,
