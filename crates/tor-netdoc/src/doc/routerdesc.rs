@@ -793,6 +793,12 @@ impl RouterDesc {
         };
 
         // Family ids (for "happy families")
+        //
+        // Unfortunately we have to store this as a tuple of KeyUnknownCert and
+        // UncheckedCert due to a parse2/legacy incongruence.  parse2 requires
+        // KeyUnknownCert for EmbeddedCert whereas the legacy parser needs
+        // descendants of it obtained by passing it irreversibly through the
+        // tor_cert verification chain.
         let family_certs = body
             .slice(FAMILY_CERT)
             .iter()
@@ -802,6 +808,7 @@ impl RouterDesc {
                     .check_subject_key_is(identity_cert.peek_signing_key())?
                     .into_unchecked();
                 let unchecked = ku
+                    .clone()
                     .should_have_signing_key()
                     .map_err(|e| {
                         EK::BadObjectVal
@@ -809,13 +816,13 @@ impl RouterDesc {
                             .at_pos(ent.pos())
                             .with_source(e)
                     })?;
-                Ok(unchecked)
+                Ok((ku, unchecked))
             })
             .collect::<Result<Vec<_>>>()?;
 
         let mut family_ids: Vec<_> = family_certs
             .iter()
-            .map(|cert| RelayFamilyId::Ed25519(*cert.peek_signing_key()))
+            .map(|(_, cert)| RelayFamilyId::Ed25519(*cert.peek_signing_key()))
             .collect();
         family_ids.sort();
         family_ids.dedup();
@@ -900,7 +907,7 @@ impl RouterDesc {
             crosscert_cert.expiry(),
         ];
 
-        for cert in family_certs {
+        for (_, cert) in family_certs {
             let (inner, sig) = cert.dangerously_split().map_err(into_internal!(
                 "Missing a public key that was previously there."
             ))?;
