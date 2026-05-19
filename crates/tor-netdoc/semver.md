@@ -1,3 +1,4 @@
+ADDED: `RouterDesc::master_key_ed25519`
 BREAKING: `RouterDesc::family_ids()` now returns `RelayFamilyIds`
 ADDED: `From<Ed25519Identity>` for `RelayFamilyId`
 ADDED: `RouterDesc::family_cert`
