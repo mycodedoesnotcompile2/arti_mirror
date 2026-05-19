@@ -195,6 +195,12 @@ pub struct RouterDesc {
     /// * At most once.
     pub ipv6_policy: Arc<PortPolicy>,
 
+    /// `overload-general` --- Relay is overloaded.
+    ///
+    /// * `overload-general 1 <time>`
+    /// * At most once.
+    pub overload_general: Option<OverloadGeneral>,
+
     /// `family` --- Group relays for the purpose of path selection.
     ///
     /// * `family <LongIdent> ...`
@@ -563,6 +569,7 @@ impl RouterDesc {
     /// * [`RouterDesc::or_address`]
     ///     * Extracts only the first IPv6 address.
     /// * [`RouterDesc::hibernating`]
+    /// * [`RouterDesc::overload_general`]
     pub fn parse(s: &str) -> Result<UncheckedRouterDesc> {
         let mut reader = crate::parse::tokenize::NetDocReader::new(s)?;
         let result = Self::parse_internal(&mut reader).map_err(|e| e.within(s))?;
@@ -985,6 +992,7 @@ impl RouterDesc {
             signing_key: rsa_identity_key,
             ipv4_policy,
             ipv6_policy: ipv6_policy.intern(),
+            overload_general: Default::default(),
             family,
             family_cert: embedded_family_certs.into(),
             caches_extra_info: is_extrainfo_cache,
