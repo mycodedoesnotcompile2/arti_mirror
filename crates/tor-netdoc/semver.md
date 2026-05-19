@@ -1,3 +1,4 @@
+BREAKING: `RouterDesc::identity_ed25519` now stored using `EmbeddedCert` logic
 ADDED: `RouterDesc::master_key_ed25519`
 BREAKING: `RouterDesc::family_ids()` now returns `RelayFamilyIds`
 ADDED: `From<Ed25519Identity>` for `RelayFamilyId`

@@ -117,7 +117,7 @@ pub struct RouterDesc {
     ///
     /// * `identity-ed25519\n<certificate object>`
     /// * Exactly once, in second position in document.
-    pub identity_ed25519: tor_cert::Ed25519Cert,
+    pub identity_ed25519: EmbeddedCert<Ed25519IdentityCert, KeyUnknownCert>,
 
     /// `master-key-ed25519` --- Redundantly specify the router's ed25519 identity.
     ///
@@ -453,9 +453,10 @@ impl RouterDesc {
 
     /// Return a reference to this relay's Ed25519 identity.
     pub fn ed_identity(&self) -> &Ed25519Identity {
-        self.identity_ed25519
-            .signing_key()
+        &self.identity_ed25519
+            .get()
             .expect("No ed25519 identity key on identity cert")
+            .id_ed25519
     }
 
     /// Return a reference to the list of subprotocol versions supported by this
@@ -942,7 +943,13 @@ impl RouterDesc {
                 socksport: 0,
                 dirport,
             },
-            identity_ed25519: identity_cert,
+            identity_ed25519: EmbeddedCert::new(
+                Ed25519IdentityCert {
+                    id_ed25519: ed25519_identity_key,
+                    sign_ed25519: ed25519_signing_key.into(),
+                },
+                ku_identity_cert,
+            ),
             master_key_ed25519: ed25519_identity_key.into(),
             bandwidth: Default::default(),
             platform,
