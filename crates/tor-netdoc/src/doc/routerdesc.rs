@@ -150,6 +150,12 @@ pub struct RouterDesc {
     /// * At most once.
     pub fingerprint: Option<SpFingerprint>,
 
+    /// `hibernating` --- Whether the relay is hibernating.
+    ///
+    /// * `hiberanting <numeric boolean>`
+    /// * At most once.
+    pub hibernating: Option<NumericBoolean>,
+
     /// `uptime` --- How long this relay has been continously running
     ///
     /// * `uptime <number>`
@@ -556,6 +562,7 @@ impl RouterDesc {
     /// * [`RouterDesc::bandwidth`]
     /// * [`RouterDesc::or_address`]
     ///     * Extracts only the first IPv6 address.
+    /// * [`RouterDesc::hibernating`]
     pub fn parse(s: &str) -> Result<UncheckedRouterDesc> {
         let mut reader = crate::parse::tokenize::NetDocReader::new(s)?;
         let result = Self::parse_internal(&mut reader).map_err(|e| e.within(s))?;
@@ -971,6 +978,7 @@ impl RouterDesc {
             platform,
             published,
             fingerprint: Some(rsa_identity.into()),
+            hibernating: Default::default(),
             uptime,
             onion_key: tap_onion_key,
             ntor_onion_key,
