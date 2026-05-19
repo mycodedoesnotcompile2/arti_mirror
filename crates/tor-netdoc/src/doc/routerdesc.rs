@@ -595,14 +595,12 @@ impl RouterDesc {
                 .parse_obj::<UnvalidatedEdCert>("ED25519 CERT")?
                 .check_cert_type(tor_cert::CertType::IDENTITY_V_SIGNING)?
                 .into_unchecked();
-            let cert = ku_cert.clone()
-                .should_have_signing_key()
-                .map_err(|err| {
-                    EK::BadObjectVal
-                        .err()
-                        .with_source(err)
-                        .at_pos(cert_tok.pos())
-                })?;
+            let cert = ku_cert.clone().should_have_signing_key().map_err(|err| {
+                EK::BadObjectVal
+                    .err()
+                    .with_source(err)
+                    .at_pos(cert_tok.pos())
+            })?;
             let sk = *cert.peek_subject_key().as_ed25519().ok_or_else(|| {
                 EK::BadObjectVal
                     .at_pos(cert_tok.pos())
