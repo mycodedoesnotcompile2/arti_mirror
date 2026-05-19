@@ -797,17 +797,19 @@ impl RouterDesc {
             .slice(FAMILY_CERT)
             .iter()
             .map(|ent| {
-                ent.parse_obj::<UnvalidatedEdCert>("FAMILY CERT")?
+                let ku = ent.parse_obj::<UnvalidatedEdCert>("FAMILY CERT")?
                     .check_cert_type(CertType::FAMILY_V_IDENTITY)?
                     .check_subject_key_is(identity_cert.peek_signing_key())?
-                    .into_unchecked()
+                    .into_unchecked();
+                let unchecked = ku
                     .should_have_signing_key()
                     .map_err(|e| {
                         EK::BadObjectVal
                             .with_msg("missing public key")
                             .at_pos(ent.pos())
                             .with_source(e)
-                    })
+                    })?;
+                Ok(unchecked)
             })
             .collect::<Result<Vec<_>>>()?;
 
