@@ -138,6 +138,12 @@ pub struct RouterDesc {
     /// * Exactly once, in second position in document.
     pub identity_ed25519: tor_cert::Ed25519Cert,
 
+    /// `bandwidth` --- Report router's network bandwidth.
+    ///
+    /// * `bandwidth <average> <burst> <observed>`
+    /// * Exactly once.
+    pub bandwidth: Bandwidth,
+
     /// `platform` --- Describe the platform on which this relay is running.
     ///
     /// * `platform <rest of line>`
@@ -535,6 +541,7 @@ impl RouterDesc {
     /// The following fields are not parsed with the legacy parser and their
     /// default value is used instead.
     /// * [`RouterDescIntroItem::socksport`] in [`RouterDesc::router`]
+    /// * [`RouterDesc::bandwidth`]
     pub fn parse(s: &str) -> Result<UncheckedRouterDesc> {
         let mut reader = crate::parse::tokenize::NetDocReader::new(s)?;
         let result = Self::parse_internal(&mut reader).map_err(|e| e.within(s))?;
@@ -920,6 +927,7 @@ impl RouterDesc {
                 dirport,
             },
             identity_ed25519: identity_cert,
+            bandwidth: Default::default(),
             platform,
             published,
             fingerprint: Some(rsa_identity.into()),
