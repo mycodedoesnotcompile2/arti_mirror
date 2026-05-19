@@ -124,6 +124,7 @@
 //!    built: ValueList = values;
 //!    default = vec![27];
 //!    item_build: |&value| Ok(value);
+//!    item_apply_defaults: |_| Ok::<_, ConfigBuildError>(());
 //! }
 //!
 //! let mut builder = OuterBuilder::default();
@@ -593,6 +594,8 @@ define_list_builder_helper! {
 ///     built: LotteryNumberList = numbers;
 ///     default = generate_random();
 ///     item_build: |number| Ok(*number);
+///     item_apply_defaults: |_| Ok::<_, tor_config::ConfigBuildError>(());
+///
 ///     #[serde(try_from="MultilineListBuilder<u16>")]
 ///     #[serde(into="MultilineListBuilder<u16>")]
 /// }

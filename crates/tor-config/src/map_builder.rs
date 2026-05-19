@@ -61,19 +61,18 @@
 /// # Example
 ///
 /// ```
-/// # use derive_builder::Builder;
 /// # use derive_deftly::Deftly;
 /// # use std::collections::BTreeMap;
 /// # use tor_config::{ConfigBuildError, define_map_builder, derive_deftly_template_ExtendBuilder};
+/// # use tor_config::derive::prelude::*;
 /// # use serde::{Serialize, Deserialize};
 /// # use tor_config::extend_builder::{ExtendBuilder,ExtendStrategy};
-/// #[derive(Clone, Debug, Builder, Deftly, Eq, PartialEq)]
-/// #[derive_deftly(ExtendBuilder)]
-/// #[builder(build_fn(error = "ConfigBuildError"))]
-/// #[builder(derive(Debug, Serialize, Deserialize))]
+/// #[derive(Clone, Debug, Deftly, Eq, PartialEq)]
+/// #[derive_deftly(TorConfig)]
 /// pub struct ConnectionsConfig {
-///     #[builder(sub_builder)]
-///     #[deftly(extend_builder(sub_builder))]
+///     // Note: Ordinarily, you might choose to `tor_config(map)` instead,
+///     // to automate more of this derivation.
+///     #[deftly(tor_config(sub_builder, no_magic))]
 ///     conns: ConnectionMap
 /// }
 ///
@@ -82,13 +81,12 @@
 ///     pub type ConnectionMap = BTreeMap<String, ConnConfig>;
 /// }
 ///
-/// #[derive(Clone, Debug, Builder, Deftly, Eq, PartialEq)]
-/// #[derive_deftly(ExtendBuilder)]
-/// #[builder(build_fn(error = "ConfigBuildError"))]
-/// #[builder(derive(Debug, Serialize, Deserialize))]
+/// #[derive(Clone, Debug, Deftly, Eq, PartialEq)]
+/// #[derive_deftly(TorConfig)]
 /// pub struct ConnConfig {
-///     #[builder(default="true")]
+///     #[deftly(tor_config(default="true"))]
 ///     enabled: bool,
+///     #[deftly(tor_config(default="9999"))]
 ///     port: u16,
 /// }
 ///

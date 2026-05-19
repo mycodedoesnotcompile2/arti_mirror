@@ -48,15 +48,15 @@
 //! use derive_builder::Builder;
 //! use tor_config::{impl_standard_builder, resolve, ConfigBuildError, ConfigurationSources};
 //! use tor_config::load::TopLevel;
+//! use tor_config::derive::prelude::*;
 //! use serde::{Deserialize, Serialize};
+//! use derive_deftly::Deftly;
 //!
-//! #[derive(Debug, Clone, Builder, Eq, PartialEq)]
-//! #[builder(build_fn(error = "ConfigBuildError"))]
-//! #[builder(derive(Debug, Serialize, Deserialize))]
+//! #[derive(Debug, Clone, Deftly, Eq, PartialEq)]
+//! #[derive_deftly(TorConfig)]
 //! struct EmbedderConfig {
 //!     // ....
 //! }
-//! impl_standard_builder! { EmbedderConfig }
 //! impl TopLevel for EmbedderConfig {
 //!     type Builder = EmbedderConfigBuilder;
 //! }
@@ -67,6 +67,9 @@
 //! # struct TorClientConfig { }
 //! # impl_standard_builder! { TorClientConfig }
 //! # impl TopLevel for TorClientConfig { type Builder = TorClientConfigBuilder; }
+//! # impl tor_config::load::ConfigBuilder for TorClientConfigBuilder {
+//! #     fn apply_defaults(&mut self) -> Result<(), ConfigBuildError> { Ok(()) }
+//! # }
 //! #
 //! # #[derive(Debug, Clone, Builder, Eq, PartialEq)]
 //! # #[builder(build_fn(error = "ConfigBuildError"))]
@@ -74,6 +77,10 @@
 //! # struct ArtiConfig { }
 //! # impl_standard_builder! { ArtiConfig }
 //! # impl TopLevel for ArtiConfig { type Builder = ArtiConfigBuilder; }
+//! # impl tor_config::load::ConfigBuilder for ArtiConfigBuilder {
+//! #     fn apply_defaults(&mut self) -> Result<(), ConfigBuildError> { Ok(()) }
+//! # }
+
 //!
 //! let cfg_sources = ConfigurationSources::new_empty(); // In real program, use from_cmdline
 //! let cfg = cfg_sources.load()?;
