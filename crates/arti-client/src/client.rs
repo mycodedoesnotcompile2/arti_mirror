@@ -147,6 +147,10 @@ struct ClientShared<R: Runtime> {
     state_directory: StateDirectory,
     /// Location on disk where we store persistent data (cooked state manager).
     statemgr: UsingStateMgr,
+
+    /// Directory manager persistent storage.
+    dirmgr_store: DirMgrStore<R>,
+
     /// Client address configuration
     addrcfg: MutCfg<ClientAddrConfig>,
     /// Client DNS configuration
@@ -241,9 +245,6 @@ struct RunningInner<R: Runtime> {
     /// Circuit manager for keeping our circuits up to date and building
     /// them on-demand.
     circmgr: Arc<tor_circmgr::CircMgr<R>>,
-    /// Directory manager persistent storage.
-    #[cfg_attr(not(feature = "bridge-client"), allow(dead_code))]
-    dirmgr_store: DirMgrStore<R>,
     /// Directory manager for keeping our directory material up to date.
     dirmgr: Arc<dyn tor_dirmgr::DirProvider>,
     /// Bridge descriptor manager
@@ -974,6 +975,9 @@ impl<R: Runtime> TorClient<R> {
         let client_isolation = IsolationToken::new();
         let inert_client = InertTorClient::new(config)?;
 
+        let dirmgr_store = DirMgrStore::new(&config.dir_mgr_config()?, runtime.clone(), false)
+            .map_err(ErrorDetail::DirMgrSetup)?;
+
         let inner = Box::new(NotConstructedInner {
             config: config.clone(),
             dormant_recv,
@@ -990,6 +994,7 @@ impl<R: Runtime> TorClient<R> {
             memquota,
             inert_client,
             statemgr,
+            dirmgr_store,
             addrcfg: addr_cfg.into(),
             timeoutcfg: timeout_cfg.into(),
             reconfigure_lock: Arc::new(Mutex::new(())),
@@ -1118,13 +1123,10 @@ impl<R: Runtime> RunningInner<R> {
             c.extensions = dirmgr_extensions;
             c
         };
-        // TODO: XXXX Construct the _store_ earlier, so that we will be holding the file lock at this point.
-        let dirmgr_store =
-            DirMgrStore::new(&dir_cfg, runtime.clone(), false).map_err(ErrorDetail::DirMgrSetup)?;
         let dirmgr = dirmgr_builder
             .build(
                 runtime.clone(),
-                dirmgr_store.clone(),
+                client.dirmgr_store.clone(),
                 Arc::clone(&circmgr),
                 dir_cfg,
             )
@@ -1226,7 +1228,6 @@ impl<R: Runtime> RunningInner<R> {
         let running_inner = Arc::new(RunningInner {
             chanmgr,
             circmgr,
-            dirmgr_store, //????
             dirmgr,
             #[cfg(feature = "bridge-client")]
             bridge_desc_mgr,
@@ -2180,7 +2181,7 @@ impl<R: Runtime> ClientShared<R> {
                 let new_bdm = Arc::new(BridgeDescMgr::new(
                     &Default::default(),
                     self.runtime.clone(),
-                    running.dirmgr_store.clone(),
+                    self.dirmgr_store.clone(),
                     running.circmgr.clone(),
                     dormant,
                 )?);
