@@ -2059,6 +2059,11 @@ impl<R: Runtime> ClientShared<R> {
     /// Implementation of `bootstrap`, split out in order to avoid manually specifying
     /// double error conversions.
     async fn bootstrap_inner(&self) -> StdResult<(), ErrorDetail> {
+        // Wait for an existing bootstrap attempt to finish first.
+        //
+        // This is a futures::lock::Mutex, so it's okay to await while we hold it.
+        let _bootstrap_lock = self.bootstrap_in_progress.lock().await;
+
         // XXXXX Actually, we will want to create this here, not in create_inner
         let running = self.running_inner("bootstrap")?;
 
@@ -2087,11 +2092,6 @@ impl<R: Runtime> ClientShared<R> {
                 *bdm = Some(new_bdm);
             }
         }
-
-        // Wait for an existing bootstrap attempt to finish first.
-        //
-        // This is a futures::lock::Mutex, so it's okay to await while we hold it.
-        let _bootstrap_lock = self.bootstrap_in_progress.lock().await;
 
         if self
             .statemgr
