@@ -36,7 +36,7 @@ use crate::parse::keyword::Keyword;
 use crate::parse::parser::{Section, SectionRules};
 use crate::parse::tokenize::{ItemResult, NetDocReader};
 use crate::parse2::{ArgumentError, ArgumentStream, ItemArgumentParseable};
-use crate::types::family::{RelayFamily, RelayFamilyId};
+use crate::types::family::{RelayFamily, RelayFamilyIds};
 use crate::types::{EmbeddedCert, misc::*};
 use crate::types::policy::*;
 use crate::types::routerdesc::*;
@@ -117,10 +117,8 @@ pub struct RouterDesc {
     // and other members are present in a router descriptor, they are only
     // present as arguments, not as independent items.
     //
-    //
-    /// Declared (and proven) family IDs for this relay. If two relays
-    /// share a family ID, they shouldn't be used in the same circuit.
-    family_ids: Vec<RelayFamilyId>,
+    // XXX: Remove the distinguishment between virtual/real, as no virtual
+    // items are left.
 
     // === Real items ===
     // These items are real and correspond to actual items found in router
@@ -502,8 +500,13 @@ impl RouterDesc {
     }
 
     /// Return the authenticated family IDs of this descriptor.
-    pub fn family_ids(&self) -> &[RelayFamilyId] {
-        &self.family_ids[..]
+    pub fn family_ids(&self) -> RelayFamilyIds {
+        RelayFamilyIds::from_iter(
+            self.family_cert
+                .iter()
+                .map(|cert| cert.get().expect("unverified family cert?"))
+                .map(|cert| cert.family_ed25519.into())
+        )
     }
 
     /// Helper: tokenize `s`, and divide it into three validated sections.
@@ -826,13 +829,6 @@ impl RouterDesc {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        let mut family_ids: Vec<_> = family_certs
-            .iter()
-            .map(|(_, cert)| RelayFamilyId::Ed25519(*cert.peek_signing_key()))
-            .collect();
-        family_ids.sort();
-        family_ids.dedup();
-
         // or-address
         // Extract at most one ipv6 address from the list.  It's not great,
         // but it's what the legacy parser does.
@@ -944,8 +940,6 @@ impl RouterDesc {
             .saturating_sub(time::Duration::new(ROUTER_PRE_VALIDITY_SECONDS, 0));
 
         let desc = RouterDesc {
-            family_ids,
-
             router: RouterDescIntroItem {
                 nickname,
                 address: ipv4addr,
@@ -1307,7 +1301,7 @@ mod test {
             .dangerously_assume_timely();
 
         assert_eq!(
-            rd.family_ids(),
+            rd.family_ids().as_ref(),
             &[
                 "ed25519:7sToQRuge1bU2hS0CG0ViMndc4m82JhO4B4kdrQey80"
                     .parse()

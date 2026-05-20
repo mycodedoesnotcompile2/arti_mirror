@@ -1,3 +1,4 @@
+BREAKING: `RouterDesc::family_ids()` now returns `RelayFamilyIds`
 ADDED: `From<Ed25519Identity>` for `RelayFamilyId`
 ADDED: `RouterDesc::family_cert`
 BREAKING: `RouterDesc::or_address` now stored in a `Vec<SocketAddr>`
