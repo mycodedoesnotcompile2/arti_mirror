@@ -249,7 +249,7 @@ impl<R: Runtime> TorClientBuilder<R> {
             self.runtime.clone(),
             &self.config,
             self.bootstrap_behavior,
-            self.dirmgr_builder.as_ref(),
+            Arc::clone(&self.dirmgr_builder),
             dirmgr_extensions,
         )
         .map_err(ErrorDetail::into);
