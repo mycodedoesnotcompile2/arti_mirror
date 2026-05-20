@@ -148,6 +148,12 @@ impl Ord for RelayFamilyId {
     }
 }
 
+impl From<Ed25519Identity> for RelayFamilyId {
+    fn from(value: Ed25519Identity) -> Self {
+        Self::Ed25519(value)
+    }
+}
+
 impl NormalItemArgument for RelayFamilyId {}
 
 /// A list of multiple [`RelayFamilyId`] entries as found in microdescs.
