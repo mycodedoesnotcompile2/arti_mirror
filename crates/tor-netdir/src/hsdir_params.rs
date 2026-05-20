@@ -282,6 +282,12 @@ fn start_of_sr_round(consensus: &MdConsensus) -> Result<SystemTime> {
         .map_err(|_| Error::InvalidConsensus("consensus valid-after is before Unix epoch?!"))?
         .as_secs();
     let voting_interval = consensus.lifetime().voting_period().as_secs();
+
+    // The voting_interval is always going to be greater than 0,
+    // because the Lifetime's constructor enforces that
+    // valid_after < fresh_until < valid_until.
+    debug_assert!(voting_interval > 0);
+
     let curr_round_slot =
         (beginning_of_curr_round / voting_interval) % u64::from(VOTING_PERIODS_IN_SRV_ROUND);
     let time_elapsed_since_start_of_run = curr_round_slot * voting_interval;
@@ -350,6 +356,44 @@ mod test {
             .shared_rand_cur(7, SRV2.into(), None);
 
         bld
+    }
+
+    #[test]
+    fn invalid_lifetime() {
+        let lifetimes = [
+            // (valid_after, fresh_until, valid_until)
+            //
+            // Invalid because valid_after >= fresh_until
+            (
+                "2015-04-20T00:00:00Z",
+                "2015-04-20T00:00:00Z",
+                "2015-04-22T00:00:00Z",
+            ),
+            (
+                "2015-04-21T00:00:00Z",
+                "2015-04-20T00:00:00Z",
+                "2015-04-22T00:00:00Z",
+            ),
+            // Invalid because fresh_until >= valid_until
+            (
+                "2015-04-20T00:00:00Z",
+                "2015-04-22T00:00:00Z",
+                "2015-04-22T00:00:00Z",
+            ),
+            (
+                "2015-04-20T00:00:00Z",
+                "2015-04-23T00:00:00Z",
+                "2015-04-22T00:00:00Z",
+            ),
+        ];
+
+        for (valid_after, fresh_until, valid_until) in lifetimes {
+            let err = Lifetime::new(t(valid_after), t(fresh_until), t(valid_until))
+                .unwrap_err()
+                .netdoc_error_kind();
+
+            assert_eq!(err, tor_netdoc::NetdocErrorKind::InvalidLifetime);
+        }
     }
 
     #[test]
