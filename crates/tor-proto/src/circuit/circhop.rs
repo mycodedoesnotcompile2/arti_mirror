@@ -396,7 +396,7 @@ impl CircHopOutbound {
         rate_limit_updater: watch::Sender<StreamRateLimit>,
         drain_rate_requester: NotifySender<DrainRateRequest>,
         cmd_checker: AnyCmdChecker,
-    ) -> Result<(SendRelayCell, StreamId, StreamQueueReceiver)> {
+    ) -> Result<(SendRelayCell, StreamId, ReactorStreamComponents)> {
         let flow_ctrl = self.build_flow_ctrl(rate_limit_updater, drain_rate_requester)?;
 
         let stream_queue_max_len = flow_ctrl.inbound_queue_max_len();
@@ -409,6 +409,11 @@ impl CircHopOutbound {
                 .expect("lock poisoned")
                 .add_ent(sender, rx, flow_ctrl, cmd_checker)?;
         let cell = AnyRelayMsgOuter::new(Some(r), message);
+
+        let stream_components = ReactorStreamComponents {
+            stream_inbound_rx: receiver,
+        };
+
         Ok((
             SendRelayCell {
                 hop,
@@ -416,7 +421,7 @@ impl CircHopOutbound {
                 cell,
             },
             r,
-            receiver,
+            stream_components,
         ))
     }
 
@@ -599,7 +604,7 @@ impl CircHopOutbound {
         drain_rate_requester: NotifySender<DrainRateRequest>,
         stream_id: StreamId,
         cmd_checker: AnyCmdChecker,
-    ) -> Result<StreamQueueReceiver> {
+    ) -> Result<ReactorStreamComponents> {
         let flow_ctrl = self.build_flow_ctrl(rate_limit_updater, drain_rate_requester)?;
 
         let stream_queue_max_len = flow_ctrl.inbound_queue_max_len();
@@ -609,7 +614,9 @@ impl CircHopOutbound {
         let mut hop_map = self.map.lock().expect("lock poisoned");
         hop_map.add_ent_with_id(sender, rx, flow_ctrl, stream_id, cmd_checker)?;
 
-        Ok(receiver)
+        Ok(ReactorStreamComponents {
+            stream_inbound_rx: receiver,
+        })
     }
 
     /// Builds the reactor's flow control handler for a new stream.
@@ -859,4 +866,14 @@ fn cvt(limit: u32) -> NonZeroU32 {
         .saturating_add(1)
         .try_into()
         .expect("Adding one left it as zero?")
+}
+
+/// A collection of components that can be used to interact with the reactor's view of a Tor stream.
+//
+// TODO: We also have a `StreamComponents` type that is used and built outside of the reactor.
+// It's maybe confusing to have these similar type names, so a better name would be nice.
+#[derive(Debug)]
+pub(crate) struct ReactorStreamComponents {
+    /// An MPSC receiver for inbound messages that arrive on the stream.
+    pub(crate) stream_inbound_rx: StreamQueueReceiver,
 }

@@ -6,7 +6,7 @@ pub(super) mod extender;
 use crate::channel::Channel;
 use crate::circuit::cell_sender::CircuitCellSender;
 use crate::circuit::celltypes::CreateResponse;
-use crate::circuit::circhop::HopSettings;
+use crate::circuit::circhop::{HopSettings, ReactorStreamComponents};
 use crate::circuit::create::{Create2Wrap, CreateFastWrap, CreateHandshakeWrap};
 use crate::circuit::padding::CircPaddingDisposition;
 use crate::circuit::{CircuitRxReceiver, UniqId};
@@ -31,7 +31,6 @@ use crate::memquota::{CircuitAccount, SpecificAccount as _, StreamAccount};
 use crate::stream::cmdcheck::{AnyCmdChecker, StreamStatus};
 use crate::stream::flow_ctrl::state::StreamRateLimit;
 use crate::stream::flow_ctrl::xon_xoff::reader::DrainRateRequest;
-use crate::stream::queue::StreamQueueReceiver;
 use crate::stream::{StreamMpscReceiver, msg_streamid};
 use crate::streammap;
 use crate::tunnel::TunnelScopedCircId;
@@ -935,7 +934,7 @@ impl Circuit {
         let drain_rate_request_rx = drain_rate_request_tx.subscribe();
 
         let cmd_checker = InboundDataCmdChecker::new_connected();
-        let receiver = hop.add_ent_with_id(
+        let stream_components = hop.add_ent_with_id(
             &memquota,
             self.chan_sender.time_provider(),
             msg_rx,
@@ -950,7 +949,7 @@ impl Circuit {
             stream_id,
             hop: Some((leg, hop_num).into()),
             msg_tx,
-            receiver,
+            receiver: stream_components.stream_inbound_rx,
             rate_limit_stream: rate_limit_rx,
             drain_rate_request_stream: drain_rate_request_rx,
             memquota,
@@ -1432,7 +1431,7 @@ impl Circuit {
         rate_limit_notifier: watch::Sender<StreamRateLimit>,
         drain_rate_requester: NotifySender<DrainRateRequest>,
         cmd_checker: AnyCmdChecker,
-    ) -> Result<(SendRelayCell, StreamId, StreamQueueReceiver)> {
+    ) -> Result<(SendRelayCell, StreamId, ReactorStreamComponents)> {
         let Some(hop) = self.hop_mut(hop_num) else {
             return Err(internal!(
                 "{}: Attempting to send a BEGIN cell to an unknown hop {hop_num:?}",

@@ -21,7 +21,7 @@ pub(crate) mod circuit;
 mod conflux;
 mod control;
 
-use crate::circuit::circhop::SendRelayCell;
+use crate::circuit::circhop::{ReactorStreamComponents, SendRelayCell};
 use crate::circuit::{CircuitRxReceiver, UniqId};
 use crate::client::circuit::ClientCircChanMsg;
 use crate::client::circuit::padding::{PaddingController, PaddingEvent, PaddingEventStream};
@@ -30,7 +30,6 @@ use crate::crypto::cell::HopNum;
 use crate::crypto::handshake::ntor_v3::NtorV3PublicKey;
 use crate::memquota::CircuitAccount;
 use crate::stream::CloseStreamBehavior;
-use crate::stream::queue::StreamQueueReceiver;
 use crate::streammap;
 use crate::tunnel::{TunnelId, TunnelScopedCircId};
 use crate::util::err::ReactorError;
@@ -191,10 +190,15 @@ enum RunOnceCmdInner {
         hop: HopLocation,
         /// The circuit leg to begin the stream on.
         leg: UniqId,
-        /// The receiver for stream messages incoming from the Tor network.
-        receiver: StreamQueueReceiver,
+        /// Components that are needed to interact with the new stream.
+        stream_components: ReactorStreamComponents,
         /// Oneshot channel to notify on completion, with the allocated stream ID.
-        done: ReactorResultChannel<(StreamId, HopLocation, RelayCellFormat, StreamQueueReceiver)>,
+        done: ReactorResultChannel<(
+            StreamId,
+            HopLocation,
+            RelayCellFormat,
+            ReactorStreamComponents,
+        )>,
     },
     /// Consider sending an XON message with the given `rate`.
     MaybeSendXon {
@@ -947,7 +951,7 @@ impl Reactor {
                 cell,
                 stream_id,
                 hop,
-                receiver,
+                stream_components,
                 done,
             } => {
                 let circ = self
@@ -966,7 +970,7 @@ impl Reactor {
                 let _ = done.send(
                     outcome
                         .clone()
-                        .map(|_| (stream_id, hop, relay_format, receiver)),
+                        .map(|_| (stream_id, hop, relay_format, stream_components)),
                 );
                 outcome?;
             }

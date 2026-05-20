@@ -7,7 +7,7 @@ use super::{
 };
 use crate::Result;
 use crate::circuit::celltypes::CreateResponse;
-use crate::circuit::circhop::HopSettings;
+use crate::circuit::circhop::{HopSettings, ReactorStreamComponents};
 #[cfg(feature = "circ-padding-manual")]
 use crate::client::circuit::padding;
 use crate::client::circuit::path;
@@ -20,7 +20,6 @@ use crate::memquota::StreamAccount;
 use crate::stream::cmdcheck::AnyCmdChecker;
 use crate::stream::flow_ctrl::state::StreamRateLimit;
 use crate::stream::flow_ctrl::xon_xoff::reader::DrainRateRequest;
-use crate::stream::queue::StreamQueueReceiver;
 use crate::streammap;
 use crate::util::notify::NotifySender;
 use crate::util::skew::ClockSkew;
@@ -122,7 +121,12 @@ pub(crate) enum CtrlMsg {
         /// Notifies the stream reader when it should send a new drain rate.
         drain_rate_requester: NotifySender<DrainRateRequest>,
         /// Oneshot channel to notify on completion, with the allocated stream ID.
-        done: ReactorResultChannel<(StreamId, HopLocation, RelayCellFormat, StreamQueueReceiver)>,
+        done: ReactorResultChannel<(
+            StreamId,
+            HopLocation,
+            RelayCellFormat,
+            ReactorStreamComponents,
+        )>,
         /// A `CmdChecker` to keep track of which message types are acceptable.
         cmd_checker: AnyCmdChecker,
     },
@@ -497,7 +501,7 @@ impl<'a> ControlHandler<'a> {
                     cmd_checker,
                 );
 
-                let (cell, stream_id, receiver) = match result {
+                let (cell, stream_id, stream_components) = match result {
                     Ok((cell, stream_id, receiver)) => (cell, stream_id, receiver),
                     Err(e) => {
                         // don't care if receiver goes away.
@@ -511,7 +515,7 @@ impl<'a> ControlHandler<'a> {
                     stream_id,
                     hop: hop_location,
                     leg: leg_id,
-                    receiver,
+                    stream_components,
                     done,
                 }))
             }

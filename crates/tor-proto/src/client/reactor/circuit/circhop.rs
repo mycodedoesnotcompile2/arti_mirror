@@ -1,7 +1,9 @@
 //! Module exposing structures relating to the reactor's view of a circuit's hops.
 
 use super::{CircuitCmd, CloseStreamBehavior};
-use crate::circuit::circhop::{CircHopInbound, CircHopOutbound, HopSettings, SendRelayCell};
+use crate::circuit::circhop::{
+    CircHopInbound, CircHopOutbound, HopSettings, ReactorStreamComponents, SendRelayCell,
+};
 use crate::client::reactor::circuit::path::PathEntry;
 use crate::congestion::CongestionControl;
 use crate::crypto::cell::HopNum;
@@ -10,7 +12,6 @@ use crate::stream::StreamMpscReceiver;
 use crate::stream::cmdcheck::AnyCmdChecker;
 use crate::stream::flow_ctrl::state::StreamRateLimit;
 use crate::stream::flow_ctrl::xon_xoff::reader::DrainRateRequest;
-use crate::stream::queue::StreamQueueReceiver;
 use crate::streammap::{self, StreamEntMut, StreamMap};
 use crate::tunnel::TunnelScopedCircId;
 use crate::util::notify::NotifySender;
@@ -266,7 +267,7 @@ impl CircHop {
         rate_limit_updater: watch::Sender<StreamRateLimit>,
         drain_rate_requester: NotifySender<DrainRateRequest>,
         cmd_checker: AnyCmdChecker,
-    ) -> Result<(SendRelayCell, StreamId, StreamQueueReceiver)> {
+    ) -> Result<(SendRelayCell, StreamId, ReactorStreamComponents)> {
         self.outbound.begin_stream(
             Some(self.hop_num),
             message,
@@ -358,7 +359,7 @@ impl CircHop {
         drain_rate_requester: NotifySender<DrainRateRequest>,
         stream_id: StreamId,
         cmd_checker: AnyCmdChecker,
-    ) -> Result<StreamQueueReceiver> {
+    ) -> Result<ReactorStreamComponents> {
         self.outbound.add_ent_with_id(
             memquota,
             time_prov,

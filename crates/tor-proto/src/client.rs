@@ -401,7 +401,7 @@ impl ClientTunnel {
             })
             .map_err(|_| Error::CircuitClosed)?;
 
-        let (stream_id, hop, relay_cell_format, receiver) =
+        let (stream_id, hop, relay_cell_format, stream_components) =
             rx.await.map_err(|_| Error::CircuitClosed)??;
 
         let target = StreamTarget {
@@ -418,7 +418,7 @@ impl ClientTunnel {
 
         let stream_receiver = StreamReceiver {
             target: target.clone(),
-            receiver,
+            receiver: stream_components.stream_inbound_rx,
             recv_window: StreamRecvWindow::new(RECV_WINDOW_INIT),
             ended: false,
         };

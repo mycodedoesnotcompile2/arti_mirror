@@ -431,7 +431,7 @@ impl StreamReactor {
         let drain_rate_request_rx = drain_rate_request_tx.subscribe();
 
         let cmd_checker = InboundDataCmdChecker::new_connected();
-        let receiver = self.hop.add_ent_with_id(
+        let stream_components = self.hop.add_ent_with_id(
             &memquota,
             &self.time_provider,
             msg_rx,
@@ -446,7 +446,7 @@ impl StreamReactor {
             stream_id: sid,
             hop: None,
             msg_tx,
-            receiver,
+            receiver: stream_components.stream_inbound_rx,
             rate_limit_stream: rate_limit_rx,
             drain_rate_request_stream: drain_rate_request_rx,
             memquota,
