@@ -108,23 +108,6 @@ pub struct RouterAnnotation {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct RouterDesc {
-    // === Virtual items ===
-    // These items do not correspond to any actual item within the router
-    // descriptor from a netdoc point of view.  They cannot persist this way
-    // in parse2 and are already grouped together this way to indicate this
-    // change.  For example, `family_ids` is computed on the fly and is not
-    // present in normal router descriptors.  Although `orport`, `nickname`
-    // and other members are present in a router descriptor, they are only
-    // present as arguments, not as independent items.
-    //
-    // XXX: Remove the distinguishment between virtual/real, as no virtual
-    // items are left.
-
-    // === Real items ===
-    // These items are real and correspond to actual items found in router
-    // descriptors, although potentially not under the same name.
-    //
-    //
     /// `router` --- Introduce a router descriptor.
     /// * `router <nickname> <address> <orport> <socksport> <dirport>`
     /// * At start, exactly once.
