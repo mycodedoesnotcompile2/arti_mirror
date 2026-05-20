@@ -1,3 +1,4 @@
+ADDED: `RouterDesc::family_cert`
 BREAKING: `RouterDesc::or_address` now stored in a `Vec<SocketAddr>`
 ADDED: `HsDesc::revision()`
 BREAKING: `RouterDesc::identity_cert` renamed to `identity_ed25519`

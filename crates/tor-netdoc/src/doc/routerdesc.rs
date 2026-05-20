@@ -37,7 +37,7 @@ use crate::parse::parser::{Section, SectionRules};
 use crate::parse::tokenize::{ItemResult, NetDocReader};
 use crate::parse2::{ArgumentError, ArgumentStream, ItemArgumentParseable};
 use crate::types::family::{RelayFamily, RelayFamilyId};
-use crate::types::misc::*;
+use crate::types::{EmbeddedCert, misc::*};
 use crate::types::policy::*;
 use crate::types::routerdesc::*;
 use crate::types::version::TorVersion;
@@ -50,7 +50,7 @@ use saturating_time::SaturatingTime;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::{iter, net, time};
-use tor_cert::CertType;
+use tor_cert::{CertType, KeyUnknownCert};
 use tor_checkable::{Timebound, signed, timed};
 use tor_error::{internal, into_internal};
 use tor_llcrypto as ll;
@@ -207,6 +207,12 @@ pub struct RouterDesc {
     /// * One or more `LongIdent` arguments.
     /// * At most once.
     pub family: Arc<RelayFamily>,
+
+    /// `family-cert` --- Prove membership in a relay family.
+    ///
+    /// * `family-cert\n<object>`
+    /// * Any number of times.
+    pub family_cert: RetainedOrderVec<EmbeddedCert<Ed25519FamilyCert, KeyUnknownCert>>,
 
     /// `caches-extra-info` --- Router provides extra-info as a dirmirror.
     ///
@@ -907,12 +913,26 @@ impl RouterDesc {
             crosscert_cert.expiry(),
         ];
 
-        for (_, cert) in family_certs {
+        // As outlined above, we have to do this ... :/
+        //
+        // Composing the verified part of the EmbeddedCert by just extracting
+        // the key alone is OK because it gets checked at the end anyways
+        // due to the push to signatures and expirations.
+        let mut embedded_family_certs = Vec::with_capacity(family_certs.len());
+        for (ku_cert, cert) in family_certs {
+            let family_ed25519 = *cert.peek_signing_key();
             let (inner, sig) = cert.dangerously_split().map_err(into_internal!(
                 "Missing a public key that was previously there."
             ))?;
+            let embedded_cert = EmbeddedCert::new(
+                Ed25519FamilyCert {
+                    family_ed25519,
+                },
+                ku_cert,
+            );
             signatures.push(Box::new(sig));
             expirations.push(inner.dangerously_assume_timely().expiry());
+            embedded_family_certs.push(embedded_cert);
         }
 
         // Unwrap is safe here because `expirations` array is not empty
@@ -945,6 +965,7 @@ impl RouterDesc {
             ipv4_policy,
             ipv6_policy: ipv6_policy.intern(),
             family,
+            family_cert: embedded_family_certs.into(),
             caches_extra_info: is_extrainfo_cache,
             or_address: ipv6addr,
             tunnelled_dir_server: is_dircache,
