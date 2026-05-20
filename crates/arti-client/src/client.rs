@@ -899,7 +899,7 @@ impl<R: Runtime> TorClient<R> {
     /// Implementation of `create_unbootstrapped`, split out in order to avoid manually specifying
     /// double error conversions.
     #[instrument(skip_all, level = "trace")]
-    pub(crate) fn create_inner(
+    pub(crate) fn create_impl(
         runtime: R,
         config: &TorClientConfig,
         autobootstrap: BootstrapBehavior,
