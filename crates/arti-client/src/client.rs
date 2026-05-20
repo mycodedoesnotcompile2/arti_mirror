@@ -114,13 +114,13 @@ pub struct TorClient<R: Runtime> {
 
     /// Inner structure respresenting all components shared across different
     /// TorClients.
-    client: Arc<ClientInner<R>>,
+    client: Arc<ClientShared<R>>,
 }
 
-/// Inner, shared pieces of a `TorClient`, used to implement client functionality.
+/// Shared pieces of a `TorClient`, used to implement client functionality.
 ///
 /// In the future, we might choose to expose this along with APIs.
-struct ClientInner<R: Runtime> {
+struct ClientShared<R: Runtime> {
     /// Asynchronous runtime object.
     runtime: R,
 
@@ -1061,7 +1061,7 @@ impl<R: Runtime> TorClient<R> {
         let client_isolation = IsolationToken::new();
         let inert_client = InertTorClient::new(config)?;
 
-        let client = Arc::new(ClientInner {
+        let client = Arc::new(ClientShared {
             runtime,
             memquota,
             chanmgr,
@@ -2001,7 +2001,7 @@ impl<R: Runtime> TorClient<R> {
     }
 }
 
-impl<R: Runtime> ClientInner<R> {
+impl<R: Runtime> ClientShared<R> {
     /// Implementation of `bootstrap`, split out in order to avoid manually specifying
     /// double error conversions.
     async fn bootstrap_inner(&self) -> StdResult<(), ErrorDetail> {
