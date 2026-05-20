@@ -37,10 +37,10 @@ use crate::parse::parser::{Section, SectionRules};
 use crate::parse::tokenize::{ItemResult, NetDocReader};
 use crate::parse2::{ArgumentError, ArgumentStream, ItemArgumentParseable};
 use crate::types::family::{RelayFamily, RelayFamilyIds};
-use crate::types::{EmbeddedCert, misc::*};
 use crate::types::policy::*;
 use crate::types::routerdesc::*;
 use crate::types::version::TorVersion;
+use crate::types::{EmbeddedCert, misc::*};
 use crate::util::PeekableIterator;
 use crate::{AllowAnnotations, Error, KeywordEncodable, NetdocErrorKind as EK, Result};
 
@@ -488,7 +488,7 @@ impl RouterDesc {
             self.family_cert
                 .iter()
                 .map(|cert| cert.get().expect("unverified family cert?"))
-                .map(|cert| cert.family_ed25519.into())
+                .map(|cert| cert.family_ed25519.into()),
         )
     }
 
@@ -795,19 +795,17 @@ impl RouterDesc {
             .slice(FAMILY_CERT)
             .iter()
             .map(|ent| {
-                let ku = ent.parse_obj::<UnvalidatedEdCert>("FAMILY CERT")?
+                let ku = ent
+                    .parse_obj::<UnvalidatedEdCert>("FAMILY CERT")?
                     .check_cert_type(CertType::FAMILY_V_IDENTITY)?
                     .check_subject_key_is(identity_cert.peek_signing_key())?
                     .into_unchecked();
-                let unchecked = ku
-                    .clone()
-                    .should_have_signing_key()
-                    .map_err(|e| {
-                        EK::BadObjectVal
-                            .with_msg("missing public key")
-                            .at_pos(ent.pos())
-                            .with_source(e)
-                    })?;
+                let unchecked = ku.clone().should_have_signing_key().map_err(|e| {
+                    EK::BadObjectVal
+                        .with_msg("missing public key")
+                        .at_pos(ent.pos())
+                        .with_source(e)
+                })?;
                 Ok((ku, unchecked))
             })
             .collect::<Result<Vec<_>>>()?;
@@ -903,12 +901,7 @@ impl RouterDesc {
             let (inner, sig) = cert.dangerously_split().map_err(into_internal!(
                 "Missing a public key that was previously there."
             ))?;
-            let embedded_cert = EmbeddedCert::new(
-                Ed25519FamilyCert {
-                    family_ed25519,
-                },
-                ku_cert,
-            );
+            let embedded_cert = EmbeddedCert::new(Ed25519FamilyCert { family_ed25519 }, ku_cert);
             signatures.push(Box::new(sig));
             expirations.push(inner.dangerously_assume_timely().expiry());
             embedded_family_certs.push(embedded_cert);
