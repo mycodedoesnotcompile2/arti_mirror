@@ -2223,17 +2223,26 @@ impl<R: Runtime> ClientShared<R> {
         Ok(())
     }
 
+    /// Ensure that this client is running and bootstrapped, and return a [`RunningInner`] if it is.
+    ///
+    /// If we're not bootstrapped,
+    /// we either try to bootstrap or return an error,
+    /// depending on `self.should_bootstrap`:
+    ///
     /// ## For `BootstrapBehavior::OnDemand` clients
     ///
-    /// Initiate a bootstrap by calling `bootstrap` (which is idempotent, so attempts to
-    /// bootstrap twice will just do nothing).
+    /// Initiate a bootstrap by calling `bootstrap_inner`
+    /// (which is idempotent, so attempts to bootstrap twice will just do nothing).
     ///
     /// ## For `BootstrapBehavior::Manual` clients
     ///
-    /// Check whether a bootstrap is in progress; if one is, wait until it finishes
-    /// and then return. (Otherwise, return immediately.)
+    /// Check whether a bootstrap is in progress; if one is, wait until it finishes.
+    /// Then see whether we're bootstrapped, and return either a success or a failure.
     #[instrument(skip_all, level = "trace")]
-    async fn wait_for_bootstrap(&self) -> StdResult<(), ErrorDetail> {
+    async fn wait_for_bootstrap_running(
+        &self,
+        action: &'static str,
+    ) -> StdResult<Arc<RunningInner<R>>, ErrorDetail> {
         match self.should_bootstrap {
             BootstrapBehavior::OnDemand => {
                 self.bootstrap_inner().await?;
@@ -2254,21 +2263,6 @@ impl<R: Runtime> ClientShared<R> {
                     }
                 }))
             })?;
-        Ok(())
-    }
-
-    /// As [`wait_for_bootstrap`](Self::wait_for_bootstrap),
-    /// but return a [`RunningInner`] when we are successfully bootstrapped,
-    /// and return an error if we are unbootstrapped and configured to bootstrap manually.
-    ///
-    /// XXXXX Coalesce this with wait_for_bootstrap() in all cases where this is the behavior we want.
-    /// Currently, wait_for_bootstrap doesn't actually wait for anything if we are BootstrapBehavior::Manual
-    /// and not currently trying to bootstrap.
-    async fn wait_for_bootstrap_running(
-        &self,
-        action: &'static str,
-    ) -> StdResult<Arc<RunningInner<R>>, ErrorDetail> {
-        self.wait_for_bootstrap().await?;
         self.running_inner(action)
     }
 
