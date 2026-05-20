@@ -1462,7 +1462,11 @@ impl<R: Runtime> TorClient<R> {
             } => {
                 use safelog::DisplayRedacted as _;
 
-                self.client.wait_for_bootstrap().await?;
+                let running = self
+                    .client
+                    .wait_for_bootstrap_running("connect to hidden service")
+                    .await?;
+
                 let netdir = self.netdir(Timeliness::Timely, "connect to a hidden service")?;
 
                 let mut hs_client_secret_keys_builder = HsClientSecretKeysBuilder::default();
@@ -1486,10 +1490,7 @@ impl<R: Runtime> TorClient<R> {
                     .build()
                     .map_err(ErrorDetail::Configuration)?;
 
-                let tunnel = self
-                    .client
-                    .wait_for_bootstrap_running("connect to a hidden service")
-                    .await?
+                let tunnel = running
                     .hsclient
                     .get_or_launch_tunnel(
                         &netdir,
