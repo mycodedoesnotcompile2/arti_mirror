@@ -199,7 +199,7 @@ pub struct StorageConfig {
     //
     // (This consistency rule is not current always followed by every component.)
     #[deftly(tor_config(default = "default_cache_dir()", setter(into)))]
-    cache_dir: CfgPath,
+    pub(crate) cache_dir: CfgPath,
 
     /// Location on disk for less-sensitive persistent state information.
     // Usage note: see the note for `cache_dir`, above.

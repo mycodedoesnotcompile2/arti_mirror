@@ -204,7 +204,6 @@ enum Inner<R: Runtime> {
     Poisoned(Box<ErrorDetail>),
 }
 
-// XXXX reconfigure needs to work on this and change the config.
 /// Information stored by a never-bootstrapped [`TorClient`],
 /// used to eventually construct a [`RunningInner`] and bootstrap.
 struct NotConstructedInner<R: Runtime> {
@@ -1053,6 +1052,33 @@ impl<R: Runtime> TorClient<R> {
     }
 }
 
+impl<R: Runtime> NotConstructedInner<R> {
+    /// Replace the configuration for this unconstructed client.
+    ///
+    /// Since most of the client's internals are not yet constructed,
+    /// we can still replace nearly all of the items.
+    fn reconfigure(
+        &mut self,
+        new_config: &TorClientConfig,
+        how: tor_config::Reconfigure,
+    ) -> StdResult<(), ErrorDetail> {
+        // We _do_ have to check the cache_dir, since we can't and won't change that
+        // while we're running.
+        // (We already checked the state_dir in ClientShared::reconfigure_inner.)
+        if new_config.storage.cache_dir != self.config.storage.cache_dir {
+            how.cannot_change("storage.cache_dir")?;
+        }
+
+        if how == tor_config::Reconfigure::CheckAllOrNothing {
+            return Ok(());
+        }
+
+        self.config = new_config.clone();
+
+        Ok(())
+    }
+}
+
 impl<R: Runtime> RunningInner<R> {
     /// Construct a new [`RunningInner`] and launch its associated tasks.
     fn new(
@@ -1241,6 +1267,45 @@ impl<R: Runtime> RunningInner<R> {
         });
 
         Ok(running_inner)
+    }
+
+    /// Tell the parts of this [`RunningInner`] to reconfigure themselves
+    /// (or to check the new configuration, if `how == CheckAllOrNothing`.
+    fn reconfigure(
+        &self,
+        new_config: &TorClientConfig,
+        how: tor_config::Reconfigure,
+    ) -> crate::Result<()> {
+        let dir_cfg = new_config.dir_mgr_config().map_err(wrap_err)?;
+
+        let retire_circuits = self
+            .circmgr
+            .reconfigure(new_config, how)
+            .map_err(wrap_err)?;
+
+        #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
+        if retire_circuits != RetireCircuits::None {
+            self.hs_circ_pool.retire_all_circuits().map_err(wrap_err)?;
+        }
+
+        self.dirmgr.reconfigure(&dir_cfg, how).map_err(wrap_err)?;
+
+        let netparams = self.dirmgr.params();
+
+        self.chanmgr
+            .reconfigure(&new_config.channel, how, netparams)
+            .map_err(wrap_err)?;
+
+        #[cfg(feature = "pt-client")]
+        self.pt_mgr
+            .reconfigure(
+                how,
+                new_config.bridges.transports.clone(),
+                new_config.channel.outbound_proxy().cloned(),
+            )
+            .map_err(wrap_err)?;
+
+        Ok(())
     }
 }
 
@@ -2290,64 +2355,37 @@ impl<R: Runtime> ClientShared<R> {
         // We ignore 'new_config.path_resolver' here since CfgPathResolver does not impl PartialEq
         // and we have no way to compare them, but this field is explicitly documented as being
         // non-reconfigurable anyways.
-
-        let dir_cfg = new_config.dir_mgr_config().map_err(wrap_err)?;
+        let addr_cfg = &new_config.address_filter;
+        let timeout_cfg = &new_config.stream_timeouts;
         let state_cfg = new_config
             .storage
             .expand_state_dir(&self.path_resolver)
             .map_err(wrap_err)?;
-        let addr_cfg = &new_config.address_filter;
-        let timeout_cfg = &new_config.stream_timeouts;
 
         // TODO wasm: This ins't really how things should be long term,
         // but once we have a more generic notion of configuring storage
         // we can change this to comply with it.
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-        if state_cfg != self.statemgr.path() {
-            how.cannot_change("storage.state_dir").map_err(wrap_err)?;
+        {
+            if state_cfg != self.statemgr.path() {
+                how.cannot_change("storage.state_dir").map_err(wrap_err)?;
+            }
         }
 
         self.memquota
             .reconfigure(new_config.system.memory.clone(), how)
             .map_err(wrap_err)?;
 
-        if let Ok(running) = self.running_inner("reconfigure") {
-            let retire_circuits = running
-                .circmgr
-                .reconfigure(new_config, how)
-                .map_err(wrap_err)?;
-
-            #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
-            if retire_circuits != RetireCircuits::None {
-                running
-                    .hs_circ_pool
-                    .retire_all_circuits()
-                    .map_err(wrap_err)?;
+        let mut inner_lock = self.inner.lock().expect("Lock poisoned");
+        match &mut *inner_lock {
+            Inner::Poisoned(e) => return Err(e.as_ref().clone().into()),
+            Inner::NotConstructed(nc) => nc.reconfigure(new_config, how)?,
+            Inner::Running(r) => {
+                let running = Arc::clone(r);
+                drop(inner_lock);
+                running.reconfigure(new_config, how)?;
             }
-
-            running
-                .dirmgr
-                .reconfigure(&dir_cfg, how)
-                .map_err(wrap_err)?;
-
-            let netparams = running.dirmgr.params();
-
-            running
-                .chanmgr
-                .reconfigure(&new_config.channel, how, netparams)
-                .map_err(wrap_err)?;
-
-            #[cfg(feature = "pt-client")]
-            running
-                .pt_mgr
-                .reconfigure(
-                    how,
-                    new_config.bridges.transports.clone(),
-                    new_config.channel.outbound_proxy().cloned(),
-                )
-                .map_err(wrap_err)?;
         }
-
         if how == tor_config::Reconfigure::CheckAllOrNothing {
             return Ok(());
         }
