@@ -219,10 +219,7 @@ pub struct RouterDesc {
     ///
     /// * `or-address <address>:<port>`.
     /// * Any number of times.
-    // TODO: we don't use a socketaddrv6 because we don't care about
-    // the flow and scope fields.  We should decide whether that's a
-    // good idea.
-    pub or_address: Option<(net::Ipv6Addr, u16)>,
+    pub or_address: Vec<net::SocketAddr>,
 
     /// `tunnelled-dir-server` --- Accepts a `BEGIN_DIR` relay message.
     ///
@@ -491,7 +488,7 @@ impl RouterDesc {
             self.router.address.into(),
             self.router.orport,
         ))
-        .chain(self.or_address.map(net::SocketAddr::from))
+        .chain(self.or_address.iter().copied())
     }
 
     /// Return the declared family of this descriptor.
@@ -542,6 +539,8 @@ impl RouterDesc {
     /// default value is used instead.
     /// * [`RouterDescIntroItem::socksport`] in [`RouterDesc::router`]
     /// * [`RouterDesc::bandwidth`]
+    /// * [`RouterDesc::or_address`]
+    ///     * Extracts only the first IPv6 address.
     pub fn parse(s: &str) -> Result<UncheckedRouterDesc> {
         let mut reader = crate::parse::tokenize::NetDocReader::new(s)?;
         let result = Self::parse_internal(&mut reader).map_err(|e| e.within(s))?;
@@ -822,11 +821,11 @@ impl RouterDesc {
 
         // or-address
         // Extract at most one ipv6 address from the list.  It's not great,
-        // but it's what Tor does.
-        let mut ipv6addr = None;
+        // but it's what the legacy parser does.
+        let mut ipv6addr = Vec::with_capacity(1);
         for tok in body.slice(OR_ADDRESS) {
             if let Ok(net::SocketAddr::V6(a)) = tok.parse_arg::<net::SocketAddr>(0) {
-                ipv6addr = Some((*a.ip(), a.port()));
+                ipv6addr.push(a.into());
                 break;
             }
             // We skip over unparsable addresses. Is that right?
