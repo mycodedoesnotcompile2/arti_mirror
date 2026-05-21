@@ -2240,7 +2240,7 @@ mod test {
         const SRV2: [u8; 32] = *b"It said, 'Five cents, please.'  ";
 
         let dir = testnet::construct_custom_netdir(|_, _, bld| {
-            bld.shared_rand_prev(7, SRV1.into(), None)
+            bld.shared_rand_cur(7, SRV1.into(), None)
                 .shared_rand_prev(7, SRV2.into(), None);
         })
         .unwrap();
