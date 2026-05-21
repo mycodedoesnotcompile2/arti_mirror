@@ -91,9 +91,6 @@ use crate::stream::{StreamMpscReceiver, StreamMpscSender};
 pub use crate::crypto::binding::CircuitBinding;
 pub use path::{Path, PathEntry};
 
-/// The size of the buffer for communication between `ClientCirc` and its reactor.
-pub const CIRCUIT_BUFFER_SIZE: usize = 128;
-
 // TODO: export this from the top-level instead (it's not client-specific).
 pub use crate::circuit::CircParameters;
 

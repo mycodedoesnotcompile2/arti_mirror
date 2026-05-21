@@ -7,7 +7,7 @@ use super::{
 };
 use crate::Result;
 use crate::circuit::celltypes::CreateResponse;
-use crate::circuit::circhop::HopSettings;
+use crate::circuit::circhop::{HopSettings, ReactorStreamComponents};
 #[cfg(feature = "circ-padding-manual")]
 use crate::client::circuit::padding;
 use crate::client::circuit::path;
@@ -18,16 +18,11 @@ use crate::crypto::cell::{InboundClientLayer, OutboundClientLayer};
 use crate::crypto::handshake::ntor_v3::{NtorV3Client, NtorV3PublicKey};
 use crate::memquota::StreamAccount;
 use crate::stream::cmdcheck::AnyCmdChecker;
-use crate::stream::flow_ctrl::state::StreamRateLimit;
-use crate::stream::flow_ctrl::xon_xoff::reader::DrainRateRequest;
-use crate::stream::queue::StreamQueueReceiver;
 use crate::streammap;
-use crate::util::notify::NotifySender;
 use crate::util::skew::ClockSkew;
 use crate::util::tunnel_activity::TunnelActivity;
 #[cfg(test)]
 use crate::{circuit::UniqId, client::circuit::CircParameters, crypto::cell::HopNum};
-use postage::watch;
 use tor_cell::chancell::msg::HandshakeType;
 use tor_cell::relaycell::flow_ctrl::XonKbpsEwma;
 use tor_cell::relaycell::msg::{AnyRelayMsg, Sendme};
@@ -49,7 +44,6 @@ use super::{Circuit, ConfluxLinkResultChannel};
 use oneshot_fused_workaround as oneshot;
 
 use crate::crypto::handshake::ntor::NtorPublicKey;
-use crate::stream::StreamMpscReceiver;
 use tor_linkspec::{EncodedLinkSpec, OwnedChanTarget};
 
 use std::result::Result as StdResult;
@@ -115,14 +109,13 @@ pub(crate) enum CtrlMsg {
         message: AnyRelayMsg,
         /// The stream account to use for anything we allocate for the purpose of this stream.
         memquota: StreamAccount,
-        /// A channel to receive messages to send on this stream from.
-        rx: StreamMpscReceiver<AnyRelayMsg>,
-        /// A [`Stream`](futures::Stream) that provides updates to the rate limit for sending data.
-        rate_limit_notifier: watch::Sender<StreamRateLimit>,
-        /// Notifies the stream reader when it should send a new drain rate.
-        drain_rate_requester: NotifySender<DrainRateRequest>,
         /// Oneshot channel to notify on completion, with the allocated stream ID.
-        done: ReactorResultChannel<(StreamId, HopLocation, RelayCellFormat, StreamQueueReceiver)>,
+        done: ReactorResultChannel<(
+            StreamId,
+            HopLocation,
+            RelayCellFormat,
+            ReactorStreamComponents,
+        )>,
         /// A `CmdChecker` to keep track of which message types are acceptable.
         cmd_checker: AnyCmdChecker,
     },
@@ -450,9 +443,6 @@ impl<'a> ControlHandler<'a> {
                 hop,
                 message,
                 memquota,
-                rx,
-                rate_limit_notifier,
-                drain_rate_requester,
                 done,
                 cmd_checker,
             } => {
@@ -489,15 +479,12 @@ impl<'a> ControlHandler<'a> {
                 let result = circ.begin_stream(
                     hop_num,
                     message,
-                    &memquota,
                     &self.reactor.runtime,
-                    rx,
-                    rate_limit_notifier,
-                    drain_rate_requester,
                     cmd_checker,
+                    &memquota,
                 );
 
-                let (cell, stream_id, receiver) = match result {
+                let (cell, stream_id, stream_components) = match result {
                     Ok((cell, stream_id, receiver)) => (cell, stream_id, receiver),
                     Err(e) => {
                         // don't care if receiver goes away.
@@ -511,7 +498,7 @@ impl<'a> ControlHandler<'a> {
                     stream_id,
                     hop: hop_location,
                     leg: leg_id,
-                    receiver,
+                    stream_components,
                     done,
                 }))
             }
