@@ -584,7 +584,6 @@ mod test {
                 "logging.syslog",
                 "logging.time_granularity",
                 "path_rules.long_lived_ports",
-                "use_obsolete_software",
                 "circuit_timing.disused_circuit_timeout",
                 "storage.port_info_file",
                 "proxy.socket_send_buf_size",

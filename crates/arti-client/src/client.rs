@@ -10,9 +10,7 @@ use {derive_deftly::Deftly, tor_rpcbase::templates::*};
 
 use crate::address::{IntoTorAddr, ResolveInstructions, StreamInstructions};
 
-use crate::config::{
-    ClientAddrConfig, SoftwareStatusOverrideConfig, StreamTimeoutConfig, TorClientConfig,
-};
+use crate::config::{ClientAddrConfig, StreamTimeoutConfig, TorClientConfig};
 use safelog::{Sensitive, sensitive};
 use tor_async_utils::{DropNotifyWatchSender, PostageWatchSenderExt};
 use tor_chanmgr::ChanMgrConfig;
@@ -183,10 +181,6 @@ struct ClientInner<R: Runtime> {
     addrcfg: MutCfg<ClientAddrConfig>,
     /// Client DNS configuration
     timeoutcfg: MutCfg<StreamTimeoutConfig>,
-    /// Software status configuration.
-    //
-    // TODO #1960: remove.
-    software_status_cfg: Arc<MutCfg<SoftwareStatusOverrideConfig>>,
     /// Mutex used to serialize concurrent attempts to reconfigure a TorClient.
     ///
     /// See [`TorClient::reconfigure`] for more information on its use.
@@ -974,7 +968,6 @@ impl<R: Runtime> TorClient<R> {
             )
             .map_err(crate::Error::into_detail)?;
 
-        let software_status_cfg = Arc::new(MutCfg::new(config.use_obsolete_software.clone()));
         let rtclone = runtime.clone();
         #[allow(clippy::print_stderr)]
         crate::protostatus::enforce_protocol_recommendations(
@@ -982,7 +975,6 @@ impl<R: Runtime> TorClient<R> {
             Arc::clone(&dirmgr),
             crate::software_release_date(),
             crate::supported_protocols(),
-            Arc::clone(&software_status_cfg),
             // TODO #1932: It would be nice to have a cleaner shutdown mechanism here,
             // but that will take some work.
             |fatal| async move {
@@ -1096,7 +1088,6 @@ impl<R: Runtime> TorClient<R> {
             #[cfg(feature = "onion-service-service")]
             state_directory,
             path_resolver,
-            software_status_cfg,
         });
 
         Ok(Arc::new(TorClient {
@@ -2168,8 +2159,6 @@ impl<R: Runtime> ClientInner<R> {
 
         self.addrcfg.replace(addr_cfg.clone());
         self.timeoutcfg.replace(timeout_cfg.clone());
-        self.software_status_cfg
-            .replace(new_config.use_obsolete_software.clone());
 
         Ok(())
     }
