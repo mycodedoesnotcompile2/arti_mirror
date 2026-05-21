@@ -916,10 +916,10 @@ impl Circuit {
 
         let cmd_checker = InboundDataCmdChecker::new_connected();
         let stream_components = hop.add_ent_with_id(
-            &memquota,
             self.chan_sender.time_provider(),
             stream_id,
             cmd_checker,
+            &memquota,
         )?;
 
         let outcome = Pin::new(&mut handler.incoming_sender).try_send(StreamReqInfo {
@@ -1403,9 +1403,9 @@ impl Circuit {
         &mut self,
         hop_num: HopNum,
         message: AnyRelayMsg,
-        memquota: &StreamAccount,
         time_prov: &DynTimeProvider,
         cmd_checker: AnyCmdChecker,
+        memquota: &StreamAccount,
     ) -> Result<(SendRelayCell, StreamId, ReactorStreamComponents)> {
         let Some(hop) = self.hop_mut(hop_num) else {
             return Err(internal!(
@@ -1415,7 +1415,7 @@ impl Circuit {
             .into());
         };
 
-        hop.begin_stream(message, memquota, time_prov, cmd_checker)
+        hop.begin_stream(message, time_prov, cmd_checker, memquota)
     }
 
     /// Close the specified stream

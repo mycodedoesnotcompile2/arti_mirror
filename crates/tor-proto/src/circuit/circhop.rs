@@ -394,9 +394,9 @@ impl CircHopOutbound {
         &mut self,
         hop: Option<HopNum>,
         message: AnyRelayMsg,
-        memquota: &StreamAccount,
         time_prov: &DynTimeProvider,
         cmd_checker: AnyCmdChecker,
+        memquota: &StreamAccount,
     ) -> Result<(SendRelayCell, StreamId, ReactorStreamComponents)> {
         // TODO: This has a lot of duplicated code with `Self::add_ent_with_id()`.
 
@@ -617,10 +617,10 @@ impl CircHopOutbound {
     #[cfg(any(feature = "hs-service", feature = "relay"))]
     pub(crate) fn add_ent_with_id(
         &self,
-        memquota: &StreamAccount,
         time_prov: &DynTimeProvider,
         stream_id: StreamId,
         cmd_checker: AnyCmdChecker,
+        memquota: &StreamAccount,
     ) -> Result<ReactorStreamComponents> {
         // TODO: This has a lot of duplicated code with `Self::begin_stream()`.
 

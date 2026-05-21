@@ -255,16 +255,16 @@ impl CircHop {
     pub(crate) fn begin_stream(
         &mut self,
         message: AnyRelayMsg,
-        memquota: &StreamAccount,
         time_prov: &DynTimeProvider,
         cmd_checker: AnyCmdChecker,
+        memquota: &StreamAccount,
     ) -> Result<(SendRelayCell, StreamId, ReactorStreamComponents)> {
         self.outbound.begin_stream(
             Some(self.hop_num),
             message,
-            memquota,
             time_prov,
             cmd_checker,
+            memquota,
         )
     }
 
@@ -339,13 +339,13 @@ impl CircHop {
     #[cfg(feature = "hs-service")]
     pub(crate) fn add_ent_with_id(
         &self,
-        memquota: &StreamAccount,
         time_prov: &DynTimeProvider,
         stream_id: StreamId,
         cmd_checker: AnyCmdChecker,
+        memquota: &StreamAccount,
     ) -> Result<ReactorStreamComponents> {
         self.outbound
-            .add_ent_with_id(memquota, time_prov, stream_id, cmd_checker)
+            .add_ent_with_id(time_prov, stream_id, cmd_checker, memquota)
     }
 
     /// Note that we received an END message (or other message indicating the end of

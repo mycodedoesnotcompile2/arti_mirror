@@ -412,7 +412,7 @@ impl StreamReactor {
         let cmd_checker = InboundDataCmdChecker::new_connected();
         let stream_components =
             self.hop
-                .add_ent_with_id(&memquota, &self.time_provider, sid, cmd_checker)?;
+                .add_ent_with_id(&self.time_provider, sid, cmd_checker, &memquota)?;
 
         let outcome = Pin::new(&mut handler.incoming_sender).try_send(StreamReqInfo {
             req,

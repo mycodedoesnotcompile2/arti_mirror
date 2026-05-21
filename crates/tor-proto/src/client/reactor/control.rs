@@ -479,9 +479,9 @@ impl<'a> ControlHandler<'a> {
                 let result = circ.begin_stream(
                     hop_num,
                     message,
-                    &memquota,
                     &self.reactor.runtime,
                     cmd_checker,
+                    &memquota,
                 );
 
                 let (cell, stream_id, stream_components) = match result {
