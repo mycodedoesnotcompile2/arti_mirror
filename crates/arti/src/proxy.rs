@@ -17,7 +17,7 @@ use futures::stream::StreamExt;
 use std::net::IpAddr;
 use std::sync::Arc;
 use tor_basic_utils::error_sources::ErrorSources;
-use tor_rtcompat::{NetStreamProvider, SpawnExt};
+use tor_rtcompat::{NetStreamProvider, SpawnExt, TcpListenOptions};
 use tracing::{debug, error, info, instrument, warn};
 
 #[allow(unused)]
@@ -386,6 +386,7 @@ pub(crate) async fn bind_proxy<R: Runtime>(
     runtime: R,
     tor_client: Arc<TorClient<R>>,
     listen: Listen,
+    listen_options: TcpListenOptions,
     protocols: ListenProtocols,
     rpc_mgr: Option<Arc<RpcMgr>>,
 ) -> Result<StreamProxy<R>> {
@@ -403,7 +404,7 @@ pub(crate) async fn bind_proxy<R: Runtime>(
         Ok(addrgroups) => {
             for addrgroup in addrgroups {
                 for addr in addrgroup {
-                    match runtime.listen(&addr).await {
+                    match runtime.listen(&addr, &listen_options).await {
                         Ok(listener) => {
                             let bound_addr = listener.local_addr()?;
                             info!("Listening on {:?}", bound_addr);

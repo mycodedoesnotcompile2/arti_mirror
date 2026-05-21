@@ -3,6 +3,7 @@
 // (This module is called `cfg` to avoid name clash with the `config` crate, which we use.)
 
 use derive_deftly::Deftly;
+use tor_basic_utils::ByteQty;
 use tor_config_path::CfgPath;
 
 #[cfg(feature = "onion-service-service")]
@@ -49,6 +50,23 @@ pub(crate) const ARTI_EXAMPLE_CONFIG: &str = concat!(include_str!("./arti-exampl
 // parsable.
 #[cfg(test)]
 const OLDEST_SUPPORTED_CONFIG: &str = concat!(include_str!("./oldest-supported-config.toml"),);
+
+// Our proxy sockets will use a small-ish fixed kernel socket buffer size.
+// Tor streams are slow relative to a pair of loopback sockets,
+// so don't need socket buffers as large as what Linux provides by default
+// (sometimes several MBs).
+//
+// This has a few advantages over the defaults:
+// - Less buffer bloat.
+// - Better ability to make congestion/flow control decisions.
+// - Disables TCP autotuning, which means behaviour will better match Shadow sims.
+// - Easier to reason about stream performance when the buffer size isn't dynamic.
+//
+// See https://gitlab.torproject.org/tpo/core/arti/-/work_items/2500.
+/// See [`ProxyConfig::socket_send_buf_size`].
+const DEFAULT_SEND_BUF_SIZE: usize = 128_000;
+/// See [`ProxyConfig::socket_recv_buf_size`].
+const DEFAULT_RECV_BUF_SIZE: usize = 128_000;
 
 /// Replacement for rpc config when the rpc feature is disabled.
 #[cfg(not(feature = "rpc"))]
@@ -120,6 +138,14 @@ pub(crate) struct ProxyConfig {
     ))]
     #[deftly(tor_config(default = "true"))]
     pub(crate) enable_http_connect: bool,
+
+    /// The send buffer size (`SO_SNDBUF`) of proxy sockets.
+    #[deftly(tor_config(default = "ByteQty(DEFAULT_SEND_BUF_SIZE)"))]
+    pub(crate) socket_send_buf_size: ByteQty,
+
+    /// The receive buffer size (`SO_RCVBUF`) of proxy sockets.
+    #[deftly(tor_config(default = "ByteQty(DEFAULT_RECV_BUF_SIZE)"))]
+    pub(crate) socket_recv_buf_size: ByteQty,
 }
 
 impl ProxyConfig {
@@ -561,6 +587,8 @@ mod test {
                 "use_obsolete_software",
                 "circuit_timing.disused_circuit_timeout",
                 "storage.port_info_file",
+                "proxy.socket_send_buf_size",
+                "proxy.socket_recv_buf_size",
             ],
         );
 
