@@ -440,7 +440,14 @@ pub trait SpawnExt: Spawn {
 
 impl<T: Spawn> SpawnExt for T {}
 
-/// Trait providing additional operations on network sockets.
+/// Additional operations that can be performed on connected stream sockets.
+///
+/// Some operations provided by this trait set socket options (`setsockopt()`).
+/// Some socket options cannot be set after a stream socket is connected,
+/// so these options are not provided by this trait.
+/// Instead, they should be set through options given to
+/// [`NetStreamProvider::connect()`] or [`NetStreamProvider::listen()`].
+/// For example, see the options provided by [`TcpListenOptions`].
 pub trait StreamOps {
     /// Set the [`TCP_NOTSENT_LOWAT`] socket option, if this `Stream` is a TCP stream.
     ///
@@ -533,6 +540,16 @@ pub trait NetStreamProvider<ADDR = net::SocketAddr>: Clone + Send + Sync + 'stat
     /// The type for the listeners returned by [`Self::listen()`].
     type Listener: NetStreamListener<ADDR, Stream = Self::Stream> + Send + Sync + Unpin + 'static;
     /// The options that can be passed to [`Self::listen()`].
+    ///
+    /// This includes both options that affect the listening,
+    /// and options that will apply to any individual accepted connection streams.
+    ///
+    /// It can include options set with `setsockopt`,
+    /// as well as options that influence higher layers (eg, the runtime).
+    ///
+    /// For established streams that are accepted from a listener,
+    /// you can use [`StreamOps`] to perform additional operations
+    /// or to configure additional options.
     type ListenOptions: Clone + Default + Send + Sync + Unpin + 'static;
 
     /// Launch a connection connection to a given socket address.

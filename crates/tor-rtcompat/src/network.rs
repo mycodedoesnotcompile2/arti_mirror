@@ -1,6 +1,16 @@
 //! Definitions for types used with [`NetStreamProvider`](crate::NetStreamProvider).
 
-/// Socket options to set when initializing a listening socket.
+/// Options to use when initializing a listening socket.
+///
+/// This may include both options that affect the listening,
+/// and options that will apply to any individual accepted connection streams.
+///
+/// It can include options set with `setsockopt`,
+/// as well as options that influence higher layers (eg, the runtime).
+///
+/// For established streams that are accepted from a listener,
+/// you can use [`StreamOps`](crate::StreamOps) to perform additional operations
+/// or to configure additional options.
 #[derive(Copy, Clone, Debug, derive_builder::Builder, amplify::Getters)]
 #[non_exhaustive]
 pub struct CommonListenOptions {
@@ -29,7 +39,9 @@ impl Default for CommonListenOptions {
     }
 }
 
-/// Socket options to set when initializing a TCP listening socket.
+/// Options to use when initializing a TCP listening socket.
+///
+/// See [`CommonListenOptions`] for more information.
 #[derive(Copy, Clone, Debug, derive_builder::Builder, amplify::Getters)]
 #[non_exhaustive]
 pub struct TcpListenOptions {
