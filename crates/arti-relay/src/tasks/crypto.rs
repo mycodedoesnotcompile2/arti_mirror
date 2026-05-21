@@ -3,7 +3,7 @@
 mod views;
 
 use anyhow::Context;
-use futures::StreamExt as _;
+use futures::{FutureExt as _, StreamExt as _};
 use std::{
     sync::Arc,
     time::{Duration, SystemTime},
@@ -593,12 +593,12 @@ impl<R: Runtime> Reactor<R> {
 
         loop {
             let next_wake = self.run_once()?;
-            tokio::select! {
+            futures::select! {
                 // Sleep until next wake up.
-                _ = self.runtime.sleep_until_wallclock(next_wake) => {}
+                _ = self.runtime.sleep_until_wallclock(next_wake).fuse() => {}
                 // New consensus arrived, might be new parameters. Run the loop, it will pickup the
                 // latest.
-                ev = consensus_events.next() => {
+                ev = consensus_events.next().fuse() => {
                     ev.context("NetDir event stream ended unexpectedly")?;
                 }
             }

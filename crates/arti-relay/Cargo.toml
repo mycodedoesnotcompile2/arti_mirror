@@ -70,7 +70,7 @@ serde = { version = "1.0.103", features = ["derive"] }
 smallvec = "1.10"
 strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2"
-tokio = { version = "1.7", features = ["signal", "macros"] }
+tokio = { version = "1.7", features = ["signal"] }
 tor-basic-utils = { path = "../tor-basic-utils", version = "0.42.0" }
 tor-cert = { path = "../tor-cert", version = "0.42.0" }
 tor-chanmgr = { path = "../tor-chanmgr", version = "0.42.0", features = ["relay"] }
