@@ -18,6 +18,7 @@ use std::sync::Arc;
 use tracing::instrument;
 
 use crate::circuit::UniqId;
+use crate::circuit::circhop::ReactorStreamComponents;
 #[cfg(feature = "circ-padding-manual")]
 pub use crate::client::circuit::padding::{
     CircuitPadder, CircuitPadderConfig, CircuitPadderConfigError,
@@ -302,10 +303,13 @@ impl ClientTunnel {
                 req,
                 stream_id,
                 hop,
-                receiver,
-                msg_tx,
-                rate_limit_stream,
-                drain_rate_request_stream,
+                stream_components:
+                    ReactorStreamComponents {
+                        stream_inbound_rx,
+                        stream_outbound_tx,
+                        rate_limit_rx,
+                        drain_rate_request_rx,
+                    },
                 memquota,
                 relay_cell_format,
             } = req_ctx;
@@ -324,20 +328,20 @@ impl ClientTunnel {
             // https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3002#note_3200937
             let target = StreamTarget {
                 tunnel: Tunnel::Client(Arc::clone(&tunnel)),
-                tx: msg_tx,
+                tx: stream_outbound_tx,
                 hop: Some(allowed_hop_loc),
                 stream_id,
                 relay_cell_format,
-                rate_limit_stream,
+                rate_limit_stream: rate_limit_rx,
             };
 
             // can be used to build a reader that supports XON/XOFF flow control
             let xon_xoff_reader_ctrl =
-                XonXoffReaderCtrl::new(drain_rate_request_stream, target.clone());
+                XonXoffReaderCtrl::new(drain_rate_request_rx, target.clone());
 
             let reader = StreamReceiver {
                 target: target.clone(),
-                receiver,
+                receiver: stream_inbound_rx,
                 recv_window: StreamRecvWindow::new(RECV_WINDOW_INIT),
                 ended: false,
             };

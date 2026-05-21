@@ -418,10 +418,7 @@ impl StreamReactor {
             req,
             stream_id: sid,
             hop: None,
-            msg_tx: stream_components.stream_outbound_tx,
-            receiver: stream_components.stream_inbound_rx,
-            rate_limit_stream: stream_components.rate_limit_rx,
-            drain_rate_request_stream: stream_components.drain_rate_request_rx,
+            stream_components,
             memquota,
             relay_cell_format: self.hop.relay_cell_format(),
         });

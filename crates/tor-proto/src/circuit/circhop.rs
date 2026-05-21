@@ -21,6 +21,7 @@ use crate::streammap::{
 use crate::util::notify::{NotifyReceiver, NotifySender};
 use crate::{Error, HopNum, Result};
 
+use derive_deftly::Deftly;
 use postage::watch;
 use safelog::sensitive as sv;
 use tracing::{debug, trace};
@@ -34,6 +35,7 @@ use tor_cell::relaycell::{
     StreamId, UnparsedRelayMsg,
 };
 use tor_error::{Bug, internal};
+use tor_memquota::derive_deftly_template_HasMemoryCost;
 use tor_memquota::mq_queue::{ChannelSpec as _, MpscSpec};
 use tor_protover::named;
 use tor_rtcompat::DynTimeProvider;
@@ -908,18 +910,27 @@ fn cvt(limit: u32) -> NonZeroU32 {
 //
 // TODO: We also have a `StreamComponents` type that is used and built outside of the reactor.
 // It's maybe confusing to have these similar type names, so a better name would be nice.
-#[derive(Debug)]
+//
+// TODO(arti#2068): The components we return should maybe depend on what type of flow control is
+// used, so in the future we might want to make some of these fields optional.
+#[derive(Debug, Deftly)]
+#[derive_deftly(HasMemoryCost)]
 pub(crate) struct ReactorStreamComponents {
     /// An MPSC receiver for inbound messages that arrive on the stream.
+    #[deftly(has_memory_cost(indirect_size = "0"))] // estimate
     pub(crate) stream_inbound_rx: StreamQueueReceiver,
 
     /// An MPSC sender for outbound messages to be sent on the stream.
+    #[deftly(has_memory_cost(indirect_size = "size_of::<AnyRelayMsg>()"))] // estimate
     pub(crate) stream_outbound_tx: StreamMpscSender<AnyRelayMsg>,
 
     /// A mechanism to allow the stream's writer to receive rate limit updates from the reactor.
+    // The `watch::Sender` owns the indirect data.
+    #[deftly(has_memory_cost(indirect_size = "0"))]
     pub(crate) rate_limit_rx: watch::Receiver<StreamRateLimit>,
 
     /// A mechanism to allow the stream's reader to receive drain rate update requests from the
     /// reactor.
+    #[deftly(has_memory_cost(indirect_size = "0"))]
     pub(crate) drain_rate_request_rx: NotifyReceiver<DrainRateRequest>,
 }
