@@ -1750,6 +1750,7 @@ impl<R: Runtime> TorClient<R> {
         action: &'static str,
     ) -> StdResult<Arc<tor_netdir::NetDir>, ErrorDetail> {
         use tor_netdir::Error as E;
+        // TODO: Conceivably we could take a NetDir from our DirMgrStore.
         match self.client.running_inner(action)?.dirmgr.netdir(timeliness) {
             Ok(netdir) => Ok(netdir),
             Err(E::NoInfo) | Err(E::NotEnoughInfo) => {
@@ -1850,7 +1851,9 @@ impl<R: Runtime> TorClient<R> {
             return Ok(None);
         }
 
-        let running = self.client.running_inner("launch onion service")?;
+        let running = self
+            .client
+            .initiate_bootstrap_if_needed("launch onion service")?;
 
         let keymgr = self
             .client
@@ -2198,8 +2201,10 @@ impl<R: Runtime> TorClient<R> {
 
 impl<R: Runtime> ClientShared<R> {
     /// Used by `bootstrap_inner`: Return a `RunningInner`, constructing it if necessary.
-    fn instantiate_running_inner(&self) -> Result<Arc<RunningInner<R>>, ErrorDetail> {
-        let mut inner_guard = self.inner.lock().expect("Lock poisoned");
+    fn instantiate_running_inner(
+        &self,
+        mut inner_guard: std::sync::MutexGuard<'_, Inner<R>>,
+    ) -> Result<Arc<RunningInner<R>>, ErrorDetail> {
         match &*inner_guard {
             Inner::Running(running_inner) => Ok(Arc::clone(running_inner)),
             Inner::Poisoned(e) => Err(e.as_ref().clone()),
@@ -2232,7 +2237,7 @@ impl<R: Runtime> ClientShared<R> {
         // This is a futures::lock::Mutex, so it's okay to await while we hold it.
         let _bootstrap_lock = self.bootstrap_in_progress.lock().await;
 
-        let running = self.instantiate_running_inner()?;
+        let running = self.instantiate_running_inner(self.inner.lock().expect("lock poisoned"))?;
 
         // Make sure we have a bridge descriptor manager, which is active iff required
         #[cfg(feature = "bridge-client")]
@@ -2339,6 +2344,25 @@ impl<R: Runtime> ClientShared<R> {
             Inner::NotConstructed(_) => Err(ErrorDetail::BootstrapRequired { action }),
             Inner::Running(running_inner) => Ok(Arc::clone(running_inner)),
             Inner::Poisoned(e) => Err(e.as_ref().clone()),
+        }
+    }
+
+    /// Ensure that our bootstrap state is [`RunningInner`], if possible.
+    ///
+    /// Return an error if our [`BootstrapBehavior`] is `Manual` and have not created a
+    /// [`RunningInner`].
+    fn initiate_bootstrap_if_needed(
+        &self,
+        action: &'static str,
+    ) -> StdResult<Arc<RunningInner<R>>, ErrorDetail> {
+        let guard = self.inner.lock().expect("Lock poisoned");
+        match &*guard {
+            Inner::Running(running_inner) => Ok(Arc::clone(running_inner)),
+            Inner::Poisoned(e) => Err(e.as_ref().clone()),
+            Inner::NotConstructed(_) => match self.should_bootstrap {
+                BootstrapBehavior::Manual => Err(ErrorDetail::BootstrapRequired { action }),
+                BootstrapBehavior::OnDemand => self.instantiate_running_inner(guard),
+            },
         }
     }
 
