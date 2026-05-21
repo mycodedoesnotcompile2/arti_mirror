@@ -239,6 +239,9 @@ impl FlowCtrlHooks for XonXoffFlowCtrl {
         //
         // Here we choose a max of 2_000_000 messages,
         // which is approx 1000 MB of stream data (assuming packed cells).
+        //
+        // TODO(arti#2540): We should use an unbounded queue for XON/XOFF flow control,
+        // and should return `None` here.
         2_000_000
     }
 }
