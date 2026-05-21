@@ -271,9 +271,12 @@ mod test {
     use tor_keymgr::{KeyMgr, KeystoreSelector};
     use tor_relay_crypto::pk::{RelayLinkSigningKeypair, RelayNtorKeypair, RelaySigningKeypair};
 
-    use crate::keys::{
-        RelayLinkSigningKeypairSpecifier, RelayNtorKeypairSpecifier, RelaySigningKeypairSpecifier,
-        Timestamp,
+    use crate::{
+        keys::{
+            RelayLinkSigningKeypairSpecifier, RelayNtorKeypairSpecifier,
+            RelaySigningKeypairSpecifier, Timestamp,
+        },
+        tasks::crypto::{generate_key, test::new_keymgr},
     };
 
     fn ts(offset: u64) -> Timestamp {
@@ -281,7 +284,7 @@ mod test {
     }
 
     fn insert_link_key(keymgr: &KeyMgr, valid_until: Timestamp) {
-        super::super::generate_key::<RelayLinkSigningKeypair>(
+        generate_key::<RelayLinkSigningKeypair>(
             keymgr,
             &RelayLinkSigningKeypairSpecifier::new(valid_until),
         )
@@ -289,7 +292,7 @@ mod test {
     }
 
     fn insert_signing_key(keymgr: &KeyMgr, valid_until: Timestamp) {
-        super::super::generate_key::<RelaySigningKeypair>(
+        generate_key::<RelaySigningKeypair>(
             keymgr,
             &RelaySigningKeypairSpecifier::new(valid_until),
         )
@@ -297,17 +300,14 @@ mod test {
     }
 
     fn insert_ntor_key(keymgr: &KeyMgr, valid_until: Timestamp) {
-        super::super::generate_key::<RelayNtorKeypair>(
-            keymgr,
-            &RelayNtorKeypairSpecifier::new(valid_until),
-        )
-        .unwrap();
+        generate_key::<RelayNtorKeypair>(keymgr, &RelayNtorKeypairSpecifier::new(valid_until))
+            .unwrap();
     }
 
     /// Reconciling after keys are added should report them as changed.
     #[test]
     fn reconcile_new_keys() {
-        let keymgr = super::super::test::new_keymgr();
+        let keymgr = new_keymgr();
         let view = FullKeyView::new(keymgr.clone());
 
         insert_link_key(&keymgr, ts(1000));
@@ -326,7 +326,7 @@ mod test {
     /// Reconciling twice without any keystore changes should report nothing.
     #[test]
     fn reconcile_no_change() {
-        let keymgr = super::super::test::new_keymgr();
+        let keymgr = new_keymgr();
         let view = FullKeyView::new(keymgr.clone());
 
         insert_link_key(&keymgr, ts(1000));
@@ -352,7 +352,7 @@ mod test {
     /// lower one becomes ntor_previous.
     #[test]
     fn reconcile_ntor_keys() {
-        let keymgr = super::super::test::new_keymgr();
+        let keymgr = new_keymgr();
         let view = FullKeyView::new(keymgr.clone());
 
         let older_ts = ts(1000);
@@ -373,7 +373,7 @@ mod test {
     /// After a key rotation the replaced key type appears in the changed set.
     #[test]
     fn reconcile_rotated_key() {
-        let keymgr = super::super::test::new_keymgr();
+        let keymgr = new_keymgr();
         let view = FullKeyView::new(keymgr.clone());
 
         insert_link_key(&keymgr, ts(1000));
