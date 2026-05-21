@@ -6,14 +6,15 @@ use crate::client::circuit::handshake::RelayCryptLayerProtocol;
 use crate::ccparams::CongestionControlParams;
 use crate::circuit::CircParameters;
 use crate::congestion::{CongestionControl, sendme};
+use crate::memquota::StreamAccount;
 use crate::stream::CloseStreamBehavior;
 use crate::stream::SEND_WINDOW_INIT;
 use crate::stream::StreamMpscReceiver;
 use crate::stream::cmdcheck::{AnyCmdChecker, StreamStatus};
 use crate::stream::flow_ctrl::params::FlowCtrlParameters;
-use crate::stream::flow_ctrl::state::{StreamFlowCtrl, StreamRateLimit};
+use crate::stream::flow_ctrl::state::{FlowCtrlHooks, StreamFlowCtrl, StreamRateLimit};
 use crate::stream::flow_ctrl::xon_xoff::reader::DrainRateRequest;
-use crate::stream::queue::StreamQueueSender;
+use crate::stream::queue::{StreamQueueReceiver, stream_queue};
 use crate::streammap::{
     self, EndSentStreamEnt, OpenStreamEnt, ShouldSendEnd, StreamEntMut, StreamMap,
 };
@@ -34,6 +35,7 @@ use tor_cell::relaycell::{
 };
 use tor_error::{Bug, internal};
 use tor_protover::named;
+use tor_rtcompat::DynTimeProvider;
 
 use std::num::NonZeroU32;
 use std::pin::Pin;
@@ -388,17 +390,19 @@ impl CircHopOutbound {
         &mut self,
         hop: Option<HopNum>,
         message: AnyRelayMsg,
-        sender: StreamQueueSender,
+        memquota: &StreamAccount,
+        time_prov: &DynTimeProvider,
         rx: StreamMpscReceiver<AnyRelayMsg>,
         rate_limit_updater: watch::Sender<StreamRateLimit>,
         drain_rate_requester: NotifySender<DrainRateRequest>,
         cmd_checker: AnyCmdChecker,
-    ) -> Result<(SendRelayCell, StreamId)> {
-        let flow_ctrl = self.build_flow_ctrl(
-            Arc::clone(&self.flow_ctrl_params),
-            rate_limit_updater,
-            drain_rate_requester,
-        )?;
+    ) -> Result<(SendRelayCell, StreamId, StreamQueueReceiver)> {
+        let flow_ctrl = self.build_flow_ctrl(rate_limit_updater, drain_rate_requester)?;
+
+        let stream_queue_max_len = flow_ctrl.inbound_queue_max_len();
+
+        let (sender, receiver) = stream_queue(stream_queue_max_len, memquota, time_prov)?;
+
         let r =
             self.map
                 .lock()
@@ -412,6 +416,7 @@ impl CircHopOutbound {
                 cell,
             },
             r,
+            receiver,
         ))
     }
 
@@ -584,29 +589,27 @@ impl CircHopOutbound {
 
     /// Add an entry to this map using the specified StreamId.
     #[cfg(any(feature = "hs-service", feature = "relay"))]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn add_ent_with_id(
         &self,
-        sink: StreamQueueSender,
+        memquota: &StreamAccount,
+        time_prov: &DynTimeProvider,
         rx: StreamMpscReceiver<AnyRelayMsg>,
         rate_limit_updater: watch::Sender<StreamRateLimit>,
         drain_rate_requester: NotifySender<DrainRateRequest>,
         stream_id: StreamId,
         cmd_checker: AnyCmdChecker,
-    ) -> Result<()> {
-        let mut hop_map = self.map.lock().expect("lock poisoned");
-        hop_map.add_ent_with_id(
-            sink,
-            rx,
-            self.build_flow_ctrl(
-                Arc::clone(&self.flow_ctrl_params),
-                rate_limit_updater,
-                drain_rate_requester,
-            )?,
-            stream_id,
-            cmd_checker,
-        )?;
+    ) -> Result<StreamQueueReceiver> {
+        let flow_ctrl = self.build_flow_ctrl(rate_limit_updater, drain_rate_requester)?;
 
-        Ok(())
+        let stream_queue_max_len = flow_ctrl.inbound_queue_max_len();
+
+        let (sender, receiver) = stream_queue(stream_queue_max_len, memquota, time_prov)?;
+
+        let mut hop_map = self.map.lock().expect("lock poisoned");
+        hop_map.add_ent_with_id(sender, rx, flow_ctrl, stream_id, cmd_checker)?;
+
+        Ok(receiver)
     }
 
     /// Builds the reactor's flow control handler for a new stream.
@@ -614,10 +617,11 @@ impl CircHopOutbound {
     #[cfg_attr(feature = "flowctl-cc", expect(clippy::unnecessary_wraps))]
     fn build_flow_ctrl(
         &self,
-        params: Arc<FlowCtrlParameters>,
         rate_limit_updater: watch::Sender<StreamRateLimit>,
         drain_rate_requester: NotifySender<DrainRateRequest>,
     ) -> Result<StreamFlowCtrl> {
+        let params = Arc::clone(&self.flow_ctrl_params);
+
         if self
             .ccontrol()
             .lock()

@@ -31,7 +31,7 @@ use crate::memquota::{CircuitAccount, SpecificAccount as _, StreamAccount};
 use crate::stream::cmdcheck::{AnyCmdChecker, StreamStatus};
 use crate::stream::flow_ctrl::state::StreamRateLimit;
 use crate::stream::flow_ctrl::xon_xoff::reader::DrainRateRequest;
-use crate::stream::queue::{StreamQueueSender, stream_queue};
+use crate::stream::queue::StreamQueueReceiver;
 use crate::stream::{StreamMpscReceiver, msg_streamid};
 use crate::streammap;
 use crate::tunnel::TunnelScopedCircId;
@@ -921,13 +921,6 @@ impl Circuit {
 
         let memquota = StreamAccount::new(&self.memquota)?;
 
-        let (sender, receiver) = stream_queue(
-            #[cfg(not(feature = "flowctl-cc"))]
-            STREAM_READER_BUFFER,
-            &memquota,
-            self.chan_sender.time_provider(),
-        )?;
-
         let (msg_tx, msg_rx) = MpscSpec::new(CIRCUIT_BUFFER_SIZE).new_mq(
             self.chan_sender.time_provider().clone(),
             memquota.as_raw_account(),
@@ -942,8 +935,9 @@ impl Circuit {
         let drain_rate_request_rx = drain_rate_request_tx.subscribe();
 
         let cmd_checker = InboundDataCmdChecker::new_connected();
-        hop.add_ent_with_id(
-            sender,
+        let receiver = hop.add_ent_with_id(
+            &memquota,
+            self.chan_sender.time_provider(),
             msg_rx,
             rate_limit_tx,
             drain_rate_request_tx,
@@ -1432,12 +1426,13 @@ impl Circuit {
         &mut self,
         hop_num: HopNum,
         message: AnyRelayMsg,
-        sender: StreamQueueSender,
+        memquota: &StreamAccount,
+        time_prov: &DynTimeProvider,
         rx: StreamMpscReceiver<AnyRelayMsg>,
         rate_limit_notifier: watch::Sender<StreamRateLimit>,
         drain_rate_requester: NotifySender<DrainRateRequest>,
         cmd_checker: AnyCmdChecker,
-    ) -> Result<(SendRelayCell, StreamId)> {
+    ) -> Result<(SendRelayCell, StreamId, StreamQueueReceiver)> {
         let Some(hop) = self.hop_mut(hop_num) else {
             return Err(internal!(
                 "{}: Attempting to send a BEGIN cell to an unknown hop {hop_num:?}",
@@ -1448,7 +1443,8 @@ impl Circuit {
 
         hop.begin_stream(
             message,
-            sender,
+            memquota,
+            time_prov,
             rx,
             rate_limit_notifier,
             drain_rate_requester,

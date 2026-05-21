@@ -225,6 +225,22 @@ impl FlowCtrlHooks for XonXoffFlowCtrl {
 
         Ok(Some(Xoff::new(FlowCtrlVersion::V0)))
     }
+
+    fn inbound_queue_max_len(&self) -> usize {
+        // Congestion control doesn't have an upper limit for the number of in-flight
+        // cells that the other end might send,
+        // so we need to expect any number of cells on this stream.
+        //
+        // Since dealing with mpsc queues that may be bounded or unbounded is a pain (requires a
+        // bunch of enum wrappers), we'll set a very high bound.
+        // This bound should be high enough that we'll never reach it in practice
+        // (and if we do, it's surely a bug or an attack),
+        // but not too high as to cause `futures_channel::mpsc::channel()` to panic.
+        //
+        // Here we choose a max of 2_000_000 messages,
+        // which is approx 1000 MB of stream data (assuming packed cells).
+        2_000_000
+    }
 }
 
 /// State for XON/XOFF flow control on a half-stream.
