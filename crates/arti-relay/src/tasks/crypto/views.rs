@@ -2,10 +2,7 @@
 //! The domain specific views use the generic view helper which wraps the [`KeyMgr`].
 
 use anyhow::{Context, Result};
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
 use tor_keymgr::{KeyMgr, KeySpecifierPattern};
 use tor_relay_crypto::{
@@ -24,20 +21,35 @@ use crate::keys::{
     RelaySigningPublicKeySpecifier, Timestamp,
 };
 
-/// Local helper enum to identify specific key/cert that expires.
+/// Cache of `valid_until` timestamps for each expirable key type.
 ///
-/// This is used in the valid_until cache of the [`FullKeyView`] and only exposed to the crypto
-/// task which uses it to update the cache.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, strum::Display)]
-pub(super) enum ExpirableKeyType {
+/// This is used in the [`FullKeyView`] to keep coherence between tasks. Updated by the crypto task
+/// when keys are generated or rotated.
+#[derive(Clone, Default)]
+pub(super) struct ValidUntilKeys {
     /// Relay link authentication ed25519 keypair.
-    LinkEd,
+    pub(super) link_ed: Option<Timestamp>,
     /// Relay signing ed25519 keypair.
-    RelaysignEd,
+    pub(super) relaysign_ed: Option<Timestamp>,
     /// Ntor latest (current) keypair.
-    NtorLatest,
+    pub(super) ntor_latest: Option<Timestamp>,
     /// Ntor previous keypair.
-    NtorPrevious,
+    pub(super) ntor_previous: Option<Timestamp>,
+}
+
+/// Indicates which valid_until cache entries changed.
+///
+/// This is used when recompute the valid_until cache to indicate to the caller what has changed.
+#[derive(Default)]
+pub(super) struct ValidUntilChanged {
+    /// Relay link authentication ed25519 keypair changed.
+    pub(super) link_ed: bool,
+    /// Relay signing ed25519 keypair changed.
+    pub(super) relaysign_ed: bool,
+    /// Ntor latest (current) keypair changed.
+    pub(super) ntor_latest: bool,
+    /// Ntor previous keypair changed.
+    pub(super) ntor_previous: bool,
 }
 
 /// Write guard on the [`FullKeyView`] protecting the valid_until cache.
@@ -45,18 +57,12 @@ pub(super) enum ExpirableKeyType {
 /// This is only visible to the crypto task as only that task can change the cache.
 pub(super) struct KeyViewWriteGuard<'a> {
     /// Write lock guard on the valid_until cache.
-    guard: std::sync::RwLockWriteGuard<'a, HashMap<ExpirableKeyType, Timestamp>>,
+    guard: std::sync::RwLockWriteGuard<'a, ValidUntilKeys>,
     /// The key manager which should only be accessed by holding this guard.
     keymgr: &'a KeyMgr,
 }
 
-#[expect(unused)] // TODO(relay): Remove
 impl KeyViewWriteGuard<'_> {
-    /// Set the valid_until time in the cache for a given key type.
-    pub(super) fn set_valid_until(&mut self, ty: ExpirableKeyType, valid_until: Timestamp) {
-        self.guard.insert(ty, valid_until);
-    }
-
     /// Reference to the key manager.
     pub(super) fn keymgr(&self) -> &KeyMgr {
         self.keymgr
@@ -65,21 +71,20 @@ impl KeyViewWriteGuard<'_> {
     /// Rebuild the valid_until cache from the current keystore state.
     ///
     /// Reads all expirable key types from the keystore and replaces the cache. For ntor keys,
-    /// entries are sorted descending so the newest is [`NtorLatest`] and the second (if any) is
-    /// [`NtorPrevious`].
+    /// entries are sorted descending so the newest is `ntor_latest` and the second (if any) is
+    /// `ntor_previous`.
     ///
-    /// Returns the set of key types whose cached `valid_until` changed (added, removed, or
-    /// updated).
-    pub(super) fn recompute_valid_until(&mut self) -> anyhow::Result<HashSet<ExpirableKeyType>> {
-        let mut cache = HashMap::new();
+    /// Returns a view of which key valid_until has changed.
+    pub(super) fn recompute_valid_until(&mut self) -> anyhow::Result<ValidUntilChanged> {
+        let mut cache = ValidUntilKeys::default();
 
         if let Some(entry) = self
             .keymgr
             .list_matching(&RelayLinkSigningKeypairSpecifierPattern::new_any().arti_pattern()?)?
             .first()
         {
-            let ts = RelayLinkSigningKeypairSpecifier::try_from(entry.key_path())?.valid_until;
-            cache.insert(ExpirableKeyType::LinkEd, ts);
+            cache.link_ed =
+                Some(RelayLinkSigningKeypairSpecifier::try_from(entry.key_path())?.valid_until);
         }
 
         if let Some(entry) = self
@@ -87,8 +92,8 @@ impl KeyViewWriteGuard<'_> {
             .list_matching(&RelaySigningKeypairSpecifierPattern::new_any().arti_pattern()?)?
             .first()
         {
-            let ts = RelaySigningKeypairSpecifier::try_from(entry.key_path())?.valid_until;
-            cache.insert(ExpirableKeyType::RelaysignEd, ts);
+            cache.relaysign_ed =
+                Some(RelaySigningKeypairSpecifier::try_from(entry.key_path())?.valid_until);
         }
 
         let mut ntor: Vec<Timestamp> = self
@@ -99,12 +104,8 @@ impl KeyViewWriteGuard<'_> {
             .collect::<anyhow::Result<_>>()?;
         // Sort in descending order.
         ntor.sort_by(|a, b| b.cmp(a));
-        if let Some(&ts) = ntor.first() {
-            cache.insert(ExpirableKeyType::NtorLatest, ts);
-        }
-        if let Some(&ts) = ntor.get(1) {
-            cache.insert(ExpirableKeyType::NtorPrevious, ts);
-        }
+        cache.ntor_latest = ntor.first().copied();
+        cache.ntor_previous = ntor.get(1).copied();
 
         // Do we have another key after that and if yes, warn that too many exists.
         if ntor.get(2).is_some() {
@@ -113,16 +114,12 @@ impl KeyViewWriteGuard<'_> {
             );
         }
 
-        // Who changed here.
-        let changed = [
-            ExpirableKeyType::LinkEd,
-            ExpirableKeyType::RelaysignEd,
-            ExpirableKeyType::NtorLatest,
-            ExpirableKeyType::NtorPrevious,
-        ]
-        .into_iter()
-        .filter(|ty| self.guard.get(ty) != cache.get(ty))
-        .collect();
+        let changed = ValidUntilChanged {
+            link_ed: self.guard.link_ed != cache.link_ed,
+            relaysign_ed: self.guard.relaysign_ed != cache.relaysign_ed,
+            ntor_latest: self.guard.ntor_latest != cache.ntor_latest,
+            ntor_previous: self.guard.ntor_previous != cache.ntor_previous,
+        };
 
         *self.guard = cache;
         Ok(changed)
@@ -145,7 +142,7 @@ pub(crate) struct FullKeyView {
     ///
     /// This is used to keep coherence between tasks. All view get to see the same key. This is set
     /// when keys get generated/rotated.
-    keys_valid_until: RwLock<HashMap<ExpirableKeyType, Timestamp>>,
+    keys_valid_until: RwLock<ValidUntilKeys>,
 }
 
 impl FullKeyView {
@@ -153,14 +150,8 @@ impl FullKeyView {
     pub(crate) fn new(keymgr: Arc<KeyMgr>) -> Self {
         Self {
             keymgr,
-            keys_valid_until: RwLock::new(HashMap::new()),
+            keys_valid_until: RwLock::new(ValidUntilKeys::default()),
         }
-    }
-
-    /// Get the valid_until value from the cache for the given key type.
-    fn get_valid_until(&self, ty: ExpirableKeyType) -> Option<Timestamp> {
-        let guard = self.keys_valid_until.read().expect("poisoned lock");
-        (*guard).get(&ty).cloned()
     }
 
     /// Lock the view for write access.
@@ -192,7 +183,10 @@ impl FullKeyView {
     /// Return the link authentication keypair (KS_link_ed).
     pub(crate) fn ks_link_ed(&self) -> Result<RelayLinkSigningKeypair> {
         let valid_until = self
-            .get_valid_until(ExpirableKeyType::LinkEd)
+            .keys_valid_until
+            .read()
+            .expect("poisoned lock")
+            .link_ed
             .ok_or(anyhow::anyhow!("No link authentication key"))?;
         self.keymgr
             .get(&RelayLinkSigningKeypairSpecifier::new(valid_until))?
@@ -201,8 +195,9 @@ impl FullKeyView {
 
     /// Return the latest and previous ntor keypairs from the keystore (KS_ntor).
     pub(crate) fn ks_ntor_keys(&self) -> anyhow::Result<RelayNtorKeys> {
-        let valid_until = self
-            .get_valid_until(ExpirableKeyType::NtorLatest)
+        let cache = self.keys_valid_until.read().expect("poisoned lock").clone();
+        let valid_until = cache
+            .ntor_latest
             .ok_or(anyhow::anyhow!("No latest ntor key"))?;
         let latest = self
             .keymgr
@@ -211,7 +206,7 @@ impl FullKeyView {
         let mut keys = RelayNtorKeys::new(latest);
 
         // Might not have a previous all the time.
-        if let Some(valid_until) = self.get_valid_until(ExpirableKeyType::NtorPrevious) {
+        if let Some(valid_until) = cache.ntor_previous {
             let previous = self
                 .keymgr
                 .get(&RelayNtorKeypairSpecifier::new(valid_until))?
@@ -224,7 +219,10 @@ impl FullKeyView {
     /// Return the relay signing key (KS_relaysign_ed).
     pub(crate) fn ks_relaysign_ed(&self) -> Result<RelaySigningKeypair> {
         let valid_until = self
-            .get_valid_until(ExpirableKeyType::RelaysignEd)
+            .keys_valid_until
+            .read()
+            .expect("poisoned lock")
+            .relaysign_ed
             .ok_or(anyhow::anyhow!("No relay signing key"))?;
         self.keymgr
             .get(&RelaySigningKeypairSpecifier::new(valid_until))?
@@ -234,7 +232,10 @@ impl FullKeyView {
     /// Return the relay signing key certificate.
     pub(crate) fn cert_relaysign_ed(&self) -> Result<RelaySigningKeyCert> {
         let valid_until = self
-            .get_valid_until(ExpirableKeyType::RelaysignEd)
+            .keys_valid_until
+            .read()
+            .expect("poisoned lock")
+            .relaysign_ed
             .ok_or(anyhow::anyhow!("No relay signing key"))?;
         let (_key, cert) = self
             .keymgr
@@ -316,10 +317,10 @@ mod test {
         let mut guard = view.lock();
         let changed = guard.recompute_valid_until().unwrap();
 
-        assert!(changed.contains(&ExpirableKeyType::LinkEd));
-        assert!(changed.contains(&ExpirableKeyType::RelaysignEd));
-        assert!(changed.contains(&ExpirableKeyType::NtorLatest));
-        assert!(!changed.contains(&ExpirableKeyType::NtorPrevious));
+        assert!(changed.link_ed);
+        assert!(changed.relaysign_ed);
+        assert!(changed.ntor_latest);
+        assert!(!changed.ntor_previous);
     }
 
     /// Reconciling twice without any keystore changes should report nothing.
@@ -339,11 +340,16 @@ mod test {
 
         let mut guard = view.lock();
         let changed = guard.recompute_valid_until().unwrap();
-        assert!(changed.is_empty());
+        assert!(
+            !changed.link_ed
+                && !changed.relaysign_ed
+                && !changed.ntor_latest
+                && !changed.ntor_previous
+        );
     }
 
-    /// With two ntor keys, the one with the higher timestamp becomes NtorLatest and the
-    /// lower one becomes NtorPrevious.
+    /// With two ntor keys, the one with the higher timestamp becomes ntor_latest and the
+    /// lower one becomes ntor_previous.
     #[test]
     fn reconcile_ntor_keys() {
         let keymgr = super::super::test::new_keymgr();
@@ -358,16 +364,10 @@ mod test {
         let mut guard = view.lock();
         let changed = guard.recompute_valid_until().unwrap();
 
-        assert!(changed.contains(&ExpirableKeyType::NtorLatest));
-        assert!(changed.contains(&ExpirableKeyType::NtorPrevious));
-        assert_eq!(
-            guard.guard.get(&ExpirableKeyType::NtorLatest),
-            Some(&newer_ts)
-        );
-        assert_eq!(
-            guard.guard.get(&ExpirableKeyType::NtorPrevious),
-            Some(&older_ts)
-        );
+        assert!(changed.ntor_latest);
+        assert!(changed.ntor_previous);
+        assert_eq!(guard.guard.ntor_latest, Some(newer_ts));
+        assert_eq!(guard.guard.ntor_previous, Some(older_ts));
     }
 
     /// After a key rotation the replaced key type appears in the changed set.
@@ -395,7 +395,7 @@ mod test {
         let mut guard = view.lock();
         let changed = guard.recompute_valid_until().unwrap();
 
-        assert!(changed.contains(&ExpirableKeyType::LinkEd));
-        assert_eq!(guard.guard.get(&ExpirableKeyType::LinkEd), Some(&ts(5000)));
+        assert!(changed.link_ed);
+        assert_eq!(guard.guard.link_ed, Some(ts(5000)));
     }
 }

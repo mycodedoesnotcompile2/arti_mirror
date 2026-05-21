@@ -5,7 +5,6 @@ mod views;
 use anyhow::Context;
 use futures::StreamExt as _;
 use std::{
-    collections::HashSet,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -612,18 +611,14 @@ impl<R: Runtime> Reactor<R> {
         // Attempt a rotation of all keys.
         let (changed, next_expiry) = self.try_rotate_keys(now)?;
 
-        if changed.contains(&views::ExpirableKeyType::LinkEd)
-            || changed.contains(&views::ExpirableKeyType::RelaysignEd)
-        {
+        if changed.link_ed || changed.relaysign_ed {
             let auth_material = build_proto_relay_auth_material(now, &self.view)?;
             self.chanmgr
                 .set_relay_auth_material(Arc::new(auth_material))
                 .context("Failed to set relay auth material on ChanMgr")?;
         }
 
-        if changed.contains(&views::ExpirableKeyType::NtorLatest)
-            || changed.contains(&views::ExpirableKeyType::NtorPrevious)
-        {
+        if changed.ntor_latest || changed.ntor_previous {
             let ntor_keys = self.view.ks_ntor_keys()?;
             self.create_request_handler.update_ntor_keys(ntor_keys);
         }
@@ -640,11 +635,11 @@ impl<R: Runtime> Reactor<R> {
     /// Holds the write lock for the entire rotate + reconcile to prevent the race where another
     /// task reads a key between the keymgr update and the cache update.
     ///
-    /// Returns a set of key types that changed and the earliest expiry time across all keys.
+    /// Returns which key types changed and the earliest expiry time across all keys.
     fn try_rotate_keys(
         &self,
         now: SystemTime,
-    ) -> anyhow::Result<(HashSet<views::ExpirableKeyType>, SystemTime)> {
+    ) -> anyhow::Result<(views::ValidUntilChanged, SystemTime)> {
         // As we are about to maybe expire and rotate keys, we need to hold the key view lock. to
         // avoid the race where another task reads a key between the keymgr update and the
         // valid_until cache update.
