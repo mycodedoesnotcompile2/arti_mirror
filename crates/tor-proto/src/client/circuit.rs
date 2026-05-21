@@ -92,6 +92,7 @@ pub use crate::crypto::binding::CircuitBinding;
 pub use path::{Path, PathEntry};
 
 /// The size of the buffer for communication between `ClientCirc` and its reactor.
+// XXXX: This is unused now.
 pub const CIRCUIT_BUFFER_SIZE: usize = 128;
 
 // TODO: export this from the top-level instead (it's not client-specific).

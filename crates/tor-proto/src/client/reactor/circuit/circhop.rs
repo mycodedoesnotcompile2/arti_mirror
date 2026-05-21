@@ -8,19 +8,14 @@ use crate::client::reactor::circuit::path::PathEntry;
 use crate::congestion::CongestionControl;
 use crate::crypto::cell::HopNum;
 use crate::memquota::StreamAccount;
-use crate::stream::StreamMpscReceiver;
 use crate::stream::cmdcheck::AnyCmdChecker;
-use crate::stream::flow_ctrl::state::StreamRateLimit;
-use crate::stream::flow_ctrl::xon_xoff::reader::DrainRateRequest;
 use crate::streammap::{self, StreamEntMut, StreamMap};
 use crate::tunnel::TunnelScopedCircId;
-use crate::util::notify::NotifySender;
 use crate::util::tunnel_activity::TunnelActivity;
 use crate::{Error, Result};
 
 use futures::Stream;
 use futures::stream::FuturesUnordered;
-use postage::watch;
 use smallvec::SmallVec;
 use tor_cell::chancell::BoxedCellBody;
 use tor_cell::relaycell::flow_ctrl::{Xoff, Xon, XonKbpsEwma};
@@ -257,15 +252,11 @@ impl CircHop {
 
     /// Start a stream. Creates an entry in the stream map with the given channels, and sends the
     /// `message` to the provided hop.
-    #[expect(clippy::too_many_arguments)]
     pub(crate) fn begin_stream(
         &mut self,
         message: AnyRelayMsg,
         memquota: &StreamAccount,
         time_prov: &DynTimeProvider,
-        rx: StreamMpscReceiver<AnyRelayMsg>,
-        rate_limit_updater: watch::Sender<StreamRateLimit>,
-        drain_rate_requester: NotifySender<DrainRateRequest>,
         cmd_checker: AnyCmdChecker,
     ) -> Result<(SendRelayCell, StreamId, ReactorStreamComponents)> {
         self.outbound.begin_stream(
@@ -273,9 +264,6 @@ impl CircHop {
             message,
             memquota,
             time_prov,
-            rx,
-            rate_limit_updater,
-            drain_rate_requester,
             cmd_checker,
         )
     }
@@ -349,26 +337,15 @@ impl CircHop {
 
     /// Add an entry to this map using the specified StreamId.
     #[cfg(feature = "hs-service")]
-    #[expect(clippy::too_many_arguments)]
     pub(crate) fn add_ent_with_id(
         &self,
         memquota: &StreamAccount,
         time_prov: &DynTimeProvider,
-        rx: StreamMpscReceiver<AnyRelayMsg>,
-        rate_limit_updater: watch::Sender<StreamRateLimit>,
-        drain_rate_requester: NotifySender<DrainRateRequest>,
         stream_id: StreamId,
         cmd_checker: AnyCmdChecker,
     ) -> Result<ReactorStreamComponents> {
-        self.outbound.add_ent_with_id(
-            memquota,
-            time_prov,
-            rx,
-            rate_limit_updater,
-            drain_rate_requester,
-            stream_id,
-            cmd_checker,
-        )
+        self.outbound
+            .add_ent_with_id(memquota, time_prov, stream_id, cmd_checker)
     }
 
     /// Note that we received an END message (or other message indicating the end of

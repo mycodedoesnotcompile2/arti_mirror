@@ -6,10 +6,10 @@ use crate::client::circuit::handshake::RelayCryptLayerProtocol;
 use crate::ccparams::CongestionControlParams;
 use crate::circuit::CircParameters;
 use crate::congestion::{CongestionControl, sendme};
-use crate::memquota::StreamAccount;
+use crate::memquota::{SpecificAccount, StreamAccount};
 use crate::stream::CloseStreamBehavior;
 use crate::stream::SEND_WINDOW_INIT;
-use crate::stream::StreamMpscReceiver;
+use crate::stream::StreamMpscSender;
 use crate::stream::cmdcheck::{AnyCmdChecker, StreamStatus};
 use crate::stream::flow_ctrl::params::FlowCtrlParameters;
 use crate::stream::flow_ctrl::state::{FlowCtrlHooks, StreamFlowCtrl, StreamRateLimit};
@@ -18,7 +18,7 @@ use crate::stream::queue::{StreamQueueReceiver, stream_queue};
 use crate::streammap::{
     self, EndSentStreamEnt, OpenStreamEnt, ShouldSendEnd, StreamEntMut, StreamMap,
 };
-use crate::util::notify::NotifySender;
+use crate::util::notify::{NotifyReceiver, NotifySender};
 use crate::{Error, HopNum, Result};
 
 use postage::watch;
@@ -34,6 +34,7 @@ use tor_cell::relaycell::{
     StreamId, UnparsedRelayMsg,
 };
 use tor_error::{Bug, internal};
+use tor_memquota::mq_queue::{ChannelSpec as _, MpscSpec};
 use tor_protover::named;
 use tor_rtcompat::DynTimeProvider;
 
@@ -47,6 +48,10 @@ use web_time_compat::Instant;
 use tor_cell::relaycell::msg::SendmeTag;
 
 use cfg_if::cfg_if;
+
+/// The size of the stream's outbound RELAY message queue.
+// XXXX: This is duplicated with two other `CIRCUIT_BUFFER_SIZE` in tor-proto.
+const CIRCUIT_BUFFER_SIZE: usize = 128;
 
 /// Type of negotiation that we'll be performing as we establish a hop.
 ///
@@ -385,33 +390,49 @@ impl CircHopOutbound {
 
     /// Start a stream. Creates an entry in the stream map with the given channels, and sends the
     /// `message` to the provided hop.
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn begin_stream(
         &mut self,
         hop: Option<HopNum>,
         message: AnyRelayMsg,
         memquota: &StreamAccount,
         time_prov: &DynTimeProvider,
-        rx: StreamMpscReceiver<AnyRelayMsg>,
-        rate_limit_updater: watch::Sender<StreamRateLimit>,
-        drain_rate_requester: NotifySender<DrainRateRequest>,
         cmd_checker: AnyCmdChecker,
     ) -> Result<(SendRelayCell, StreamId, ReactorStreamComponents)> {
-        let flow_ctrl = self.build_flow_ctrl(rate_limit_updater, drain_rate_requester)?;
+        // TODO: This has a lot of duplicated code with `Self::add_ent_with_id()`.
+
+        // A channel for the reactor to inform the writer of a new rate limit.
+        let (rate_limit_tx, rate_limit_rx) = watch::channel_with(StreamRateLimit::MAX);
+
+        // A channel for the reactor to request a new drain rate from the reader.
+        // Typically this notification will be sent after an XOFF is sent so that the reader can
+        // send us a new drain rate when the stream data queue becomes empty.
+        let mut drain_rate_request_tx = NotifySender::new_typed();
+        let drain_rate_request_rx = drain_rate_request_tx.subscribe();
+
+        let flow_ctrl = self.build_flow_ctrl(rate_limit_tx, drain_rate_request_tx)?;
 
         let stream_queue_max_len = flow_ctrl.inbound_queue_max_len();
 
+        // A queue for inbound RELAY messages.
         let (sender, receiver) = stream_queue(stream_queue_max_len, memquota, time_prov)?;
 
-        let r =
-            self.map
-                .lock()
-                .expect("lock poisoned")
-                .add_ent(sender, rx, flow_ctrl, cmd_checker)?;
+        // A queue for outbound RELAY messages.
+        let (msg_tx, msg_rx) = MpscSpec::new(CIRCUIT_BUFFER_SIZE)
+            .new_mq(time_prov.clone(), memquota.as_raw_account())?;
+
+        let r = self.map.lock().expect("lock poisoned").add_ent(
+            sender,
+            msg_rx,
+            flow_ctrl,
+            cmd_checker,
+        )?;
         let cell = AnyRelayMsgOuter::new(Some(r), message);
 
         let stream_components = ReactorStreamComponents {
             stream_inbound_rx: receiver,
+            stream_outbound_tx: msg_tx,
+            rate_limit_rx,
+            drain_rate_request_rx,
         };
 
         Ok((
@@ -594,28 +615,43 @@ impl CircHopOutbound {
 
     /// Add an entry to this map using the specified StreamId.
     #[cfg(any(feature = "hs-service", feature = "relay"))]
-    #[expect(clippy::too_many_arguments)]
     pub(crate) fn add_ent_with_id(
         &self,
         memquota: &StreamAccount,
         time_prov: &DynTimeProvider,
-        rx: StreamMpscReceiver<AnyRelayMsg>,
-        rate_limit_updater: watch::Sender<StreamRateLimit>,
-        drain_rate_requester: NotifySender<DrainRateRequest>,
         stream_id: StreamId,
         cmd_checker: AnyCmdChecker,
     ) -> Result<ReactorStreamComponents> {
-        let flow_ctrl = self.build_flow_ctrl(rate_limit_updater, drain_rate_requester)?;
+        // TODO: This has a lot of duplicated code with `Self::begin_stream()`.
+
+        // A channel for the reactor to inform the writer of a new rate limit.
+        let (rate_limit_tx, rate_limit_rx) = watch::channel_with(StreamRateLimit::MAX);
+
+        // A channel for the reactor to request a new drain rate from the reader.
+        // Typically this notification will be sent after an XOFF is sent so that the reader can
+        // send us a new drain rate when the stream data queue becomes empty.
+        let mut drain_rate_request_tx = NotifySender::new_typed();
+        let drain_rate_request_rx = drain_rate_request_tx.subscribe();
+
+        let flow_ctrl = self.build_flow_ctrl(rate_limit_tx, drain_rate_request_tx)?;
 
         let stream_queue_max_len = flow_ctrl.inbound_queue_max_len();
 
+        // A queue for inbound RELAY messages.
         let (sender, receiver) = stream_queue(stream_queue_max_len, memquota, time_prov)?;
 
+        // A queue for outbound RELAY messages.
+        let (msg_tx, msg_rx) = MpscSpec::new(CIRCUIT_BUFFER_SIZE)
+            .new_mq(time_prov.clone(), memquota.as_raw_account())?;
+
         let mut hop_map = self.map.lock().expect("lock poisoned");
-        hop_map.add_ent_with_id(sender, rx, flow_ctrl, stream_id, cmd_checker)?;
+        hop_map.add_ent_with_id(sender, msg_rx, flow_ctrl, stream_id, cmd_checker)?;
 
         Ok(ReactorStreamComponents {
             stream_inbound_rx: receiver,
+            stream_outbound_tx: msg_tx,
+            rate_limit_rx,
+            drain_rate_request_rx,
         })
     }
 
@@ -876,4 +912,14 @@ fn cvt(limit: u32) -> NonZeroU32 {
 pub(crate) struct ReactorStreamComponents {
     /// An MPSC receiver for inbound messages that arrive on the stream.
     pub(crate) stream_inbound_rx: StreamQueueReceiver,
+
+    /// An MPSC sender for outbound messages to be sent on the stream.
+    pub(crate) stream_outbound_tx: StreamMpscSender<AnyRelayMsg>,
+
+    /// A mechanism to allow the stream's writer to receive rate limit updates from the reactor.
+    pub(crate) rate_limit_rx: watch::Receiver<StreamRateLimit>,
+
+    /// A mechanism to allow the stream's reader to receive drain rate update requests from the
+    /// reactor.
+    pub(crate) drain_rate_request_rx: NotifyReceiver<DrainRateRequest>,
 }
