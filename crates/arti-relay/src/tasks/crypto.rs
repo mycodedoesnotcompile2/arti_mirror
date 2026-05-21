@@ -541,7 +541,7 @@ pub(crate) fn try_generate_keys<R: Runtime>(
         KeyRotationParams::from(&tor_netdir::params::NetParameters::default()),
     )?;
     // Reconcile caches essentially writing a new one.
-    guard.reconcile()?;
+    guard.recompute_valid_until()?;
     // We are done with writing.
     drop(guard);
 
@@ -657,7 +657,7 @@ impl<R: Runtime> Reactor<R> {
 
         let rotation_params = KeyRotationParams::from(self.netdir.params().as_ref().as_ref());
         let next_expiry = try_rotate_keys_no_lock(now, keymgr, rotation_params)?;
-        let changed = view_guard.reconcile()?;
+        let changed = view_guard.recompute_valid_until()?;
         Ok((changed, next_expiry))
     }
 }

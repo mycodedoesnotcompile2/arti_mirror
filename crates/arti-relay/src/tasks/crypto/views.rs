@@ -70,7 +70,7 @@ impl KeyViewWriteGuard<'_> {
     ///
     /// Returns the set of key types whose cached `valid_until` changed (added, removed, or
     /// updated).
-    pub(super) fn reconcile(&mut self) -> anyhow::Result<HashSet<ExpirableKeyType>> {
+    pub(super) fn recompute_valid_until(&mut self) -> anyhow::Result<HashSet<ExpirableKeyType>> {
         let mut cache = HashMap::new();
 
         if let Some(entry) = self
@@ -314,7 +314,7 @@ mod test {
         insert_ntor_key(&keymgr, ts(3000));
 
         let mut guard = view.lock();
-        let changed = guard.reconcile().unwrap();
+        let changed = guard.recompute_valid_until().unwrap();
 
         assert!(changed.contains(&ExpirableKeyType::LinkEd));
         assert!(changed.contains(&ExpirableKeyType::RelaysignEd));
@@ -334,11 +334,11 @@ mod test {
 
         {
             let mut guard = view.lock();
-            guard.reconcile().unwrap();
+            guard.recompute_valid_until().unwrap();
         }
 
         let mut guard = view.lock();
-        let changed = guard.reconcile().unwrap();
+        let changed = guard.recompute_valid_until().unwrap();
         assert!(changed.is_empty());
     }
 
@@ -356,7 +356,7 @@ mod test {
         insert_ntor_key(&keymgr, newer_ts);
 
         let mut guard = view.lock();
-        let changed = guard.reconcile().unwrap();
+        let changed = guard.recompute_valid_until().unwrap();
 
         assert!(changed.contains(&ExpirableKeyType::NtorLatest));
         assert!(changed.contains(&ExpirableKeyType::NtorPrevious));
@@ -380,7 +380,7 @@ mod test {
 
         {
             let mut guard = view.lock();
-            guard.reconcile().unwrap();
+            guard.recompute_valid_until().unwrap();
         }
 
         // Simulate rotation: old key is removed and a new one is inserted.
@@ -393,7 +393,7 @@ mod test {
         insert_link_key(&keymgr, ts(5000));
 
         let mut guard = view.lock();
-        let changed = guard.reconcile().unwrap();
+        let changed = guard.recompute_valid_until().unwrap();
 
         assert!(changed.contains(&ExpirableKeyType::LinkEd));
         assert_eq!(guard.guard.get(&ExpirableKeyType::LinkEd), Some(&ts(5000)));
