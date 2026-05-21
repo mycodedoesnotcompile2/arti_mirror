@@ -525,7 +525,7 @@ pub(crate) fn try_generate_keys<R: Runtime>(
 ) -> anyhow::Result<RelayChannelAuthMaterial> {
     let now = runtime.wallclock();
     // Lock the view, we are about to attempt to fill it.
-    let mut guard = key_view.lock()?;
+    let mut guard = key_view.lock();
     let keymgr = guard.keymgr();
 
     // Attempt to generate our identity keys (ed and RSA). Those keys DO NOT rotate. It won't be
@@ -652,7 +652,7 @@ impl<R: Runtime> Reactor<R> {
         // This doesn't happen often, once every N-so hours and thus the cost in performance is
         // very small. Furthermore, the chance of hitting this race is very tiny and thus no
         // contention for the majority of the time.
-        let mut view_guard = self.view.lock()?;
+        let mut view_guard = self.view.lock();
         let keymgr = view_guard.keymgr();
 
         let rotation_params = KeyRotationParams::from(self.netdir.params().as_ref().as_ref());

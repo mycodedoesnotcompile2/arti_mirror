@@ -158,27 +158,21 @@ impl FullKeyView {
     }
 
     /// Get the valid_until value from the cache for the given key type.
-    fn get_valid_until(&self, ty: ExpirableKeyType) -> Result<Option<Timestamp>> {
-        let guard = self
-            .keys_valid_until
-            .read()
-            .map_err(|e| anyhow::anyhow!("Poisoned valid_until lock: {e}"))?;
-        Ok((*guard).get(&ty).cloned())
+    fn get_valid_until(&self, ty: ExpirableKeyType) -> Option<Timestamp> {
+        let guard = self.keys_valid_until.read().expect("poisoned lock");
+        (*guard).get(&ty).cloned()
     }
 
     /// Lock the view for write access.
     ///
     /// This is only visible to the crypto task so it can update all valid_until and rotate keys at
     /// once in order to keep the cache coherent with the [`KeyMgr`].
-    pub(super) fn lock(&self) -> Result<KeyViewWriteGuard<'_>> {
-        let guard = self
-            .keys_valid_until
-            .write()
-            .map_err(|e| anyhow::anyhow!("Poisoned valid_until lock: {e}"))?;
-        Ok(KeyViewWriteGuard {
+    pub(super) fn lock(&self) -> KeyViewWriteGuard<'_> {
+        let guard = self.keys_valid_until.write().expect("poisoned lock");
+        KeyViewWriteGuard {
             guard,
             keymgr: &self.keymgr,
-        })
+        }
     }
 
     /// Return the relay ed25519 identity keypair (KS_relayid_ed).
@@ -198,7 +192,7 @@ impl FullKeyView {
     /// Return the link authentication keypair (KS_link_ed).
     pub(crate) fn ks_link_ed(&self) -> Result<RelayLinkSigningKeypair> {
         let valid_until = self
-            .get_valid_until(ExpirableKeyType::LinkEd)?
+            .get_valid_until(ExpirableKeyType::LinkEd)
             .ok_or(anyhow::anyhow!("No link authentication key"))?;
         self.keymgr
             .get(&RelayLinkSigningKeypairSpecifier::new(valid_until))?
@@ -208,7 +202,7 @@ impl FullKeyView {
     /// Return the latest and previous ntor keypairs from the keystore (KS_ntor).
     pub(crate) fn ks_ntor_keys(&self) -> anyhow::Result<RelayNtorKeys> {
         let valid_until = self
-            .get_valid_until(ExpirableKeyType::NtorLatest)?
+            .get_valid_until(ExpirableKeyType::NtorLatest)
             .ok_or(anyhow::anyhow!("No latest ntor key"))?;
         let latest = self
             .keymgr
@@ -217,7 +211,7 @@ impl FullKeyView {
         let mut keys = RelayNtorKeys::new(latest);
 
         // Might not have a previous all the time.
-        if let Some(valid_until) = self.get_valid_until(ExpirableKeyType::NtorPrevious)? {
+        if let Some(valid_until) = self.get_valid_until(ExpirableKeyType::NtorPrevious) {
             let previous = self
                 .keymgr
                 .get(&RelayNtorKeypairSpecifier::new(valid_until))?
@@ -230,7 +224,7 @@ impl FullKeyView {
     /// Return the relay signing key (KS_relaysign_ed).
     pub(crate) fn ks_relaysign_ed(&self) -> Result<RelaySigningKeypair> {
         let valid_until = self
-            .get_valid_until(ExpirableKeyType::RelaysignEd)?
+            .get_valid_until(ExpirableKeyType::RelaysignEd)
             .ok_or(anyhow::anyhow!("No relay signing key"))?;
         self.keymgr
             .get(&RelaySigningKeypairSpecifier::new(valid_until))?
@@ -240,7 +234,7 @@ impl FullKeyView {
     /// Return the relay signing key certificate.
     pub(crate) fn cert_relaysign_ed(&self) -> Result<RelaySigningKeyCert> {
         let valid_until = self
-            .get_valid_until(ExpirableKeyType::RelaysignEd)?
+            .get_valid_until(ExpirableKeyType::RelaysignEd)
             .ok_or(anyhow::anyhow!("No relay signing key"))?;
         let (_key, cert) = self
             .keymgr
@@ -319,7 +313,7 @@ mod test {
         insert_signing_key(&keymgr, ts(2000));
         insert_ntor_key(&keymgr, ts(3000));
 
-        let mut guard = view.lock().unwrap();
+        let mut guard = view.lock();
         let changed = guard.reconcile().unwrap();
 
         assert!(changed.contains(&ExpirableKeyType::LinkEd));
@@ -339,11 +333,11 @@ mod test {
         insert_ntor_key(&keymgr, ts(3000));
 
         {
-            let mut guard = view.lock().unwrap();
+            let mut guard = view.lock();
             guard.reconcile().unwrap();
         }
 
-        let mut guard = view.lock().unwrap();
+        let mut guard = view.lock();
         let changed = guard.reconcile().unwrap();
         assert!(changed.is_empty());
     }
@@ -361,7 +355,7 @@ mod test {
         insert_ntor_key(&keymgr, older_ts);
         insert_ntor_key(&keymgr, newer_ts);
 
-        let mut guard = view.lock().unwrap();
+        let mut guard = view.lock();
         let changed = guard.reconcile().unwrap();
 
         assert!(changed.contains(&ExpirableKeyType::NtorLatest));
@@ -385,7 +379,7 @@ mod test {
         insert_link_key(&keymgr, ts(1000));
 
         {
-            let mut guard = view.lock().unwrap();
+            let mut guard = view.lock();
             guard.reconcile().unwrap();
         }
 
@@ -398,7 +392,7 @@ mod test {
             .unwrap();
         insert_link_key(&keymgr, ts(5000));
 
-        let mut guard = view.lock().unwrap();
+        let mut guard = view.lock();
         let changed = guard.reconcile().unwrap();
 
         assert!(changed.contains(&ExpirableKeyType::LinkEd));
