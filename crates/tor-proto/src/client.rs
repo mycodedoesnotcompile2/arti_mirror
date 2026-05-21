@@ -390,22 +390,29 @@ impl ClientTunnel {
         let (stream_id, hop, relay_cell_format, stream_components) =
             rx.await.map_err(|_| Error::CircuitClosed)??;
 
+        // Destructure so that we don't forget to use any fields.
+        let ReactorStreamComponents {
+            stream_inbound_rx,
+            stream_outbound_tx,
+            rate_limit_rx,
+            drain_rate_request_rx,
+        } = stream_components;
+
         let target = StreamTarget {
             tunnel: Tunnel::Client(self.clone()),
-            tx: stream_components.stream_outbound_tx,
+            tx: stream_outbound_tx,
             hop: Some(hop),
             stream_id,
             relay_cell_format,
-            rate_limit_stream: stream_components.rate_limit_rx,
+            rate_limit_stream: rate_limit_rx,
         };
 
         // can be used to build a reader that supports XON/XOFF flow control
-        let xon_xoff_reader_ctrl =
-            XonXoffReaderCtrl::new(stream_components.drain_rate_request_rx, target.clone());
+        let xon_xoff_reader_ctrl = XonXoffReaderCtrl::new(drain_rate_request_rx, target.clone());
 
         let stream_receiver = StreamReceiver {
             target: target.clone(),
-            receiver: stream_components.stream_inbound_rx,
+            receiver: stream_inbound_rx,
             recv_window: StreamRecvWindow::new(RECV_WINDOW_INIT),
             ended: false,
         };
