@@ -857,10 +857,10 @@ pub mod doc_generated_code {}
 ///
 /// This attribute replaces that behavior for a single field.
 /// FIELD_DEFAULT must be an expression that expands to a closure taking `&mut Self` as an argument.
-/// It must check that checks whether the field is set,
+/// It checks whether the field is set,
 /// and sets it to a reasonable default otherwise.
 /// It must return Result<(), E>, where E is some type implementing `Into<ConfigBuildError>`.
-/// Within `FIELD_DEFAUlt`, `self` refers to the `Builder`.
+/// Within `FIELD_DEFAUlT`, `self` refers to the `Builder`.
 /// The [`build`] or [`try_build`] functions for that field may assume
 /// that the FIELD_DEFAULT has already been executed.
 ///

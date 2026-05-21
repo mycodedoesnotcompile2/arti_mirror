@@ -355,7 +355,7 @@ impl MistrustBuilder {
     /// Fill in any values for this `MistrustBuilder` that have defaults,
     /// and are not already set.
     ///
-    /// It is not necessary to call this message if you're just planning
+    /// It is not necessary to call this method if you're just planning
     /// to build a [`Mistrust`]; you only need it if you are going to
     /// re-serialize the builder and you want to make the defaults explicit.
     pub fn apply_defaults(&mut self) -> std::result::Result<(), void::Void> {
