@@ -582,10 +582,10 @@ where
         };
         let builder = builder.map_err(crate::ConfigError::from_cfg_err)?;
 
-        if let Some(output_tree) = input.output_tree.take() {
+        if let Some(output_tree) = input.output_tree.as_mut() {
             let mut with_defaults = builder.clone();
             with_defaults.apply_defaults()?;
-            input.output_tree = Some(output_tree.merge_from(&with_defaults)?);
+            output_tree.merge_from(&with_defaults)?;
         }
 
         let built = builder.build()?;
