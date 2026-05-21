@@ -36,13 +36,6 @@ use std::sync::{Arc, Mutex};
 use std::task::Poll;
 use std::time::Duration;
 
-/// Size of the buffer for communication between a StreamTarget and the reactor.
-///
-// TODO(tuning): figure out if this is a good size for this buffer
-// XXXX: This is unused now.
-#[expect(unused)]
-const CIRCUIT_BUFFER_SIZE: usize = 128;
-
 /// Trait for customizing the behavior of the stream reactor.
 ///
 /// Used for plugging in the implementation-dependent (client vs relay)

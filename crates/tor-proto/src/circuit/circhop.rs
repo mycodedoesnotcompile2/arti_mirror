@@ -50,7 +50,7 @@ use tor_cell::relaycell::msg::SendmeTag;
 use cfg_if::cfg_if;
 
 /// The size of the stream's outbound RELAY message queue.
-// XXXX: This is duplicated with two other `CIRCUIT_BUFFER_SIZE` in tor-proto.
+// TODO(tuning): figure out if this is a good size for this buffer
 const CIRCUIT_BUFFER_SIZE: usize = 128;
 
 /// Type of negotiation that we'll be performing as we establish a hop.
