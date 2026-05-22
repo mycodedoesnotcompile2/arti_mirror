@@ -49,6 +49,7 @@ full = [
     "fs-mistrust/full",
     "rpc",
     "http-connect",
+    "flowctl-cc",
     "safelog/full",
     "tor-config/full",
     "tor-error/full",
@@ -100,7 +101,7 @@ vanguards = ["arti-client/vanguards"]
 hs-pow-full = ["arti-client/hs-pow-full", "__is_experimental"]
 pt-client = ["bridge-client", "arti-client/pt-client"]
 ctor-keystore = ["arti-client/ctor-keystore", "__is_experimental"]
-flowctl-cc = ["arti-client/flowctl-cc", "__is_experimental"]
+flowctl-cc = ["arti-client/flowctl-cc"]
 counter-galois-onion = ["arti-client/counter-galois-onion", "flowctl-cc", "__is_experimental"]
 
 rpc = ["arti-rpcserver", "tor-rpcbase", "tor-rpc-connect", "arti-client/rpc", "derive-deftly"]
@@ -148,7 +149,6 @@ experimental = [
     "tor-hsservice/experimental",
     "ctor-keystore",
     "onion-service-cli-extra",
-    "flowctl-cc",
     "counter-galois-onion",
     "opentelemetry",
     "tokio-console",
