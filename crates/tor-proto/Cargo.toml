@@ -24,6 +24,7 @@ full = [
     "rpc",
     "send-control-msg",
     "stream-ctrl",
+    "flowctl-cc",
     "safelog/full",
     "tor-async-utils/full",
     "tor-basic-utils/full",
@@ -54,7 +55,6 @@ full = [
 experimental = [
     "experimental-api",
     "conflux",
-    "flowctl-cc",
     "testing",
     "bench",
     "counter-galois-onion",
@@ -63,7 +63,7 @@ experimental = [
     "circ-padding-manual",
 ]
 conflux = ["tor-cell/conflux", "__is_experimental"]
-flowctl-cc = ["__is_experimental"]
+flowctl-cc = []
 pt-client = ["tor-linkspec/pt-client"]
 
 hs-client = ["hs-common"]
