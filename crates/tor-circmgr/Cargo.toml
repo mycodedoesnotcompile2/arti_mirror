@@ -19,6 +19,7 @@ full = [
     "hs-service",
     "specific-relay",
     "vanguards",
+    "flowctl-cc",
     "retry-error/full",
     "safelog/full",
     "send-control-msg",
@@ -46,6 +47,7 @@ full = [
 ]
 specific-relay = []
 vanguards = ["tor-guardmgr/vanguards"]
+flowctl-cc = ["tor-proto/flowctl-cc"]
 
 # Enable testing-only APIs.  APIs under this feature are not
 # covered by semver.
@@ -55,8 +57,7 @@ testing = ["tor-guardmgr/testing", "__is_experimental"]
 #
 # These APIs are not covered by semantic versioning.  Using this
 # feature voids your "semver warrantee".
-experimental = ["experimental-api", "testing", "flowctl-cc", "geoip", "conflux"]
-flowctl-cc = ["__is_experimental", "tor-proto/flowctl-cc"]
+experimental = ["experimental-api", "testing", "geoip", "conflux"]
 conflux = ["__is_experimental", "tor-proto/conflux"]
 geoip = [
     "tor-geoip",
