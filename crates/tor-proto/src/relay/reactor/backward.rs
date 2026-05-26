@@ -78,10 +78,6 @@ impl BackwardHandler for Backward {
                     "Received inbound DESTROY, circuit shutting down",
                 );
 
-                // TODO(relay): if the DESTROY cell has a reason other than PROTOCOL,
-                // here, and in the backward reactor, we should flush all pending cells
-                // *before* shutting down.
-
                 // We don't need to send a DESTROY cell down the channel,
                 // because that's handled implicitly by our Drop implementation
                 return Err(ReactorError::Shutdown);
