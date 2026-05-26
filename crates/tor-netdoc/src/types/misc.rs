@@ -1886,6 +1886,14 @@ mod edcert {
                 cert,
             ))
         }
+
+        /// Test only function for creating an unverified instance.
+        #[cfg(test)]
+        pub(crate) fn dangerous_new_unverified() -> Self {
+            Self {
+                _promise_we_verified: (),
+            }
+        }
     }
 }
 
@@ -3528,6 +3536,43 @@ mod test {
         }
     }
 
+    impl Ed25519CertTest for Ed25519NtorCrossCert {
+        fn new(
+            _signing_key: ed25519::Ed25519Identity,
+            _certified_key: ed25519::Ed25519Identity,
+        ) -> Self {
+            Self::dangerous_new_unverified()
+        }
+
+        fn cert_type() -> CertType {
+            CertType::NTOR_CC_IDENTITY
+        }
+
+        fn new_signed(
+            signing_key: &ed25519::Keypair,
+            certified_key: ed25519::Ed25519Identity,
+            expiry: SystemTime,
+        ) -> StdResult<EmbeddedCert<Self, KeyUnknownCert>, Bug> {
+            Self::new_signed(signing_key, certified_key, expiry)
+        }
+
+        fn verify(
+            signing_key: Option<ed25519::Ed25519Identity>,
+            certified_key: ed25519::Ed25519Identity,
+            cert: KeyUnknownCert,
+            post_tolerance: Duration,
+            now: SystemTime,
+        ) -> StdResult<Self, VerifyFailed> {
+            Self::verify(
+                signing_key.unwrap(),
+                certified_key,
+                cert,
+                post_tolerance,
+                now,
+            )
+        }
+    }
+
     /// Converts from [`Iso8601TimeSp`] to [`SystemTime`]
     fn str_to_st(s: &str) -> SystemTime {
         Iso8601TimeSp::from_str(s).unwrap().0
@@ -3695,5 +3740,15 @@ mod test {
     #[test]
     fn ed25519_family_cert_invalid() {
         ed25519_cert_invalid::<Ed25519FamilyCert>();
+    }
+
+    #[test]
+    fn ed25519_ntor_crosscert_rng() {
+        ed25519_cert_rng::<Ed25519NtorCrossCert>();
+    }
+
+    #[test]
+    fn ed25519_ntor_crosscert_invalid() {
+        ed25519_cert_rng::<Ed25519NtorCrossCert>();
     }
 }
