@@ -82,7 +82,7 @@ use {
 
 pub use err::Error;
 
-pub use config::{ChannelConfig, ChannelConfigBuilder};
+pub use config::{ChannelConfig, ChannelConfigBuilder, ProxyProtocol};
 pub use mgr::ChanMgrConfig;
 
 use tor_rtcompat::Runtime;
