@@ -253,7 +253,12 @@ async fn run_action<R: Runtime>(
         ProxyAction::Forward(encap, target) => match (encap, target) {
             (Encapsulation::Simple, ref addr @ TargetAddr::Inet(a)) => {
                 let rt_clone = runtime.clone();
-                forward_connection(rt_clone, request, runtime.connect(&a), nickname, addr).await?;
+
+                // We don't use any custom options on the socket.
+                let connect_options = Default::default();
+                let stream = runtime.connect(&a, &connect_options);
+
+                forward_connection(rt_clone, request, stream, nickname, addr).await?;
             } /* TODO (#1246)
                 (Encapsulation::Simple, TargetAddr::Unix(_)) => {
                     // TODO: We need to implement unix connections.

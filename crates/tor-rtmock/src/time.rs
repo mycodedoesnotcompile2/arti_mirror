@@ -84,7 +84,7 @@ use crate::time_core::MockTimeCore;
 /// async fn say_hi(runtime: impl Runtime, addr: &SocketAddr) -> Result<()> {
 ///    let delay = Duration::new(5,0);
 ///    runtime.timeout(delay, async {
-///       let mut conn = runtime.connect(addr).await?;
+///       let mut conn = runtime.connect(addr, &Default::default()).await?;
 ///       conn.write_all(b"Hello world!\r\n").await?;
 ///       conn.close().await?;
 ///       Ok::<_,Error>(())

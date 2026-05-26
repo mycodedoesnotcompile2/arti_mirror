@@ -202,12 +202,18 @@ macro_rules! impl_unix_non_provider {
         impl crate::traits::NetStreamProvider<tor_general_addr::unix::SocketAddr> for $for_type {
             type Stream = crate::unimpl::FakeStream;
             type Listener = crate::unimpl::FakeListener<tor_general_addr::unix::SocketAddr>;
+            type ConnectOptions = crate::network::UnixConnectOptions;
             type ListenOptions = crate::network::UnixListenOptions;
-            async fn connect(&self, _a: &tor_general_addr::unix::SocketAddr) -> IoResult<Self::Stream> {
+            async fn connect(
+                &self,
+                _a: &tor_general_addr::unix::SocketAddr,
+                _options: &Self::ConnectOptions,
+            ) -> IoResult<Self::Stream> {
                 Err(tor_general_addr::unix::NoAfUnixSocketSupport::default().into())
 
             }
-            async fn listen(&self,
+            async fn listen(
+                &self,
                 _a: &tor_general_addr::unix::SocketAddr,
                 _options: &Self::ListenOptions,
             ) -> IoResult<Self::Listener> {

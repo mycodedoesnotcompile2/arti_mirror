@@ -199,9 +199,9 @@ pub(crate) mod net {
 
 // ==============================
 
-use crate::network::TcpListenOptions;
+use crate::network::{TcpConnectOptions, TcpListenOptions};
 #[cfg(unix)]
-use crate::network::UnixListenOptions;
+use crate::network::{UnixConnectOptions, UnixListenOptions};
 use crate::traits::*;
 use async_trait::async_trait;
 use futures::Future;
@@ -222,10 +222,18 @@ impl SleepProvider for TokioRuntimeHandle {
 impl crate::traits::NetStreamProvider for TokioRuntimeHandle {
     type Stream = net::TcpStream;
     type Listener = net::TcpListener;
+    type ConnectOptions = TcpConnectOptions;
     type ListenOptions = TcpListenOptions;
 
     #[instrument(skip_all, level = "trace")]
-    async fn connect(&self, addr: &std::net::SocketAddr) -> IoResult<Self::Stream> {
+    async fn connect(
+        &self,
+        addr: &std::net::SocketAddr,
+        options: &Self::ConnectOptions,
+    ) -> IoResult<Self::Stream> {
+        // XXXX use the options
+        let _ = options;
+
         let s = net::TokioTcpStream::connect(addr).await?;
         Ok(s.into())
     }
@@ -246,10 +254,18 @@ impl crate::traits::NetStreamProvider for TokioRuntimeHandle {
 impl crate::traits::NetStreamProvider<unix::SocketAddr> for TokioRuntimeHandle {
     type Stream = net::UnixStream;
     type Listener = net::UnixListener;
+    type ConnectOptions = UnixConnectOptions;
     type ListenOptions = UnixListenOptions;
 
     #[instrument(skip_all, level = "trace")]
-    async fn connect(&self, addr: &unix::SocketAddr) -> IoResult<Self::Stream> {
+    async fn connect(
+        &self,
+        addr: &unix::SocketAddr,
+        options: &Self::ConnectOptions,
+    ) -> IoResult<Self::Stream> {
+        // Will fail to compile if we add options without handling them here.
+        let UnixConnectOptions {} = options;
+
         let path = addr
             .as_pathname()
             .ok_or(crate::unix::UnsupportedAfUnixAddressType)?;

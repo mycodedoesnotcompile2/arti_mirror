@@ -124,25 +124,28 @@ where
 {
     type Stream = CustomTcpStream<T::Stream>;
     type Listener = CustomTcpListener<T::Listener>;
+    type ConnectOptions = T::ConnectOptions;
     type ListenOptions = T::ListenOptions;
 
     // This is an async trait method (using the `async_trait` crate). We manually implement it
     // here so that we don't borrow `self` for too long.
     // (The lifetimes are explicit and somewhat ugly because that's how `async_trait` works.)
-    fn connect<'a, 'b, 'c>(
+    fn connect<'a, 'b, 'c, 'd>(
         &'a self,
         addr: &'b SocketAddr,
-    ) -> Pin<Box<dyn Future<Output = IoResult<Self::Stream>> + Send + 'c>>
+        options: &'c Self::ConnectOptions,
+    ) -> Pin<Box<dyn Future<Output = IoResult<Self::Stream>> + Send + 'd>>
     where
-        'a: 'c,
-        'b: 'c,
-        Self: 'c,
+        'a: 'd,
+        'b: 'd,
+        'c: 'd,
+        Self: 'd,
     {
         // Use the underlying TCP provider implementation to do the connection, and
         // return our wrapper around it once done.
         println!("tcp connect to {addr}");
         self.inner
-            .connect(addr)
+            .connect(addr, options)
             .map(move |r| {
                 r.map(|stream| CustomTcpStream {
                     inner: stream,

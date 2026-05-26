@@ -435,9 +435,14 @@ impl MockNetProvider {
 impl NetStreamProvider for MockNetProvider {
     type Stream = LocalStream;
     type Listener = MockNetListener;
+    type ConnectOptions = tor_rtcompat::TcpConnectOptions;
     type ListenOptions = tor_rtcompat::TcpListenOptions;
 
-    async fn connect(&self, addr: &SocketAddr) -> IoResult<LocalStream> {
+    async fn connect(
+        &self,
+        addr: &SocketAddr,
+        _options: &Self::ConnectOptions,
+    ) -> IoResult<LocalStream> {
         let my_addr = self.get_origin_addr_for(addr)?;
         let (mut mine, theirs) = stream_pair();
 
@@ -677,13 +682,14 @@ mod test {
 
             let (r1, r2): (IoResult<()>, IoResult<()>) = futures::join!(
                 async {
-                    let mut conn = client1.connect(&address).await?;
+                    let connect_options = Default::default();
+                    let mut conn = client1.connect(&address, &connect_options).await?;
                     conn.write_all(b"This is totally a network.").await?;
                     conn.close().await?;
 
                     // Nobody listening here...
                     let a2 = "192.0.2.200:99".parse().unwrap();
-                    let cant_connect = client1.connect(&a2).await;
+                    let cant_connect = client1.connect(&a2, &connect_options).await;
                     assert!(cant_connect.is_err());
                     Ok(())
                 },
@@ -754,7 +760,8 @@ mod test {
             let (r1, r2): (IoResult<()>, IoResult<()>) = futures::join!(
                 async {
                     for _ in 0..3_u8 {
-                        let mut c = client1.connect(&address).await?;
+                        let connect_options = Default::default();
+                        let mut c = client1.connect(&address, &connect_options).await?;
                         c.close().await?;
                     }
                     Ok(())
@@ -789,7 +796,8 @@ mod test {
             let (r1, r2): (IoResult<()>, IoResult<()>) = futures::join!(
                 async {
                     let connector = client1.tls_connector();
-                    let conn = client1.connect(&address).await?;
+                    let connect_options = Default::default();
+                    let conn = client1.connect(&address, &connect_options).await?;
                     let mut conn = connector
                         .negotiate_unvalidated(conn, "zombo.example.com")
                         .await?;

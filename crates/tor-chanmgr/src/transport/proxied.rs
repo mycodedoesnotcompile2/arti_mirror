@@ -87,8 +87,10 @@ pub(crate) async fn connect_via_proxy<R: NetStreamProvider + Send + Sync>(
         "Launching a proxied connection to {} via proxy at {} using {:?}",
         target, proxy, protocol
     );
+    // We don't (yet) use any custom options on the socket.
+    let connect_options = Default::default();
     let stream = runtime
-        .connect(proxy)
+        .connect(proxy, &connect_options)
         .await
         .map_err(|e| ProxyError::ProxyConnect(Arc::new(e)))?;
 
