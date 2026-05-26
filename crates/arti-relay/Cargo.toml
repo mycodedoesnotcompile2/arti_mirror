@@ -42,7 +42,12 @@ full = [
     "web-time-compat/full",
 ]
 
-metrics = ["dep:metrics-exporter-prometheus"]
+# This feature flag enables experimental features that are not supported. Turning it on may
+# void your API.
+experimental = ["metrics"]
+
+metrics = ["tor-chanmgr/metrics", "dep:metrics-exporter-prometheus", "__is_experimental"]
+__is_experimental = []
 
 [dependencies]
 anyhow = "1.0.23"

@@ -7012,6 +7012,7 @@ dependencies = [
  "hex-literal",
  "httparse",
  "itertools 0.14.0",
+ "metrics",
  "oneshot-fused-workaround",
  "percent-encoding",
  "postage",
