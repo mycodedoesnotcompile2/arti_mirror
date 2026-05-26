@@ -3618,7 +3618,7 @@ mod test {
             // Violate cert type.
             (
                 // Just picking something completely out of place here.
-                CertType::NTOR_CC_IDENTITY,
+                CertType::LINK_AUTH_X509,
                 expiry,
                 certified_pk.into(),
                 Some(&signing_pk),
