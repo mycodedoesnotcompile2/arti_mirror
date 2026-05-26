@@ -21,7 +21,7 @@ use base64ct::{Base64, Encoding};
 use futures::io::{AsyncBufReadExt, BufReader};
 use futures::{AsyncReadExt, AsyncWriteExt};
 use httparse;
-use safelog::{Sensitive, sensitive as sv};
+use safelog::Sensitive;
 use tor_linkspec::PtTargetAddr;
 use tor_rtcompat::NetStreamProvider;
 use tor_socksproto::{
@@ -34,6 +34,8 @@ use tracing::trace;
 use super::TransportImplHelper;
 #[cfg(feature = "pt-client")]
 use async_trait::async_trait;
+#[cfg(feature = "pt-client")]
+use safelog::sensitive as sv;
 #[cfg(feature = "pt-client")]
 use tor_error::bad_api_usage;
 #[cfg(feature = "pt-client")]
