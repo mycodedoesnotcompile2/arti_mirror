@@ -365,6 +365,7 @@ name = "arti-relay"
 version = "0.43.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base64ct",
  "cfg-if",
  "clap",
@@ -391,6 +392,7 @@ dependencies = [
  "tor-config-path",
  "tor-dircommon",
  "tor-dirmgr",
+ "tor-dirpublish",
  "tor-error",
  "tor-general-addr",
  "tor-guardmgr",
