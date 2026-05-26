@@ -3452,6 +3452,7 @@ mod test {
         /// The method verifies a certificate given a pre-known certified key,
         /// the actual certificate, and a timestamp.
         fn verify(
+            signing_key: Option<ed25519::Ed25519Identity>,
             certified_key: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
             post_tolerance: Duration,
@@ -3483,6 +3484,7 @@ mod test {
         }
 
         fn verify(
+            _signing_key: Option<ed25519::Ed25519Identity>,
             _certified_key: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
             post_tolerance: Duration,
@@ -3515,6 +3517,7 @@ mod test {
         }
 
         fn verify(
+            _signing_key: Option<ed25519::Ed25519Identity>,
             certified_key: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
             post_tolerance: Duration,
@@ -3561,6 +3564,7 @@ mod test {
 
         // Finally, see if .verify() agrees.
         T::verify(
+            Some(signing_key.public_key().into()),
             certified_key.public_key().into(),
             unverified.clone(),
             Duration::ZERO,
@@ -3570,6 +3574,7 @@ mod test {
 
         // See if .verify() also agrees when expired but with toleration.
         T::verify(
+            Some(signing_key.public_key().into()),
             certified_key.public_key().into(),
             unverified,
             Duration::from_secs(60 * 60),
@@ -3658,6 +3663,7 @@ mod test {
             // in order to make it possible to test for invalid certified
             // key types.
             T::verify(
+                signing_key.copied(),
                 Ed25519Identity::from_bytes(certified_key.as_bytes()).unwrap(),
                 cert,
                 Duration::ZERO,
