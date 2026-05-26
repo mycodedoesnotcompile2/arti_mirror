@@ -27,7 +27,7 @@ use tor_rtcompat::{NetStreamProvider, Runtime};
 use crate::client::RelayClient;
 use crate::config::TorRelayConfig;
 use crate::tasks::channel::build_circ_net_params;
-use crate::tasks::crypto::get_ntor_keys;
+use crate::tasks::crypto::FullKeyView;
 
 /// An initialized but unbootstrapped relay.
 ///
@@ -75,8 +75,9 @@ pub(crate) struct InertTorRelay {
     /// Location on disk where we store persistent data.
     state_mgr: FsStateMgr,
 
-    /// Key manager holding all relay keys and certificates.
-    keymgr: Arc<KeyMgr>,
+    /// A full key view of the relay keys and certs. It wraps a [`KeyMgr`] in order to provide
+    /// key coherence throughout parallel access.
+    key_view: Arc<FullKeyView>,
 }
 
 impl InertTorRelay {
@@ -121,14 +122,14 @@ impl InertTorRelay {
             state_path,
             state_dir,
             state_mgr,
-            keymgr,
+            key_view: Arc::new(FullKeyView::new(keymgr)),
         })
     }
 
     /// Connect the [`InertTorRelay`] to the Tor network.
     pub(crate) async fn init<R: Runtime>(self, runtime: R) -> anyhow::Result<TorRelay<R>> {
         // Attempt to generate any missing keys/cert from the KeyMgr.
-        let auth_material = crate::tasks::crypto::try_generate_keys(&runtime, &self.keymgr)
+        let auth_material = crate::tasks::crypto::try_generate_keys(&runtime, &self.key_view)
             .context("Failed to generate keys")?;
 
         TorRelay::init(runtime, self, auth_material).await
@@ -179,8 +180,8 @@ pub(crate) struct TorRelay<R: Runtime> {
     /// We can access this handler directly to update consensus parameters or keys.
     create_request_handler: Arc<CreateRequestHandler>,
 
-    /// See [`InertTorRelay::keymgr`].
-    keymgr: Arc<KeyMgr>,
+    /// See [`InertTorRelay::key_view`].
+    key_view: Arc<FullKeyView>,
 
     /// Listening OR ports.
     or_listeners: Vec<<R as NetStreamProvider<SocketAddr>>::Listener>,
@@ -235,8 +236,7 @@ impl<R: Runtime> TorRelay<R> {
             .context("Failed to build circuit parameters for CREATE* request handler")?;
 
         // A handler that will process CREATE* requests on channels.
-        let ntor_keys = get_ntor_keys(&inert.keymgr)
-            .context("Failed to get ntor keys for CREATE* request handler")?;
+        let ntor_keys = inert.key_view.ks_ntor_keys()?;
         let create_request_handler = CreateRequestHandler::new(
             Arc::downgrade(&chanmgr) as Weak<_>,
             circ_net_params,
@@ -314,7 +314,7 @@ impl<R: Runtime> TorRelay<R> {
             client,
             chanmgr,
             create_request_handler,
-            keymgr: inert.keymgr,
+            key_view: inert.key_view,
             or_listeners,
         })
     }
@@ -362,21 +362,20 @@ impl<R: Runtime> TorRelay<R> {
             }
         });
 
-        // Start the key rotation tasks.
+        // Start the crypto task.
         task_handles.spawn({
-            let runtime = self.runtime.clone();
-            let keymgr = self.keymgr.clone();
-            let chanmgr = self.chanmgr.clone();
-            let create_request_handler = Arc::clone(&self.create_request_handler);
+            let reactor = crate::tasks::crypto::Reactor::new(
+                self.runtime.clone(),
+                self.chanmgr.clone(),
+                self.create_request_handler.clone(),
+                self.key_view.clone(),
+                self.client.dirmgr().clone(),
+            );
             async {
-                crate::tasks::crypto::rotate_keys_task(
-                    runtime,
-                    keymgr,
-                    chanmgr,
-                    create_request_handler,
-                )
-                .await
-                .context("Failed to run key rotation task")
+                reactor
+                    .run()
+                    .await
+                    .context("Failed to run key rotation task")
             }
         });
 
@@ -415,7 +414,7 @@ impl<R: Runtime> TorRelay<R> {
     }
 
     /// Access the relay's key manager.
-    pub(crate) fn keymgr(&self) -> &Arc<KeyMgr> {
-        &self.keymgr
+    pub(crate) fn key_view(&self) -> &Arc<FullKeyView> {
+        &self.key_view
     }
 }

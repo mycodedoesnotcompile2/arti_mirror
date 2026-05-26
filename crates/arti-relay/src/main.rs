@@ -65,7 +65,6 @@ mod tasks;
 mod util;
 
 use std::io::IsTerminal as _;
-use std::time::SystemTime;
 
 use anyhow::Context;
 use base64ct::Base64Unpadded;
@@ -76,10 +75,6 @@ use futures::FutureExt;
 use safelog::with_safe_logging_suppressed;
 use tor_basic_utils::iter_join;
 use tor_error::warn_report;
-use tor_keymgr::KeyMgr;
-use tor_keymgr::KeySpecifierPattern as _;
-use tor_relay_crypto::pk::RelayNtorKeypair;
-use tor_relay_crypto::pk::{RelayIdentityKeypair, RelayIdentityRsaKeypair};
 use tor_rtcompat::SpawnExt;
 use tor_rtcompat::tokio::TokioRustlsRuntime;
 use tor_rtcompat::{Runtime, ToplevelRuntime};
@@ -89,11 +84,8 @@ use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::config::{DEFAULT_LOG_LEVEL, TorRelayConfig, base_resolver};
-use crate::keys::{
-    RelayIdentityKeypairSpecifier, RelayIdentityRsaKeypairSpecifier, RelayNtorKeypairSpecifier,
-    RelayNtorKeypairSpecifierPattern,
-};
 use crate::relay::InertTorRelay;
+use crate::tasks::crypto::FullKeyView;
 
 fn main() {
     // Will exit if '--help' used or there's a parse error.
@@ -325,7 +317,7 @@ async fn run_relay<R: Runtime>(
 
     // TODO: This is mostly useful for debugging.
     // We might want to remove this in the future, or move this somewhere else.
-    log_public_keys(relay.keymgr()).context("Failed to log public keys")?;
+    log_public_keys(relay.key_view()).context("Failed to log public keys")?;
 
     // This blocks until end of time or an error.
     relay.run().await
@@ -358,42 +350,13 @@ enum MainloopStatus<T> {
 }
 
 /// Log the relay's identities and public ntor key.
-fn log_public_keys(keymgr: &KeyMgr) -> anyhow::Result<()> {
-    let rsa_id = keymgr
-        .get::<RelayIdentityRsaKeypair>(&RelayIdentityRsaKeypairSpecifier::new())
-        .context("Failed to get RSA identity from key manager")?
-        .context("Missing RSA identity")?
-        .to_rsa_identity();
-    let ed_id = keymgr
-        .get::<RelayIdentityKeypair>(&RelayIdentityKeypairSpecifier::new())
-        .context("Failed to get Ed25519 identity from key manager")?
-        .context("Missing Ed25519 identity")?
-        .to_ed25519_id();
+fn log_public_keys(key_view: &FullKeyView) -> anyhow::Result<()> {
+    let rsa_id = key_view.ks_relayid_rsa()?.to_rsa_identity();
+    let ed_id = key_view.ks_relayid_ed()?.to_ed25519_id();
 
-    let ntor_keys = keymgr
-        .list_matching(&RelayNtorKeypairSpecifierPattern::new_any().arti_pattern()?)?
-        .into_iter()
-        .map(|entry| {
-            let key_path = entry.key_path();
-            let valid_until =
-                SystemTime::from(RelayNtorKeypairSpecifier::try_from(key_path)?.valid_until);
-            let key = keymgr
-                .get_entry::<RelayNtorKeypair>(&entry)
-                .context("Failed to get ntor key from key manager")?
-                .context("Ntor key disappeared?!")?;
-            Ok((valid_until, key))
-        })
-        .collect::<anyhow::Result<Vec<_>>>()?;
-
-    // Find the longest valid ntor key (max as ordered by the "valid until" time).
-    let ntor = ntor_keys
-        .into_iter()
-        .max_by_key(|x| x.0)
-        .map(|x| x.1)
-        .context("Missing ntor key")?;
-
+    let ntor_keys = key_view.ks_ntor_keys()?;
     // Base64-encode the public ntor key.
-    let ntor = Base64Unpadded::encode_string(ntor.public().inner().as_bytes());
+    let ntor = Base64Unpadded::encode_string(ntor_keys.latest().public().inner().as_bytes());
 
     // Log the relay's identities.
     // TODO: We should also log this after a key rotation:
