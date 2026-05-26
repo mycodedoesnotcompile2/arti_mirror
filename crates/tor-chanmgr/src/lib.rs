@@ -55,7 +55,6 @@ mod mgr;
 #[cfg(test)]
 mod testing;
 pub mod transport;
-pub(crate) mod util;
 
 use futures::StreamExt;
 use futures::select_biased;
