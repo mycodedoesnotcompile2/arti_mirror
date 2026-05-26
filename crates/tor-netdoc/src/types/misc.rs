@@ -2722,6 +2722,7 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use std::{
+        any::TypeId,
         fmt::Debug,
         time::{Duration, SystemTime},
     };
@@ -3584,7 +3585,7 @@ mod test {
     }
 
     /// Tests invalid Ed25519 certificates by violating various constraints.
-    fn ed25519_cert_invalid<T: Ed25519CertTest>() {
+    fn ed25519_cert_invalid<T: Ed25519CertTest + 'static>() {
         let mut rng = testing_rng();
         let now = str_to_st("2000-01-01 06:00:00");
         let expiry = str_to_st("2000-01-01 12:00:00");
@@ -3593,16 +3594,7 @@ mod test {
         let certified_key = ed25519::Keypair::generate(&mut rng);
         let certified_pk = ed25519::Ed25519Identity::from(certified_key.public_key());
 
-        let tests: [(_, _, CertifiedKey, _, _); _] = [
-            // Violate absence of `signed-with-ed25519-key`.
-            (
-                T::cert_type(),
-                expiry,
-                certified_pk.into(),
-                None,
-                &signing_key,
-            ),
-            // ---
+        let mut tests: Vec<(_, _, CertifiedKey, _, _)> = vec![
             // Testing a violation of the signature is hard because the encoder
             // refuses to emit such a thing.
             // ---
@@ -3647,6 +3639,18 @@ mod test {
             // [`ed25519::PublicKey`].  I was unable to find a single test
             // vector for this, even in curve25591-dalek. :/
         ];
+
+        // Violate absence of `signed-with-ed25519-key`.
+        // This is not a violation in Ed25519NtorCrossCert.
+        if TypeId::of::<T>() != TypeId::of::<Ed25519NtorCrossCert>() {
+            tests.push((
+                T::cert_type(),
+                expiry,
+                certified_pk.into(),
+                None,
+                &signing_key,
+            ));
+        }
 
         for (ctype, expiry, certified_key, signing_key, signing_kp) in tests {
             let mut builder = Ed25519Cert::builder()
