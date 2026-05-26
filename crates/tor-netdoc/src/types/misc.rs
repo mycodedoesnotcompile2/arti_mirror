@@ -1498,7 +1498,7 @@ mod edcert {
         types::EmbeddableCertObject,
     };
     use saturating_time::SaturatingTime;
-    use tor_cert::{CertType, Ed25519Cert, KeyUnknownCert};
+    use tor_cert::{CertType, CertifiedKey, Ed25519Cert, KeyUnknownCert};
     use tor_checkable::{SelfSigned, Timebound};
     use tor_error::{Bug, into_internal};
     use tor_llcrypto::pk::ed25519::{self, Ed25519PublicKey};
@@ -1762,6 +1762,126 @@ mod edcert {
             Ok(EmbeddedCert::new(
                 Self {
                     family_ed25519: family_ed25519.public_key().into(),
+                },
+                cert,
+            ))
+        }
+    }
+
+    /// An Ed25519 ntor onion key cross-certificate.
+    ///
+    /// This certificate is signed by the ntor onion key and certifies the
+    /// ed25519 identity key of the relay.
+    ///
+    /// The type itself is zero-sized because it provides no new useful
+    /// information that cannot be found elsewhere within the router descriptor.
+    /// It is intended for use with the `EmbeddedCert` framework.
+    ///
+    /// # Note on key conversion
+    ///
+    /// Keep in mind however that the ntor onion key is only provided as an
+    /// X25519 key and *not* an Ed25519 key, meaning that interfacing
+    /// applications have to convert it using a function such as
+    /// [`tor_llcrypto::pk::keymanip::convert_curve25519_to_ed25519_public()`].
+    /// This also requires obtaining the sign bit which is usually given as an
+    /// argument in the `ntor-onion-key-crosscert` item.  However, this is
+    /// outside of the scope of this struct and the code will assume that
+    /// callers have already converted the X25519 public key to an Ed25519
+    /// public key as outlined in the specifications.
+    ///
+    /// # See Also
+    ///
+    /// * <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:ntor-onion-key-crosscert>
+    /// * <https://spec.torproject.org/dir-spec/converting-to-ed25519.html>
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[non_exhaustive]
+    pub struct Ed25519NtorCrossCert {
+        /// Explicit field, to avoid constructing this accidentally without
+        /// doing all the verification.
+        _promise_we_verified: (),
+    }
+
+    impl EmbeddableCertObject<KeyUnknownCert> for Ed25519NtorCrossCert {
+        const LABEL: &str = "ED25519 CERT";
+    }
+
+    impl Ed25519NtorCrossCert {
+        /// Verifies the validity of an [`Ed25519NtorCrossCert`].
+        ///
+        /// For such a certificate to be valid, the caller must provide a known
+        /// Ed25519 identity key and Ed25519 ntor onion key of the relay
+        /// beforehand.
+        ///
+        /// # Requirements
+        ///
+        /// 1. MUST have a valid signature by `ntor_ed25519`.
+        /// 2. MUST be valid at `now`.
+        /// 3. MUST be of [`CertType::NTOR_CC_IDENTITY`].
+        /// 4. Certified key MUST be of [`tor_cert::CertifiedKey::Ed25519`].
+        /// 5. Certified key MUST be equal to `id_ed25519`.
+        /// 6. Both keys MUST be different.
+        /// 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+        pub fn verify(
+            ntor_ed25519: ed25519::Ed25519Identity,
+            id_ed25519: ed25519::Ed25519Identity,
+            cert: KeyUnknownCert,
+            post_tolerance: Duration,
+            now: SystemTime,
+        ) -> StdResult<Self, VerifyFailed> {
+            let cert = cert
+                // 1. MUST have a valid signature by `ntor_ed25519`.
+                .should_be_signed_with(&ntor_ed25519)?
+                .check_signature()?
+                // 2. MUST be valid at `now`.
+                .check_valid_at(&now.saturating_sub(post_tolerance))?;
+
+            // 3. MUST be of [`CertType::NTOR_CC_IDENTITY`].
+            if cert.cert_type() != CertType::NTOR_CC_IDENTITY {
+                return Err(ErrorProblem::ObjectInvalidData.into());
+            }
+
+            // 4. Certified key MUST be of [`tor_cert::CertifiedKey::Ed25519`].
+            // 5. Certified key MUST be equal to `id_ed25519`.
+            if cert.subject_key() != &CertifiedKey::Ed25519(id_ed25519) {
+                return Err(VerifyFailed::VerifyFailed);
+            }
+
+            // 6. Both keys MUST be different.
+            if id_ed25519 == ntor_ed25519 {
+                return Err(ErrorProblem::ObjectInvalidData.into());
+            }
+
+            // 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+            if ed25519::PublicKey::try_from(id_ed25519).is_err()
+                || ed25519::PublicKey::try_from(ntor_ed25519).is_err()
+            {
+                return Err(ErrorProblem::ObjectInvalidData.into());
+            }
+
+            Ok(Self {
+                _promise_we_verified: (),
+            })
+        }
+
+        /// Creates a new signed [`Ed25519NtorCrossCert`].
+        pub fn new_signed(
+            ntor_ed25519: &ed25519::Keypair,
+            id_ed25519: ed25519::Ed25519Identity,
+            expiry: SystemTime,
+        ) -> StdResult<EmbeddedCert<Self, KeyUnknownCert>, Bug> {
+            let cert = Ed25519Cert::builder()
+                .expiration(expiry)
+                .cert_type(CertType::NTOR_CC_IDENTITY)
+                .cert_key(id_ed25519.into())
+                .encode_and_sign(ntor_ed25519)
+                .map_err(into_internal!("failed to encode and sign ntor cert"))?;
+
+            let cert =
+                Ed25519Cert::decode(&cert).map_err(into_internal!("decode just encoded cert"))?;
+
+            Ok(EmbeddedCert::new(
+                Self {
+                    _promise_we_verified: (),
                 },
                 cert,
             ))

@@ -17,7 +17,7 @@ pub mod version;
 
 pub use embedded_cert::*;
 
-pub use misc::{Ed25519FamilyCert, Ed25519IdentityCert};
+pub use misc::{Ed25519FamilyCert, Ed25519IdentityCert, Ed25519NtorCrossCert};
 
 pub use misc::KeywordOrString;
 pub use misc::RetainedOrderVec;
