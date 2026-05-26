@@ -1,3 +1,4 @@
+ADDED: `NtorOnionKeyCrossCert` type
 ADDED: `HiddenServiceDirToken`
 ADDED: `RouterDesc::hidden_service_dir`
 ADDED: `CachesExtraInfoToken`

@@ -2541,8 +2541,11 @@ mod boolean {
 
 /// Types for router descriptors.
 pub mod routerdesc {
+    use crate::types::EmbeddedCert;
+
     use super::*;
     use parse2::ErrorProblem as EP;
+    use tor_cert::KeyUnknownCert;
     use tor_llcrypto::pk::ed25519;
 
     /// Version argument found in an `overload-general` item.
@@ -2784,6 +2787,33 @@ pub mod routerdesc {
 
         /// The estimate of the capacity this relay can handle.
         pub observed: u64,
+    }
+
+    /// Ntor onion key cross-certificate.
+    ///
+    /// This struct contains an [`Ed25519NtorCrossCert`] alongside the `bit`
+    /// field required for converting the ntor X25519 key to an Ed25519 key.
+    ///
+    /// # See Also
+    ///
+    /// * [`Ed25519NtorCrossCert`]
+    /// * <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:ntor-onion-key-crosscert>
+    #[derive(Debug, Clone, Deftly)]
+    #[derive_deftly(ItemValueParseable, ItemValueEncodable)]
+    #[deftly(netdoc(no_extra_args))]
+    #[non_exhaustive]
+    pub struct NtorOnionKeyCrossCert {
+        /// True if X coordinate of the ntor onion key is negative, false if
+        /// positive.
+        // TODO spec: This name is very unfortunate, how about we change it
+        // to `is_negative`.  Also, using a boolean for storing a sign bit feels
+        // wrong to me due to the zero edge case, which would not be negative,
+        // but also not positive either.
+        pub bit: NumericBoolean,
+
+        /// The actual embedded ntor onion key certificate.
+        #[deftly(netdoc(object))]
+        pub cert: EmbeddedCert<Ed25519NtorCrossCert, KeyUnknownCert>,
     }
 }
 
