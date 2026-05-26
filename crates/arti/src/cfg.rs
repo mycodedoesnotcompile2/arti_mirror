@@ -21,7 +21,7 @@ use arti_client::TorClientConfig;
 #[cfg(feature = "onion-service-service")]
 use tor_config::define_list_builder_accessors;
 use tor_config::derive::prelude::*;
-pub(crate) use tor_config::{ConfigBuildError, Listen};
+pub(crate) use tor_config::{ConfigBuildError, Listen, MetricsConfig, MetricsConfigBuilder};
 
 use crate::{LoggingConfig, LoggingConfigBuilder};
 
@@ -324,35 +324,6 @@ define_list_builder_accessors! {
 /// Used primarily as a type parameter on calls to [`tor_config::resolve`]
 #[cfg_attr(feature = "experimental-api", visibility::make(pub))]
 pub(crate) type ArtiCombinedConfig = (ArtiConfig, TorClientConfig);
-
-/// Configuration for exporting metrics (eg, perf data)
-#[derive(Debug, Clone, Deftly, Eq, PartialEq)]
-#[derive_deftly(TorConfig)]
-#[cfg_attr(feature = "experimental-api", visibility::make(pub))]
-#[cfg_attr(feature = "experimental-api", deftly(tor_config(vis = "pub")))]
-pub(crate) struct MetricsConfig {
-    /// Where to listen for incoming HTTP connections.
-    #[deftly(tor_config(sub_builder))]
-    pub(crate) prometheus: PrometheusConfig,
-}
-
-/// Configuration for one or more proxy listeners.
-#[derive(Debug, Clone, Deftly, Eq, PartialEq)]
-#[derive_deftly(TorConfig)]
-#[cfg_attr(feature = "experimental-api", visibility::make(pub))]
-#[cfg_attr(feature = "experimental-api", deftly(tor_config(vis = "pub")))]
-pub(crate) struct PrometheusConfig {
-    /// Port on which to establish a Prometheus scrape endpoint
-    ///
-    /// We listen here for incoming HTTP connections.
-    ///
-    /// If just a port is provided, we don't support IPv6.
-    /// Alternatively, (only) a single address and port can be specified.
-    /// These restrictions are due to upstream limitations:
-    /// <https://github.com/metrics-rs/metrics/issues/567>.
-    #[deftly(tor_config(default))]
-    pub(crate) listen: Listen,
-}
 
 impl ArtiConfig {
     /// Return the [`ApplicationConfig`] for this configuration.

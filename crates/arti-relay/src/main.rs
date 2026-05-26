@@ -70,6 +70,7 @@ use std::time::SystemTime;
 use anyhow::Context;
 use base64ct::Base64Unpadded;
 use base64ct::Encoding as _;
+use cfg_if::cfg_if;
 use clap::Parser;
 use futures::FutureExt;
 use safelog::with_safe_logging_suppressed;
@@ -82,7 +83,7 @@ use tor_relay_crypto::pk::{RelayIdentityKeypair, RelayIdentityRsaKeypair};
 use tor_rtcompat::SpawnExt;
 use tor_rtcompat::tokio::TokioRustlsRuntime;
 use tor_rtcompat::{Runtime, ToplevelRuntime};
-use tracing::{debug, info, trace};
+use tracing::{debug, info, trace, warn};
 use tracing_subscriber::FmtSubscriber;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -155,6 +156,7 @@ fn main_main(cli: cli::Cli) -> anyhow::Result<()> {
 }
 
 /// Initialize and start the relay.
+#[allow(clippy::cognitive_complexity)]
 // Pass by value so that we don't need to clone fields, which keeps the code simpler.
 #[allow(clippy::needless_pass_by_value)]
 fn start_relay(_args: cli::RunArgs, global_args: cli::GlobalArgs) -> anyhow::Result<()> {
@@ -228,6 +230,30 @@ fn start_relay(_args: cli::RunArgs, global_args: cli::GlobalArgs) -> anyhow::Res
     } else {
         None
     };
+
+    if let Some(listen) = {
+        // https://github.com/metrics-rs/metrics/issues/567
+        config
+            .metrics
+            .prometheus
+            .listen
+            .single_address_legacy()
+            .context("can only listen on a single address for Prometheus metrics")?
+    } {
+        cfg_if! {
+            if #[cfg(feature = "metrics")] {
+                metrics_exporter_prometheus::PrometheusBuilder::new()
+                    .with_http_listener(listen)
+                    .install()
+                    .with_context(|| format!(
+                        "set up Prometheus metrics exporter on {listen}"
+                    ))?;
+                info!("Arti Prometheus metrics export scraper endpoint http://{listen}");
+            } else {
+                warn!("`metrics.prometheus.listen` config set but `metrics` cargo feature compiled out in `arti-relay` crate");
+            }
+        }
+    }
 
     tracing::dispatcher::with_default(&logger, || {
         let runtime = init_runtime().context("Failed to initialize the runtime")?;
