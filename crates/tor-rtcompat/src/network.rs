@@ -88,6 +88,86 @@ impl Default for UnixListenOptions {
     }
 }
 
+/// Options to use when connecting a socket.
+///
+/// This may include both options that affect the connection attempt,
+/// and options that will apply to the resulting connection stream.
+///
+/// It can include options set with `setsockopt`,
+/// as well as options that influence higher layers (eg, the runtime).
+///
+/// For established streams,
+/// you can use [`StreamOps`](crate::StreamOps) to perform additional operations
+/// or to configure additional options.
+#[derive(Copy, Clone, Debug, derive_builder::Builder, amplify::Getters)]
+#[non_exhaustive]
+pub struct CommonConnectOptions {}
+
+impl CommonConnectOptions {
+    /// Returns a builder for this [`CommonConnectOptions`].
+    pub fn builder() -> CommonConnectOptionsBuilder {
+        Default::default()
+    }
+}
+
+impl Default for CommonConnectOptions {
+    fn default() -> Self {
+        // Tested by the `builder_defaults()` test below.
+        Self::builder()
+            .build()
+            .expect("Default builder values panicked")
+    }
+}
+
+/// Options to use when connecting a TCP socket.
+///
+/// See [`CommonConnectOptions`] for more information.
+#[derive(Copy, Clone, Debug, derive_builder::Builder, amplify::Getters)]
+#[non_exhaustive]
+pub struct TcpConnectOptions {
+    /// Options that are common for all socket types.
+    #[builder(sub_builder)]
+    pub(crate) common: CommonConnectOptions,
+}
+
+impl TcpConnectOptions {
+    /// Returns a builder for this [`TcpConnectOptions`].
+    pub fn builder() -> TcpConnectOptionsBuilder {
+        Default::default()
+    }
+}
+
+impl Default for TcpConnectOptions {
+    fn default() -> Self {
+        // Tested by the `builder_defaults()` test below.
+        Self::builder()
+            .build()
+            .expect("Default builder values panicked")
+    }
+}
+
+/// Options to use when connecting a unix stream socket.
+// TODO: We should support at least the options in `CommonConnectOptions`.
+#[derive(Copy, Clone, Debug, derive_builder::Builder, amplify::Getters)]
+#[non_exhaustive]
+pub struct UnixConnectOptions {}
+
+impl UnixConnectOptions {
+    /// Returns a builder for this [`UnixConnectOptions`].
+    pub fn builder() -> UnixConnectOptionsBuilder {
+        Default::default()
+    }
+}
+
+impl Default for UnixConnectOptions {
+    fn default() -> Self {
+        // Tested by the `builder_defaults()` test below.
+        Self::builder()
+            .build()
+            .expect("Default builder values panicked")
+    }
+}
+
 #[cfg(test)]
 mod test {
     // @@ begin test lint list maintained by maint/add_warning @@
@@ -112,5 +192,8 @@ mod test {
         CommonListenOptions::default();
         TcpListenOptions::default();
         UnixListenOptions::default();
+        CommonConnectOptions::default();
+        TcpConnectOptions::default();
+        UnixConnectOptions::default();
     }
 }

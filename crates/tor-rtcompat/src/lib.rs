@@ -78,7 +78,10 @@ pub use traits::{
 
 pub use coarse_time::{CoarseDuration, CoarseInstant, RealCoarseTimeProvider};
 pub use dyn_time::DynTimeProvider;
-pub use network::{CommonListenOptions, TcpListenOptions, UnixListenOptions};
+pub use network::{
+    CommonConnectOptions, CommonListenOptions, TcpConnectOptions, TcpListenOptions,
+    UnixConnectOptions, UnixListenOptions,
+};
 pub use timer::{SleepProviderExt, Timeout, TimeoutError};
 
 /// Traits used to describe TLS connections and objects that can
