@@ -66,7 +66,7 @@ impl Default for TcpListenOptions {
     }
 }
 
-/// Socket options to set when initializing a unix stream listening socket.
+/// Options to use when initializing a unix stream listening socket.
 // TODO: We should support at least the options in `CommonListenOptions`.
 #[derive(Copy, Clone, Debug, derive_builder::Builder, amplify::Getters)]
 #[non_exhaustive]
