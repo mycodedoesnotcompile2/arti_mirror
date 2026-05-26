@@ -17,6 +17,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
+use tor_chanmgr::ProxyProtocol;
 use tor_config_path::CfgPathResolver;
 use tor_error::internal;
 use tor_linkspec::PtTransportName;
@@ -258,7 +259,7 @@ async fn spawn_from_config<R: Runtime>(
     state_dir: PathBuf,
     cfg: ManagedTransportOptions,
     path_resolver: Arc<CfgPathResolver>,
-    outbound_proxy: Option<String>,
+    outbound_proxy: Option<ProxyProtocol>,
 ) -> Result<PluggableClientTransport, PtError> {
     // FIXME(eta): I really think this expansion should happen at builder validation time...
 
@@ -287,9 +288,11 @@ async fn spawn_from_config<R: Runtime>(
         .build()
         .expect("PtCommonParameters constructed incorrectly");
 
+    // The PT spec defines `TOR_PT_PROXY` as a URI, so we only render the
+    // structured `ProxyProtocol` to a string at this boundary.
     let pt_client_params = PtClientParameters::builder()
         .transports(cfg.protocols)
-        .proxy_uri(outbound_proxy)
+        .proxy_uri(outbound_proxy.as_ref().map(ToString::to_string))
         .build()
         .expect("PtClientParameters constructed incorrectly");
 

@@ -62,6 +62,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use tor_chanmgr::ProxyProtocol;
 use tor_config_path::CfgPathResolver;
 use tor_linkspec::PtTransportName;
 use tor_rtcompat::Runtime;
@@ -98,7 +99,7 @@ struct PtSharedState {
     /// Current configured set of pluggable transports.
     configured: HashMap<PtTransportName, TransportOptions>,
     /// The global Tor outbound proxy, if any.
-    outbound_proxy: Option<String>,
+    outbound_proxy: Option<ProxyProtocol>,
 }
 
 /// A pluggable transport manager knows how to make different
@@ -147,7 +148,7 @@ impl<R: Runtime> PtMgr<R> {
         transports: Vec<TransportConfig>,
         #[allow(unused)] state_dir: PathBuf,
         path_resolver: Arc<CfgPathResolver>,
-        outbound_proxy: Option<String>,
+        outbound_proxy: Option<ProxyProtocol>,
         rt: R,
     ) -> Result<Self, PtError> {
         let state = PtSharedState {
@@ -194,7 +195,7 @@ impl<R: Runtime> PtMgr<R> {
         &self,
         how: tor_config::Reconfigure,
         transports: Vec<TransportConfig>,
-        outbound_proxy: Option<String>,
+        outbound_proxy: Option<ProxyProtocol>,
     ) -> Result<(), tor_config::ReconfigureError> {
         let configured = Self::transform_config(transports)?;
         if how == tor_config::Reconfigure::CheckAllOrNothing {

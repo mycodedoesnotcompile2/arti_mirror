@@ -936,7 +936,7 @@ impl<R: Runtime> TorClient<R> {
                 config.bridges.transports.clone(),
                 pt_state_dir,
                 Arc::clone(&path_resolver),
-                config.channel.outbound_proxy().map(ToString::to_string),
+                config.channel.outbound_proxy().cloned(),
                 runtime.clone(),
             )?);
 
@@ -2154,7 +2154,7 @@ impl<R: Runtime> ClientInner<R> {
             .reconfigure(
                 how,
                 new_config.bridges.transports.clone(),
-                new_config.channel.outbound_proxy().map(ToString::to_string),
+                new_config.channel.outbound_proxy().cloned(),
             )
             .map_err(wrap_err)?;
 
