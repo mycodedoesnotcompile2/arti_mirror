@@ -217,8 +217,7 @@ pub struct RouterDesc {
 
     /// `or-address` --- Alternative ORport address and port
     ///
-    /// * `or-address <address>:<port>`.
-    /// * Any number of times.
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:or-address>
     pub or_address: Vec<net::SocketAddr>,
 
     /// `tunnelled-dir-server` --- Accepts a `BEGIN_DIR` relay message.
