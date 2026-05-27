@@ -1273,27 +1273,34 @@ mod test {
 
     #[test]
     fn test_platform() {
-        let p = "Tor 0.4.4.4-alpha on a flying bison".parse::<RelayPlatform>();
-        assert!(p.is_ok());
-        assert_eq!(
-            p.unwrap(),
-            RelayPlatform::Tor(
-                "0.4.4.4-alpha".parse().unwrap(),
-                "a flying bison".to_string()
-            )
-        );
-
-        let p = "Tor 0.4.4.4-alpha on".parse::<RelayPlatform>();
-        assert!(p.is_ok());
-
-        let p = "Tor 0.4.4.4-alpha ".parse::<RelayPlatform>();
-        assert!(p.is_ok());
-        let p = "Tor 0.4.4.4-alpha".parse::<RelayPlatform>();
-        assert!(p.is_ok());
-
-        let p = "arti 0.0.0".parse::<RelayPlatform>();
-        assert!(p.is_ok());
-        assert_eq!(p.unwrap(), RelayPlatform::Other("arti 0.0.0".to_string()));
+        let tests = [
+            // Test with platform.
+            (
+                "Tor 0.4.4.4-alpha on a flying bison",
+                RelayPlatform::Tor(
+                    "0.4.4.4-alpha".parse().unwrap(),
+                    "a flying bison".to_string(),
+                ),
+            ),
+            // Test without platform but potentially weird spacing.
+            (
+                "Tor 0.4.4.4-alpha on",
+                RelayPlatform::Tor("0.4.4.4-alpha".parse().unwrap(), "".to_string()),
+            ),
+            (
+                "Tor 0.4.4.4-alpha ",
+                RelayPlatform::Tor("0.4.4.4-alpha".parse().unwrap(), "".to_string()),
+            ),
+            (
+                "Tor 0.4.4.4-alpha",
+                RelayPlatform::Tor("0.4.4.4-alpha".parse().unwrap(), "".to_string()),
+            ),
+            // Test other.
+            ("arti 0.0.0", RelayPlatform::Other("arti 0.0.0".to_string())),
+        ];
+        for (input, output) in tests {
+            assert_eq!(input.parse::<RelayPlatform>().unwrap(), output);
+        }
     }
 
     #[test]
