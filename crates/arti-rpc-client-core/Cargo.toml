@@ -34,14 +34,12 @@ tor-config-path = { version = "0.43.0", path = "../tor-config-path", features = 
 tor-error = { version = "0.43.0", path = "../tor-error", default-features = false }
 tor-rpc-connect = { version = "0.43.0", path = "../tor-rpc-connect", features = ["rpc-client"] }
 tor-socksproto = { path = "../tor-socksproto", version = "0.43.0", default-features = false, features = [
-    "client-handshake",
+"client-handshake",
 ] }
 void = "1"
 
 [dev-dependencies]
-assert_matches = "1.5.0"
-rand = "0.10.1"
-rand_chacha = "0.10.0"
+rand = { version = "0.10.1", features = ["chacha"] }
 tor-basic-utils = { path = "../tor-basic-utils", version = "0.43.0" }
 
 [features]

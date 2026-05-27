@@ -174,7 +174,7 @@ impl rand_core::TryCryptoRng for CautiousRng {}
 mod backup {
 
     use rand::TryRng;
-    use rand_chacha::ChaCha20Rng;
+    use rand::rngs::ChaCha20Rng;
     use reseeding_rng::ReseedingRng;
     use std::convert::Infallible;
     use std::sync::LazyLock;
