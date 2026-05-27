@@ -25,11 +25,7 @@ pub use fingerprint::{Base64Fingerprint, Fingerprint};
 pub use identified_digest::{DigestName, IdentifiedDigest};
 
 pub use ignored_impl::{
-    Ignored,
-    IgnoredItemOrObjectValue,
-    NoMoreArguments,
-    NotPresent,
-    NotPresentEachValue,
+    Ignored, IgnoredItemOrObjectValue, NoMoreArguments, NotPresent, NotPresentEachValue,
 };
 
 use crate::NormalItemArgument;
