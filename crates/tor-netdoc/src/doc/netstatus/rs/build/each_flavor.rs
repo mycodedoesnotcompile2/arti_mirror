@@ -171,16 +171,17 @@ impl RouterStatusBuilder {
             compile_error!("no builder for votes");
         ) };
 
+        #[allow(clippy::useless_conversion)] // sometimes doc_digest needs into
         Ok(RouterStatus {
             r: RouterStatusIntroItem {
                 nickname,
                 identity: Base64Fingerprint(identity),
-                doc_digest: r_doc_digest,
+                doc_digest: r_doc_digest.into(),
                 publication: IgnoredPublicationTimeSp,
                 ip: *ip.ip(),
                 or_port: ip.port(),
             },
-            m: m_doc_digest,
+            m: m_doc_digest.into(),
             a,
             version,
             protos,
