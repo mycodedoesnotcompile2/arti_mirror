@@ -136,8 +136,8 @@ impl DirFilter for BadSignaturesFilter {
 
         // We retain the signatures, but change the declared digest of the
         // document. This will make all the signatures invalid.
-        consensus.siggroup.sha1 = Some(*b"can you reverse sha1");
-        consensus.siggroup.sha256 = Some(*b"sha256 preimage is harder so far");
+        consensus.siggroup.hashes.sha1 = Some(*b"can you reverse sha1");
+        consensus.siggroup.hashes.sha256 = Some(*b"sha256 preimage is harder so far");
 
         Ok(UncheckedMdConsensus::new_from_start_end(
             consensus, start_time, end_time,

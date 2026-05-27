@@ -21,7 +21,9 @@ pub use misc::{Ed25519FamilyCert, Ed25519IdentityCert};
 
 pub use misc::KeywordOrString;
 pub use misc::RetainedOrderVec;
-pub use misc::{ContactInfo, InvalidNickname, Nickname, NotPresent, NumericBoolean, Unknown};
+pub use misc::{
+    ContactInfo, InvalidNickname, Nickname, NoMoreArguments, NotPresent, NumericBoolean, Unknown,
+};
 pub use misc::{Hostname, InternetHost, InvalidHostname, InvalidInternetHost};
 
 pub use misc::InvalidContactInfo;

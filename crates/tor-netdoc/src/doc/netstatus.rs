@@ -109,7 +109,7 @@ ns_export_each_flavor! {
 }
 
 ns_export_each_variety! {
-    ty: RouterStatus, Preamble;
+    ty: Footer, RouterStatus, Preamble;
 }
 
 #[deprecated]
@@ -124,6 +124,33 @@ pub use UnvalidatedPlainConsensus as UnvalidatedNsConsensus;
 pub use rs::{RouterStatusMdDigestsVote, SoftwareVersion};
 
 pub use dir_source::{ConsensusAuthoritySection, DirSource, SupersededAuthorityKey};
+
+define_constant_string! {
+    /// `network-status-version` version value
+    ///
+    /// This is the fixed string `3`.
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:network-status-version>
+    //
+    // IMO this is nicer than the formulation with an enum.
+    // In practice we are not going to support other versions with the same parsing approach;
+    // probably not even with the same code.
+    NetworkStatusVersion = "3";
+}
+
+define_constant_string! {
+    /// The `status` value in a `vote-status` line in a consensus
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:vote-status>
+    VoteStatusConsensus = "consensus";
+}
+
+define_constant_string! {
+    /// The `vote` value in a `vote-status` line in a vote
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:vote-status>
+    VoteStatusVote = "vote";
+}
 
 /// `publiscation` field in routerstatus entry intro item other than in votes
 ///
@@ -541,7 +568,7 @@ define_derive_deftly! {
     pub struct DirectorySignaturesHashesAccu {
       $(
         ${vattrs doc}
-        $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
+        pub $FNAME: Option<[u8; ${vmeta(hash_len) as expr}]>,
       )
 
       /// `sha1` but without the algorithm name
@@ -553,7 +580,7 @@ define_derive_deftly! {
       /// So we mustn't use the `sha1` field for both implicit and explicit use of SHA-1,
       /// or multiple signatures with different syntax would overwrite each others'
       /// different hashes.
-      sha1_unnamed: Option<[u8; 20]>,
+      pub sha1_unnamed: Option<[u8; 20]>,
     }
 
     impl DirectorySignaturesHashesAccu {
@@ -717,13 +744,19 @@ impl SignatureItemParseable for Signature {
 }
 
 /// A collection of signatures that can be checked on a networkstatus document
+///
+/// This is derived from the signatures section of a netstatus,
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:signature>,
+/// but it is not isomorphic to it, and is not directly parseable.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct SignatureGroup {
-    /// The sha256 of the document itself
-    pub sha256: Option<[u8; 32]>,
-    /// The sha1 of the document itself
-    pub sha1: Option<[u8; 20]>,
+    /// The document hashes of the signed part of the document
+    ///
+    /// The pre-parse2 parser always sets `hashes.sha1` and `hashes.sha1_unnamed`
+    /// to the same value, which is wrong. which is
+    /// [bug #2530](https://gitlab.torproject.org/tpo/core/arti/-/work_items/2530)
+    pub hashes: DirectorySignaturesHashesAccu,
     /// The signatures listed on the document.
     pub signatures: Vec<Signature>,
 }
@@ -1091,16 +1124,24 @@ pub struct VoteAuthoritySection {
     pub __non_exhaustive: (),
 }
 
-/// The signed footer of a consensus netstatus.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct Footer {
-    /// Weights to be applied to certain classes of relays when choosing
-    /// for different roles.
+/// Fields in the footer of a consensus
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:footer>
+///
+/// Not the whole footer, because it lacks the `directory-footer` item.
+#[derive(Debug, Clone, Deftly)]
+#[derive_deftly(Constructor, NetdocEncodableFields, NetdocParseableFields)]
+#[allow(clippy::exhaustive_structs)]
+pub struct ConsensusFooterFields {
+    /// `bandwidth-weights`
     ///
-    /// For example, we want to avoid choosing exits for non-exit
-    /// roles when overall the proportion of exits is small.
-    pub weights: NetParams<i32>,
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:bandwidth-weights>
+    #[deftly(netdoc(default))]
+    pub bandwidth_weights: NetParams<i32>,
+
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
 }
 
 /// A consensus document that lists relays along with their
@@ -1653,19 +1694,22 @@ mod encode_impls {
     }
 }
 
-impl Footer {
+impl ConsensusFooterFields {
     /// Parse a directory footer from a footer section.
-    fn from_section(sec: &Section<'_, NetstatusKwd>) -> Result<Footer> {
+    fn from_section(sec: &Section<'_, NetstatusKwd>) -> Result<ConsensusFooterFields> {
         use NetstatusKwd::*;
         sec.required(DIRECTORY_FOOTER)?;
 
-        let weights = sec
+        let bandwidth_weights = sec
             .maybe(BANDWIDTH_WEIGHTS)
             .args_as_str()
             .unwrap_or("")
             .parse()?;
 
-        Ok(Footer { weights })
+        Ok(ConsensusFooterFields {
+            bandwidth_weights,
+            __non_exhaustive: (),
+        })
     }
 }
 
@@ -1896,8 +1940,9 @@ impl SignatureGroup {
             use KeywordOrString as KOS;
 
             let d: Option<&[u8]> = match sig.digest_algo.algorithm() {
-                KOS::Known(DSHA::Sha256) => self.sha256.as_ref().map(|a| &a[..]),
-                KOS::Known(DSHA::Sha1) => self.sha1.as_ref().map(|a| &a[..]),
+                KOS::Known(DSHA::Sha256) => self.hashes.sha256.as_ref().map(|a| &a[..]),
+                // TODO #2530 this needs to depend on whether `sha1` was stated (!)
+                KOS::Known(DSHA::Sha1) => self.hashes.sha1.as_ref().map(|a| &a[..]),
                 _ => None, // We don't know how to find this digest.
             };
             if d.is_none() {

@@ -59,7 +59,7 @@ pub struct ConsensusBuilder {
     voters: Vec<ConsensusAuthorityEntry>,
     /// See [`Consensus::relays`]
     relays: Vec<RouterStatus>,
-    /// See [`Footer::weights`]
+    /// See [`ConsensusFooterFields::bandwidth_weights`]
     weights: NetParams<i32>,
 }
 
@@ -264,8 +264,9 @@ impl ConsensusBuilder {
             __non_exhaustive: (),
         };
 
-        let footer = Footer {
-            weights: self.weights.clone(),
+        let footer = ConsensusFooterFields {
+            bandwidth_weights: self.weights.clone(),
+            __non_exhaustive: (),
         };
 
         let mut relays = self.relays.clone();

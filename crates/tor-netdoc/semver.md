@@ -17,3 +17,12 @@ ADDED: `Ed25519IdentityCert` type
 ADDED: `Ed25519FamilyCert` type
 ADDED: `Bandwidth` type
 ADDED: `RouterDesc::bandwidth` field
+ADDED: `NetworkStatusVersion`
+BREAKING: `Footer` renamed to `ConsensusFooterFields`
+BREAKING: `Footer.weights` renamed to `ConsensusFooterFields.bandwidth_weights`
+ADDED: `ConsensusFooterFields` implements  construction, encoding, and parsing
+ADDED: `netstatus::{plain,md,vote}::Footer` for the network status footer sections
+ADDED: `NetworkStatusVersion`
+ADDED: `DirectorySignaturesHashesAccu` fields are now pub.
+BREAKING: `SignatureGroup` contains `DirectorySignaturesHashesAccu`, instead of hash fields
+ADDED: `NoMoreArguments` parsing/encoding helper type (`NoFurtherArguments` now a deprecated alias)

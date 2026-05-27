@@ -39,7 +39,7 @@ pub struct Consensus {
     /// to be relied on, since we may want to even abolish RSA at some point!
     pub relays: Vec<RouterStatus>,
     /// Footer for the consensus object.
-    pub footer: Footer,
+    pub footer: ConsensusFooterFields,
 }
 
 impl Consensus {
@@ -56,7 +56,7 @@ impl Consensus {
     /// Return a mapping from keywords to integers representing how
     /// to weight different kinds of relays in different path positions.
     pub fn bandwidth_weights(&self) -> &NetParams<i32> {
-        &self.footer.weights
+        &self.footer.bandwidth_weights
     }
 
     /// Return the map of network parameters that this consensus advertises.
@@ -146,11 +146,11 @@ impl Consensus {
     }
 
     /// Extract the footer (but not signatures) from the reader.
-    fn take_footer(r: &mut NetDocReader<'_, NetstatusKwd>) -> Result<Footer> {
+    fn take_footer(r: &mut NetDocReader<'_, NetstatusKwd>) -> Result<ConsensusFooterFields> {
         use NetstatusKwd::*;
         let mut p = r.pause_at(|i| i.is_ok_with_kwd_in(&[DIRECTORY_SIGNATURE]));
         let footer_sec = NS_FOOTER_RULES.parse(&mut p)?;
-        let footer = Footer::from_section(&footer_sec)?;
+        let footer = ConsensusFooterFields::from_section(&footer_sec)?;
         Ok(footer)
     }
 
@@ -281,9 +281,14 @@ impl Consensus {
                 None,
             ),
         };
-        let siggroup = SignatureGroup {
+        let hashes = DirectorySignaturesHashesAccu {
             sha256,
             sha1,
+            // TODO #2530 This is wrong.  There isn't one hash, there's two.
+            sha1_unnamed: sha1,
+        };
+        let siggroup = SignatureGroup {
+            hashes,
             signatures,
         };
 
