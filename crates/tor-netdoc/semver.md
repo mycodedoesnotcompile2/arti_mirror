@@ -27,3 +27,10 @@ ADDED: `NetworkStatusVersion`
 ADDED: `DirectorySignaturesHashesAccu` fields are now pub.
 BREAKING: `SignatureGroup` contains `DirectorySignaturesHashesAccu`, instead of hash fields
 ADDED: `NoMoreArguments` parsing/encoding helper type (`NoFurtherArguments` now a deprecated alias)
+ADDED: encoding implementation for `IgnoredPublicationTimeSp`
+ADDED: encoding implementation for `rs::SoftwareVersion`
+BREAKING: `NetdocParseableFields::finish` has an additional `ItemStream` argument
+BREAKING: parsing/encoding impls for `NetParams` made generic
+ADDED: `Unknown::into_retained` now available (always fails) even without `retain-unknown`
+ADDED: `TryFrom<&NetParams<u32>> for RelayWeight`
+BREAKING: `RouterStatus.weight` contains the new `RelayWeightsItem`
