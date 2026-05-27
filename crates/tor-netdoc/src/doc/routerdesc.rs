@@ -1313,6 +1313,13 @@ mod test {
         ];
         for (input, output) in tests {
             assert_eq!(input.parse::<RelayPlatform>().unwrap(), output);
+
+            // Round-trip test with input stripped of " on" suffix and trimmed.
+            // Otherwise we cannot really make this work because certain inputs
+            // contain redundant data on purpose.
+            let input = input.strip_suffix(" on").unwrap_or(input);
+            let input = input.trim();
+            assert_eq!(output.to_string(), input);
         }
     }
 
