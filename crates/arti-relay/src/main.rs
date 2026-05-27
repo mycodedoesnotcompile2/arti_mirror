@@ -242,6 +242,7 @@ fn start_relay(_args: cli::RunArgs, global_args: cli::GlobalArgs) -> anyhow::Res
                     ))?;
                 info!("Arti Prometheus metrics export scraper endpoint http://{listen}");
             } else {
+                let _ = listen;
                 warn!("`metrics.prometheus.listen` config set but `metrics` cargo feature compiled out in `arti-relay` crate");
             }
         }
