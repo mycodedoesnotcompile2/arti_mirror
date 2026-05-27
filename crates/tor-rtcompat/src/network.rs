@@ -101,7 +101,15 @@ impl Default for UnixListenOptions {
 /// or to configure additional options.
 #[derive(Copy, Clone, Debug, derive_builder::Builder, amplify::Getters)]
 #[non_exhaustive]
-pub struct CommonConnectOptions {}
+pub struct CommonConnectOptions {
+    /// Value set for `SO_SNDBUF` on the socket.
+    #[builder(default)]
+    pub(crate) send_buffer_size: Option<usize>,
+
+    /// Value set for `SO_RCVBUF` on the socket.
+    #[builder(default)]
+    pub(crate) recv_buffer_size: Option<usize>,
+}
 
 impl CommonConnectOptions {
     /// Returns a builder for this [`CommonConnectOptions`].

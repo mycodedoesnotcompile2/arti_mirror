@@ -220,7 +220,11 @@ pub(crate) fn tcp_pre_connect(
 
     // Destructure the options so that we don't forget to use any.
     let TcpConnectOptions {
-        common: CommonConnectOptions {},
+        common:
+            CommonConnectOptions {
+                send_buffer_size,
+                recv_buffer_size,
+            },
     } = options;
 
     let domain = match addr {
@@ -236,6 +240,17 @@ pub(crate) fn tcp_pre_connect(
     let socket = Socket::new(domain, Type::STREAM, None)?;
 
     socket.set_nonblocking(true)?;
+
+    // tcp(7):
+    //
+    // > On individual connections, the socket buffer size must be set prior to the listen(2) or
+    // > connect(2) calls in order to have it take effect.
+    if let Some(send_buffer_size) = send_buffer_size {
+        socket.set_send_buffer_size(*send_buffer_size)?;
+    }
+    if let Some(recv_buffer_size) = recv_buffer_size {
+        socket.set_recv_buffer_size(*recv_buffer_size)?;
+    }
 
     // TODO: In the future, we'll likely want to support optionally binding to an address or to a
     // network interface (`SO_BINDTODEVICE`). See c-tor's `OutboundBindAddresses`.
