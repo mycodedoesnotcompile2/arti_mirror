@@ -61,7 +61,7 @@ pub(super) struct ValidUntilChanged {
 /// That valid_until cache is updated by the crypto task when keys are generated/rotated.
 ///
 /// Domain specific view wrap this view in order to restrict key access.
-pub(crate) struct FullKeyView {
+pub(super) struct FullKeyView {
     /// The relay key manager.
     keymgr: Arc<KeyMgr>,
     /// The keys' valid_until cache.
@@ -73,7 +73,7 @@ pub(crate) struct FullKeyView {
 
 impl FullKeyView {
     /// Constructor.
-    pub(crate) fn new(keymgr: Arc<KeyMgr>) -> Self {
+    pub(super) fn new(keymgr: Arc<KeyMgr>) -> Self {
         Self {
             keymgr,
             keys_valid_until: ValidUntilKeys::default(),
@@ -143,21 +143,21 @@ impl FullKeyView {
     }
 
     /// Return the relay ed25519 identity keypair (KS_relayid_ed).
-    pub(crate) fn ks_relayid_ed(&self) -> Result<RelayIdentityKeypair> {
+    pub(super) fn ks_relayid_ed(&self) -> Result<RelayIdentityKeypair> {
         self.keymgr
             .get(&RelayIdentityKeypairSpecifier::new())?
             .context("Missing Ed25519 identity")
     }
 
     /// Return the relay RSA identity keypair (KS_relayid_rsa).
-    pub(crate) fn ks_relayid_rsa(&self) -> Result<RelayIdentityRsaKeypair> {
+    pub(super) fn ks_relayid_rsa(&self) -> Result<RelayIdentityRsaKeypair> {
         self.keymgr
             .get(&RelayIdentityRsaKeypairSpecifier::new())?
             .context("Missing RSA identity")
     }
 
     /// Return the link authentication keypair (KS_link_ed).
-    pub(crate) fn ks_link_ed(&self) -> Result<RelayLinkSigningKeypair> {
+    pub(super) fn ks_link_ed(&self) -> Result<RelayLinkSigningKeypair> {
         let valid_until = self
             .keys_valid_until
             .link_ed
@@ -168,7 +168,7 @@ impl FullKeyView {
     }
 
     /// Return the latest and previous ntor keypairs from the keystore (KS_ntor).
-    pub(crate) fn ks_ntor_keys(&self) -> anyhow::Result<RelayNtorKeys> {
+    pub(super) fn ks_ntor_keys(&self) -> anyhow::Result<RelayNtorKeys> {
         let valid_until = self
             .keys_valid_until
             .ntor_latest
@@ -191,7 +191,7 @@ impl FullKeyView {
     }
 
     /// Return the relay signing key (KS_relaysign_ed).
-    pub(crate) fn ks_relaysign_ed(&self) -> Result<RelaySigningKeypair> {
+    pub(super) fn ks_relaysign_ed(&self) -> Result<RelaySigningKeypair> {
         let valid_until = self
             .keys_valid_until
             .relaysign_ed
@@ -202,7 +202,7 @@ impl FullKeyView {
     }
 
     /// Return the relay signing key certificate.
-    pub(crate) fn cert_relaysign_ed(&self) -> Result<RelaySigningKeyCert> {
+    pub(super) fn cert_relaysign_ed(&self) -> Result<RelaySigningKeyCert> {
         let valid_until = self
             .keys_valid_until
             .relaysign_ed

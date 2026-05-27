@@ -30,16 +30,13 @@ use tor_relay_crypto::pk::{
 use tor_relay_crypto::{RelaySigningKeyCert, gen_link_cert, gen_signing_cert, gen_tls_cert};
 use tor_rtcompat::{Runtime, SleepProviderExt};
 
-use crate::keys::{
+use crate::{keys::{
     RelayIdentityKeypairSpecifier, RelayIdentityRsaKeypairSpecifier,
     RelayLinkSigningKeypairSpecifier, RelayLinkSigningKeypairSpecifierPattern,
     RelayNtorKeypairSpecifier, RelayNtorKeypairSpecifierPattern, RelaySigningKeyCertSpecifier,
     RelaySigningKeyCertSpecifierPattern, RelaySigningKeypairSpecifier,
     RelaySigningKeypairSpecifierPattern, RelaySigningPublicKeySpecifier, Timestamp,
-};
-
-/// Needed to be create in the relay init.
-pub(crate) use views::FullKeyView;
+}, tasks::crypto::views::FullKeyView};
 
 /// Buffer time before key expiry to trigger rotation. This ensures we rotate slightly before the
 /// key actually expires rather than right at or after expiry.
