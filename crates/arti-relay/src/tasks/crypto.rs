@@ -67,11 +67,11 @@ pub(crate) struct InitKeyMaterial {
 /// Attempt to initialize the key material needed for a relay to function. This function will
 /// generate any missing keys or load them from the given [`KeyMgr`]. The keys are:
 ///
-/// * Identity Ed25519 keypair [`RelayIdentityKeypair`].
-/// * Identity RSA [`RelayIdentityRsaKeypair`].
-/// * Relay signing keypair [`RelaySigningKeypair`].
-/// * Relay link signing keypair [`RelayLinkSigningKeypair`].
-/// * Relay ntor keypair [`RelayNtorKeypair`].
+/// * Identity Ed25519 keypair.
+/// * Identity RSA.
+/// * Relay signing keypair.
+/// * Relay link signing keypair.
+/// * Relay ntor keypair.
 ///
 /// This function is only called when our relay initializes in order to attempt to generate any
 /// missing keys or/and rotate expired keys.
