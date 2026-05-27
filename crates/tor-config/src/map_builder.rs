@@ -61,19 +61,18 @@
 /// # Example
 ///
 /// ```
-/// # use derive_builder::Builder;
 /// # use derive_deftly::Deftly;
 /// # use std::collections::BTreeMap;
 /// # use tor_config::{ConfigBuildError, define_map_builder, derive_deftly_template_ExtendBuilder};
+/// # use tor_config::derive::prelude::*;
 /// # use serde::{Serialize, Deserialize};
 /// # use tor_config::extend_builder::{ExtendBuilder,ExtendStrategy};
-/// #[derive(Clone, Debug, Builder, Deftly, Eq, PartialEq)]
-/// #[derive_deftly(ExtendBuilder)]
-/// #[builder(build_fn(error = "ConfigBuildError"))]
-/// #[builder(derive(Debug, Serialize, Deserialize))]
+/// #[derive(Clone, Debug, Deftly, Eq, PartialEq)]
+/// #[derive_deftly(TorConfig)]
 /// pub struct ConnectionsConfig {
-///     #[builder(sub_builder)]
-///     #[deftly(extend_builder(sub_builder))]
+///     // Note: Ordinarily, you might choose to `tor_config(map)` instead,
+///     // to automate more of this derivation.
+///     #[deftly(tor_config(sub_builder, no_magic))]
 ///     conns: ConnectionMap
 /// }
 ///
@@ -82,13 +81,12 @@
 ///     pub type ConnectionMap = BTreeMap<String, ConnConfig>;
 /// }
 ///
-/// #[derive(Clone, Debug, Builder, Deftly, Eq, PartialEq)]
-/// #[derive_deftly(ExtendBuilder)]
-/// #[builder(build_fn(error = "ConfigBuildError"))]
-/// #[builder(derive(Debug, Serialize, Deserialize))]
+/// #[derive(Clone, Debug, Deftly, Eq, PartialEq)]
+/// #[derive_deftly(TorConfig)]
 /// pub struct ConnConfig {
-///     #[builder(default="true")]
+///     #[deftly(tor_config(default="true"))]
 ///     enabled: bool,
+///     #[deftly(tor_config(default="9999"))]
 ///     port: u16,
 /// }
 ///
@@ -229,6 +227,23 @@ macro_rules! define_map_builder {
                     .collect()
             }
         }
+        impl $crate::load::Builder for $btype {
+            type Built = $maptype;
+            fn build(&self) -> ::std::result::Result<$maptype, $crate::ConfigBuildError> {
+                $btype :: build(self)
+            }
+        }
+
+        impl $crate::load::ConfigBuilder for $btype {
+            fn apply_defaults(&mut self) -> ::std::result::Result<(), $crate::ConfigBuildError> {
+                #[allow(unused_imports)]
+                use $crate::load::ConfigBuilder as _;
+                for v in self.0.values_mut() {
+                    v.apply_defaults()?;
+                }
+                Ok(())
+            }
+        }
         $(
             // This section is expanded when we have a defaults_fn().
             impl ::std::default::Default for $btype {
@@ -317,6 +332,17 @@ mod test {
         fun: bool,
         #[deftly(tor_config(default))]
         explosive: bool,
+    }
+
+    impl InnerBuilder {
+        // Testing only. We don't want to use derive_deftly(TorConfig) on Inner
+        // because we are trying to test define_map_builder by hand.
+        #[expect(clippy::unnecessary_wraps)]
+        fn apply_defaults(&mut self) -> Result<(), crate::ConfigBuildError> {
+            self.fun.get_or_insert_default();
+            self.explosive.get_or_insert_default();
+            Ok(())
+        }
     }
 
     define_map_builder! {

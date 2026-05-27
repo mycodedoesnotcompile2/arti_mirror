@@ -65,6 +65,12 @@ impl From<derive_builder::SubfieldBuildError<ConfigBuildError>> for ConfigBuildE
     }
 }
 
+impl From<void::Void> for ConfigBuildError {
+    fn from(value: void::Void) -> Self {
+        void::unreachable(value)
+    }
+}
+
 impl ConfigBuildError {
     /// Return a new ConfigBuildError that prefixes its field name with
     /// `prefix` and a dot.

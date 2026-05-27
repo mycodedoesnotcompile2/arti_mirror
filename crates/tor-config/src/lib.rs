@@ -74,7 +74,7 @@ pub mod deps {
     pub use paste::paste;
     pub use serde;
     pub use serde_value;
-    pub use tor_basic_utils::macro_first_nonempty;
+    pub use tor_basic_utils::{if_empty, macro_first_nonempty};
 }
 
 pub use cmdline::CmdLine;
@@ -136,8 +136,7 @@ impl ConfigurationTree {
         }
     }
 
-    /// Override our current tree with the settings in `config`, returning a new
-    /// `ConfigurationTree`.
+    /// Override our current tree with the settings in `config`.
     ///
     /// `config` must be implement [`Serialize`](serde::Serialize),
     /// and must serialize to a map.
@@ -146,15 +145,17 @@ impl ConfigurationTree {
     /// multiple configuration files in sequence,
     /// where option settings in later files replace earlier ones.
     #[allow(clippy::unnecessary_wraps)]
-    pub fn merge_from<T>(mut self, config: &T) -> Result<Self, ConfigError>
+    pub fn merge_from<T>(&mut self, config: &T) -> Result<(), ConfigError>
     where
         T: serde::Serialize,
     {
         let provider = figment::providers::Serialized::from(config, figment::Profile::Default);
+        let mut orig = figment::Figment::new();
+        std::mem::swap(&mut orig, &mut self.0);
+        self.0 = orig.merge(provider);
         // Figment::merge handles errors by making the type of the figment itself into an error...
-        self.0 = self.0.merge(provider);
-        // but we don't want our API to rely on that, so we let this be a Result.
-        Ok(self)
+        // but we don't want our API to rely on that, so we let method returna Result.
+        Ok(())
     }
 }
 
