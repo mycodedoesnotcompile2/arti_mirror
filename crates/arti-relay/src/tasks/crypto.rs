@@ -30,13 +30,16 @@ use tor_relay_crypto::pk::{
 use tor_relay_crypto::{RelaySigningKeyCert, gen_link_cert, gen_signing_cert, gen_tls_cert};
 use tor_rtcompat::{Runtime, SleepProviderExt};
 
-use crate::{keys::{
-    RelayIdentityKeypairSpecifier, RelayIdentityRsaKeypairSpecifier,
-    RelayLinkSigningKeypairSpecifier, RelayLinkSigningKeypairSpecifierPattern,
-    RelayNtorKeypairSpecifier, RelayNtorKeypairSpecifierPattern, RelaySigningKeyCertSpecifier,
-    RelaySigningKeyCertSpecifierPattern, RelaySigningKeypairSpecifier,
-    RelaySigningKeypairSpecifierPattern, RelaySigningPublicKeySpecifier, Timestamp,
-}, tasks::crypto::views::FullKeyView};
+use crate::{
+    keys::{
+        RelayIdentityKeypairSpecifier, RelayIdentityRsaKeypairSpecifier,
+        RelayLinkSigningKeypairSpecifier, RelayLinkSigningKeypairSpecifierPattern,
+        RelayNtorKeypairSpecifier, RelayNtorKeypairSpecifierPattern, RelaySigningKeyCertSpecifier,
+        RelaySigningKeyCertSpecifierPattern, RelaySigningKeypairSpecifier,
+        RelaySigningKeypairSpecifierPattern, RelaySigningPublicKeySpecifier, Timestamp,
+    },
+    tasks::crypto::views::FullKeyView,
+};
 
 /// Buffer time before key expiry to trigger rotation. This ensures we rotate slightly before the
 /// key actually expires rather than right at or after expiry.
@@ -499,7 +502,7 @@ fn remove_expired_keys(
 /// Attempt to rotate all keys except identity keys.
 ///
 /// Returns the earliest expiry time across all keys.
-fn try_rotate_keys_no_lock(
+fn try_rotate_keys(
     now: SystemTime,
     keymgr: &KeyMgr,
     params: KeyRotationParams,
@@ -543,7 +546,7 @@ pub(crate) fn init_keys<R: Runtime>(
 
     // Attempt to rotate the keys. Any missing keys (and cert) will be generated. At bootstrap
     // there is no consensus yet, so we have to use the default parameters.
-    let _ = try_rotate_keys_no_lock(
+    let _ = try_rotate_keys(
         now,
         &keymgr,
         KeyRotationParams::from(&tor_netdir::params::NetParameters::default()),
@@ -679,7 +682,7 @@ impl<R: Runtime> Reactor<R> {
         now: SystemTime,
     ) -> anyhow::Result<(views::ValidUntilChanged, SystemTime)> {
         let rotation_params = KeyRotationParams::from(self.netdir.params().as_ref().as_ref());
-        let next_expiry = try_rotate_keys_no_lock(now, self.view.keymgr(), rotation_params)?;
+        let next_expiry = try_rotate_keys(now, self.view.keymgr(), rotation_params)?;
         let changed = self.view.recompute_valid_until()?;
         Ok((changed, next_expiry))
     }
@@ -749,7 +752,7 @@ mod test {
 
     /// Call [`try_rotate_keys_no_lock`] with default consensus parameters.
     fn rotate_keys(now: SystemTime, keymgr: &KeyMgr) -> anyhow::Result<SystemTime> {
-        try_rotate_keys_no_lock(
+        try_rotate_keys(
             now,
             keymgr,
             KeyRotationParams::from(&tor_netdir::params::NetParameters::default()),
