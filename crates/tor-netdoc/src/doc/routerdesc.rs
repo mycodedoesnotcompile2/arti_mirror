@@ -36,11 +36,11 @@ use crate::parse::keyword::Keyword;
 use crate::parse::parser::{Section, SectionRules};
 use crate::parse::tokenize::{ItemResult, NetDocReader};
 use crate::parse2::{ArgumentError, ArgumentStream, ItemArgumentParseable};
-use crate::types::family::{RelayFamily, RelayFamilyId};
-use crate::types::misc::*;
+use crate::types::family::{RelayFamily, RelayFamilyIds};
 use crate::types::policy::*;
 use crate::types::routerdesc::*;
 use crate::types::version::TorVersion;
+use crate::types::{EmbeddedCert, misc::*};
 use crate::util::PeekableIterator;
 use crate::{AllowAnnotations, Error, KeywordEncodable, NetdocErrorKind as EK, Result};
 
@@ -50,7 +50,7 @@ use saturating_time::SaturatingTime;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::{iter, net, time};
-use tor_cert::CertType;
+use tor_cert::{CertType, KeyUnknownCert};
 use tor_checkable::{Timebound, signed, timed};
 use tor_error::{internal, into_internal};
 use tor_llcrypto as ll;
@@ -108,25 +108,6 @@ pub struct RouterAnnotation {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct RouterDesc {
-    // === Virtual items ===
-    // These items do not correspond to any actual item within the router
-    // descriptor from a netdoc point of view.  They cannot persist this way
-    // in parse2 and are already grouped together this way to indicate this
-    // change.  For example, `family_ids` is computed on the fly and is not
-    // present in normal router descriptors.  Although `orport`, `nickname`
-    // and other members are present in a router descriptor, they are only
-    // present as arguments, not as independent items.
-    //
-    //
-    /// Declared (and proven) family IDs for this relay. If two relays
-    /// share a family ID, they shouldn't be used in the same circuit.
-    family_ids: Vec<RelayFamilyId>,
-
-    // === Real items ===
-    // These items are real and correspond to actual items found in router
-    // descriptors, although potentially not under the same name.
-    //
-    //
     /// `router` --- Introduce a router descriptor.
     /// * `router <nickname> <address> <orport> <socksport> <dirport>`
     /// * At start, exactly once.
@@ -207,6 +188,12 @@ pub struct RouterDesc {
     /// * One or more `LongIdent` arguments.
     /// * At most once.
     pub family: Arc<RelayFamily>,
+
+    /// `family-cert` --- Prove membership in a relay family.
+    ///
+    /// * `family-cert\n<object>`
+    /// * Any number of times.
+    pub family_cert: RetainedOrderVec<EmbeddedCert<Ed25519FamilyCert, KeyUnknownCert>>,
 
     /// `caches-extra-info` --- Router provides extra-info as a dirmirror.
     ///
@@ -496,8 +483,13 @@ impl RouterDesc {
     }
 
     /// Return the authenticated family IDs of this descriptor.
-    pub fn family_ids(&self) -> &[RelayFamilyId] {
-        &self.family_ids[..]
+    pub fn family_ids(&self) -> RelayFamilyIds {
+        RelayFamilyIds::from_iter(
+            self.family_cert
+                .iter()
+                .map(|cert| cert.get().expect("unverified family cert?"))
+                .map(|cert| cert.family_ed25519.into()),
+        )
     }
 
     /// Helper: tokenize `s`, and divide it into three validated sections.
@@ -793,30 +785,30 @@ impl RouterDesc {
         };
 
         // Family ids (for "happy families")
-        let family_certs: Vec<tor_cert::UncheckedCert> = body
+        //
+        // Unfortunately we have to store this as a tuple of KeyUnknownCert and
+        // UncheckedCert due to a parse2/legacy incongruence.  parse2 requires
+        // KeyUnknownCert for EmbeddedCert whereas the legacy parser needs
+        // descendants of it obtained by passing it irreversibly through the
+        // tor_cert verification chain.
+        let family_certs = body
             .slice(FAMILY_CERT)
             .iter()
             .map(|ent| {
-                ent.parse_obj::<UnvalidatedEdCert>("FAMILY CERT")?
+                let ku = ent
+                    .parse_obj::<UnvalidatedEdCert>("FAMILY CERT")?
                     .check_cert_type(CertType::FAMILY_V_IDENTITY)?
                     .check_subject_key_is(identity_cert.peek_signing_key())?
-                    .into_unchecked()
-                    .should_have_signing_key()
-                    .map_err(|e| {
-                        EK::BadObjectVal
-                            .with_msg("missing public key")
-                            .at_pos(ent.pos())
-                            .with_source(e)
-                    })
+                    .into_unchecked();
+                let unchecked = ku.clone().should_have_signing_key().map_err(|e| {
+                    EK::BadObjectVal
+                        .with_msg("missing public key")
+                        .at_pos(ent.pos())
+                        .with_source(e)
+                })?;
+                Ok((ku, unchecked))
             })
-            .collect::<Result<_>>()?;
-
-        let mut family_ids: Vec<_> = family_certs
-            .iter()
-            .map(|cert| RelayFamilyId::Ed25519(*cert.peek_signing_key()))
-            .collect();
-        family_ids.sort();
-        family_ids.dedup();
+            .collect::<Result<Vec<_>>>()?;
 
         // or-address
         // Extract at most one ipv6 address from the list.  It's not great,
@@ -898,12 +890,21 @@ impl RouterDesc {
             crosscert_cert.expiry(),
         ];
 
-        for cert in family_certs {
+        // As outlined above, we have to do this ... :/
+        //
+        // Composing the verified part of the EmbeddedCert by just extracting
+        // the key alone is OK because it gets checked at the end anyways
+        // due to the push to signatures and expirations.
+        let mut embedded_family_certs = Vec::with_capacity(family_certs.len());
+        for (ku_cert, cert) in family_certs {
+            let family_ed25519 = *cert.peek_signing_key();
             let (inner, sig) = cert.dangerously_split().map_err(into_internal!(
                 "Missing a public key that was previously there."
             ))?;
+            let embedded_cert = EmbeddedCert::new(Ed25519FamilyCert { family_ed25519 }, ku_cert);
             signatures.push(Box::new(sig));
             expirations.push(inner.dangerously_assume_timely().expiry());
+            embedded_family_certs.push(embedded_cert);
         }
 
         // Unwrap is safe here because `expirations` array is not empty
@@ -915,8 +916,6 @@ impl RouterDesc {
             .saturating_sub(time::Duration::new(ROUTER_PRE_VALIDITY_SECONDS, 0));
 
         let desc = RouterDesc {
-            family_ids,
-
             router: RouterDescIntroItem {
                 nickname,
                 address: ipv4addr,
@@ -936,6 +935,7 @@ impl RouterDesc {
             ipv4_policy,
             ipv6_policy: ipv6_policy.intern(),
             family,
+            family_cert: embedded_family_certs.into(),
             caches_extra_info: is_extrainfo_cache,
             or_address: ipv6addr,
             tunnelled_dir_server: is_dircache,
@@ -1277,7 +1277,7 @@ mod test {
             .dangerously_assume_timely();
 
         assert_eq!(
-            rd.family_ids(),
+            rd.family_ids().as_ref(),
             &[
                 "ed25519:7sToQRuge1bU2hS0CG0ViMndc4m82JhO4B4kdrQey80"
                     .parse()
