@@ -67,8 +67,6 @@ mod util;
 use std::io::IsTerminal as _;
 
 use anyhow::Context;
-use base64ct::Base64Unpadded;
-use base64ct::Encoding as _;
 use cfg_if::cfg_if;
 use clap::Parser;
 use futures::FutureExt;
@@ -85,7 +83,6 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::config::{DEFAULT_LOG_LEVEL, TorRelayConfig, base_resolver};
 use crate::relay::InertTorRelay;
-use crate::tasks::crypto::FullKeyView;
 
 fn main() {
     // Will exit if '--help' used or there's a parse error.
@@ -316,10 +313,6 @@ async fn run_relay<R: Runtime>(
         .await
         .context("Failed to bootstrap")?;
 
-    // TODO: This is mostly useful for debugging.
-    // We might want to remove this in the future, or move this somewhere else.
-    log_public_keys(relay.key_view()).context("Failed to log public keys")?;
-
     // This blocks until end of time or an error.
     relay.run().await
 }
@@ -348,25 +341,4 @@ enum MainloopStatus<T> {
     Finished(T),
     /// The future was cancelled due to a ctrl-c event.
     CtrlC,
-}
-
-/// Log the relay's identities and public ntor key.
-fn log_public_keys(key_view: &FullKeyView) -> anyhow::Result<()> {
-    let rsa_id = key_view.ks_relayid_rsa()?.to_rsa_identity();
-    let ed_id = key_view.ks_relayid_ed()?.to_ed25519_id();
-
-    let ntor_keys = key_view.ks_ntor_keys()?;
-    // Base64-encode the public ntor key.
-    let ntor = Base64Unpadded::encode_string(ntor_keys.latest().public().inner().as_bytes());
-
-    // Log the relay's identities.
-    // TODO: We should also log this after a key rotation:
-    // https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3773#note_3367789
-    // TODO: This is useful at info level while we're developing,
-    // but the level should probably be lowered in the future.
-    tracing::info!("RSA identity: {rsa_id}");
-    tracing::info!("Ed25519 identity: {ed_id}");
-    tracing::info!("Ntor public key: {ntor}");
-
-    Ok(())
 }

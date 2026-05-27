@@ -3,6 +3,7 @@
 mod views;
 
 use anyhow::Context;
+use base64ct::{Base64Unpadded, Encoding};
 use futures::{FutureExt as _, StreamExt as _};
 use std::{
     sync::Arc,
@@ -24,7 +25,7 @@ use tor_proto::RelayChannelAuthMaterial;
 use tor_proto::relay::CreateRequestHandler;
 use tor_relay_crypto::pk::{
     RelayIdentityKeypair, RelayIdentityRsaKeypair, RelayLinkSigningKeypair, RelayNtorKeypair,
-    RelaySigningKeypair,
+    RelayNtorKeys, RelaySigningKeypair,
 };
 use tor_relay_crypto::{RelaySigningKeyCert, gen_link_cert, gen_signing_cert, gen_tls_cert};
 use tor_rtcompat::{Runtime, SleepProviderExt};
@@ -75,6 +76,17 @@ impl From<&tor_netdir::params::NetParameters> for KeyRotationParams {
             ntor_grace_period: Duration::from_secs(grace_days * 24 * 60 * 60),
         }
     }
+}
+
+/// Key material generated/loaded at init.
+///
+/// This is specific to be at the relay startup and only returned by `try_generate_keys()` that is
+/// only called before the relay starts.
+pub(crate) struct InitKeyMaterial {
+    /// Channel authentication key material.
+    pub(crate) chan_auth_keys: RelayChannelAuthMaterial,
+    /// Ntor keys.
+    pub(crate) ntor_keys: RelayNtorKeys,
 }
 
 /// Build a fresh [`RelayChannelAuthMaterial`] object using a [`KeyMgr`].
@@ -518,11 +530,14 @@ fn try_rotate_keys_no_lock(
 ///
 /// This function is only called when our relay bootstraps in order to attempt to generate any
 /// missing keys or/and rotate expired keys.
+///
+/// Returned the initialization key material.
 pub(crate) fn try_generate_keys<R: Runtime>(
     runtime: &R,
-    key_view: &FullKeyView,
-) -> anyhow::Result<RelayChannelAuthMaterial> {
+    keymgr: Arc<KeyMgr>,
+) -> anyhow::Result<InitKeyMaterial> {
     let now = runtime.wallclock();
+    let key_view = FullKeyView::new(keymgr);
     // Lock the view, we are about to attempt to fill it.
     let mut guard = key_view.lock();
     let keymgr = guard.keymgr();
@@ -545,7 +560,10 @@ pub(crate) fn try_generate_keys<R: Runtime>(
     drop(guard);
 
     // Now that we have our up-to-date keys, build the relay channel auth material object.
-    build_proto_relay_auth_material(now, key_view)
+    Ok(InitKeyMaterial {
+        chan_auth_keys: build_proto_relay_auth_material(now, &key_view)?,
+        ntor_keys: key_view.ks_ntor_keys()?,
+    })
 }
 
 /// Reactor object handling the rotation of relay crypto keys.
@@ -557,7 +575,7 @@ pub(crate) struct Reactor<R: Runtime> {
     /// Reference to the create request handler so we can update it.
     create_request_handler: Arc<CreateRequestHandler>,
     /// Full key view.
-    view: Arc<FullKeyView>,
+    view: FullKeyView,
     /// Net directory provider used to watch for consensus changes.
     netdir: Arc<dyn NetDirProvider>,
 }
@@ -568,16 +586,37 @@ impl<R: Runtime> Reactor<R> {
         runtime: R,
         chanmgr: Arc<ChanMgr<R>>,
         create_request_handler: Arc<CreateRequestHandler>,
-        view: Arc<FullKeyView>,
+        keymgr: Arc<KeyMgr>,
         netdir: Arc<dyn NetDirProvider>,
     ) -> Self {
         Self {
             runtime,
             chanmgr,
             create_request_handler,
-            view,
+            view: FullKeyView::new(keymgr),
             netdir,
         }
+    }
+
+    /// Log the relay's identities and public ntor key.
+    fn log_public_keys(&self) -> anyhow::Result<()> {
+        let rsa_id = self.view.ks_relayid_rsa()?.to_rsa_identity();
+        let ed_id = self.view.ks_relayid_ed()?.to_ed25519_id();
+
+        let ntor_keys = self.view.ks_ntor_keys()?;
+        // Base64-encode the public ntor key.
+        let ntor = Base64Unpadded::encode_string(ntor_keys.latest().public().inner().as_bytes());
+
+        // Log the relay's identities.
+        // TODO: We should also log this after a key rotation:
+        // https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3773#note_3367789
+        // TODO: This is useful at info level while we're developing,
+        // but the level should probably be lowered in the future.
+        tracing::info!("RSA identity: {rsa_id}");
+        tracing::info!("Ed25519 identity: {ed_id}");
+        tracing::info!("Ntor public key: {ntor}");
+
+        Ok(())
     }
 
     /// Launch the reactor, and run until an error is encountered.
@@ -590,6 +629,11 @@ impl<R: Runtime> Reactor<R> {
             .netdir
             .events()
             .filter(|ev| std::future::ready(matches!(ev, DirEvent::NewConsensus)));
+
+        // TODO: This is mostly useful for debugging.
+        // We might want to remove this in the future, or move this somewhere else.
+        self.log_public_keys()
+            .context("Failed to log public keys")?;
 
         loop {
             let next_wake = self.run_once()?;
@@ -756,9 +800,7 @@ mod test {
     #[test]
     fn test_bootstrap() {
         MockRuntime::test_with_various(|runtime| async move {
-            let key_view = FullKeyView::new(new_keymgr());
-
-            let _auth_material = match try_generate_keys(&runtime, &key_view) {
+            let _auth_material = match try_generate_keys(&runtime, new_keymgr()) {
                 Ok(a) => a,
                 Err(e) => {
                     panic!("Unable to bootstrap keys and generate RelayChannelAuthMaterial: {e}");
