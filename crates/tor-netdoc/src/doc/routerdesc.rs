@@ -115,8 +115,7 @@ pub struct RouterDesc {
 
     /// `identity-ed25519` --- Specify the router's ed25519 identity.
     ///
-    /// * `identity-ed25519\n<certificate object>`
-    /// * Exactly once, in second position in document.
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:identity-ed25519>
     pub identity_ed25519: EmbeddedCert<Ed25519IdentityCert, KeyUnknownCert>,
 
     /// `master-key-ed25519` --- Redundantly specify the router's ed25519 identity.
