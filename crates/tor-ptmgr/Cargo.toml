@@ -64,7 +64,7 @@ web-time-compat = { version = "0.1.0", path = "../web-time-compat" }
 
 [dev-dependencies]
 anyhow = "1.0.23"
-tokio = { version = "1.7", features = ["rt", "rt-multi-thread", "io-util", "net", "time", "macros"] }
+tokio = { version = "1.47.1", features = ["rt", "rt-multi-thread", "io-util", "net", "time", "macros"] }
 tor-rtcompat = { path = "../tor-rtcompat", version = "0.43.0", features = ["tokio", "native-tls"] }
 tracing-subscriber = "0.3.20"
 
