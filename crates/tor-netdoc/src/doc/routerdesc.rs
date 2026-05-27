@@ -152,8 +152,7 @@ pub struct RouterDesc {
 
     /// `hibernating` --- Whether the relay is hibernating.
     ///
-    /// * `hiberanting <numeric boolean>`
-    /// * At most once.
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:hibernating>
     pub hibernating: Option<NumericBoolean>,
 
     /// `uptime` --- How long this relay has been continously running
@@ -204,8 +203,7 @@ pub struct RouterDesc {
 
     /// `contact` --- Server administrator contact information.
     ///
-    /// * `contact <rest of line>`.
-    /// * At most once.
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:contact>
     pub contact: Option<ContactInfo>,
 
     /// `family` --- Group relays for the purpose of path selection.
@@ -230,8 +228,7 @@ pub struct RouterDesc {
 
     /// `extra-info-digest` --- Hash of the extra-info document.
     ///
-    /// * `extra-info-digest <sha1-digest> [ <sha256-digest> ]`.
-    /// * At most once.
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:extra-info-digest>
     pub extra_info_digest: Option<ExtraInfoDigests>,
 
     /// `or-address` --- Alternative ORport address and port
