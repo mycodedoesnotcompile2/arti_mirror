@@ -255,7 +255,7 @@ pub struct RouterDescSignatures {
 #[non_exhaustive]
 pub enum RelayPlatform {
     /// Software advertised to be some version of Tor, on some platform.
-    Tor(TorVersion, String),
+    Tor(TorVersion, Option<String>),
     /// Software not advertised to be Tor.
     Other(String),
 }
@@ -266,8 +266,8 @@ impl std::str::FromStr for RelayPlatform {
         if args.starts_with("Tor ") {
             let v: Vec<_> = args.splitn(4, ' ').collect();
             match &v[..] {
-                ["Tor", ver, "on", p] => Ok(RelayPlatform::Tor(ver.parse()?, (*p).to_string())),
-                ["Tor", ver, ..] => Ok(RelayPlatform::Tor(ver.parse()?, "".to_string())),
+                ["Tor", ver, "on", p] => Ok(RelayPlatform::Tor(ver.parse()?, Some((*p).to_string()))),
+                ["Tor", ver, ..] => Ok(RelayPlatform::Tor(ver.parse()?, None)),
                 _ => unreachable!(),
             }
         } else {
@@ -1279,21 +1279,21 @@ mod test {
                 "Tor 0.4.4.4-alpha on a flying bison",
                 RelayPlatform::Tor(
                     "0.4.4.4-alpha".parse().unwrap(),
-                    "a flying bison".to_string(),
+                    Some("a flying bison".to_string()),
                 ),
             ),
             // Test without platform but potentially weird spacing.
             (
                 "Tor 0.4.4.4-alpha on",
-                RelayPlatform::Tor("0.4.4.4-alpha".parse().unwrap(), "".to_string()),
+                RelayPlatform::Tor("0.4.4.4-alpha".parse().unwrap(), None),
             ),
             (
                 "Tor 0.4.4.4-alpha ",
-                RelayPlatform::Tor("0.4.4.4-alpha".parse().unwrap(), "".to_string()),
+                RelayPlatform::Tor("0.4.4.4-alpha".parse().unwrap(), None),
             ),
             (
                 "Tor 0.4.4.4-alpha",
-                RelayPlatform::Tor("0.4.4.4-alpha".parse().unwrap(), "".to_string()),
+                RelayPlatform::Tor("0.4.4.4-alpha".parse().unwrap(), None),
             ),
             // Test other.
             ("arti 0.0.0", RelayPlatform::Other("arti 0.0.0".to_string())),
