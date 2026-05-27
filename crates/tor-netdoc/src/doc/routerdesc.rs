@@ -199,6 +199,7 @@ pub struct RouterDesc {
     ///
     /// * `overload-general 1 <time>`
     /// * At most once.
+    // TODO in OverloadGeneral use ConstantString (from !3985) for version
     pub overload_general: Option<OverloadGeneral>,
 
     /// `contact` --- Server administrator contact information.
