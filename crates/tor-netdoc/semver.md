@@ -15,3 +15,5 @@ BREAKING: `RouterDesc::published` now stored in a `Iso8601TimeSp`
 BREAKING: `RouterDesc::ntor_onion_key` now stored in a `Curve25519Public`
 ADDED: `Ed25519IdentityCert` type
 ADDED: `Ed25519FamilyCert` type
+ADDED: `Bandwidth` type
+ADDED: `RouterDesc::bandwidth` field

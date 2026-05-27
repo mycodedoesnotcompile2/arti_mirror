@@ -2353,6 +2353,25 @@ pub mod routerdesc {
             Ok(Self(obj))
         }
     }
+
+    /// Estimated bandwidth for a router.
+    ///
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:bandwidth>
+    // Does not derive Ord because it only makes sense to order on a single
+    // field but not all.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deftly)]
+    #[derive_deftly(ItemValueParseable, ItemValueEncodable)]
+    #[non_exhaustive]
+    pub struct Bandwidth {
+        /// The volume that the relay is willing to sustain over long periods.
+        pub average: u64,
+
+        /// The volume that the relay is willing to sustain in very short intervals.
+        pub burst: u64,
+
+        /// The estimate of the capacity this relay can handle.
+        pub observed: u64,
+    }
 }
 
 #[cfg(test)]
