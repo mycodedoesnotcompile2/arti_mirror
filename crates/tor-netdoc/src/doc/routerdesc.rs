@@ -266,7 +266,9 @@ impl std::str::FromStr for RelayPlatform {
         if args.starts_with("Tor ") {
             let v: Vec<_> = args.splitn(4, ' ').collect();
             match &v[..] {
-                ["Tor", ver, "on", p] => Ok(RelayPlatform::Tor(ver.parse()?, Some((*p).to_string()))),
+                ["Tor", ver, "on", p] => {
+                    Ok(RelayPlatform::Tor(ver.parse()?, Some((*p).to_string())))
+                }
                 ["Tor", ver, ..] => Ok(RelayPlatform::Tor(ver.parse()?, None)),
                 _ => unreachable!(),
             }
