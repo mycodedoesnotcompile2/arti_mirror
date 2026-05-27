@@ -47,6 +47,7 @@ use crate::{AllowAnnotations, Error, KeywordEncodable, NetdocErrorKind as EK, Re
 use derive_deftly::Deftly;
 use ll::pk::ed25519::Ed25519Identity;
 use saturating_time::SaturatingTime;
+use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::{iter, net, time};
@@ -274,6 +275,16 @@ impl std::str::FromStr for RelayPlatform {
             }
         } else {
             Ok(RelayPlatform::Other(args.to_string()))
+        }
+    }
+}
+
+impl Display for RelayPlatform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            Self::Tor(v, Some(p)) => write!(f, "Tor {v} on {p}"),
+            Self::Tor(v, None) => write!(f, "Tor {v}"),
+            Self::Other(s) => write!(f, "{s}"),
         }
     }
 }
