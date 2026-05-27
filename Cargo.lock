@@ -1000,6 +1000,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "022dfe9eb35f19ebbcb51e0b40a5ab759f46ad60cadf7297e0bd085afb50e076"
 
 [[package]]
+name = "base32ct"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e27957ac55e90ce032f6736755cd74cea202e97e19f22e8ba2d0bc0413f99ec9"
+
+[[package]]
 name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7505,9 +7511,9 @@ name = "tor-hscrypto"
 version = "0.43.0"
 dependencies = [
  "arrayvec",
+ "base32ct",
  "blake2",
  "cipher",
- "data-encoding",
  "derive-deftly",
  "derive_more",
  "digest 0.10.7",
