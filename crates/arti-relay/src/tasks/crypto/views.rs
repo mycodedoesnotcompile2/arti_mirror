@@ -73,11 +73,15 @@ pub(super) struct FullKeyView {
 
 impl FullKeyView {
     /// Constructor.
-    pub(super) fn new(keymgr: Arc<KeyMgr>) -> Self {
-        Self {
+    pub(super) fn new(keymgr: Arc<KeyMgr>) -> anyhow::Result<Self> {
+        let mut view = Self {
             keymgr,
             keys_valid_until: ValidUntilKeys::default(),
-        }
+        };
+        // Recompute now so we get a coherent cache from what exists in the KeyMgr.
+        view.recompute_valid_until()?;
+
+        Ok(view)
     }
 
     /// Return a reference to the key manager.
@@ -278,7 +282,7 @@ mod test {
     #[test]
     fn reconcile_new_keys() {
         let keymgr = new_keymgr();
-        let mut view = FullKeyView::new(keymgr.clone());
+        let mut view = FullKeyView::new(keymgr.clone()).unwrap();
 
         insert_link_key(&keymgr, ts(1000));
         insert_signing_key(&keymgr, ts(2000));
@@ -296,7 +300,7 @@ mod test {
     #[test]
     fn reconcile_no_change() {
         let keymgr = new_keymgr();
-        let mut view = FullKeyView::new(keymgr.clone());
+        let mut view = FullKeyView::new(keymgr.clone()).unwrap();
 
         insert_link_key(&keymgr, ts(1000));
         insert_signing_key(&keymgr, ts(2000));
@@ -318,7 +322,7 @@ mod test {
     #[test]
     fn reconcile_ntor_keys() {
         let keymgr = new_keymgr();
-        let mut view = FullKeyView::new(keymgr.clone());
+        let mut view = FullKeyView::new(keymgr.clone()).unwrap();
 
         let older_ts = ts(1000);
         let newer_ts = ts(2000);
@@ -338,7 +342,7 @@ mod test {
     #[test]
     fn reconcile_rotated_key() {
         let keymgr = new_keymgr();
-        let mut view = FullKeyView::new(keymgr.clone());
+        let mut view = FullKeyView::new(keymgr.clone()).unwrap();
 
         insert_link_key(&keymgr, ts(1000));
 

@@ -100,9 +100,7 @@ pub(crate) fn init_keys<R: Runtime>(
     )?;
 
     // Throwaway full key view only for this purpose.
-    let mut key_view = FullKeyView::new(keymgr);
-    // Rebuild the valid_until cache so it is fully seeded before we access it.
-    let _ = key_view.recompute_valid_until();
+    let key_view = FullKeyView::new(keymgr)?;
 
     Ok(InitKeyMaterial {
         chan_auth_keys: keys::build_proto_relay_auth_material(now, &key_view)?,
@@ -132,14 +130,14 @@ impl<R: Runtime> Reactor<R> {
         create_request_handler: Arc<CreateRequestHandler>,
         keymgr: Arc<KeyMgr>,
         netdir: Arc<dyn NetDirProvider>,
-    ) -> Self {
-        Self {
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
             runtime,
             chanmgr,
             create_request_handler,
-            view: FullKeyView::new(keymgr),
+            view: FullKeyView::new(keymgr)?,
             netdir,
-        }
+        })
     }
 
     /// Log the relay's identities and public ntor key.

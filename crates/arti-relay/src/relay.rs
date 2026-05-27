@@ -370,7 +370,7 @@ impl<R: Runtime> TorRelay<R> {
                 self.create_request_handler.clone(),
                 self.keymgr,
                 self.client.dirmgr().clone(),
-            );
+            )?;
             async {
                 reactor
                     .run()
