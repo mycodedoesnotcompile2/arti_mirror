@@ -102,7 +102,7 @@ impl LockFileGuard {
         let path = path.as_ref();
         loop {
             let file = Self::open(path)?;
-            file.lock()?;
+            do_lock(&file)?;
 
             if os::lockfile_has_path(&file, path)? {
                 return Ok(Self { locked_file: file });
@@ -120,7 +120,7 @@ impl LockFileGuard {
     {
         let path = path.as_ref();
         let file = Self::open(path)?;
-        match file.try_lock() {
+        match do_try_lock(&file) {
             Ok(()) => {
                 if os::lockfile_has_path(&file, path)? {
                     Ok(Some(Self { locked_file: file }))
@@ -147,6 +147,22 @@ impl LockFileGuard {
             Err(std::io::Error::other(MismatchedPathError {}))
         }
     }
+}
+
+/// Try to lock `f`, blocking if need be.
+///
+/// On non-android, this just calls [`fs::File::lock`].
+#[cfg(not(target_os = "android"))]
+fn do_lock(f: &fs::File) -> std::io::Result<()> {
+    f.lock()
+}
+
+/// Try to lock `f`, without blocking.
+///
+/// On non-android, this just calls [`fs::File::try_lock`].
+#[cfg(not(target_os = "android"))]
+fn do_try_lock(f: &fs::File) -> Result<(), std::fs::TryLockError> {
+    f.try_lock()
 }
 
 /// An error that we return when the path given to `delete_lock_file` does not
