@@ -538,29 +538,25 @@ pub(crate) fn init_keys<R: Runtime>(
     keymgr: Arc<KeyMgr>,
 ) -> anyhow::Result<InitKeyMaterial> {
     let now = runtime.wallclock();
-    let key_view = FullKeyView::new(keymgr);
-    // Lock the view, we are about to attempt to fill it.
-    let mut guard = key_view.lock();
-    let keymgr = guard.keymgr();
 
     // Attempt to generate our identity keys (ed and RSA). Those keys DO NOT rotate. It won't be
     // replaced if they already exists.
-    generate_key::<RelayIdentityKeypair>(keymgr, &RelayIdentityKeypairSpecifier::new())?;
-    generate_key::<RelayIdentityRsaKeypair>(keymgr, &RelayIdentityRsaKeypairSpecifier::new())?;
+    generate_key::<RelayIdentityKeypair>(&keymgr, &RelayIdentityKeypairSpecifier::new())?;
+    generate_key::<RelayIdentityRsaKeypair>(&keymgr, &RelayIdentityRsaKeypairSpecifier::new())?;
 
     // Attempt to rotate the keys. Any missing keys (and cert) will be generated. At bootstrap
     // there is no consensus yet, so we have to use the default parameters.
     let _ = try_rotate_keys_no_lock(
         now,
-        keymgr,
+        &keymgr,
         KeyRotationParams::from(&tor_netdir::params::NetParameters::default()),
     )?;
-    // Reconcile caches essentially writing a new one.
-    guard.recompute_valid_until()?;
-    // We are done with writing.
-    drop(guard);
 
-    // Now that we have our up-to-date keys, build the relay channel auth material object.
+    // Throwaway full key view only for this purpose.
+    let mut key_view = FullKeyView::new(keymgr);
+    // Rebuild the valid_until cache so it is fully seeded before we access it.
+    let _ = key_view.recompute_valid_until();
+
     Ok(InitKeyMaterial {
         chan_auth_keys: build_proto_relay_auth_material(now, &key_view)?,
         ntor_keys: key_view.ks_ntor_keys()?,
@@ -682,22 +678,12 @@ impl<R: Runtime> Reactor<R> {
     ///
     /// Returns which key types changed and the earliest expiry time across all keys.
     fn try_rotate_keys(
-        &self,
+        &mut self,
         now: SystemTime,
     ) -> anyhow::Result<(views::ValidUntilChanged, SystemTime)> {
-        // As we are about to maybe expire and rotate keys, we need to hold the key view lock. to
-        // avoid the race where another task reads a key between the keymgr update and the
-        // valid_until cache update.
-        //
-        // This doesn't happen often, once every N-so hours and thus the cost in performance is
-        // very small. Furthermore, the chance of hitting this race is very tiny and thus no
-        // contention for the majority of the time.
-        let mut view_guard = self.view.lock();
-        let keymgr = view_guard.keymgr();
-
         let rotation_params = KeyRotationParams::from(self.netdir.params().as_ref().as_ref());
-        let next_expiry = try_rotate_keys_no_lock(now, keymgr, rotation_params)?;
-        let changed = view_guard.recompute_valid_until()?;
+        let next_expiry = try_rotate_keys_no_lock(now, self.view.keymgr(), rotation_params)?;
+        let changed = self.view.recompute_valid_until()?;
         Ok((changed, next_expiry))
     }
 }

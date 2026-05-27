@@ -2,7 +2,7 @@
 //! The domain specific views use the generic view helper which wraps the [`KeyMgr`].
 
 use anyhow::{Context, Result};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use tor_keymgr::{KeyMgr, KeySpecifierPattern};
 use tor_relay_crypto::{
@@ -52,20 +52,37 @@ pub(super) struct ValidUntilChanged {
     pub(super) ntor_previous: bool,
 }
 
-/// Write guard on the [`FullKeyView`] protecting the valid_until cache.
+/// A full view of all relay keys within the [`KeyMgr`] it holds.
 ///
-/// This is only visible to the crypto task as only that task can change the cache.
-pub(super) struct KeyViewWriteGuard<'a> {
-    /// Write lock guard on the valid_until cache.
-    guard: std::sync::RwLockWriteGuard<'a, ValidUntilKeys>,
-    /// The key manager which should only be accessed by holding this guard.
-    keymgr: &'a KeyMgr,
+/// This keeps the key view that are used accross tasks coherent that is it keeps a cache of
+/// valid_until value for expirable keys. Only keys of that valid_until are looked for which makes
+/// that each task will always see the same key when doing a lookup.
+///
+/// That valid_until cache is updated by the crypto task when keys are generated/rotated.
+///
+/// Domain specific view wrap this view in order to restrict key access.
+pub(crate) struct FullKeyView {
+    /// The relay key manager.
+    keymgr: Arc<KeyMgr>,
+    /// The keys' valid_until cache.
+    ///
+    /// This is so we can lookup directly any live key without walking all existing keys and find
+    /// the earliest valid_until.
+    keys_valid_until: ValidUntilKeys,
 }
 
-impl KeyViewWriteGuard<'_> {
-    /// Reference to the key manager.
+impl FullKeyView {
+    /// Constructor.
+    pub(crate) fn new(keymgr: Arc<KeyMgr>) -> Self {
+        Self {
+            keymgr,
+            keys_valid_until: ValidUntilKeys::default(),
+        }
+    }
+
+    /// Return a reference to the key manager.
     pub(super) fn keymgr(&self) -> &KeyMgr {
-        self.keymgr
+        &self.keymgr
     }
 
     /// Rebuild the valid_until cache from the current keystore state.
@@ -115,55 +132,14 @@ impl KeyViewWriteGuard<'_> {
         }
 
         let changed = ValidUntilChanged {
-            link_ed: self.guard.link_ed != cache.link_ed,
-            relaysign_ed: self.guard.relaysign_ed != cache.relaysign_ed,
-            ntor_latest: self.guard.ntor_latest != cache.ntor_latest,
-            ntor_previous: self.guard.ntor_previous != cache.ntor_previous,
+            link_ed: self.keys_valid_until.link_ed != cache.link_ed,
+            relaysign_ed: self.keys_valid_until.relaysign_ed != cache.relaysign_ed,
+            ntor_latest: self.keys_valid_until.ntor_latest != cache.ntor_latest,
+            ntor_previous: self.keys_valid_until.ntor_previous != cache.ntor_previous,
         };
 
-        *self.guard = cache;
+        self.keys_valid_until = cache;
         Ok(changed)
-    }
-}
-
-/// A full view of all relay keys within the [`KeyMgr`] it holds.
-///
-/// This keeps the key view that are used accross tasks coherent that is it keeps a cache of
-/// valid_until value for expirable keys. Only keys of that valid_until are looked for which makes
-/// that each task will always see the same key when doing a lookup.
-///
-/// That valid_until cache is updated by the crypto task when keys are generated/rotated.
-///
-/// Domain specific view wrap this view in order to restrict key access.
-pub(crate) struct FullKeyView {
-    /// The relay key manager.
-    keymgr: Arc<KeyMgr>,
-    /// The keys' valid_until cache.
-    ///
-    /// This is used to keep coherence between tasks. All view get to see the same key. This is set
-    /// when keys get generated/rotated.
-    keys_valid_until: RwLock<ValidUntilKeys>,
-}
-
-impl FullKeyView {
-    /// Constructor.
-    pub(crate) fn new(keymgr: Arc<KeyMgr>) -> Self {
-        Self {
-            keymgr,
-            keys_valid_until: RwLock::new(ValidUntilKeys::default()),
-        }
-    }
-
-    /// Lock the view for write access.
-    ///
-    /// This is only visible to the crypto task so it can update all valid_until and rotate keys at
-    /// once in order to keep the cache coherent with the [`KeyMgr`].
-    pub(super) fn lock(&self) -> KeyViewWriteGuard<'_> {
-        let guard = self.keys_valid_until.write().expect("poisoned lock");
-        KeyViewWriteGuard {
-            guard,
-            keymgr: &self.keymgr,
-        }
     }
 
     /// Return the relay ed25519 identity keypair (KS_relayid_ed).
@@ -184,8 +160,6 @@ impl FullKeyView {
     pub(crate) fn ks_link_ed(&self) -> Result<RelayLinkSigningKeypair> {
         let valid_until = self
             .keys_valid_until
-            .read()
-            .expect("poisoned lock")
             .link_ed
             .ok_or(anyhow::anyhow!("No link authentication key"))?;
         self.keymgr
@@ -195,8 +169,8 @@ impl FullKeyView {
 
     /// Return the latest and previous ntor keypairs from the keystore (KS_ntor).
     pub(crate) fn ks_ntor_keys(&self) -> anyhow::Result<RelayNtorKeys> {
-        let cache = self.keys_valid_until.read().expect("poisoned lock").clone();
-        let valid_until = cache
+        let valid_until = self
+            .keys_valid_until
             .ntor_latest
             .ok_or(anyhow::anyhow!("No latest ntor key"))?;
         let latest = self
@@ -206,7 +180,7 @@ impl FullKeyView {
         let mut keys = RelayNtorKeys::new(latest);
 
         // Might not have a previous all the time.
-        if let Some(valid_until) = cache.ntor_previous {
+        if let Some(valid_until) = self.keys_valid_until.ntor_previous {
             let previous = self
                 .keymgr
                 .get(&RelayNtorKeypairSpecifier::new(valid_until))?
@@ -220,8 +194,6 @@ impl FullKeyView {
     pub(crate) fn ks_relaysign_ed(&self) -> Result<RelaySigningKeypair> {
         let valid_until = self
             .keys_valid_until
-            .read()
-            .expect("poisoned lock")
             .relaysign_ed
             .ok_or(anyhow::anyhow!("No relay signing key"))?;
         self.keymgr
@@ -233,8 +205,6 @@ impl FullKeyView {
     pub(crate) fn cert_relaysign_ed(&self) -> Result<RelaySigningKeyCert> {
         let valid_until = self
             .keys_valid_until
-            .read()
-            .expect("poisoned lock")
             .relaysign_ed
             .ok_or(anyhow::anyhow!("No relay signing key"))?;
         let (_key, cert) = self
@@ -308,14 +278,13 @@ mod test {
     #[test]
     fn reconcile_new_keys() {
         let keymgr = new_keymgr();
-        let view = FullKeyView::new(keymgr.clone());
+        let mut view = FullKeyView::new(keymgr.clone());
 
         insert_link_key(&keymgr, ts(1000));
         insert_signing_key(&keymgr, ts(2000));
         insert_ntor_key(&keymgr, ts(3000));
 
-        let mut guard = view.lock();
-        let changed = guard.recompute_valid_until().unwrap();
+        let changed = view.recompute_valid_until().unwrap();
 
         assert!(changed.link_ed);
         assert!(changed.relaysign_ed);
@@ -327,19 +296,15 @@ mod test {
     #[test]
     fn reconcile_no_change() {
         let keymgr = new_keymgr();
-        let view = FullKeyView::new(keymgr.clone());
+        let mut view = FullKeyView::new(keymgr.clone());
 
         insert_link_key(&keymgr, ts(1000));
         insert_signing_key(&keymgr, ts(2000));
         insert_ntor_key(&keymgr, ts(3000));
 
-        {
-            let mut guard = view.lock();
-            guard.recompute_valid_until().unwrap();
-        }
+        view.recompute_valid_until().unwrap();
 
-        let mut guard = view.lock();
-        let changed = guard.recompute_valid_until().unwrap();
+        let changed = view.recompute_valid_until().unwrap();
         assert!(
             !changed.link_ed
                 && !changed.relaysign_ed
@@ -353,7 +318,7 @@ mod test {
     #[test]
     fn reconcile_ntor_keys() {
         let keymgr = new_keymgr();
-        let view = FullKeyView::new(keymgr.clone());
+        let mut view = FullKeyView::new(keymgr.clone());
 
         let older_ts = ts(1000);
         let newer_ts = ts(2000);
@@ -361,27 +326,23 @@ mod test {
         insert_ntor_key(&keymgr, older_ts);
         insert_ntor_key(&keymgr, newer_ts);
 
-        let mut guard = view.lock();
-        let changed = guard.recompute_valid_until().unwrap();
+        let changed = view.recompute_valid_until().unwrap();
 
         assert!(changed.ntor_latest);
         assert!(changed.ntor_previous);
-        assert_eq!(guard.guard.ntor_latest, Some(newer_ts));
-        assert_eq!(guard.guard.ntor_previous, Some(older_ts));
+        assert_eq!(view.keys_valid_until.ntor_latest, Some(newer_ts));
+        assert_eq!(view.keys_valid_until.ntor_previous, Some(older_ts));
     }
 
     /// After a key rotation the replaced key type appears in the changed set.
     #[test]
     fn reconcile_rotated_key() {
         let keymgr = new_keymgr();
-        let view = FullKeyView::new(keymgr.clone());
+        let mut view = FullKeyView::new(keymgr.clone());
 
         insert_link_key(&keymgr, ts(1000));
 
-        {
-            let mut guard = view.lock();
-            guard.recompute_valid_until().unwrap();
-        }
+        view.recompute_valid_until().unwrap();
 
         // Simulate rotation: old key is removed and a new one is inserted.
         keymgr
@@ -392,10 +353,9 @@ mod test {
             .unwrap();
         insert_link_key(&keymgr, ts(5000));
 
-        let mut guard = view.lock();
-        let changed = guard.recompute_valid_until().unwrap();
+        let changed = view.recompute_valid_until().unwrap();
 
         assert!(changed.link_ed);
-        assert_eq!(guard.guard.link_ed, Some(ts(5000)));
+        assert_eq!(view.keys_valid_until.link_ed, Some(ts(5000)));
     }
 }
