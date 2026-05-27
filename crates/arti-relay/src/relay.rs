@@ -130,9 +130,8 @@ impl InertTorRelay {
     /// Connect the [`InertTorRelay`] to the Tor network.
     pub(crate) async fn init<R: Runtime>(self, runtime: R) -> anyhow::Result<TorRelay<R>> {
         // Attempt to generate any missing keys/cert from the KeyMgr.
-        let init_key_material =
-            crate::tasks::crypto::try_generate_keys(&runtime, Arc::clone(&self.keymgr))
-                .context("Failed to generate keys")?;
+        let init_key_material = crate::tasks::crypto::init_keys(&runtime, Arc::clone(&self.keymgr))
+            .context("Failed to generate keys")?;
 
         TorRelay::init(runtime, self, init_key_material).await
     }

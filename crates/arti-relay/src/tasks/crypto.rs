@@ -520,7 +520,8 @@ fn try_rotate_keys_no_lock(
         .ok_or(internal!("No relay keys after rotation task loop"))?)
 }
 
-/// Attempt to generate all keys. The list of keys is:
+/// Attempt to initialize the key material needed for a relay to function. This function will
+/// generate any missing keys or load them from the given [`KeyMgr`]. The keys are:
 ///
 /// * Identity Ed25519 keypair [`RelayIdentityKeypair`].
 /// * Identity RSA [`RelayIdentityRsaKeypair`].
@@ -528,11 +529,11 @@ fn try_rotate_keys_no_lock(
 /// * Relay link signing keypair [`RelayLinkSigningKeypair`].
 /// * Relay ntor keypair [`RelayNtorKeypair`].
 ///
-/// This function is only called when our relay bootstraps in order to attempt to generate any
+/// This function is only called when our relay initializes in order to attempt to generate any
 /// missing keys or/and rotate expired keys.
 ///
 /// Returned the initialization key material.
-pub(crate) fn try_generate_keys<R: Runtime>(
+pub(crate) fn init_keys<R: Runtime>(
     runtime: &R,
     keymgr: Arc<KeyMgr>,
 ) -> anyhow::Result<InitKeyMaterial> {
@@ -800,7 +801,7 @@ mod test {
     #[test]
     fn test_bootstrap() {
         MockRuntime::test_with_various(|runtime| async move {
-            let _auth_material = match try_generate_keys(&runtime, new_keymgr()) {
+            let _auth_material = match init_keys(&runtime, new_keymgr()) {
                 Ok(a) => a,
                 Err(e) => {
                     panic!("Unable to bootstrap keys and generate RelayChannelAuthMaterial: {e}");
