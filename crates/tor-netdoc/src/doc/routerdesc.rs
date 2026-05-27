@@ -251,6 +251,9 @@ pub struct RouterDescSignatures {
 }
 
 /// Description of the software a relay is running.
+///
+/// `platform` line in a routerstatus.
+/// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:platform>
 // TODO: Move this to types/misc.rs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
