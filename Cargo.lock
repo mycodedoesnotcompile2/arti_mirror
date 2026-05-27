@@ -421,6 +421,7 @@ dependencies = [
  "caret",
  "cfg-if",
  "derive_more",
+ "downcast-rs",
  "educe",
  "fs-mistrust",
  "memchr",

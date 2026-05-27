@@ -22,6 +22,7 @@ use std::os::fd::{AsFd as _, BorrowedFd as BorrowedOsHandle};
 use std::os::windows::io::{AsSocket as _, BorrowedSocket as BorrowedOsHandle};
 
 pub(crate) use blocking::BlockingConnection;
+use downcast_rs::impl_downcast;
 pub(crate) use nonblocking::{NonblockingConnection, PollStatus, WriteHandle};
 
 pub use nonblocking::{EventLoop, SendRequestError};
@@ -41,20 +42,22 @@ where
 }
 
 /// Any type we can use as a target for [`NonblockingConnection`].
-pub(crate) trait Stream: io::Read + io::Write + Send {
-    /// If this Stream object is a [`MioStream`], return it as a `mio::event::Source`.
-    ///
-    /// Otherwise return None.
-    fn as_mio_source(&mut self) -> Option<&mut dyn mio::event::Source>;
-
-    /// Discard any mio-specific wrappers on this stream.
-    fn remove_mio(self: Box<Self>) -> Box<dyn Stream>;
-
+///
+/// WARNING: Do not make this trait public
+/// without first removing the implementation for `std::io::Empty`.
+///
+/// The only reason that this trait is implemented on `Empty`
+/// is so that we can use Empty as a placeholder to work around lifetime issues in
+/// [`nonblocking::NonblockingConnection::map_stream`].
+/// (And the only reason we used `Empty` instead of some other type
+/// is that we did not want to write all the boilerplate to implement Read and Write.)
+pub(crate) trait Stream: io::Read + io::Write + downcast_rs::Downcast + Send {
     /// Return an os-specific handle for using this stream type within a nonblocking event loop.
     ///
     /// (This will be an fd on unix and a SOCKET on windows.)
     fn try_as_handle(&self) -> io::Result<BorrowedOsHandle<'_>>;
 }
+impl_downcast! {Stream}
 
 /// A [`Stream`] that we can use inside a [`BlockingConnection`].
 pub(crate) trait MioStream: Stream + mio::event::Source {}
@@ -63,12 +66,6 @@ pub(crate) trait MioStream: Stream + mio::event::Source {}
 macro_rules! impl_traits {
     { $stream:ty => $mio_stream:ty } => {
         impl Stream for $stream {
-            fn as_mio_source(&mut self) -> Option<&mut dyn mio::event::Source> {
-                None
-            }
-            fn remove_mio(self: Box<Self>) -> Box<dyn Stream> {
-                self
-            }
             fn try_as_handle(&self) -> io::Result<BorrowedOsHandle<'_>> {
                 cfg_if::cfg_if!{
                     if #[cfg(unix)] {
@@ -80,12 +77,6 @@ macro_rules! impl_traits {
             }
         }
         impl Stream for $mio_stream {
-            fn as_mio_source(&mut self) -> Option<&mut dyn mio::event::Source> {
-                Some(self as _)
-            }
-            fn remove_mio(self: Box<Self>) -> Box<dyn Stream> {
-                Box::new(<$stream>::from(*self))
-            }
             fn try_as_handle(&self) -> io::Result<BorrowedOsHandle<'_>> {
                 cfg_if::cfg_if!{
                     if #[cfg(unix)] {
@@ -108,14 +99,6 @@ impl_traits! { std::os::unix::net::UnixStream => mio::net::UnixStream }
 // We implement "Stream" for Empty so that we can use it to temporarily swap it in
 // as a placeholder for a Box<dyn Stream>.
 impl Stream for std::io::Empty {
-    fn as_mio_source(&mut self) -> Option<&mut dyn mio::event::Source> {
-        None
-    }
-
-    fn remove_mio(self: Box<Self>) -> Box<dyn Stream> {
-        self
-    }
-
     fn try_as_handle(&self) -> io::Result<BorrowedOsHandle<'_>> {
         Err(io::ErrorKind::Unsupported.into())
     }
