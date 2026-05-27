@@ -87,10 +87,12 @@ pub(crate) mod net {
             addr: &SocketAddr,
             options: &Self::ConnectOptions,
         ) -> IoResult<Self::Stream> {
-            // XXXX use the options
-            let _ = options;
+            // The smol runtime uses async-io internally.
+            let stream = impls::tcp_async_io_connect(addr, options).await?;
 
-            TcpStream::connect(addr).await
+            // The socket is already non-blocking,
+            // so `Async` doesn't need to set as non-blocking again.
+            Ok(Async::new_nonblocking(stream)?.into())
         }
 
         async fn listen(

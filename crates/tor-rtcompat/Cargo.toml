@@ -116,7 +116,7 @@ zeroize = "1"
 [target.'cfg(not(all(target_arch="wasm32", target_os="unknown")))'.dependencies]
 socket2 = "0.6.1"
 
-[target.'cfg(target_os = "linux")'.dependencies]
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [dev-dependencies]

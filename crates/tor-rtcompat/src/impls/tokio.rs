@@ -231,11 +231,27 @@ impl crate::traits::NetStreamProvider for TokioRuntimeHandle {
         addr: &std::net::SocketAddr,
         options: &Self::ConnectOptions,
     ) -> IoResult<Self::Stream> {
-        // XXXX use the options
-        let _ = options;
+        // The socket before connect() has been called.
+        let socket = super::tcp_pre_connect(addr, options)?;
 
-        let s = net::TokioTcpStream::connect(addr).await?;
-        Ok(s.into())
+        // It might seem a little weird to convert the `socket2::Socket` to a std `TcpStream` before
+        // it's connected, but this is the approach recommended by tokio.
+        //
+        // https://docs.rs/tokio/latest/tokio/net/struct.TcpSocket.html#method.from_std_stream
+        //
+        // > Converts a `std::net::TcpStream` into a `TcpSocket`. The provided socket must not have
+        // > been connected prior to calling this function. This function is typically used together
+        // > with crates such as socket2 to configure socket options that are not available on
+        // > `TcpSocket`.
+        //
+        // The socket will already be non-blocking.
+        let socket = std::net::TcpStream::from(socket);
+        let socket = tokio_crate::net::TcpSocket::from_std_stream(socket);
+
+        // Let tokio handle the connection.
+        let socket = socket.connect(*addr).await?;
+
+        Ok(socket.into())
     }
     async fn listen(
         &self,

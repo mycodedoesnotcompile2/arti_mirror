@@ -86,10 +86,9 @@ mod net {
             addr: &SocketAddr,
             options: &Self::ConnectOptions,
         ) -> IoResult<Self::Stream> {
-            // XXXX use the options
-            let _ = options;
-
-            TcpStream::connect(addr).await
+            // The async-std runtime uses async-io internally.
+            let stream = impls::tcp_async_io_connect(addr, options).await?;
+            Ok(stream.into())
         }
         async fn listen(
             &self,
