@@ -246,7 +246,7 @@ mod test {
             RelayLinkSigningKeypairSpecifier, RelayNtorKeypairSpecifier,
             RelaySigningKeypairSpecifier, Timestamp,
         },
-        tasks::crypto::{generate_key, test::new_keymgr},
+        tasks::crypto::{keys::generate_key, test::new_keymgr},
     };
 
     fn ts(offset: u64) -> Timestamp {
