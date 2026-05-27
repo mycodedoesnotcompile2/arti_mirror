@@ -456,7 +456,7 @@ impl RouterDesc {
         &self
             .identity_ed25519
             .get()
-            .expect("No ed25519 identity key on identity cert")
+            .expect("ed25519 identity cert should be verified")
             .id_ed25519
     }
 
