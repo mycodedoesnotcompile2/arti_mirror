@@ -245,11 +245,11 @@ impl<R: Runtime> TorClientBuilder<R> {
             dirmgr_extensions.filter.clone_from(&self.dirfilter);
         }
 
-        let result: Result<Arc<TorClient<R>>> = TorClient::create_inner(
+        let result: Result<Arc<TorClient<R>>> = TorClient::create_impl(
             self.runtime.clone(),
             &self.config,
             self.bootstrap_behavior,
-            self.dirmgr_builder.as_ref(),
+            Arc::clone(&self.dirmgr_builder),
             dirmgr_extensions,
         )
         .map_err(ErrorDetail::into);

@@ -11,6 +11,7 @@ use {derive_deftly::Deftly, tor_rpcbase::templates::*};
 use crate::address::{IntoTorAddr, ResolveInstructions, StreamInstructions};
 
 use crate::config::{ClientAddrConfig, StreamTimeoutConfig, TorClientConfig};
+use crate::status::BootstrapStatus;
 use safelog::{Sensitive, sensitive};
 use tor_async_utils::{DropNotifyWatchSender, PostageWatchSenderExt};
 use tor_chanmgr::ChanMgrConfig;
@@ -114,59 +115,28 @@ pub struct TorClient<R: Runtime> {
 
     /// Inner structure respresenting all components shared across different
     /// TorClients.
-    client: Arc<ClientInner<R>>,
+    client: Arc<ClientShared<R>>,
 }
 
-/// Inner, shared pieces of a `TorClient`, used to implement client functionality.
+/// Shared pieces of a `TorClient`, used to implement client functionality.
 ///
 /// In the future, we might choose to expose this along with APIs.
-struct ClientInner<R: Runtime> {
+struct ClientShared<R: Runtime> {
     /// Asynchronous runtime object.
     runtime: R,
 
+    /// Inner typestate object to represent the parts of the ClientShared that may be absent
+    /// depending on whether we are running.
+    inner: Mutex<Inner<R>>,
+
     /// Memory quota tracker
     memquota: Arc<MemoryQuotaTracker>,
-    /// Channel manager, used by circuits etc.,
-    ///
-    /// Used directly by client only for reconfiguration.
-    chanmgr: Arc<tor_chanmgr::ChanMgr<R>>,
-    /// Circuit manager for keeping our circuits up to date and building
-    /// them on-demand.
-    circmgr: Arc<tor_circmgr::CircMgr<R>>,
-    /// Directory manager persistent storage.
-    #[cfg_attr(not(feature = "bridge-client"), allow(dead_code))]
-    dirmgr_store: DirMgrStore<R>,
-    /// Directory manager for keeping our directory material up to date.
-    dirmgr: Arc<dyn tor_dirmgr::DirProvider>,
-    /// Bridge descriptor manager
-    ///
-    /// None until we have bootstrapped.
-    ///
-    /// Lock hierarchy: don't acquire this before dormant
-    //
-    // TODO: after or as part of https://gitlab.torproject.org/tpo/core/arti/-/issues/634
-    // this can be   bridge_desc_mgr: BridgeDescMgr<R>>
-    // since BridgeDescMgr is Clone and all its methods take `&self` (it has a lock inside)
-    // Or maybe BridgeDescMgr should not be Clone, since we want to make Weaks of it,
-    // which we can't do when the Arc is inside.
-    #[cfg(feature = "bridge-client")]
-    bridge_desc_mgr: Arc<Mutex<Option<Arc<BridgeDescMgr<R>>>>>,
-    /// Pluggable transport manager.
-    #[cfg(feature = "pt-client")]
-    pt_mgr: Arc<tor_ptmgr::PtMgr<R>>,
-    /// HS client connector
-    #[cfg(feature = "onion-service-client")]
-    hsclient: HsClientConnector<R>,
-    /// Circuit pool for providing onion services with circuits.
-    #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
-    hs_circ_pool: Arc<tor_circmgr::hspool::HsCircPool<R>>,
+
     /// A handle to this client's [`InertTorClient`].
     ///
     /// Used for accessing the key manager and other persistent state.
     inert_client: InertTorClient,
-    /// Guard manager
-    #[cfg_attr(not(feature = "bridge-client"), allow(dead_code))]
-    guardmgr: GuardMgr<R>,
+
     /// Location on disk where we store persistent data containing both location and Mistrust information.
     ///
     ///
@@ -177,6 +147,10 @@ struct ClientInner<R: Runtime> {
     state_directory: StateDirectory,
     /// Location on disk where we store persistent data (cooked state manager).
     statemgr: UsingStateMgr,
+
+    /// Directory manager persistent storage.
+    dirmgr_store: DirMgrStore<R>,
+
     /// Client address configuration
     addrcfg: MutCfg<ClientAddrConfig>,
     /// Client DNS configuration
@@ -213,6 +187,90 @@ struct ClientInner<R: Runtime> {
     /// path expansions. If we added our own variables, it would introduce an inconsistency where
     /// paths expanded by the `TorClientConfig` would expand differently than when expanded by us.
     path_resolver: Arc<tor_config_path::CfgPathResolver>,
+}
+
+/// A typestate object holding the parts of the client state that we may or may not have
+/// depending on whether we are running.
+enum Inner<R: Runtime> {
+    /// The client is not constructed.
+    ///
+    /// In this state, the client won't try to connect to the network.
+    NotConstructed(Box<NotConstructedInner<R>>),
+
+    /// The client is either bootstrapped or trying to bootstrap.
+    Running(Arc<RunningInner<R>>),
+
+    /// The client has failed in a non-recoverable way.
+    Poisoned(Box<ErrorDetail>),
+}
+
+/// Information stored by a never-bootstrapped [`TorClient`],
+/// used to eventually construct a [`RunningInner`] and bootstrap.
+struct NotConstructedInner<R: Runtime> {
+    /// The client's configuration.
+    config: TorClientConfig,
+
+    /// A receiver to give to various tasks that want to monitor our dormant status.
+    dormant_recv: postage::watch::Receiver<Option<DormantMode>>,
+
+    /// A sender used to produce updates about our bootstrapping status.
+    ///
+    /// NOTE: The fact that this type is not Clone is the only reason
+    /// that [`RunningInner::new`] needs to take NotConstructedInner by value.
+    /// With some redesign we could simplify this, and do away with [`Inner::Poisoned`].
+    status_sender: postage::watch::Sender<BootstrapStatus>,
+
+    /// A (possibly user-provided) builder used to construct our NetDirProvider.
+    dirmgr_builder: Arc<dyn crate::builder::DirProviderBuilder<R>>,
+
+    /// A (possibly user-provided) set of in-process extensions for our NetDirProvider.
+    dirmgr_extensions: tor_dirmgr::config::DirMgrExtensions,
+}
+
+/// Data structures for a "running" client.
+///
+/// A running client is one that is either bootstrapped, or potentially trying to bootstrap.
+///
+/// All structures that potentially interact with the network belong here.
+///
+/// We defer the creation of this structure and its members until bootstrap time,
+/// to make sure that before we are bootstrapping, nothing will try to connect to the network
+/// or launch expensive background tasks.
+struct RunningInner<R: Runtime> {
+    /// Channel manager, used by circuits etc.,
+    ///
+    /// Used directly by client only for reconfiguration.
+    chanmgr: Arc<tor_chanmgr::ChanMgr<R>>,
+    /// Circuit manager for keeping our circuits up to date and building
+    /// them on-demand.
+    circmgr: Arc<tor_circmgr::CircMgr<R>>,
+    /// Directory manager for keeping our directory material up to date.
+    dirmgr: Arc<dyn tor_dirmgr::DirProvider>,
+    /// Bridge descriptor manager
+    ///
+    /// None until we have bootstrapped.
+    ///
+    /// Lock hierarchy: don't acquire this before dormant
+    //
+    // TODO: after or as part of https://gitlab.torproject.org/tpo/core/arti/-/issues/634
+    // this can be   bridge_desc_mgr: BridgeDescMgr<R>>
+    // since BridgeDescMgr is Clone and all its methods take `&self` (it has a lock inside)
+    // Or maybe BridgeDescMgr should not be Clone, since we want to make Weaks of it,
+    // which we can't do when the Arc is inside.
+    #[cfg(feature = "bridge-client")]
+    bridge_desc_mgr: Arc<Mutex<Option<Arc<BridgeDescMgr<R>>>>>,
+    /// Pluggable transport manager.
+    #[cfg(feature = "pt-client")]
+    pt_mgr: Arc<tor_ptmgr::PtMgr<R>>,
+    /// HS client connector
+    #[cfg(feature = "onion-service-client")]
+    hsclient: HsClientConnector<R>,
+    /// Circuit pool for providing onion services with circuits.
+    #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
+    hs_circ_pool: Arc<tor_circmgr::hspool::HsCircPool<R>>,
+    /// Guard manager
+    #[cfg_attr(not(feature = "bridge-client"), allow(dead_code))]
+    guardmgr: GuardMgr<R>,
 }
 
 /// A Tor client that is not runnable.
@@ -871,11 +929,11 @@ impl<R: Runtime> TorClient<R> {
     /// Implementation of `create_unbootstrapped`, split out in order to avoid manually specifying
     /// double error conversions.
     #[instrument(skip_all, level = "trace")]
-    pub(crate) fn create_inner(
+    pub(crate) fn create_impl(
         runtime: R,
         config: &TorClientConfig,
         autobootstrap: BootstrapBehavior,
-        dirmgr_builder: &dyn crate::builder::DirProviderBuilder<R>,
+        dirmgr_builder: Arc<dyn crate::builder::DirProviderBuilder<R>>,
         dirmgr_extensions: tor_dirmgr::config::DirMgrExtensions,
     ) -> StdResult<Arc<Self>, ErrorDetail> {
         if crate::util::running_as_setuid() {
@@ -895,11 +953,6 @@ impl<R: Runtime> TorClient<R> {
             StateDirectory::new(&state_dir, mistrust).map_err(ErrorDetail::StateAccess)?;
 
         let dormant = DormantMode::Normal;
-        let dir_cfg = {
-            let mut c: tor_dirmgr::DirMgrConfig = config.dir_mgr_config()?;
-            c.extensions = dirmgr_extensions;
-            c
-        };
 
         let statemgr = Self::statemgr_from_config(config)?;
 
@@ -914,171 +967,33 @@ impl<R: Runtime> TorClient<R> {
         let status_receiver = status::BootstrapEvents {
             inner: status_receiver,
         };
-        let chanmgr = Arc::new(
-            tor_chanmgr::ChanMgr::new(
-                runtime.clone(),
-                ChanMgrConfig::new(config.channel.clone()),
-                dormant.into(),
-                &NetParameters::from_map(&config.override_net_params),
-                memquota.clone(),
-            )
-            .map_err(ErrorDetail::ChanMgrSetup)?,
-        );
-        let guardmgr = tor_guardmgr::GuardMgr::new(runtime.clone(), statemgr.clone(), config)
-            .map_err(ErrorDetail::GuardMgrSetup)?;
-
-        #[cfg(feature = "pt-client")]
-        let pt_mgr = {
-            let pt_state_dir = state_dir.as_path().join("pt_state");
-            config.storage.permissions().make_directory(&pt_state_dir)?;
-
-            let mgr = Arc::new(tor_ptmgr::PtMgr::new(
-                config.bridges.transports.clone(),
-                pt_state_dir,
-                Arc::clone(&path_resolver),
-                config.channel.outbound_proxy().cloned(),
-                runtime.clone(),
-            )?);
-
-            chanmgr.set_pt_mgr(mgr.clone());
-
-            mgr
-        };
-
-        let circmgr = Arc::new(
-            tor_circmgr::CircMgr::new(
-                config,
-                statemgr.clone(),
-                &runtime,
-                Arc::clone(&chanmgr),
-                &guardmgr,
-            )
-            .map_err(ErrorDetail::CircMgrSetup)?,
-        );
-
         let timeout_cfg = config.stream_timeouts.clone();
-
-        let dirmgr_store =
-            DirMgrStore::new(&dir_cfg, runtime.clone(), false).map_err(ErrorDetail::DirMgrSetup)?;
-        let dirmgr = dirmgr_builder
-            .build(
-                runtime.clone(),
-                dirmgr_store.clone(),
-                Arc::clone(&circmgr),
-                dir_cfg,
-            )
-            .map_err(crate::Error::into_detail)?;
-
-        let rtclone = runtime.clone();
-        #[allow(clippy::print_stderr)]
-        crate::protostatus::enforce_protocol_recommendations(
-            &runtime,
-            Arc::clone(&dirmgr),
-            crate::software_release_date(),
-            crate::supported_protocols(),
-            // TODO #1932: It would be nice to have a cleaner shutdown mechanism here,
-            // but that will take some work.
-            |fatal| async move {
-                use tor_error::ErrorReport as _;
-                // We already logged this error, but let's tell stderr too.
-                eprintln!(
-                    "Shutting down because of unsupported software version.\nError was:\n{}",
-                    fatal.report(),
-                );
-                if let Some(hint) = crate::err::Error::from(fatal).hint() {
-                    eprintln!("{}", hint);
-                }
-                // Give the tracing module a while to flush everything, since it has no built-in
-                // flush function.
-                rtclone.sleep(std::time::Duration::new(5, 0)).await;
-                std::process::exit(1);
-            },
-        )?;
-
-        let mut periodic_task_handles = circmgr
-            .launch_background_tasks(&runtime, &dirmgr, statemgr.clone())
-            .map_err(ErrorDetail::CircMgrSetup)?;
-        periodic_task_handles.extend(dirmgr.download_task_handle());
-
-        periodic_task_handles.extend(
-            chanmgr
-                .launch_background_tasks(&runtime, dirmgr.clone().upcast_arc())
-                .map_err(ErrorDetail::ChanMgrSetup)?,
-        );
 
         let (dormant_send, dormant_recv) = postage::watch::channel_with(Some(dormant));
         let dormant_send = DropNotifyWatchSender::new(dormant_send);
-        #[cfg(feature = "bridge-client")]
-        let bridge_desc_mgr = Arc::new(Mutex::new(None));
-
-        #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
-        let hs_circ_pool = {
-            let circpool = Arc::new(tor_circmgr::hspool::HsCircPool::new(&circmgr));
-            circpool
-                .launch_background_tasks(&runtime, &dirmgr.clone().upcast_arc())
-                .map_err(ErrorDetail::CircMgrSetup)?;
-            circpool
-        };
-
-        #[cfg(feature = "onion-service-client")]
-        let hsclient = {
-            // Prompt the hs connector to do its data housekeeping when we get a new consensus.
-            // That's a time we're doing a bunch of thinking anyway, and it's not very frequent.
-            let housekeeping = dirmgr.events().filter_map(|event| async move {
-                match event {
-                    DirEvent::NewConsensus => Some(()),
-                    _ => None,
-                }
-            });
-            let housekeeping = Box::pin(housekeeping);
-
-            HsClientConnector::new(runtime.clone(), hs_circ_pool.clone(), config, housekeeping)?
-        };
-
-        runtime
-            .spawn(tasks_monitor_dormant(
-                dormant_recv,
-                dirmgr.clone().upcast_arc(),
-                chanmgr.clone(),
-                #[cfg(feature = "bridge-client")]
-                bridge_desc_mgr.clone(),
-                periodic_task_handles,
-            ))
-            .map_err(|e| ErrorDetail::from_spawn("periodic task dormant monitor", e))?;
-
-        let conn_status = chanmgr.bootstrap_events();
-        let dir_status = dirmgr.bootstrap_events();
-        let skew_status = circmgr.skew_events();
-        runtime
-            .spawn(status::report_status(
-                status_sender,
-                conn_status,
-                dir_status,
-                skew_status,
-            ))
-            .map_err(|e| ErrorDetail::from_spawn("top-level status reporter", e))?;
-
         let client_isolation = IsolationToken::new();
         let inert_client = InertTorClient::new(config)?;
 
-        let client = Arc::new(ClientInner {
+        let dirmgr_store = DirMgrStore::new(&config.dir_mgr_config()?, runtime.clone(), false)
+            .map_err(ErrorDetail::DirMgrSetup)?;
+
+        let inner = Box::new(NotConstructedInner {
+            config: config.clone(),
+            dormant_recv,
+            status_sender,
+            dirmgr_builder,
+            dirmgr_extensions,
+        });
+
+        let inner = Mutex::new(Inner::NotConstructed(inner));
+
+        let client = Arc::new(ClientShared {
             runtime,
+            inner,
             memquota,
-            chanmgr,
-            circmgr,
-            dirmgr_store,
-            dirmgr,
-            #[cfg(feature = "bridge-client")]
-            bridge_desc_mgr,
-            #[cfg(feature = "pt-client")]
-            pt_mgr,
-            #[cfg(feature = "onion-service-client")]
-            hsclient,
-            #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
-            hs_circ_pool,
             inert_client,
-            guardmgr,
             statemgr,
+            dirmgr_store,
             addrcfg: addr_cfg.into(),
             timeoutcfg: timeout_cfg.into(),
             reconfigure_lock: Arc::new(Mutex::new(())),
@@ -1134,6 +1049,263 @@ impl<R: Runtime> TorClient<R> {
             .bootstrap_inner()
             .await
             .map_err(ErrorDetail::into)
+    }
+}
+
+impl<R: Runtime> NotConstructedInner<R> {
+    /// Replace the configuration for this unconstructed client.
+    ///
+    /// Since most of the client's internals are not yet constructed,
+    /// we can still replace nearly all of the items.
+    fn reconfigure(
+        &mut self,
+        new_config: &TorClientConfig,
+        how: tor_config::Reconfigure,
+    ) -> StdResult<(), ErrorDetail> {
+        // We _do_ have to check the cache_dir, since we can't and won't change that
+        // while we're running.
+        // (We already checked the state_dir in ClientShared::reconfigure_inner.)
+        if new_config.storage.cache_dir != self.config.storage.cache_dir {
+            how.cannot_change("storage.cache_dir")?;
+        }
+
+        if how == tor_config::Reconfigure::CheckAllOrNothing {
+            return Ok(());
+        }
+
+        self.config = new_config.clone();
+
+        Ok(())
+    }
+}
+
+impl<R: Runtime> RunningInner<R> {
+    /// Construct a new [`RunningInner`] and launch its associated tasks.
+    fn new(
+        pending: NotConstructedInner<R>,
+        client: &ClientShared<R>,
+    ) -> StdResult<Arc<Self>, ErrorDetail> {
+        let NotConstructedInner {
+            config,
+            dormant_recv,
+            status_sender,
+            dirmgr_builder,
+            dirmgr_extensions,
+        } = pending;
+
+        let runtime = client.runtime.clone();
+        let dormant = dormant_recv
+            .borrow()
+            .expect("Client somehow dropped while creating RunningInner");
+        let memquota = &client.memquota;
+        let statemgr = &client.statemgr;
+        let path_resolver = &client.path_resolver;
+        let (state_dir, _) = config.state_dir()?;
+
+        let chanmgr = Arc::new(
+            tor_chanmgr::ChanMgr::new(
+                runtime.clone(),
+                ChanMgrConfig::new(config.channel.clone()),
+                dormant.into(),
+                &NetParameters::from_map(&config.override_net_params),
+                memquota.clone(),
+            )
+            .map_err(ErrorDetail::ChanMgrSetup)?,
+        );
+        let guardmgr = tor_guardmgr::GuardMgr::new(runtime.clone(), statemgr.clone(), &config)
+            .map_err(ErrorDetail::GuardMgrSetup)?;
+
+        #[cfg(feature = "pt-client")]
+        let pt_mgr = {
+            let pt_state_dir = state_dir.as_path().join("pt_state");
+            config.storage.permissions().make_directory(&pt_state_dir)?;
+
+            let mgr = Arc::new(tor_ptmgr::PtMgr::new(
+                config.bridges.transports.clone(),
+                pt_state_dir,
+                Arc::clone(path_resolver),
+                config.channel.outbound_proxy().cloned(),
+                runtime.clone(),
+            )?);
+
+            chanmgr.set_pt_mgr(mgr.clone());
+
+            mgr
+        };
+
+        let circmgr = Arc::new(
+            tor_circmgr::CircMgr::new(
+                &config,
+                statemgr.clone(),
+                &runtime,
+                Arc::clone(&chanmgr),
+                &guardmgr,
+            )
+            .map_err(ErrorDetail::CircMgrSetup)?,
+        );
+
+        let dir_cfg = {
+            let mut c: tor_dirmgr::DirMgrConfig = config.dir_mgr_config()?;
+            c.extensions = dirmgr_extensions;
+            c
+        };
+        let dirmgr = dirmgr_builder
+            .build(
+                runtime.clone(),
+                client.dirmgr_store.clone(),
+                Arc::clone(&circmgr),
+                dir_cfg,
+            )
+            .map_err(crate::Error::into_detail)?;
+
+        let mut periodic_task_handles = circmgr
+            .launch_background_tasks(&runtime, &dirmgr, statemgr.clone())
+            .map_err(ErrorDetail::CircMgrSetup)?;
+        periodic_task_handles.extend(dirmgr.download_task_handle());
+
+        periodic_task_handles.extend(
+            chanmgr
+                .launch_background_tasks(&runtime, dirmgr.clone().upcast_arc())
+                .map_err(ErrorDetail::ChanMgrSetup)?,
+        );
+
+        #[cfg(feature = "bridge-client")]
+        // TODO: We can just construct this.
+        let bridge_desc_mgr = Arc::new(Mutex::new(None));
+
+        #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
+        let hs_circ_pool = {
+            let circpool = Arc::new(tor_circmgr::hspool::HsCircPool::new(&circmgr));
+            circpool
+                .launch_background_tasks(&runtime, &dirmgr.clone().upcast_arc())
+                .map_err(ErrorDetail::CircMgrSetup)?;
+            circpool
+        };
+
+        #[cfg(feature = "onion-service-client")]
+        let hsclient = {
+            // Prompt the hs connector to do its data housekeeping when we get a new consensus.
+            // That's a time we're doing a bunch of thinking anyway, and it's not very frequent.
+            let housekeeping = dirmgr.events().filter_map(|event| async move {
+                match event {
+                    DirEvent::NewConsensus => Some(()),
+                    _ => None,
+                }
+            });
+            let housekeeping = Box::pin(housekeeping);
+
+            HsClientConnector::new(runtime.clone(), hs_circ_pool.clone(), &config, housekeeping)?
+        };
+        let conn_status = chanmgr.bootstrap_events();
+        let dir_status = dirmgr.bootstrap_events();
+        let skew_status = circmgr.skew_events();
+
+        let rtclone = runtime.clone();
+
+        // TODO: It might be a good idea to check this earlier, in `create_impl`,
+        // when we have only the DirMgrStore.
+        // But if we do that we need to add a method to DirMgrStore
+        // to look at the protocol recommentations.
+        #[allow(clippy::print_stderr)]
+        crate::protostatus::enforce_protocol_recommendations(
+            &runtime,
+            Arc::clone(&dirmgr),
+            crate::software_release_date(),
+            crate::supported_protocols(),
+            // TODO #1932: It would be nice to have a cleaner shutdown mechanism here,
+            // but that will take some work.
+            |fatal| async move {
+                use tor_error::ErrorReport as _;
+                // We already logged this error, but let's tell stderr too.
+                eprintln!(
+                    "Shutting down because of unsupported software version.\nError was:\n{}",
+                    fatal.report(),
+                );
+                if let Some(hint) = crate::err::Error::from(fatal).hint() {
+                    eprintln!("{}", hint);
+                }
+                // Give the tracing module a while to flush everything, since it has no built-in
+                // flush function.
+                rtclone.sleep(std::time::Duration::new(5, 0)).await;
+                std::process::exit(1);
+            },
+        )?;
+
+        runtime
+            .spawn(status::report_status(
+                status_sender,
+                conn_status,
+                dir_status,
+                skew_status,
+            ))
+            .map_err(|e| ErrorDetail::from_spawn("top-level status reporter", e))?;
+
+        runtime
+            .spawn(tasks_monitor_dormant(
+                dormant_recv.clone(),
+                dirmgr.clone().upcast_arc(),
+                chanmgr.clone(),
+                #[cfg(feature = "bridge-client")]
+                bridge_desc_mgr.clone(),
+                periodic_task_handles,
+            ))
+            .map_err(|e| ErrorDetail::from_spawn("periodic task dormant monitor", e))?;
+
+        let running_inner = Arc::new(RunningInner {
+            chanmgr,
+            circmgr,
+            dirmgr,
+            #[cfg(feature = "bridge-client")]
+            bridge_desc_mgr,
+            #[cfg(feature = "pt-client")]
+            pt_mgr,
+            #[cfg(feature = "onion-service-client")]
+            hsclient,
+            #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
+            hs_circ_pool,
+            guardmgr,
+        });
+
+        Ok(running_inner)
+    }
+
+    /// Tell the parts of this [`RunningInner`] to reconfigure themselves
+    /// (or to check the new configuration, if `how == CheckAllOrNothing`).
+    fn reconfigure(
+        &self,
+        new_config: &TorClientConfig,
+        how: tor_config::Reconfigure,
+    ) -> crate::Result<()> {
+        let dir_cfg = new_config.dir_mgr_config().map_err(wrap_err)?;
+
+        let retire_circuits = self
+            .circmgr
+            .reconfigure(new_config, how)
+            .map_err(wrap_err)?;
+
+        #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
+        if retire_circuits != RetireCircuits::None {
+            self.hs_circ_pool.retire_all_circuits().map_err(wrap_err)?;
+        }
+
+        self.dirmgr.reconfigure(&dir_cfg, how).map_err(wrap_err)?;
+
+        let netparams = self.dirmgr.params();
+
+        self.chanmgr
+            .reconfigure(&new_config.channel, how, netparams)
+            .map_err(wrap_err)?;
+
+        #[cfg(feature = "pt-client")]
+        self.pt_mgr
+            .reconfigure(
+                how,
+                new_config.bridges.transports.clone(),
+                new_config.channel.outbound_proxy().cloned(),
+            )
+            .map_err(wrap_err)?;
+
+        Ok(())
     }
 }
 
@@ -1356,7 +1528,11 @@ impl<R: Runtime> TorClient<R> {
             } => {
                 use safelog::DisplayRedacted as _;
 
-                self.client.wait_for_bootstrap().await?;
+                let running = self
+                    .client
+                    .wait_for_bootstrap_running("connect to hidden service")
+                    .await?;
+
                 let netdir = self.netdir(Timeliness::Timely, "connect to a hidden service")?;
 
                 let mut hs_client_secret_keys_builder = HsClientSecretKeysBuilder::default();
@@ -1380,8 +1556,7 @@ impl<R: Runtime> TorClient<R> {
                     .build()
                     .map_err(ErrorDetail::Configuration)?;
 
-                let tunnel = self
-                    .client
+                let tunnel = running
                     .hsclient
                     .get_or_launch_tunnel(
                         &netdir,
@@ -1502,8 +1677,12 @@ impl<R: Runtime> TorClient<R> {
     /// This function is unstable. It is only enabled if the crate was
     /// built with the `experimental-api` feature.
     #[cfg(feature = "experimental-api")]
-    pub fn dirmgr(&self) -> &Arc<dyn tor_dirmgr::DirProvider> {
-        &self.client.dirmgr
+    pub fn dirmgr(&self) -> crate::Result<Arc<dyn tor_dirmgr::DirProvider>> {
+        Ok(self
+            .client
+            .running_inner("access internal functionality")?
+            .dirmgr
+            .clone())
     }
 
     /// Return a reference to this client's circuit manager.
@@ -1511,8 +1690,12 @@ impl<R: Runtime> TorClient<R> {
     /// This function is unstable. It is only enabled if the crate was
     /// built with the `experimental-api` feature.
     #[cfg(feature = "experimental-api")]
-    pub fn circmgr(&self) -> &Arc<tor_circmgr::CircMgr<R>> {
-        &self.client.circmgr
+    pub fn circmgr(&self) -> crate::Result<Arc<tor_circmgr::CircMgr<R>>> {
+        Ok(self
+            .client
+            .running_inner("access internal functionality")?
+            .circmgr
+            .clone())
     }
 
     /// Return a reference to this client's channel manager.
@@ -1520,8 +1703,12 @@ impl<R: Runtime> TorClient<R> {
     /// This function is unstable. It is only enabled if the crate was
     /// built with the `experimental-api` feature.
     #[cfg(feature = "experimental-api")]
-    pub fn chanmgr(&self) -> &Arc<tor_chanmgr::ChanMgr<R>> {
-        &self.client.chanmgr
+    pub fn chanmgr(&self) -> crate::Result<Arc<tor_chanmgr::ChanMgr<R>>> {
+        Ok(self
+            .client
+            .running_inner("access internal functionality")?
+            .chanmgr
+            .clone())
     }
 
     /// Return a reference to this client's circuit pool.
@@ -1534,8 +1721,12 @@ impl<R: Runtime> TorClient<R> {
         feature = "experimental-api",
         any(feature = "onion-service-client", feature = "onion-service-service")
     ))]
-    pub fn hs_circ_pool(&self) -> &Arc<tor_circmgr::hspool::HsCircPool<R>> {
-        &self.client.hs_circ_pool
+    pub fn hs_circ_pool(&self) -> crate::Result<Arc<tor_circmgr::hspool::HsCircPool<R>>> {
+        Ok(self
+            .client
+            .running_inner("access internal functionality")?
+            .hs_circ_pool
+            .clone())
     }
 
     /// Return a reference to the runtime being used by this client.
@@ -1559,7 +1750,8 @@ impl<R: Runtime> TorClient<R> {
         action: &'static str,
     ) -> StdResult<Arc<tor_netdir::NetDir>, ErrorDetail> {
         use tor_netdir::Error as E;
-        match self.client.dirmgr.netdir(timeliness) {
+        // TODO: Conceivably we could take a NetDir from our DirMgrStore.
+        match self.client.running_inner(action)?.dirmgr.netdir(timeliness) {
             Ok(netdir) => Ok(netdir),
             Err(E::NoInfo) | Err(E::NotEnoughInfo) => {
                 Err(ErrorDetail::BootstrapRequired { action })
@@ -1576,13 +1768,15 @@ impl<R: Runtime> TorClient<R> {
         exit_ports: &[TargetPort],
         prefs: &StreamPrefs,
     ) -> StdResult<ClientDataTunnel, ErrorDetail> {
+        let running = self
+            .client
+            .wait_for_bootstrap_running("build a circuit")
+            .await?;
         // TODO HS probably this netdir ought to be made in connect_with_prefs
         // like for StreamInstructions::Hs.
-        self.client.wait_for_bootstrap().await?;
         let dir = self.netdir(Timeliness::Timely, "build a circuit")?;
 
-        let tunnel = self
-            .client
+        let tunnel = running
             .circmgr
             .get_or_launch_exit(
                 dir.as_ref().into(),
@@ -1657,6 +1851,10 @@ impl<R: Runtime> TorClient<R> {
             return Ok(None);
         }
 
+        let running = self
+            .client
+            .initiate_bootstrap_if_needed("launch onion service")?;
+
         let keymgr = self
             .client
             .inert_client
@@ -1678,8 +1876,8 @@ impl<R: Runtime> TorClient<R> {
         Ok(service
             .launch(
                 self.client.runtime.clone(),
-                self.client.dirmgr.clone().upcast_arc(),
-                self.client.hs_circ_pool.clone(),
+                running.dirmgr.clone().upcast_arc(),
+                running.hs_circ_pool.clone(),
                 Arc::clone(&self.client.path_resolver),
             )
             .map_err(ErrorDetail::LaunchOnionService)?)
@@ -2001,10 +2199,46 @@ impl<R: Runtime> TorClient<R> {
     }
 }
 
-impl<R: Runtime> ClientInner<R> {
+impl<R: Runtime> ClientShared<R> {
+    /// Used by `bootstrap_inner`: Return a `RunningInner`, constructing it if necessary.
+    fn instantiate_running_inner(
+        &self,
+        mut inner_guard: std::sync::MutexGuard<'_, Inner<R>>,
+    ) -> Result<Arc<RunningInner<R>>, ErrorDetail> {
+        match &*inner_guard {
+            Inner::Running(running_inner) => Ok(Arc::clone(running_inner)),
+            Inner::Poisoned(e) => Err(e.as_ref().clone()),
+            Inner::NotConstructed(_) => {
+                let error = ErrorDetail::from(internal!("Client under construction"));
+                let mut pending = Inner::Poisoned(Box::new(error));
+                std::mem::swap(&mut pending, &mut *inner_guard);
+                let Inner::NotConstructed(pending) = pending else {
+                    panic!("Surprising type change");
+                };
+                match RunningInner::new(*pending, self) {
+                    Ok(running_inner) => {
+                        *inner_guard = Inner::Running(Arc::clone(&running_inner));
+                        Ok(running_inner)
+                    }
+                    Err(e) => {
+                        *inner_guard = Inner::Poisoned(Box::new(e.clone()));
+                        Err(e)
+                    }
+                }
+            }
+        }
+    }
+
     /// Implementation of `bootstrap`, split out in order to avoid manually specifying
     /// double error conversions.
     async fn bootstrap_inner(&self) -> StdResult<(), ErrorDetail> {
+        // Wait for an existing bootstrap attempt to finish first.
+        //
+        // This is a futures::lock::Mutex, so it's okay to await while we hold it.
+        let _bootstrap_lock = self.bootstrap_in_progress.lock().await;
+
+        let running = self.instantiate_running_inner(self.inner.lock().expect("lock poisoned"))?;
+
         // Make sure we have a bridge descriptor manager, which is active iff required
         #[cfg(feature = "bridge-client")]
         {
@@ -2012,16 +2246,17 @@ impl<R: Runtime> ClientInner<R> {
             let dormant = dormant.borrow();
             let dormant = dormant.ok_or_else(|| internal!("dormant dropped"))?.into();
 
-            let mut bdm = self.bridge_desc_mgr.lock().expect("bdm lock poisoned");
+            let mut bdm = running.bridge_desc_mgr.lock().expect("bdm lock poisoned");
             if bdm.is_none() {
                 let new_bdm = Arc::new(BridgeDescMgr::new(
                     &Default::default(),
                     self.runtime.clone(),
                     self.dirmgr_store.clone(),
-                    self.circmgr.clone(),
+                    running.circmgr.clone(),
                     dormant,
                 )?);
-                self.guardmgr
+                running
+                    .guardmgr
                     .install_bridge_desc_provider(&(new_bdm.clone() as _))
                     .map_err(ErrorDetail::GuardMgrSetup)?;
                 // If ^ that fails, we drop the BridgeDescMgr again.  It may do some
@@ -2029,11 +2264,6 @@ impl<R: Runtime> ClientInner<R> {
                 *bdm = Some(new_bdm);
             }
         }
-
-        // Wait for an existing bootstrap attempt to finish first.
-        //
-        // This is a futures::lock::Mutex, so it's okay to await while we hold it.
-        let _bootstrap_lock = self.bootstrap_in_progress.lock().await;
 
         if self
             .statemgr
@@ -2052,7 +2282,8 @@ impl<R: Runtime> ClientInner<R> {
         // unlock the state files.
         let unlock_guard = util::StateMgrUnlockGuard::new(&self.statemgr);
 
-        self.dirmgr
+        running
+            .dirmgr
             .bootstrap()
             .await
             .map_err(ErrorDetail::DirMgrBootstrap)?;
@@ -2063,17 +2294,26 @@ impl<R: Runtime> ClientInner<R> {
         Ok(())
     }
 
+    /// Ensure that this client is running and bootstrapped, and return a [`RunningInner`] if it is.
+    ///
+    /// If we're not bootstrapped,
+    /// we either try to bootstrap or return an error,
+    /// depending on `self.should_bootstrap`:
+    ///
     /// ## For `BootstrapBehavior::OnDemand` clients
     ///
-    /// Initiate a bootstrap by calling `bootstrap` (which is idempotent, so attempts to
-    /// bootstrap twice will just do nothing).
+    /// Initiate a bootstrap by calling `bootstrap_inner`
+    /// (which is idempotent, so attempts to bootstrap twice will just do nothing).
     ///
     /// ## For `BootstrapBehavior::Manual` clients
     ///
-    /// Check whether a bootstrap is in progress; if one is, wait until it finishes
-    /// and then return. (Otherwise, return immediately.)
+    /// Check whether a bootstrap is in progress; if one is, wait until it finishes.
+    /// Then see whether we're bootstrapped, and return either a success or a failure.
     #[instrument(skip_all, level = "trace")]
-    async fn wait_for_bootstrap(&self) -> StdResult<(), ErrorDetail> {
+    async fn wait_for_bootstrap_running(
+        &self,
+        action: &'static str,
+    ) -> StdResult<Arc<RunningInner<R>>, ErrorDetail> {
         match self.should_bootstrap {
             BootstrapBehavior::OnDemand => {
                 self.bootstrap_inner().await?;
@@ -2094,7 +2334,36 @@ impl<R: Runtime> ClientInner<R> {
                     }
                 }))
             })?;
-        Ok(())
+        self.running_inner(action)
+    }
+
+    /// If we are currently bootstrapping or running, return a [`RunningInner`].
+    fn running_inner(&self, action: &'static str) -> StdResult<Arc<RunningInner<R>>, ErrorDetail> {
+        let guard = self.inner.lock().expect("Lock poisoned");
+        match &*guard {
+            Inner::NotConstructed(_) => Err(ErrorDetail::BootstrapRequired { action }),
+            Inner::Running(running_inner) => Ok(Arc::clone(running_inner)),
+            Inner::Poisoned(e) => Err(e.as_ref().clone()),
+        }
+    }
+
+    /// Ensure that our bootstrap state is [`RunningInner`], if possible.
+    ///
+    /// Return an error if our [`BootstrapBehavior`] is `Manual` and have not created a
+    /// [`RunningInner`].
+    fn initiate_bootstrap_if_needed(
+        &self,
+        action: &'static str,
+    ) -> StdResult<Arc<RunningInner<R>>, ErrorDetail> {
+        let guard = self.inner.lock().expect("Lock poisoned");
+        match &*guard {
+            Inner::Running(running_inner) => Ok(Arc::clone(running_inner)),
+            Inner::Poisoned(e) => Err(e.as_ref().clone()),
+            Inner::NotConstructed(_) => match self.should_bootstrap {
+                BootstrapBehavior::Manual => Err(ErrorDetail::BootstrapRequired { action }),
+                BootstrapBehavior::OnDemand => self.instantiate_running_inner(guard),
+            },
+        }
     }
 
     /// This is split out from `reconfigure` so we can do the all-or-nothing
@@ -2110,54 +2379,37 @@ impl<R: Runtime> ClientInner<R> {
         // We ignore 'new_config.path_resolver' here since CfgPathResolver does not impl PartialEq
         // and we have no way to compare them, but this field is explicitly documented as being
         // non-reconfigurable anyways.
-
-        let dir_cfg = new_config.dir_mgr_config().map_err(wrap_err)?;
+        let addr_cfg = &new_config.address_filter;
+        let timeout_cfg = &new_config.stream_timeouts;
         let state_cfg = new_config
             .storage
             .expand_state_dir(&self.path_resolver)
             .map_err(wrap_err)?;
-        let addr_cfg = &new_config.address_filter;
-        let timeout_cfg = &new_config.stream_timeouts;
 
         // TODO wasm: This ins't really how things should be long term,
         // but once we have a more generic notion of configuring storage
         // we can change this to comply with it.
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-        if state_cfg != self.statemgr.path() {
-            how.cannot_change("storage.state_dir").map_err(wrap_err)?;
+        {
+            if state_cfg != self.statemgr.path() {
+                how.cannot_change("storage.state_dir").map_err(wrap_err)?;
+            }
         }
 
         self.memquota
             .reconfigure(new_config.system.memory.clone(), how)
             .map_err(wrap_err)?;
 
-        let retire_circuits = self
-            .circmgr
-            .reconfigure(new_config, how)
-            .map_err(wrap_err)?;
-
-        #[cfg(any(feature = "onion-service-client", feature = "onion-service-service"))]
-        if retire_circuits != RetireCircuits::None {
-            self.hs_circ_pool.retire_all_circuits().map_err(wrap_err)?;
+        let mut inner_lock = self.inner.lock().expect("Lock poisoned");
+        match &mut *inner_lock {
+            Inner::Poisoned(e) => return Err(e.as_ref().clone().into()),
+            Inner::NotConstructed(nc) => nc.reconfigure(new_config, how)?,
+            Inner::Running(r) => {
+                let running = Arc::clone(r);
+                drop(inner_lock);
+                running.reconfigure(new_config, how)?;
+            }
         }
-
-        self.dirmgr.reconfigure(&dir_cfg, how).map_err(wrap_err)?;
-
-        let netparams = self.dirmgr.params();
-
-        self.chanmgr
-            .reconfigure(&new_config.channel, how, netparams)
-            .map_err(wrap_err)?;
-
-        #[cfg(feature = "pt-client")]
-        self.pt_mgr
-            .reconfigure(
-                how,
-                new_config.bridges.transports.clone(),
-                new_config.channel.outbound_proxy().cloned(),
-            )
-            .map_err(wrap_err)?;
-
         if how == tor_config::Reconfigure::CheckAllOrNothing {
             return Ok(());
         }

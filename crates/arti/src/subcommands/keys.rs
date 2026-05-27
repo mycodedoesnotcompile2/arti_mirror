@@ -415,7 +415,7 @@ fn get_expired_keys<'a, R: Runtime>(
     services: &'a Vec<OnionService>,
     client: &TorClient<R>,
 ) -> Result<Vec<InvalidKeystoreEntry<'a>>> {
-    let netdir = client.dirmgr().timely_netdir()?;
+    let netdir = client.dirmgr()?.timely_netdir()?;
 
     let mut expired_keys = Vec::new();
     for service in services {

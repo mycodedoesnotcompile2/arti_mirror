@@ -35,11 +35,11 @@ pub(crate) const CHANNEL_SIZE: usize = 100;
 async fn is_bridge_online(
     bridge_config: &BridgeConfig,
     tor_client: &TorClient<PreferredRuntime>,
-) -> Result<Arc<Channel>, tor_chanmgr::Error> {
-    let chanmgr = tor_client.chanmgr();
-    chanmgr
+) -> anyhow::Result<Arc<Channel>> {
+    let chanmgr = tor_client.chanmgr()?;
+    Ok(chanmgr
         .build_unmanaged_channel(bridge_config, ChannelAccount::new_noop())
-        .await
+        .await?)
 }
 
 /// Waits for given channel to expire and sends this info through specified
