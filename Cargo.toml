@@ -10,6 +10,7 @@
 # see
 # https://blog.iany.me/2020/10/gotchas-to-publish-rust-crates-in-a-workspace/#cyclic-dependencies
 members = [
+    "crates/errvec",
     "crates/oneshot-fused-workaround",
     "crates/web-time-compat",
     "crates/slotmap-careful",
