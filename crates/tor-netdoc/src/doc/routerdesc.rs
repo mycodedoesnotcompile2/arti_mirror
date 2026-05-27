@@ -580,7 +580,7 @@ impl RouterDesc {
         // performed at the end.  Because tor-cert's method all consume self,
         // we can not go backwards, meaning we have to store two separate
         // copies.  It is also not possible to do the conversion to
-        // UncheckedCert later, because then we loose the error context returned
+        // UncheckedCert later, because then we lose the error context returned
         // in EK::BadObjectVal if the signed-by extension is missing.
         //
         let (ku_identity_cert, identity_cert, ed25519_signing_key) = {
