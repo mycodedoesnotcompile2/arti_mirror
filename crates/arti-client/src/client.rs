@@ -229,7 +229,7 @@ struct NotConstructedInner<R: Runtime> {
 
 /// Data structures for a "running" client.
 ///
-/// A running client is one that is either bootstrapped, or potentially trying to bootstrapped.
+/// A running client is one that is either bootstrapped, or potentially trying to bootstrap.
 ///
 /// All structures that potentially interact with the network belong here.
 ///
@@ -1270,7 +1270,7 @@ impl<R: Runtime> RunningInner<R> {
     }
 
     /// Tell the parts of this [`RunningInner`] to reconfigure themselves
-    /// (or to check the new configuration, if `how == CheckAllOrNothing`.
+    /// (or to check the new configuration, if `how == CheckAllOrNothing`).
     fn reconfigure(
         &self,
         new_config: &TorClientConfig,
