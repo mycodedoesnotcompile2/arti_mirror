@@ -278,32 +278,56 @@ mod os {
 #[cfg(windows)]
 mod os {
     use std::{fs::File, mem::MaybeUninit, os::windows::io::AsRawHandle, path::Path};
-    use winapi::um::fileapi::{BY_HANDLE_FILE_INFORMATION as Info, GetFileInformationByHandle};
+    use windows_sys::Win32::{
+        Foundation::HANDLE,
+        Storage::FileSystem::{FILE_ID_INFO, FileIdInfo, GetFileInformationByHandleEx},
+    };
+
+    /// Use `GetFileInformationByHandleEx` to return a FILE_ID_INFO data for `f`.
+    ///
+    /// `GetFileInformationByHandleEx` is supported in Vista and later, so it
+    /// should be fine here.  Unlike GetFileInformationByHandle, it gives
+    /// 128-bit identifiers which are supposedly even more unique.
+    fn get_id_info(f: &File) -> std::io::Result<FILE_ID_INFO> {
+        let handle = f.as_raw_handle() as HANDLE;
+        let mut info: MaybeUninit<FILE_ID_INFO> = MaybeUninit::uninit();
+        let buffersize: u32 = std::mem::size_of::<FILE_ID_INFO>()
+            .try_into()
+            .expect("sizeof(FILE_ID_INFO) is ridiculously large");
+
+        let info = unsafe {
+            // SAFETY: Since `size` is the size of info, this will not write to
+            // uninitialized memory.
+            let rv = GetFileInformationByHandleEx(
+                handle,
+                FileIdInfo,
+                info.as_mut_ptr() as _,
+                buffersize,
+            );
+
+            if rv == 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+
+            // SAFETY: since rv was nonzero, this value is initialized.
+            info.assume_init()
+        };
+        Ok(info)
+    }
 
     /// Return true if `lf` currently exists with the given `path`, and false otherwise.
     pub(crate) fn lockfile_has_path(lf: &File, path: &Path) -> std::io::Result<bool> {
-        let mut m1: MaybeUninit<Info> = MaybeUninit::uninit();
-        let mut m2: MaybeUninit<Info> = MaybeUninit::uninit();
-
         let f2 = File::open(path)?;
 
         // Note: we would like to just use the MetadataExt methods for index and
-        // volume serial number, but they are currently available only on nightly:
-        // https://github.com/rust-lang/rust/issues/63010
+        // volume serial number, but they are currently available only on
+        // nightly: https://github.com/rust-lang/rust/issues/63010
         //
-        // If and when they stabilize at our MSRV, we can use them here instead.
+        // If they stabilize at our MSRV, _and_ the file ID is expanded to the
+        // 128-bit version, we can use them here instead.
 
-        let (i1, i2) = unsafe {
-            // TODO: I am told that there is a GetFileInformationByHandleEx
-            // that can return 128-bit IDs.
-            if GetFileInformationByHandle(lf.as_raw_handle() as _, m1.as_mut_ptr()) == 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            if GetFileInformationByHandle(f2.as_raw_handle() as _, m2.as_mut_ptr()) == 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            (m1.assume_init(), m2.assume_init())
-        };
+        let i1 = get_id_info(lf)?;
+        let i2 = get_id_info(&f2)?;
 
         // This comparison is about the best we can do on Windows,
         // though there are caveats.
@@ -312,9 +336,8 @@ mod os {
         //   https://devblogs.microsoft.com/oldnewthing/20220128-00/?p=106201
         // and also see BurntSushi's caveats at
         //   https://github.com/BurntSushi/same-file/blob/master/src/win.rs
-        Ok(i1.nFileIndexHigh == i2.nFileIndexHigh
-            && i1.nFileIndexLow == i2.nFileIndexLow
-            && i1.dwVolumeSerialNumber == i2.dwVolumeSerialNumber)
+        Ok(i1.VolumeSerialNumber == i2.VolumeSerialNumber
+            && i1.FileId.Identifier == i2.FileId.Identifier)
     }
 }
 

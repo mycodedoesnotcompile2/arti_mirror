@@ -2620,7 +2620,7 @@ version = "0.6.0"
 dependencies = [
  "test-temp-dir",
  "thiserror 2.0.18",
- "winapi",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
