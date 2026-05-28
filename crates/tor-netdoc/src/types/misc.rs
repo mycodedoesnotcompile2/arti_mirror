@@ -3117,15 +3117,9 @@ mod test {
             // Test repeated with unknown.
             ("intro\nbar\nfoo\nfoo\n", Err(ErrorProblem::ItemRepeated)),
             // Test with argument.
-            (
-                "intro\nfoo bar\n",
-                Ok(true),
-            ),
+            ("intro\nfoo bar\n", Ok(true)),
             // Test with two arguments.
-            (
-                "intro\nfoo bar baz\n",
-                Ok(true),
-            ),
+            ("intro\nfoo bar baz\n", Ok(true)),
             // Test with object.
             (
                 "intro\nfoo\n-----BEGIN RSA PUBLIC KEY-----\n-----END RSA PUBLIC KEY-----\n",
