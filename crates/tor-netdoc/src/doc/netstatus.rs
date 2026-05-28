@@ -92,6 +92,7 @@ use void::ResultVoidExt as _;
 
 use derive_deftly::{Deftly, define_derive_deftly};
 use digest::Digest;
+use itertools::Itertools;
 use std::sync::LazyLock;
 use tor_checkable::{ExternallySigned, timed::TimerangeBound};
 use tor_llcrypto as ll;
@@ -289,7 +290,7 @@ impl NormalItemArgument for ConsensusMethod {}
 /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:consensus-methods>
 ///
 /// There is also [`consensus_methods_comma_separated`] for `m` lines in votes.
-#[derive(Debug, Clone, Default, Eq, PartialEq, Deftly)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Deftly)]
 #[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 #[non_exhaustive]
 pub struct ConsensusMethods {
@@ -316,6 +317,15 @@ pub mod consensus_methods_comma_separated {
             }
         }
         Ok(ConsensusMethods { methods })
+    }
+
+    /// Encode
+    #[cfg(feature = "incomplete")] // untested
+    pub fn write_arg_onto(self_: &ConsensusMethods, out: &mut ItemEncoder) -> Result<(), Bug> {
+        for s in Itertools::intersperse(self_.methods.iter().map(|v| v as &dyn Display), &",") {
+            out.args_raw_string(s);
+        }
+        Ok(())
     }
 }
 

@@ -37,3 +37,6 @@ BREAKING: parsing/encoding impls for `NetParams` made generic
 ADDED: `Unknown::into_retained` now available (always fails) even without `retain-unknown`
 ADDED: `TryFrom<&NetParams<u32>> for RelayWeight`
 BREAKING: `RouterStatus.weight` contains the new `RelayWeightsItem`
+ADDED: `DigestName` implements `AsRef<str>`
+BREAKING: `DigestName` `Ord` implementation corrected to always sort by string repr
+ADDED: impl `Ord` for `ConsensusMethods`, `IdentifiedDigest`, `RouterStatusMdDigestsVote`

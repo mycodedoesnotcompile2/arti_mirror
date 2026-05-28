@@ -1645,9 +1645,9 @@ mod identified_digest {
                 )
             }
         }
-        impl Display for $ttype {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                let s: &str = match self {
+        impl AsRef<str> for $ttype {
+            fn as_ref(&self) -> &str {
+                match self {
                     $(
                         ${when v_is_unit}
                         $vtype => $STRING_REPR,
@@ -1656,7 +1656,12 @@ mod identified_digest {
                         ${when not(v_is_unit)}
                         $vpat => f_0,
                     )
-                };
+                }
+            }
+        }
+        impl Display for $ttype {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                let s: &str = self.as_ref();
                 Display::fmt(s, f)
             }
         }
@@ -1665,7 +1670,7 @@ mod identified_digest {
     /// The name of a digest algorithm.
     ///
     /// Can represent an unrecognised algorithm, so it's parsed and reproduced.
-    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deftly)]
+    #[derive(Debug, Clone, Eq, PartialEq, Hash, Deftly)]
     #[derive_deftly(StringReprUnitsOrUnknown)]
     #[non_exhaustive]
     pub enum DigestName {
@@ -1676,7 +1681,7 @@ mod identified_digest {
     }
 
     /// A single digest made with a nominated digest algorithm, `ALGORITHM=DIGEST`
-    #[derive(Debug, Clone, Eq, PartialEq, Hash, derive_more::Display)]
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, derive_more::Display)]
     #[display("{alg}={value}")]
     #[non_exhaustive]
     pub struct IdentifiedDigest {
@@ -1696,6 +1701,17 @@ mod identified_digest {
     #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, thiserror::Error)]
     #[error("invalid syntax, expected ALGORITHM=DIGEST: {0}")]
     pub struct IdentifiedDigestParseError(String);
+
+    impl Ord for DigestName {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.as_ref().cmp(other.as_ref())
+        }
+    }
+    impl PartialOrd for DigestName {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
 
     impl FromStr for IdentifiedDigest {
         type Err = IdentifiedDigestParseError;
