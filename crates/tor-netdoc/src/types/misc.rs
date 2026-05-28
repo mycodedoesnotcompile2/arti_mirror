@@ -3129,7 +3129,7 @@ mod test {
             ),
             // Test with object.
             (
-                "intro\n-----BEGIN RSA PUBLIC KEY-----\n-----END RSA PUBLIC KEY-----\n",
+                "intro\nfoo\n-----BEGIN RSA PUBLIC KEY-----\n-----END RSA PUBLIC KEY-----\n",
                 Err(ErrorProblem::ObjectUnexpected),
             ),
         ];
