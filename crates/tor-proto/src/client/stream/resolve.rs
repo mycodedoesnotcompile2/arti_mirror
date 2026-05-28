@@ -104,7 +104,7 @@ impl CmdChecker for ResolveCmdChecker {
 }
 
 impl ResolveCmdChecker {
-    /// Return a new boxed `DataCmdChecker` in a state suitable for a newly
+    /// Return a new boxed `ResolveCmdChecker` in a state suitable for a newly
     /// constructed connection.
     pub(crate) fn new_any() -> AnyCmdChecker {
         Box::<Self>::default()
