@@ -2618,6 +2618,7 @@ checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 name = "fslock-guard"
 version = "0.6.0"
 dependencies = [
+ "libc",
  "test-temp-dir",
  "thiserror 2.0.18",
  "windows-sys 0.61.2",

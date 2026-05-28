@@ -11,6 +11,9 @@ categories = ["filesystem"]
 repository = "https://gitlab.torproject.org/tpo/core/arti.git/"
 rust-version = "1.89"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = []
 full = []
@@ -18,11 +21,12 @@ full = []
 [dependencies]
 thiserror = "2"
 
-[dev-dependencies]
-test-temp-dir = { version = "0.7.0", path = "../test-temp-dir" }
-
-[package.metadata.docs.rs]
-all-features = true
+[target.'cfg(target_os = "android")'.dependencies]
+libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
+
+[dev-dependencies]
+test-temp-dir = { version = "0.7.0", path = "../test-temp-dir" }
+

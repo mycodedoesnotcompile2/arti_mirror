@@ -102,7 +102,7 @@ impl LockFileGuard {
         let path = path.as_ref();
         loop {
             let file = Self::open(path)?;
-            file.lock()?;
+            do_lock(&file)?;
 
             if os::lockfile_has_path(&file, path)? {
                 return Ok(Self { locked_file: file });
@@ -120,7 +120,7 @@ impl LockFileGuard {
     {
         let path = path.as_ref();
         let file = Self::open(path)?;
-        match file.try_lock() {
+        match do_try_lock(&file) {
             Ok(()) => {
                 if os::lockfile_has_path(&file, path)? {
                     Ok(Some(Self { locked_file: file }))
@@ -145,6 +145,83 @@ impl LockFileGuard {
             std::fs::remove_file(path)
         } else {
             Err(std::io::Error::other(MismatchedPathError {}))
+        }
+    }
+}
+
+/// Try to lock `f`, blocking if need be.
+///
+/// On non-android, this just calls [`fs::File::lock`].
+#[cfg(not(target_os = "android"))]
+fn do_lock(f: &fs::File) -> std::io::Result<()> {
+    f.lock()
+}
+
+/// Try to lock `f`, without blocking.
+///
+/// On non-android, this just calls [`fs::File::try_lock`].
+#[cfg(not(target_os = "android"))]
+fn do_try_lock(f: &fs::File) -> Result<(), std::fs::TryLockError> {
+    f.try_lock()
+}
+
+/// Try to lock `f`, blocking if need be.
+///
+/// On android, we need to use flock manually, since Rust (as of May 2026)
+/// always returns "not implemented" for `lock()` and `try_lock()`.
+///
+/// See <https://github.com/rust-lang/rust/issues/148325>.
+/// Apparently,
+/// although there are filesystems (specifically FUSE filesystems)
+/// where flock won't work, it will correctly report ENOSYS
+/// on those filesystems.
+//
+// TODO MSRV ????: we can remove this once Rust supports file locking on Android
+// at our MSRV.  As of May 2026, https://github.com/rust-lang/rust/pull/157038/
+// seems like the likeliest MR for that, but it has not been merged.
+#[cfg(target_os = "android")]
+fn do_lock(f: &fs::File) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+
+    let fd = f.as_raw_fd();
+    // SAFETY: Since `f` is a file, it has a valid fd.
+    let success = unsafe { libc::flock(fd, libc::LOCK_EX) } == 0;
+
+    if success {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+/// Try to lock `f`, without blocking.
+///
+/// On android, we need to use flock manually, since Rust (as of May 2026)
+/// always returns "not implemented" for `lock()` and `try_lock()`.
+///
+/// See <https://github.com/rust-lang/rust/issues/148325>.
+/// Apparently,
+/// although there are filesystems (specifically FUSE filesystems)
+/// where flock won't work, it will correctly report ENOSYS
+/// on those filesystems.
+//
+// TODO MSRV ????: See 'TODO MSRV' on do_lock above.
+#[cfg(target_os = "android")]
+fn do_try_lock(f: &fs::File) -> Result<(), std::fs::TryLockError> {
+    use std::os::fd::AsRawFd;
+
+    let fd = f.as_raw_fd();
+    // SAFETY: Since `f` is a file, it has a valid fd.
+    let success = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } == 0;
+
+    if success {
+        Ok(())
+    } else {
+        let err = std::io::Error::last_os_error();
+        if err.kind() == std::io::ErrorKind::WouldBlock {
+            Err(std::fs::TryLockError::WouldBlock)
+        } else {
+            Err(std::fs::TryLockError::Error(err))
         }
     }
 }
