@@ -11,7 +11,10 @@ use crate::ArtiPath;
 ///
 /// The exact type of the identifier depends on the backing storage of the keystore
 /// (for example, an on-disk keystore will identify its entries by [`Path`](RawEntryId::Path)).
-#[cfg_attr(feature = "onion-service-cli-extra", visibility::make(pub))]
+#[cfg_attr(
+    any(feature = "onion-service-cli-extra", feature = "experimental-api"),
+    visibility::make(pub)
+)]
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, derive_more::Display)]
 pub(crate) enum RawEntryId {
