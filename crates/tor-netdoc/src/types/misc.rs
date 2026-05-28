@@ -725,8 +725,9 @@ mod ignored_impl {
     /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\nhello\n", "")).unwrap();
     /// assert!(doc.hello.is_some());
     ///
-    /// // hello has arguments (or an object) which is not allowed.
-    /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\nhello world\n", "")).unwrap_err();
+    /// // hello has arguments (or an object) which is ignored.
+    /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\nhello world\n", "")).unwrap();
+    /// assert!(doc.hello.is_some());
     ///
     /// // hello is present twice which is not allowed.
     /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\nhello\nhello\n", "")).unwrap_err();
@@ -924,9 +925,7 @@ mod ignored_impl {
     }
 
     impl<T: Default> ItemValueParseable for ItemPresent<T> {
-        fn from_unparsed(mut item: UnparsedItem<'_>) -> StdResult<Self, EP> {
-            item.check_no_object()?;
-            item.args_mut().reject_extra_args()?;
+        fn from_unparsed(_item: UnparsedItem<'_>) -> StdResult<Self, EP> {
             Ok(Self::default())
         }
     }
@@ -3120,17 +3119,17 @@ mod test {
             // Test with argument.
             (
                 "intro\nfoo bar\n",
-                Err(ErrorProblem::UnexpectedArgument { column: 5 }),
+                Ok(true),
             ),
             // Test with two arguments.
             (
                 "intro\nfoo bar baz\n",
-                Err(ErrorProblem::UnexpectedArgument { column: 5 }),
+                Ok(true),
             ),
             // Test with object.
             (
                 "intro\nfoo\n-----BEGIN RSA PUBLIC KEY-----\n-----END RSA PUBLIC KEY-----\n",
-                Err(ErrorProblem::ObjectUnexpected),
+                Ok(true),
             ),
         ];
 
