@@ -6,7 +6,6 @@ use std::sync::{Arc, Weak};
 
 use anyhow::Context;
 use tokio::task::JoinSet;
-use tor_proto::RelayChannelAuthMaterial;
 use tracing::debug;
 #[cfg(unix)]
 use tracing::warn;
@@ -27,7 +26,7 @@ use tor_rtcompat::{NetStreamProvider, Runtime};
 use crate::client::RelayClient;
 use crate::config::TorRelayConfig;
 use crate::tasks::channel::build_circ_net_params;
-use crate::tasks::crypto::FullKeyView;
+use crate::tasks::crypto::InitKeyMaterial;
 
 /// An initialized but unbootstrapped relay.
 ///
@@ -49,7 +48,6 @@ use crate::tasks::crypto::FullKeyView;
 ///
 /// Time will tell if this ends up being a bad design decision in practice, and we can always change
 /// it later.
-#[derive(Clone)]
 pub(crate) struct InertTorRelay {
     /// The configuration options for the relay.
     config: TorRelayConfig,
@@ -75,9 +73,12 @@ pub(crate) struct InertTorRelay {
     /// Location on disk where we store persistent data.
     state_mgr: FsStateMgr,
 
-    /// A full key view of the relay keys and certs. It wraps a [`KeyMgr`] in order to provide
-    /// key coherence throughout parallel access.
-    key_view: Arc<FullKeyView>,
+    /// Key manager. The ownership is shared between the crypto task and the main task
+    /// [`TorRelay`].
+    ///
+    // NOTE: In a future world, would be great if this wouldn't be an Arc<> and we could move it to
+    // the crypto task so nobody has access to it. For now, this is the compromise for simplicity.
+    keymgr: Arc<KeyMgr>,
 }
 
 impl InertTorRelay {
@@ -122,17 +123,17 @@ impl InertTorRelay {
             state_path,
             state_dir,
             state_mgr,
-            key_view: Arc::new(FullKeyView::new(keymgr)),
+            keymgr,
         })
     }
 
     /// Connect the [`InertTorRelay`] to the Tor network.
     pub(crate) async fn init<R: Runtime>(self, runtime: R) -> anyhow::Result<TorRelay<R>> {
         // Attempt to generate any missing keys/cert from the KeyMgr.
-        let auth_material = crate::tasks::crypto::try_generate_keys(&runtime, &self.key_view)
+        let init_key_material = crate::tasks::crypto::init_keys(&runtime, Arc::clone(&self.keymgr))
             .context("Failed to generate keys")?;
 
-        TorRelay::init(runtime, self, auth_material).await
+        TorRelay::init(runtime, self, init_key_material).await
     }
 
     /// Create the [key manager](KeyMgr).
@@ -180,8 +181,8 @@ pub(crate) struct TorRelay<R: Runtime> {
     /// We can access this handler directly to update consensus parameters or keys.
     create_request_handler: Arc<CreateRequestHandler>,
 
-    /// See [`InertTorRelay::key_view`].
-    key_view: Arc<FullKeyView>,
+    /// See [`InertTorRelay::keymgr`].
+    keymgr: Arc<KeyMgr>,
 
     /// Listening OR ports.
     or_listeners: Vec<<R as NetStreamProvider<SocketAddr>>::Listener>,
@@ -197,7 +198,7 @@ impl<R: Runtime> TorRelay<R> {
     async fn init(
         runtime: R,
         inert: InertTorRelay,
-        auth_material: RelayChannelAuthMaterial,
+        init_key_material: InitKeyMaterial,
     ) -> anyhow::Result<Self> {
         let memquota = MemoryQuotaTracker::new(&runtime, inert.config.system.memory.clone())
             .context("Failed to initialize memquota tracker")?;
@@ -205,7 +206,7 @@ impl<R: Runtime> TorRelay<R> {
         // Init the channel manager.
         let config = ChanMgrConfig::new(inert.config.channel.clone())
             .with_my_addrs(inert.config.relay.advertise.all_addr())
-            .with_auth_material(Arc::new(auth_material));
+            .with_auth_material(Arc::new(init_key_material.chan_auth_keys));
         let chanmgr = Arc::new(
             ChanMgr::new(
                 runtime.clone(),
@@ -236,11 +237,10 @@ impl<R: Runtime> TorRelay<R> {
             .context("Failed to build circuit parameters for CREATE* request handler")?;
 
         // A handler that will process CREATE* requests on channels.
-        let ntor_keys = inert.key_view.ks_ntor_keys()?;
         let create_request_handler = CreateRequestHandler::new(
             Arc::downgrade(&chanmgr) as Weak<_>,
             circ_net_params,
-            ntor_keys,
+            init_key_material.ntor_keys,
         );
         let create_request_handler = Arc::new(create_request_handler);
 
@@ -314,7 +314,7 @@ impl<R: Runtime> TorRelay<R> {
             client,
             chanmgr,
             create_request_handler,
-            key_view: inert.key_view,
+            keymgr: inert.keymgr,
             or_listeners,
         })
     }
@@ -368,9 +368,9 @@ impl<R: Runtime> TorRelay<R> {
                 self.runtime.clone(),
                 self.chanmgr.clone(),
                 self.create_request_handler.clone(),
-                self.key_view.clone(),
+                self.keymgr,
                 self.client.dirmgr().clone(),
-            );
+            )?;
             async {
                 reactor
                     .run()
@@ -411,10 +411,5 @@ impl<R: Runtime> TorRelay<R> {
 
         // We can never get here since a `Void` cannot be constructed.
         void::unreachable(void);
-    }
-
-    /// Access the relay's key manager.
-    pub(crate) fn key_view(&self) -> &Arc<FullKeyView> {
-        &self.key_view
     }
 }
