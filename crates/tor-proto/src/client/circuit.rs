@@ -27,7 +27,7 @@
 //! circuit's upstream channel.  These cells are either RELAY cells or
 //! DESTROY cells.  DESTROY cells are handled immediately.
 //! RELAY cells are either for a particular stream, in which case they
-//! get forwarded to a RawCellStream object, or for no particular stream,
+//! get forwarded to a StreamReceiver object, or for no particular stream,
 //! in which case they are considered "meta" cells (like EXTENDED2)
 //! that should only get accepted if something is waiting for them.
 //!
