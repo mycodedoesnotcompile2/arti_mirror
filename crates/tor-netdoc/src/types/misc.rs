@@ -1768,14 +1768,16 @@ mod edcert {
         }
     }
 
-    /// An Ed25519 ntor onion key cross-certificate.
+    /// Verified reverse cert by K_ntor on KP_relayid_ed
     ///
-    /// This certificate is signed by the ntor onion key and certifies the
-    /// ed25519 identity key of the relay.
+    /// This certificate is signed by KS_ntor
+    /// (the circuit extension key) and certifies
+    /// KP_relayid_ed25519 ed25519 identity key of the relay.
     ///
     /// The type itself is zero-sized because it provides no new useful
     /// information that cannot be found elsewhere within the router descriptor.
-    /// It is intended for use with the `EmbeddedCert` framework.
+    /// It is intended for use within
+    /// [`EmbeddedCert`]`<Ed25519NtorCrossCert, KeyUnknownCert>`
     ///
     /// # Note on key conversion
     ///
