@@ -1074,6 +1074,93 @@ impl<T: PartialOrd> PartialOrd for Unknown<T> {
 
 // ============================================================
 
+/// A finite floating point number
+///
+/// Suitable for `stats` items in voites' routerstatus entries:
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:stats>
+///
+/// Invariants:
+///
+///  * Is finite.  (So not NaN or Inf.)  Might be denormal.
+///
+/// String representation:
+///
+///  * Parses any valid C-like notation.
+///
+///  * Never uses exponential notation to display.
+///
+///  * Output can be rather large, up to 326 characters!
+///    This is a spec bug.  The spec forbids us from using exponential notation.
+///    <https://gitlab.torproject.org/tpo/core/torspec/-/work_items/416>
+///
+/// We may to change this in the future to use exponentials notation for output.
+/// See <https://gitlab.torproject.org/tpo/core/torspec/-/work_items/416>
+//
+// TODO torspec#416 Consider replacing our F64Finite with finite f64 newtype from some crate
+//
+// What a palaver!
+//
+// This type is here rather than in rs.rs, in case similar things appears in other documents.
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)] //
+#[derive(derive_more::Deref, derive_more::Into, derive_more::Display)]
+pub struct F64Finite(f64);
+
+/// Error converting an [`F64Finite`] from an `f64`: the value wasn't finite
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error, amplify::Getters)]
+#[error("FP value {} ({bits:#x}) is not finite", f64::from_bits(self.bits))]
+pub struct F64FiniteError {
+    /// The raw bits (as from [`f64::to_bits`])
+    //
+    // We store it this way rather than as `f64` so that `Eq` etc. make sense.
+    bits: u64,
+}
+
+impl TryFrom<f64> for F64Finite {
+    type Error = F64FiniteError;
+
+    fn try_from(v: f64) -> Result<Self, F64FiniteError> {
+        v.is_finite()
+            .then_some(F64Finite(v))
+            .ok_or_else(|| F64FiniteError { bits: v.to_bits() })
+    }
+}
+
+/// Error parsing [`F64Finite`] from a string
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+pub enum F64FiniteParseError {
+    /// Syntax error
+    #[error("syntax error")]
+    Syntax(#[from] std::num::ParseFloatError),
+
+    /// Value is not finite
+    #[error("bad value")]
+    NotFinite(#[from] F64FiniteError),
+}
+
+impl FromStr for F64Finite {
+    type Err = F64FiniteParseError;
+
+    fn from_str(s: &str) -> StdResult<Self, F64FiniteParseError> {
+        Ok(s.parse::<f64>()?.try_into()?)
+    }
+}
+
+impl Eq for F64Finite {}
+
+#[allow(clippy::derive_ord_xor_partial_ord)]
+impl Ord for F64Finite {
+    fn cmp(&self, other: &F64Finite) -> cmp::Ordering {
+        self.0
+            .partial_cmp(&other.0)
+            .expect("finite f64 partial_cmp gave None")
+    }
+}
+
+impl NormalItemArgument for F64Finite {}
+
+// ============================================================
+
 /// Known keyword (enum) value, or arbitrary string
 ///
 /// `T` should be a `Copy` enum with unit variants.
@@ -3031,6 +3118,52 @@ mod test {
         chk("1");
         // Testing this because it is not a u8.
         assert!(NumericBoolean::from_str("10000").is_err());
+    }
+
+    #[test]
+    fn f64_finite() {
+        let normalise_string = |i: &str, o: &str| {
+            let v: F64Finite = i.parse().expect(i);
+            assert_eq!(v.to_string(), o, "i={i:?}");
+        };
+        let roundtrip_string = |s: &str| normalise_string(s, s);
+        let roundtrip_value = |i: f64| {
+            let v: F64Finite = i.try_into().unwrap();
+            let s = v.to_string();
+            let o: F64Finite = s.parse().expect(&s);
+            assert_eq!(v, o, "{i:?} {s}");
+            assert_eq!(v.to_bits(), o.to_bits(), "{i:?} {s}");
+        };
+        let error_string = |s: &str| {
+            let _: F64FiniteParseError = s.parse::<F64Finite>().expect_err(s);
+        };
+
+        roundtrip_string("0");
+        roundtrip_string("0.5");
+        roundtrip_string("1");
+        roundtrip_string("42");
+        roundtrip_string("9007199254740991"); // f64::MAX_EXACT_INTEGER (as per Rust 1.96.0)
+        normalise_string("1e3", "1000");
+
+        roundtrip_value(f64::EPSILON);
+        roundtrip_value(f64::EPSILON + 1.0);
+        roundtrip_value(f64::MIN);
+        roundtrip_value(f64::MIN_POSITIVE);
+        roundtrip_value(-f64::MIN_POSITIVE);
+        roundtrip_value(f64::MAX);
+
+        error_string(&f64::NAN.to_string());
+        error_string(&f64::INFINITY.to_string());
+        error_string("");
+        error_string("garbage");
+
+        // TODO torspec#416 these ought to be more reasonable, but this is what it does now:
+        roundtrip_string(
+            "0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000022250738585072014",
+        ); // MIN_POSITIVE
+        roundtrip_string(
+            "179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        ); // MAX
     }
 
     /// Test that ensures SpFingerprint matches the 10x4 requirement.
