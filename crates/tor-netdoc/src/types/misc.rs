@@ -548,7 +548,7 @@ mod ed25519impl {
     ///    <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:identity-ed25519>
     ///
     #[derive(Debug, Clone, PartialEq, Eq, Deftly)]
-    #[derive_deftly(ItemValueParseable)]
+    #[derive_deftly(ItemValueEncodable, ItemValueParseable)]
     #[non_exhaustive]
     pub struct Ed25519IdentityLine {
         /// Fixed magic identifier (`ed25519`) for this line.
