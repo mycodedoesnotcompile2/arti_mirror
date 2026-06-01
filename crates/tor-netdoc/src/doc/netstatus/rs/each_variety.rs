@@ -174,6 +174,11 @@ pub struct RouterStatus {
     // otherwise, we are missing handling of `id none`.
     #[deftly(netdoc(keyword = "id"))] 
     pub ed25519_id: ns_type!(NotPresent, NotPresent, Ed25519IdentityLine),
+
+    /// `stats` -- Statistics for this relay
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:stats>
+    pub stats: ns_type!(NotPresent, NotPresent, NetParams<F64Finite>),
 }
 
 impl RouterStatus {
