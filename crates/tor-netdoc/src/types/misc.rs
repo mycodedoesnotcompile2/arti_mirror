@@ -539,7 +539,14 @@ mod ed25519impl {
 
     impl NormalItemArgument for Ed25519AlgorithmString {}
 
-    /// An Ed25519 public key found in a micro descriptor `id` line.
+    /// Ed25519 public key in the form `<keyword> id <base64>`
+    ///
+    ///  * `id` in microdescriptors:
+    ///    <https://spec.torproject.org/dir-spec/computing-microdescriptors.html>
+    ///
+    ///  * `identity-ed25519` in routerdescs:
+    ///    <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:identity-ed25519>
+    ///
     #[derive(Debug, Clone, PartialEq, Eq, Deftly)]
     #[derive_deftly(ItemValueParseable)]
     #[non_exhaustive]
