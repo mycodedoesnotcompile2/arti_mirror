@@ -109,6 +109,15 @@ pub(crate) struct ApplicationConfig {
     /// This has no effect on Windows.
     #[deftly(tor_config(default))]
     pub(crate) allow_running_as_root: bool,
+
+    /// If true, then we do not bootstrap a [`TorClient`](arti_client::TorClient) on startup.
+    /// Instead, we defer bootstrapping until _either_ this option is false,
+    /// or until an RPC-using application tells us to bootstrap.
+    ///
+    /// We will still bind to proxy ports at startup, but we won't make any connections
+    /// to the network until after we are bootstrapping.
+    #[deftly(tor_config(default))]
+    pub(crate) defer_bootstrap: bool,
 }
 
 /// Configuration for one or more proxy listeners.
@@ -559,6 +568,7 @@ mod test {
                 "storage.port_info_file",
                 "proxy.socket_send_buf_size",
                 "proxy.socket_recv_buf_size",
+                "application.defer_bootstrap",
             ],
         );
 
