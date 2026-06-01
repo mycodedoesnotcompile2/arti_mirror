@@ -119,6 +119,13 @@ pub struct RouterDesc {
     /// * Exactly once, in second position in document.
     pub identity_ed25519: tor_cert::Ed25519Cert,
 
+    /// `master-key-ed25519` --- Redundantly specify the router's ed25519 identity.
+    ///
+    /// * `master-key-ed25519 <master key>`
+    /// * Exactly once.
+    // TODO DIRAUTH when implementing verification, don't forget to check this!
+    pub master_key_ed25519: Ed25519Public,
+
     /// `bandwidth` --- Report router's network bandwidth.
     ///
     /// * `bandwidth <average> <burst> <observed>`
@@ -598,7 +605,7 @@ impl RouterDesc {
 
         // master-key-ed25519: required, and should match certificate.
         #[allow(unexpected_cfgs)]
-        {
+        let ed25519_identity_key = {
             let master_key_tok = body.required(MASTER_KEY_ED25519)?;
             let ed_id: Ed25519Public = master_key_tok.parse_arg(0)?;
             let ed_id: ll::pk::ed25519::Ed25519Identity = ed_id.into();
@@ -608,7 +615,8 @@ impl RouterDesc {
                     .at_pos(master_key_tok.pos())
                     .with_msg("master-key-ed25519 does not match key in identity-ed25519"));
             }
-        }
+            ed_id
+        };
 
         // Legacy RSA identity
         let rsa_identity_key: ll::pk::rsa::PublicKey = body
@@ -924,6 +932,7 @@ impl RouterDesc {
                 dirport,
             },
             identity_ed25519: identity_cert,
+            master_key_ed25519: ed25519_identity_key.into(),
             bandwidth: Default::default(),
             platform,
             published,
