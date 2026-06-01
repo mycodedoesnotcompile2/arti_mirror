@@ -112,6 +112,9 @@ pub struct RouterStatus {
     /// `r` item.
     // We call this field `m` rather than `doc_digest` because it's not always the doc digest.
     // TODO SPEC in all but md consensuses the referenced document digest is in the `r` intro item
+    //
+    // TODO SPEC Adjust microdesc consensus `m` item position in the spec.
+    // This item is here because this is where C Tor puts it.  
     #[deftly(netdoc(with = doc_digest_item_m))]
     pub m: ns_type!(NotPresent, DocDigestB64, Vec<RouterStatusMdDigestsVote>),
 
