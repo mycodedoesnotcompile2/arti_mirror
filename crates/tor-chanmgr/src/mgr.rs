@@ -176,10 +176,10 @@ pub(crate) struct AbstractChanMgr<CF: AbstractChannelFactory> {
 /// the performance hit associated with re-registering counters.
 #[cfg(feature = "metrics")]
 pub(crate) struct ChanMgrMetrics {
-    /// Number of channels successfully built.
-    pub(crate) channels_built_success: metrics::Counter,
-    /// Number of channels that we tried to build but had an error.
-    pub(crate) channels_built_failure: metrics::Counter,
+    /// Number of inbound channels successfully built.
+    pub(crate) inbound_channels_built_success: metrics::Counter,
+    /// Number of inbound channels that we tried to build but had an error.
+    pub(crate) inbound_channels_built_failure: metrics::Counter,
 }
 
 /// Type alias for a future that we wait on to see when a pending
@@ -272,17 +272,19 @@ impl<CF: AbstractChannelFactory + Clone> AbstractChanMgr<CF> {
             memquota,
             #[cfg(feature = "metrics")]
             metrics: ChanMgrMetrics {
-                channels_built_success: metrics::counter!(
+                inbound_channels_built_success: metrics::counter!(
                     description: "Total number of channels built",
                     unit: metrics::Unit::Count,
                     "arti_chanmgr_channels_built",
                     "result" => "success",
+                    "direction" => "inbound",
                 ),
-                channels_built_failure: metrics::counter!(
+                inbound_channels_built_failure: metrics::counter!(
                     description: "Total number of channels built",
                     unit: metrics::Unit::Count,
                     "arti_chanmgr_channels_built",
                     "result" => "failure",
+                    "direction" => "inbound",
                 ),
             },
         }

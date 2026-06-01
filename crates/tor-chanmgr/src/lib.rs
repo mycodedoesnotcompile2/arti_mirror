@@ -323,9 +323,9 @@ impl<R: Runtime> ChanMgr<R> {
 
         #[cfg(feature = "metrics")]
         if result.is_ok() {
-            self.mgr.metrics.channels_built_success.increment(1);
+            self.mgr.metrics.inbound_channels_built_success.increment(1);
         } else {
-            self.mgr.metrics.channels_built_failure.increment(1);
+            self.mgr.metrics.inbound_channels_built_failure.increment(1);
         }
 
         result
