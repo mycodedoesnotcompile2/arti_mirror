@@ -157,3 +157,11 @@ impl RouterStatus {
         ns_expr!(&self.r.doc_digest, &self.m, &self.r.doc_digest,)
     }
 }
+
+impl EncodeOrd for RouterStatus {
+    fn encode_cmp(&self, other: &Self) -> Ordering {
+        // Type inference seems to need a *lot* of help here!
+        let k: for <'i> fn(&'i RouterStatus) -> &'i _  = |rs| &rs .r.identity;
+        EncodeOrd::encode_cmp(k(self), k(other))
+    }
+}
