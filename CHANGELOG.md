@@ -53,6 +53,8 @@ As usual, there are also many small changes and improvements which are detailed 
   `Footer.weights` is renamed to `ConsensusFooterFields.bandwidth_weights`,
   `SignatureGroup` contains `DirectorySignaturesHashesAccu` instead of hash fields,
   `RouterStatus.weight` contains the new `RelayWeightsItem`. ([!3985], [!3991])
+- In `tor-netdoc`, many undocumented features were removed, and various public APIs
+  have been reworked or removed.
 - In `tor-chanmgr`, the Error type has been refactored; the `ChannelBuild`
   variant has been renamed to `Connect`, its members have changed,
   and `Proxy` has been removed. ([!3932])
@@ -64,6 +66,11 @@ As usual, there are also many small changes and improvements which are detailed 
 - In `tor-rtcompat`, the `NetStreamProvider` trait has a new `ListenOptions` associated type,
   the `NetStreamProvider::listen()` trait method requires an additional argument,
   and the `Runtime` trait requirements has changed. ([!3957])
+- In `tor-key-forge`, `KeygenRng` now has `Rng` as a supertrait.
+- In `tor-config`, `ResolutionResults` is no longer `UnwindSafe` or
+  `RefUnwindSafe`.
+- In `tor-ptmgr`, `PtMgr::new` and `PtMgr::reconfigure` APIs have changed.
+
 
 ### Relay development
 
