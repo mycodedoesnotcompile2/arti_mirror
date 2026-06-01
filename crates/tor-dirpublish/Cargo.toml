@@ -16,7 +16,15 @@ all-features = true
 
 [features]
 default = []
-full = []
+full = [
+    "safelog/full",
+    "tor-basic-utils/full",
+    "tor-dirclient/full",
+    "tor-error/full",
+    "tor-linkspec/full",
+    "tor-rtcompat/full",
+    "web-time-compat/full",
+]
 
 [dependencies]
 async-trait = "0.1.54"
