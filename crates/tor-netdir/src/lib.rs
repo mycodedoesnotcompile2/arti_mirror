@@ -1613,6 +1613,7 @@ impl NetDir {
     // call sites must include a call to `Relay::is_polarity_inverter()` or whatever.
     // IMO the `WeightRole` ought to imply a condition (and it should therefore probably
     // be renamed.)  -Diziet
+    #[allow(clippy::cognitive_complexity)]
     pub fn pick_relay<'a, R, P>(
         &'a self,
         rng: &mut R,
@@ -1624,6 +1625,18 @@ impl NetDir {
         P: FnMut(&Relay<'a>) -> bool,
     {
         let relays: Vec<_> = self.relays().filter(usable).collect();
+
+        tracing::trace!(?role, "picking from {} relays", relays.len());
+
+        // Preemptively check for and handle an empty sequence ourselves, since it's
+        // cheap to do so and the `choose_weighted` behavior for this edge-case
+        // is a bit unpredictable.
+        // See e.g. <https://github.com/rust-random/rand/issues/1783>
+        if relays.is_empty() {
+            tracing::debug!(?role, "No eligible relays");
+            return None;
+        }
+
         // This algorithm uses rand::distr::WeightedIndex, and uses
         // gives O(n) time and space  to build the index, plus O(log n)
         // sampling time.
@@ -1645,7 +1658,6 @@ impl NetDir {
         // This code will give the wrong result if the total of all weights
         // can exceed u64::MAX.  We make sure that can't happen when we
         // set up `self.weights`.
-        tracing::trace!("picking from {} relays for role {:?}", relays.len(), role);
         match relays[..].choose_weighted(rng, |r| {
             let weight = self.weights.weight_rs_for_role(r.rs, role);
             tracing::trace!("relay:{id:?} role:{role:?} weight:{weight}", id = r.id());
@@ -1653,14 +1665,10 @@ impl NetDir {
         }) {
             Ok(relay) => Some(relay.clone()),
             Err(WeightError::InsufficientNonZero) => {
-                if relays.is_empty() {
-                    None
-                } else {
-                    warn!(?self.weights, ?role,
-                          "After filtering, all {} relays had zero weight. Choosing one at random. See bug #1907.",
-                          relays.len());
-                    relays.choose(rng).cloned()
-                }
+                warn!(?self.weights, ?role,
+                        "After filtering, all {} relays had zero weight. Choosing one at random. See bug #1907.",
+                        relays.len());
+                relays.choose(rng).cloned()
             }
             Err(e) => {
                 warn_report!(
