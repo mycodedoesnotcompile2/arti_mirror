@@ -322,7 +322,7 @@ impl<R: Runtime> ChanMgr<R> {
         let result = self.mgr.handle_incoming(src, stream).await;
 
         #[cfg(feature = "metrics")]
-        self.mgr.metrics.increment_inbound_channels_build(&result);
+        self.mgr.metrics.increment_inbound_channels_built(&result);
 
         result
     }

@@ -210,6 +210,7 @@ pub(crate) struct ChanMgrMetrics {
 
 #[cfg(feature = "metrics")]
 impl ChanMgrMetrics {
+    /// Create a new instance of [`ChanMgrMetrics`].
     pub(crate) fn new() -> Self {
         ChanMgrMetrics {
             inbound_channels_built_success: metrics::counter!(
@@ -334,7 +335,8 @@ impl ChanMgrMetrics {
         }
     }
 
-    pub(crate) fn increment_inbound_channels_build<R>(&self, result: &Result<R>) {
+    /// Increment the correct inbound_channels_built counter for the given result.
+    pub(crate) fn increment_inbound_channels_built<R>(&self, result: &Result<R>) {
         match result {
             Ok(_) => self.inbound_channels_built_success.increment(1),
             Err(Error::UnusableTarget(_)) => self
