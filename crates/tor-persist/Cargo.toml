@@ -36,8 +36,8 @@ amplify = { version = "4", default-features = false, features = ["derive"], opti
 derive-deftly = { version = "~1.11.0", features = ["full", "beta"] }
 derive_more = { version = "2.0.1", features = ["full"] }
 filetime = { version = "0.2", default-features = false }
-fs-mistrust = { path = "../fs-mistrust", version = "0.14.0", features = ["walkdir"] }
-fslock-guard = { path = "../fslock-guard", version = "0.6.0" }
+fs-mistrust = { path = "../fs-mistrust", version = "0.14.2", features = ["walkdir"] }
+fslock-guard = { path = "../fslock-guard", version = "0.7.0" }
 futures = "0.3.14"
 itertools = "0.14.0"
 oneshot-fused-workaround = { path = "../oneshot-fused-workaround", version = "0.6.0" }

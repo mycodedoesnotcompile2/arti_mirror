@@ -2341,7 +2341,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "equix"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "arrayvec",
  "hashx",
@@ -2592,7 +2592,7 @@ dependencies = [
 
 [[package]]
 name = "fs-mistrust"
-version = "0.14.1"
+version = "0.14.2"
 dependencies = [
  "assert_matches",
  "derive_builder_fork_arti",
@@ -2616,7 +2616,7 @@ checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
 name = "fslock-guard"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "libc",
  "test-temp-dir",
@@ -2982,7 +2982,7 @@ dependencies = [
 
 [[package]]
 name = "hashx"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "arrayvec",
  "blake2",

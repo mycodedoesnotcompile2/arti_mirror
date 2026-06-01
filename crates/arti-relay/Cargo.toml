@@ -52,7 +52,7 @@ clap = { version = "4.3.24", features = ["string", "wrap_help", "derive"] }
 derive-deftly = { version = "~1.11.0", features = ["full", "beta"] }
 derive_more = { version = "2.0.1", features = ["full"] }
 directories = "6"
-fs-mistrust = { path = "../fs-mistrust", version = "0.14.0", features = ["serde"] }
+fs-mistrust = { path = "../fs-mistrust", version = "0.14.2", features = ["serde"] }
 futures = "0.3.14"
 libc = "0.2"
 metrics-exporter-prometheus = { version = "0.18.0", optional = true, default-features = false, features = [
