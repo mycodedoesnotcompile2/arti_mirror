@@ -79,7 +79,7 @@
 //!  * `each_flavor.rs`
 //!  * `each_variety.rs`
 //!
-//! Do not write a `mod` line for it.
+//! Do not write a `mod` line for these files.
 //! Instead, in each of `vote.rs`, `plain.rs` and `md.rs`,
 //! call [`ns_do_variety_vote`], [`ns_do_variety_plain`], or [`ns_do_variety_md`].
 //!
