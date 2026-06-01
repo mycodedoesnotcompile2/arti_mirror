@@ -17,6 +17,7 @@ use crate::encode::{EncodeOrd, ItemEncoder};
 use crate::parse::parser::Section;
 use crate::parse2::ItemArgumentParseable;
 use crate::types::misc::*;
+use crate::types::policy::PortPolicy;
 use crate::types::relay_flags::{self, DocRelayFlags, RelayFlag, RelayFlags};
 use crate::types::version::TorVersion;
 use crate::{Error, NetdocErrorKind as EK, Result};

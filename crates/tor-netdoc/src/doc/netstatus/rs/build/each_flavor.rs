@@ -195,6 +195,7 @@ impl RouterStatusBuilder {
                 unknown: Unknown::new_discard(),
             },
             weight,
+            port_policy: ns_expr!(None, NotPresent, Void {}),
         })
     }
 

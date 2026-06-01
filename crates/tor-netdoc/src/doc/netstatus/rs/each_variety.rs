@@ -154,6 +154,14 @@ pub struct RouterStatus {
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:w>
     #[deftly(netdoc(flatten))]
     pub weight: RelayWeightsItem,
+
+    /// `p` --- Exit ports summary
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:p>
+    ///
+    /// This field is not properly parsed in plain consensuses by the old parser.
+    #[deftly(netdoc(keyword = "p"))]
+    pub port_policy: ns_type!(Option<Arc<PortPolicy>>, NotPresent, Option<Arc<PortPolicy>>),
 }
 
 impl RouterStatus {

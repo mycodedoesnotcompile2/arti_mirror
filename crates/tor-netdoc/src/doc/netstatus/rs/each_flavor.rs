@@ -197,6 +197,7 @@ impl RouterStatus {
             version,
             protos,
             weight,
+            port_policy: ns_expr!(None, NotPresent, Void {}),
         })
     }
 }
