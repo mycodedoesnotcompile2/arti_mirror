@@ -114,12 +114,7 @@ impl<R: Runtime> Uploader for RelayDescUploader<R> {
 }
 
 /// Background task that builds and publishes the relay's descriptor.
-pub(crate) struct RelayDescriptorPublisherTask<R: Runtime> {
-    /// Asynchronous runtime object.
-    // TODO(relay): used once we build circuits/connections to upload the descriptor.
-    #[allow(dead_code)]
-    runtime: R,
-
+pub(crate) struct RelayDescriptorPublisherTask {
     /// Directory provider, used to learn about new consensus documents and parameters.
     netdir: Arc<dyn NetDirProvider>,
 
@@ -138,7 +133,7 @@ pub(crate) struct RelayDescriptorPublisherTask<R: Runtime> {
     crypto_tx: CryptoCommandSender,
 }
 
-impl<R: Runtime> RelayDescriptorPublisherTask<R> {
+impl RelayDescriptorPublisherTask {
     /// Construct a new descriptor publisher task.
     ///
     /// This launches the underlying [`tor_dirpublish`] publisher (which spawns its own reactor),
@@ -146,8 +141,8 @@ impl<R: Runtime> RelayDescriptorPublisherTask<R> {
     ///
     /// The publisher reactor won't try to upload until the
     /// [`tor_dirpublish::Publisher::set_document`] is called.
-    pub(crate) fn new(
-        runtime: R,
+    pub(crate) fn new<R: Runtime>(
+        runtime: &R,
         netdir: Arc<dyn NetDirProvider>,
         authorities: AuthorityContacts,
         crypto_tx: CryptoCommandSender,
@@ -160,7 +155,7 @@ impl<R: Runtime> RelayDescriptorPublisherTask<R> {
         // We start with no document and no targets. Both are populated once we build a descriptor.
         // This way we catch any new directory authorities showing up in the config or consensus.
         let publisher = Publisher::launch(
-            &runtime,
+            runtime,
             "relay descriptor".to_string(),
             None,
             HashSet::new(),
@@ -170,7 +165,6 @@ impl<R: Runtime> RelayDescriptorPublisherTask<R> {
         .context("Failed to launch descriptor publisher")?;
 
         Ok(Self {
-            runtime,
             netdir,
             authorities,
             command_rx,
