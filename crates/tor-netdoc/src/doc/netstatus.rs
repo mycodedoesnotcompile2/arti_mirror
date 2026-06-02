@@ -2008,18 +2008,6 @@ mod proto_statuses_parse2_encode {
     }
 }
 
-/// Result of checking a single authority signature.
-enum SigCheckResult {
-    /// The signature checks out.  Great!
-    Valid,
-    /// The signature is invalid; no additional information could make it
-    /// valid.
-    Invalid,
-    /// We can't check the signature because we don't have a
-    /// certificate with the right signing key.
-    MissingCert,
-}
-
 impl Signature {
     /// Parse a Signature from a directory-signature section
     fn from_item(item: &Item<'_, NetstatusKwd>) -> crate::Result<Signature> {
@@ -2086,19 +2074,6 @@ impl Signature {
             signed_digest,
             signature: &self.signature,
         })
-    }
-
-    /// Try to check whether this signature is a valid signature of a
-    /// provided digest, given a slice of certificates that might contain
-    /// its signing key.
-    fn check_signature(&self, signed_digest: &[u8], certs: &[AuthCert]) -> SigCheckResult {
-        let Some(to_verify) = self.signature_to_verify(signed_digest, certs) else {
-            return SigCheckResult::MissingCert;
-        };
-        match to_verify.verify() {
-            Ok(()) => SigCheckResult::Valid,
-            Err(_) => SigCheckResult::Invalid,
-        }
     }
 }
 
@@ -2256,8 +2231,11 @@ impl SignatureGroup {
                 continue;
             };
 
-            match sig.check_signature(d, certs) {
-                SigCheckResult::Valid => {
+            let Some(tv) = sig.signature_to_verify(d, certs) else {
+                continue;
+            };
+            match tv.verify() {
+                Ok(()) => {
                     ok.insert(*id_fingerprint);
                 }
                 _ => continue,
