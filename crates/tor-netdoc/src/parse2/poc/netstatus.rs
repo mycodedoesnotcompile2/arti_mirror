@@ -64,10 +64,6 @@ fn verify_general_timeless(
             signature: rsa_signature,
         } = sig;
 
-        let Some(h) = hashes.hash_slice_for_verification(hash_algo) else {
-            continue;
-        };
-
         let Some(authority) = ({
             trusted
                 .iter()
@@ -76,6 +72,11 @@ fn verify_general_timeless(
             // unknown kp_auth_id_rsa, ignore it
             continue;
         };
+
+        let Some(h) = hashes.hash_slice_for_verification(hash_algo) else {
+            continue;
+        };
+
         let Some(cert) = ({
             certs
                 .iter()
