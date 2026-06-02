@@ -75,6 +75,7 @@ use crate::parse2::{
     self, ArgumentError, ArgumentStream, ErrorProblem, IsStructural, ItemArgumentParseable,
     ItemStream, ItemValueParseable, KeywordRef, NetdocParseable, SignatureHashInputs,
     SignatureItemParseable, StopAt, UnparsedItem, VerifyFailed,
+    NetdocParseableUnverified,
 };
 use crate::types::relay_flags::{self, DocRelayFlags};
 use crate::types::{self, *};
@@ -886,7 +887,7 @@ pub struct SignatureGroup {
 /// or we are lacking authcerts.
 ///
 /// Does not represent actual verification errors.
-/// Those show up as `VerifyFailed`, typically [`VerifyFailed::VerifyFailed`].
+/// Those show up as `VerifyFailed`, typically [`ConsensusVerifyFailed::InvalidSignature`].
 ///
 /// Can be converted to a `VerifyFailed`,
 /// giving [`InsufficientTrustedSigners`](VerifyFailed::InsufficientTrustedSigners).
@@ -907,6 +908,33 @@ pub enum ConsensusVerifiabilityError {
         /// All the authcerts that would be useful
         missing: HashSet<AuthCertKeyIds>,
     },
+}
+
+/// Error encountered while verifying a consensus
+///
+/// Thrown by
+/// [`plain::NetworkStatusUnverified::verify`]
+/// and
+/// [`md::NetworkStatusUnverified::verify`].
+///
+/// Not used for problems with the validity period:
+/// that's handled by `tor-checkable` and shows up as [`tor_checkable::TimeValidityError`].
+///
+/// Can be converted to a `VerifyFailed` (which, in effect, summarises the error).
+#[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ConsensusVerifyFailed {
+    /// Certificates or signatures insufficient
+    #[error("certs/sigs insufficient")]
+    CertificationInsufficient(#[from] ConsensusVerifiabilityError),
+
+    /// One or more signatures failed to verify
+    #[error("invalid signature")]
+    //
+    // Not `#[from]` because we don't want to accidentally convert
+    // ConsensusVerifiabilityError -> VerifyFailed -> ConsensusVerifyFailed
+    // since that would give the wrong variant.
+    InvalidSignature(#[source] VerifyFailed),
 }
 
 /// A shared random value produced by the directory authorities.
@@ -2505,6 +2533,17 @@ impl From<ConsensusVerifiabilityError> for VerifyFailed {
     }
 }
 
+impl From<ConsensusVerifyFailed> for VerifyFailed {
+    fn from(cvf: ConsensusVerifyFailed) -> VerifyFailed {
+        use ConsensusVerifyFailed as CVF;
+        use VerifyFailed as VF;
+        match cvf {
+            CVF::CertificationInsufficient { .. } => VF::InsufficientTrustedSigners,
+            CVF::InvalidSignature { .. } => VF::VerifyFailed,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     // @@ begin test lint list maintained by maint/add_warning @@
@@ -2525,7 +2564,7 @@ mod test {
     use hex_literal::hex;
     #[cfg(feature = "incomplete")]
     use {
-        crate::parse2::{NetdocParseableUnverified as _, ParseInput, parse_netdoc},
+        crate::parse2::{ParseInput, parse_netdoc},
         std::fs,
     };
 
