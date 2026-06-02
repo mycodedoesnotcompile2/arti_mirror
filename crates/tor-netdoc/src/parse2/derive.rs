@@ -509,7 +509,7 @@ define_derive_deftly! {
     /// To handle signed documents define two structures:
     ///
     ///  * `Foo`, containing only the content, not the signatures.
-    ///    Derive [`NetdocParseableUnverified`](derive_deftly_template_NetdocUnverified).
+    ///    Derive [`NetdocParseableUnverified`](derive_deftly_template_NetdocParseableUnverified).
     ///  * `FooSignatures`, containing only the signatures.
     ///    Derive `NetdocParseableSignatures`.
     ///
@@ -693,7 +693,7 @@ define_derive_deftly! {
     ///
     /// This signatures sub-document will typically be included in a
     /// `FooUnverified` struct derived with
-    /// [`NetdocUnverified`](derive_deftly_template_NetdocUnverified),
+    /// [`NetdocParseableUnverified`](derive_deftly_template_NetdocParseableUnverified),
     /// rather than included anywhere manually.
     ///
     /// ### Expected input structure
