@@ -52,8 +52,6 @@ pub(crate) struct DirAuthorityTarget {
 #[non_exhaustive]
 pub(crate) enum DescriptorCommand {
     /// Rebuild the relay descriptor and publish it to the directory authorities.
-    // TODO(relay): constructed once the crypto task is wired up to send commands.
-    #[allow(dead_code)]
     Publish,
 }
 
