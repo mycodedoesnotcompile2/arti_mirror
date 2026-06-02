@@ -68,26 +68,26 @@ fn verify_general_timeless(
             continue;
         };
 
-            let Some(authority) = ({
-                trusted
-                    .iter()
-                    .find(|trusted| **trusted == *h_kp_auth_id_rsa)
-            }) else {
-                // unknown kp_auth_id_rsa, ignore it
-                continue;
-            };
-            let Some(cert) = ({
-                certs
-                    .iter()
-                    .find(|cert| cert.dir_signing_key.to_rsa_identity() == *h_kp_auth_sign_rsa)
-            }) else {
-                // no cert for this kp_auth_sign_rsa, ignore it
-                continue;
-            };
+        let Some(authority) = ({
+            trusted
+                .iter()
+                .find(|trusted| **trusted == *h_kp_auth_id_rsa)
+        }) else {
+            // unknown kp_auth_id_rsa, ignore it
+            continue;
+        };
+        let Some(cert) = ({
+            certs
+                .iter()
+                .find(|cert| cert.dir_signing_key.to_rsa_identity() == *h_kp_auth_sign_rsa)
+        }) else {
+            // no cert for this kp_auth_sign_rsa, ignore it
+            continue;
+        };
 
-            let () = cert.dir_signing_key.verify(h, rsa_signature)?;
+        let () = cert.dir_signing_key.verify(h, rsa_signature)?;
 
-            ok.insert(*authority);
+        ok.insert(*authority);
     }
 
     if ok.len() < threshold {
