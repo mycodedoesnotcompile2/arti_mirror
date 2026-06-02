@@ -170,9 +170,16 @@ struct ClientShared<R: Runtime> {
     /// mutex used to prevent two tasks from trying to bootstrap at once.
     bootstrap_in_progress: AsyncMutex<()>,
 
+    /// Sender used to update changes in our bootstrap settings.
+    bootstrap_setting_sender: Mutex<postage::watch::Sender<BootstrapSetting>>,
+
     /// Whether or not we should call `bootstrap` before doing things that require
-    /// bootstrapping. If this is `false`, we will just call `wait_for_bootstrap`
-    /// instead.
+    /// bootstrapping.
+    ///
+    /// If this is [`BootstrapBehavior::OnDemand`], we wait for the client to bootstrap
+    /// (launching a bootstrap if necessary) before performing any operation that needs circuits.
+    /// If this is [`BootstrapBehavior::Manual`], we give an error if we are told to do
+    /// something that needs circuits and we have not been told to bootstrap.
     should_bootstrap: BootstrapBehavior,
 
     /// Shared boolean for whether we're currently in "dormant mode" or not.
@@ -219,6 +226,9 @@ struct NotConstructedInner<R: Runtime> {
     /// that [`RunningInner::new`] needs to take NotConstructedInner by value.
     /// With some redesign we could simplify this, and do away with [`Inner::Poisoned`].
     status_sender: postage::watch::Sender<BootstrapStatus>,
+
+    /// A receiver used to inform the bootstrap status processor about changes in our settings.
+    bootstrap_setting_receiver: postage::watch::Receiver<BootstrapSetting>,
 
     /// A (possibly user-provided) builder used to construct our NetDirProvider.
     dirmgr_builder: Arc<dyn crate::builder::DirProviderBuilder<R>>,
@@ -588,6 +598,41 @@ pub enum BootstrapBehavior {
     /// network) before calling [`bootstrap`](TorClient::bootstrap) will fail, and
     /// return an error that has kind [`ErrorKind::BootstrapRequired`](crate::ErrorKind::BootstrapRequired).
     Manual,
+}
+
+/// A representation of whether a [`TorClient`] is allowed to bootstrap, and whether it
+/// has begun to do so.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BootstrapSetting {
+    /// The configured [`BootstrapBehavior`] for the `TorClient`.
+    behavior: BootstrapBehavior,
+
+    /// If true, we have a [`RunningInner`] in the `TorClient`,
+    /// indicating that we are trying to bootstrap it.
+    running_inner_is_present: bool,
+}
+
+impl Default for BootstrapSetting {
+    fn default() -> Self {
+        Self {
+            behavior: BootstrapBehavior::Manual,
+            running_inner_is_present: false,
+        }
+    }
+}
+
+impl BootstrapSetting {
+    /// Return true if this [`BootstrapSetting`]
+    /// indicates that the client is not trying to bootstrap,
+    /// and will not try until it is told explicitly to do so.
+    pub(crate) fn blocked(&self) -> bool {
+        use BootstrapBehavior::*;
+        match (self.behavior, self.running_inner_is_present) {
+            (OnDemand, _) => false,
+            (Manual, true) => false,
+            (Manual, false) => true,
+        }
+    }
 }
 
 /// What level of sleep to put a Tor client into.
@@ -963,7 +1008,15 @@ impl<R: Runtime> TorClient<R> {
 
         let addr_cfg = config.address_filter.clone();
 
-        let (status_sender, status_receiver) = postage::watch::channel();
+        let bootstrap_setting = BootstrapSetting {
+            behavior: autobootstrap,
+            running_inner_is_present: false,
+        };
+        let (bootstrap_setting_sender, bootstrap_setting_receiver) =
+            postage::watch::channel_with(bootstrap_setting);
+        let bootstrap_setting_sender = Mutex::new(bootstrap_setting_sender);
+        let (status_sender, status_receiver) =
+            postage::watch::channel_with(BootstrapStatus::from_setting(bootstrap_setting));
         let status_receiver = status::BootstrapEvents {
             inner: status_receiver,
         };
@@ -981,6 +1034,7 @@ impl<R: Runtime> TorClient<R> {
             config: config.clone(),
             dormant_recv,
             status_sender,
+            bootstrap_setting_receiver,
             dirmgr_builder,
             dirmgr_extensions,
         });
@@ -999,6 +1053,7 @@ impl<R: Runtime> TorClient<R> {
             reconfigure_lock: Arc::new(Mutex::new(())),
             status_receiver,
             bootstrap_in_progress: AsyncMutex::new(()),
+            bootstrap_setting_sender,
             should_bootstrap: autobootstrap,
             dormant: Mutex::new(dormant_send),
             #[cfg(feature = "onion-service-service")]
@@ -1089,6 +1144,7 @@ impl<R: Runtime> RunningInner<R> {
             config,
             dormant_recv,
             status_sender,
+            bootstrap_setting_receiver,
             dirmgr_builder,
             dirmgr_extensions,
         } = pending;
@@ -1237,6 +1293,7 @@ impl<R: Runtime> RunningInner<R> {
                 conn_status,
                 dir_status,
                 skew_status,
+                bootstrap_setting_receiver,
             ))
             .map_err(|e| ErrorDetail::from_spawn("top-level status reporter", e))?;
 
@@ -2218,6 +2275,11 @@ impl<R: Runtime> ClientShared<R> {
                 match RunningInner::new(*pending, self) {
                     Ok(running_inner) => {
                         *inner_guard = Inner::Running(Arc::clone(&running_inner));
+                        self.bootstrap_setting_sender
+                            .lock()
+                            .expect("lock poisoned")
+                            .borrow_mut()
+                            .running_inner_is_present = true;
                         Ok(running_inner)
                     }
                     Err(e) => {
