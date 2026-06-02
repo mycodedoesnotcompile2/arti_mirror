@@ -16,6 +16,7 @@ full = [
     "metrics",
     "fs-mistrust/full",
     "safelog/full",
+    "tor-async-utils/full",
     "tor-chanmgr/full",
     "tor-config/full",
     "tor-error/full",
@@ -69,6 +70,7 @@ smallvec = "1.10"
 strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2"
 tokio = { version = "1.7", features = ["signal"] }
+tor-async-utils = { path = "../tor-async-utils", version = "0.43.0" }
 tor-basic-utils = { path = "../tor-basic-utils", version = "0.43.0" }
 tor-cert = { path = "../tor-cert", version = "0.43.0" }
 tor-chanmgr = { path = "../tor-chanmgr", version = "0.43.0", features = ["relay"] }
