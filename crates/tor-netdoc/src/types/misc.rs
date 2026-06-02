@@ -1818,15 +1818,11 @@ mod edcert {
         ///
         /// # Requirements
         ///
-        /// 1. MUST have a valid signature by `ntor_ed25519`.
-        /// 2. MUST be valid at `now`.
-        /// 3. MUST be of [`CertType::NTOR_CC_IDENTITY`].
-        /// 4. Certified key MUST be of [`tor_cert::CertifiedKey::Ed25519`].
-        /// 5. Certified key MUST be equal to `id_ed25519`.
-        /// 6. Both keys MUST be different.
-        /// 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
-        ///
-        // XXX: Use Ed25519NtorCrossCert::verify_inner().
+        /// 1. MUST be of [`CertType::NTOR_CC_IDENTITY`].
+        /// 2. Certified key MUST be of [`CertifiedKey::Ed25519`].
+        /// 3. Certified key MUST be equal to `id_ed25519`.
+        /// 4. MUST have a valid signature.
+        /// 5. MUST be valid at `now`.
         pub fn verify(
             ntor_ed25519: ed25519::Ed25519Identity,
             id_ed25519: ed25519::Ed25519Identity,
@@ -1834,39 +1830,16 @@ mod edcert {
             post_tolerance: Duration,
             now: SystemTime,
         ) -> StdResult<Self, VerifyFailed> {
-            let cert = cert
-                // 1. MUST have a valid signature by `ntor_ed25519`.
-                .should_be_signed_with(&ntor_ed25519)?
-                .check_signature()?
-                // 2. MUST be valid at `now`.
-                .check_valid_at(&now.saturating_sub(post_tolerance))?;
-
-            // 3. MUST be of [`CertType::NTOR_CC_IDENTITY`].
-            if cert.cert_type() != CertType::NTOR_CC_IDENTITY {
-                return Err(ErrorProblem::ObjectInvalidData.into());
-            }
-
-            // 4. Certified key MUST be of [`tor_cert::CertifiedKey::Ed25519`].
-            // 5. Certified key MUST be equal to `id_ed25519`.
-            if cert.subject_key() != &CertifiedKey::Ed25519(id_ed25519) {
-                return Err(VerifyFailed::VerifyFailed);
-            }
-
-            // 6. Both keys MUST be different.
-            if id_ed25519 == ntor_ed25519 {
-                return Err(ErrorProblem::ObjectInvalidData.into());
-            }
-
-            // 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
-            if ed25519::PublicKey::try_from(id_ed25519).is_err()
-                || ed25519::PublicKey::try_from(ntor_ed25519).is_err()
-            {
-                return Err(ErrorProblem::ObjectInvalidData.into());
-            }
-
-            Ok(Self {
-                _promise_we_verified: (),
-            })
+            Ok(
+                // .verify_inner() ensures 1-3.
+                Self::verify_inner(ntor_ed25519, id_ed25519, cert)?
+                    .0
+                    // 4. MUST have a valid signature.
+                    .check_signature()?
+                    .extend_tolerance(post_tolerance)
+                    // 5. MUST be valid at `now`.
+                    .check_valid_at(&now)?,
+            )
         }
 
         /// Creates a new signed [`Ed25519NtorCrossCert`].
