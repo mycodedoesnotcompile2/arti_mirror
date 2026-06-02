@@ -2037,6 +2037,7 @@ impl Signature {
                 item.required_arg(2)?,
             )
         } else {
+            // TODO #2530 digest_algo needs to depend on whether SHA1 was stated
             ("sha1", item.required_arg(0)?, item.required_arg(1)?)
         };
 
@@ -2179,15 +2180,7 @@ impl SignatureGroup {
                 continue;
             }
 
-            use DirectorySignatureHashAlgo as DSHA;
-            use KeywordOrString as KOS;
-
-            let d: Option<&[u8]> = match sig.digest_algo.algorithm() {
-                KOS::Known(DSHA::Sha256) => self.hashes.sha256.as_ref().map(|a| &a[..]),
-                // TODO #2530 this needs to depend on whether `sha1` was stated (!)
-                KOS::Known(DSHA::Sha1) => self.hashes.sha1.as_ref().map(|a| &a[..]),
-                _ => None, // We don't know how to find this digest.
-            };
+            let d: Option<&[u8]> = self.hashes.hash_slice_for_verification(&sig.digest_algo);
             let Some(d) = d else {
                 // We don't support this kind of digest for this kind
                 // of document.
