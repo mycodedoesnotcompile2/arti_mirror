@@ -82,7 +82,6 @@ use crate::util::PeekableIterator;
 use crate::{Error, KeywordEncodable, NetdocErrorKind as EK, NormalItemArgument, Pos};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Display};
-use std::result::Result as StdResult;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::{net, result, time};
@@ -444,7 +443,7 @@ impl ProtoStatus {
     pub fn check_protocols(
         &self,
         supported_protocols: &Protocols,
-    ) -> StdResult<(), ProtocolSupportError> {
+    ) -> Result<(), ProtocolSupportError> {
         // Required protocols take precedence, so we check them first.
         let missing_required = self.required.difference(supported_protocols);
         if !missing_required.is_empty() {
@@ -679,7 +678,7 @@ pub enum DirectorySignatureHashAlgo {
 pub struct DigestAlgoInSignature(pub Option<KeywordOrString<DirectorySignatureHashAlgo>>);
 
 impl ItemArgumentParseable for DigestAlgoInSignature {
-    fn from_args<'s>(args: &mut ArgumentStream<'s>) -> StdResult<Self, ArgumentError> {
+    fn from_args<'s>(args: &mut ArgumentStream<'s>) -> Result<Self, ArgumentError> {
         let v = if args
             .clone()
             .next()
@@ -698,7 +697,7 @@ impl ItemArgumentParseable for DigestAlgoInSignature {
     }
 }
 impl ItemArgument for DigestAlgoInSignature {
-    fn write_arg_onto(&self, out: &mut ItemEncoder<'_>) -> StdResult<(), Bug> {
+    fn write_arg_onto(&self, out: &mut ItemEncoder<'_>) -> Result<(), Bug> {
         if let Some(y) = &self.0 {
             y.write_arg_onto(out)?;
         }
@@ -746,7 +745,7 @@ impl SignatureItemParseable for Signature {
         item: UnparsedItem,
         body: &SignatureHashInputs<'_>,
         hash: &mut Self::HashAccu,
-    ) -> StdResult<Self, ErrorProblem> {
+    ) -> Result<Self, ErrorProblem> {
         let signature = Signature::from_unparsed(item)?;
         hash.update_from(&signature.digest_algo, body);
         Ok(signature)
@@ -1074,7 +1073,7 @@ impl SharedRandCommitV1 {
     const FIXED_ARGUMENTS: &[&str] = &["1", "sha3-256"];
 }
 impl ItemValueEncodable for SharedRandCommit {
-    fn write_item_value_onto(&self, mut out: ItemEncoder) -> StdResult<(), Bug> {
+    fn write_item_value_onto(&self, mut out: ItemEncoder) -> Result<(), Bug> {
         match self {
             SharedRandCommit::V1(values) => {
                 for fixed in SharedRandCommitV1::FIXED_ARGUMENTS {
@@ -1087,7 +1086,7 @@ impl ItemValueEncodable for SharedRandCommit {
     }
 }
 impl ItemValueParseable for SharedRandCommit {
-    fn from_unparsed(mut item: UnparsedItem<'_>) -> StdResult<Self, ErrorProblem> {
+    fn from_unparsed(mut item: UnparsedItem<'_>) -> Result<Self, ErrorProblem> {
         let mut fixed = SharedRandCommitV1::FIXED_ARGUMENTS.iter().copied();
         let args = item.args_mut();
         let version = args
@@ -1147,7 +1146,7 @@ define_derive_deftly! {
         fn from_items<'s>(
             input: &mut ItemStream<'s>,
             stop_outer: stop_at!(),
-        ) -> StdResult<Self, ErrorProblem> {
+        ) -> Result<Self, ErrorProblem> {
             let stop_inner = stop_outer
               $(
                 ${when F_NORMAL}
@@ -1165,7 +1164,7 @@ define_derive_deftly! {
 
     #[cfg(feature = "incomplete")]
     impl NetdocEncodable for VoteAuthoritySection {
-        fn encode_unsigned(&self, out: &mut NetdocEncoder) -> StdResult<(), Bug> {
+        fn encode_unsigned(&self, out: &mut NetdocEncoder) -> Result<(), Bug> {
           $(
             ${when F_NORMAL}
             self.$fname.encode_unsigned(out)?;
@@ -1748,7 +1747,7 @@ impl Default for RelayWeight {
 impl TryFrom<&NetParams<u32>> for RelayWeight {
     type Error = InvalidRelayWeights;
 
-    fn try_from(params: &NetParams<u32>) -> StdResult<RelayWeight, InvalidRelayWeights> {
+    fn try_from(params: &NetParams<u32>) -> Result<RelayWeight, InvalidRelayWeights> {
         let bw = params.params.get("Bandwidth");
         let unmeas = params.params.get("Unmeasured");
 
@@ -1769,7 +1768,7 @@ impl TryFrom<&NetParams<u32>> for RelayWeight {
 impl TryFrom<NetParams<u32>> for RelayWeightsItem {
     type Error = InvalidRelayWeights;
 
-    fn try_from(params: NetParams<u32>) -> StdResult<RelayWeightsItem, InvalidRelayWeights> {
+    fn try_from(params: NetParams<u32>) -> Result<RelayWeightsItem, InvalidRelayWeights> {
         Ok(RelayWeightsItem {
             effective: (&params).try_into()?,
             params: Unknown::Retained(Some(params)),
