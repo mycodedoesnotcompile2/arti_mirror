@@ -73,6 +73,10 @@ fn verify_general_timeless(
             continue;
         };
 
+        if ok.contains(h_kp_auth_id_rsa) {
+            continue;
+        }
+
         let Some(h) = hashes.hash_slice_for_verification(hash_algo) else {
             continue;
         };
