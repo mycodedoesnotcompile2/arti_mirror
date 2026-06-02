@@ -47,6 +47,7 @@ use crate::{AllowAnnotations, Error, KeywordEncodable, NetdocErrorKind as EK, Re
 use derive_deftly::Deftly;
 use ll::pk::ed25519::Ed25519Identity;
 use saturating_time::SaturatingTime;
+use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::{iter, net, time};
@@ -250,12 +251,15 @@ pub struct RouterDescSignatures {
 }
 
 /// Description of the software a relay is running.
+///
+/// `platform` line in a routerstatus.
+/// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:platform>
 // TODO: Move this to types/misc.rs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum RelayPlatform {
     /// Software advertised to be some version of Tor, on some platform.
-    Tor(TorVersion, String),
+    Tor(TorVersion, Option<String>),
     /// Software not advertised to be Tor.
     Other(String),
 }
@@ -266,12 +270,24 @@ impl std::str::FromStr for RelayPlatform {
         if args.starts_with("Tor ") {
             let v: Vec<_> = args.splitn(4, ' ').collect();
             match &v[..] {
-                ["Tor", ver, "on", p] => Ok(RelayPlatform::Tor(ver.parse()?, (*p).to_string())),
-                ["Tor", ver, ..] => Ok(RelayPlatform::Tor(ver.parse()?, "".to_string())),
+                ["Tor", ver, "on", p] => {
+                    Ok(RelayPlatform::Tor(ver.parse()?, Some((*p).to_string())))
+                }
+                ["Tor", ver, ..] => Ok(RelayPlatform::Tor(ver.parse()?, None)),
                 _ => unreachable!(),
             }
         } else {
             Ok(RelayPlatform::Other(args.to_string()))
+        }
+    }
+}
+
+impl Display for RelayPlatform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            Self::Tor(v, Some(p)) => write!(f, "Tor {v} on {p}"),
+            Self::Tor(v, None) => write!(f, "Tor {v}"),
+            Self::Other(s) => write!(f, "{s}"),
         }
     }
 }
@@ -1273,27 +1289,41 @@ mod test {
 
     #[test]
     fn test_platform() {
-        let p = "Tor 0.4.4.4-alpha on a flying bison".parse::<RelayPlatform>();
-        assert!(p.is_ok());
-        assert_eq!(
-            p.unwrap(),
-            RelayPlatform::Tor(
-                "0.4.4.4-alpha".parse().unwrap(),
-                "a flying bison".to_string()
-            )
-        );
+        let tests = [
+            // Test with platform.
+            (
+                "Tor 0.4.4.4-alpha on a flying bison",
+                RelayPlatform::Tor(
+                    "0.4.4.4-alpha".parse().unwrap(),
+                    Some("a flying bison".to_string()),
+                ),
+            ),
+            // Test without platform but potentially weird spacing.
+            (
+                "Tor 0.4.4.4-alpha on",
+                RelayPlatform::Tor("0.4.4.4-alpha".parse().unwrap(), None),
+            ),
+            (
+                "Tor 0.4.4.4-alpha ",
+                RelayPlatform::Tor("0.4.4.4-alpha".parse().unwrap(), None),
+            ),
+            (
+                "Tor 0.4.4.4-alpha",
+                RelayPlatform::Tor("0.4.4.4-alpha".parse().unwrap(), None),
+            ),
+            // Test other.
+            ("arti 0.0.0", RelayPlatform::Other("arti 0.0.0".to_string())),
+        ];
+        for (input, output) in tests {
+            assert_eq!(input.parse::<RelayPlatform>().unwrap(), output);
 
-        let p = "Tor 0.4.4.4-alpha on".parse::<RelayPlatform>();
-        assert!(p.is_ok());
-
-        let p = "Tor 0.4.4.4-alpha ".parse::<RelayPlatform>();
-        assert!(p.is_ok());
-        let p = "Tor 0.4.4.4-alpha".parse::<RelayPlatform>();
-        assert!(p.is_ok());
-
-        let p = "arti 0.0.0".parse::<RelayPlatform>();
-        assert!(p.is_ok());
-        assert_eq!(p.unwrap(), RelayPlatform::Other("arti 0.0.0".to_string()));
+            // Round-trip test with input stripped of " on" suffix and trimmed.
+            // Otherwise we cannot really make this work because certain inputs
+            // contain redundant data on purpose.
+            let input = input.strip_suffix(" on").unwrap_or(input);
+            let input = input.trim();
+            assert_eq!(output.to_string(), input);
+        }
     }
 
     #[test]
