@@ -38,7 +38,7 @@ use tor_netdoc::{
     parse2::{
         self,
         poc::netstatus::{cons, md},
-        NetdocParseable, NetdocUnverified, ParseInput,
+        NetdocParseable, NetdocParseableUnverified, ParseInput,
     },
 };
 use tor_rtcompat::PreferredRuntime;
@@ -746,7 +746,7 @@ mod test {
         net::TcpListener,
     };
     use tor_basic_utils::test_rng::testing_rng;
-    use tor_netdoc::parse2::NetdocUnverified;
+    use tor_netdoc::parse2::NetdocParseableUnverified;
 
     use crate::database::sql;
 

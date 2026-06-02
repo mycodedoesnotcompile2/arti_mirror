@@ -2198,7 +2198,7 @@ mod test {
     use hex_literal::hex;
     #[cfg(feature = "incomplete")]
     use {
-        crate::parse2::{NetdocUnverified as _, ParseInput, parse_netdoc},
+        crate::parse2::{NetdocParseableUnverified as _, ParseInput, parse_netdoc},
         std::fs,
     };
 
