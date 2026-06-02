@@ -2181,7 +2181,18 @@ impl SignatureGroup {
         let mut ok: HashSet<RsaIdentity> = HashSet::new();
 
         for sig in &self.signatures {
-            let id_fingerprint = &sig.key_ids.id_fingerprint;
+            let Signature {
+                digest_algo,
+                key_ids:
+                    AuthCertKeyIds {
+                        id_fingerprint,
+                        // h_kp_auth_sign_rsa, which Signature::check_signature
+                        // checks against the authcert.
+                        sk_fingerprint: _,
+                    },
+                // Used by Signature::check_signature
+                signature: _,
+            } = sig;
 
             if let Some(trusted) = trusted_authorities {
                 if !trusted.iter().any(|trusted| trusted == id_fingerprint) {
@@ -2195,7 +2206,7 @@ impl SignatureGroup {
                 continue;
             }
 
-            let d: Option<&[u8]> = self.hashes.hash_slice_for_verification(&sig.digest_algo);
+            let d: Option<&[u8]> = self.hashes.hash_slice_for_verification(digest_algo);
             let Some(d) = d else {
                 // We don't support this kind of digest for this kind
                 // of document.
