@@ -64,7 +64,10 @@ fn verify_general_timeless(
             signature: rsa_signature,
         } = sig;
 
-        if let Some(h) = hashes.hash_slice_for_verification(hash_algo) {
+        let Some(h) = hashes.hash_slice_for_verification(hash_algo) else {
+            continue;
+        };
+
             let Some(authority) = ({
                 trusted
                     .iter()
@@ -85,7 +88,6 @@ fn verify_general_timeless(
             let () = cert.dir_signing_key.verify(h, rsa_signature)?;
 
             ok.insert(*authority);
-        }
     }
 
     if ok.len() < threshold {
