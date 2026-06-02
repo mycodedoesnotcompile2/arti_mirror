@@ -770,7 +770,7 @@ pub(crate) fn verify_link_auth_cert(
     let (cert_timeliness, cert) = check_cert_timeliness(cert, now, clock_skew);
 
     // Make sure the cert is well signed.
-    if cert_sig.is_valid() {
+    if !cert_sig.is_valid() {
         return Err(Error::HandshakeProto(
             "Invalid ed25519 LINK_AUTH signature in handshake".into(),
         ));
