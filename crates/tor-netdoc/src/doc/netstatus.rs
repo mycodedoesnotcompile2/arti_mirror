@@ -1509,7 +1509,7 @@ where
             .split(' ')
             .filter(|p| !p.is_empty())
             .map(parse_pair)
-            .collect::<Result<HashMap<_, _>>>()?;
+            .try_collect()?;
         Ok(NetParams { params })
     }
 }
