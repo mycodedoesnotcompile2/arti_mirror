@@ -75,6 +75,7 @@ use crate::parse2::{
     self, ArgumentError, ArgumentStream, ErrorProblem, IsStructural, ItemArgumentParseable,
     ItemStream, ItemValueParseable, KeywordRef, NetdocParseable, SignatureHashInputs,
     SignatureItemParseable, StopAt, UnparsedItem,
+    VerifyFailed,
 };
 use crate::types::relay_flags::{self, DocRelayFlags};
 use crate::types::{self, *};
@@ -2070,19 +2071,33 @@ impl Signature {
         certs.iter().find(|&c| self.matches_cert(c))
     }
 
+    /// Find the certificate and assemble the pieces ready for verification
+    ///
+    /// `None` means precisely that we're missing the authcert.
+    fn signature_to_verify<'r>(
+        &'r self,
+        signed_digest: &'r [u8],
+        certs: &'r [AuthCert],
+    ) -> Option<ConsensusSignatureToVerify> {
+        let cert = self.find_cert(certs)?;
+        let key = cert.signing_key();
+        Some(ConsensusSignatureToVerify {
+            key,
+            signed_digest,
+            signature: &self.signature,
+        })
+    }
+
     /// Try to check whether this signature is a valid signature of a
     /// provided digest, given a slice of certificates that might contain
     /// its signing key.
     fn check_signature(&self, signed_digest: &[u8], certs: &[AuthCert]) -> SigCheckResult {
-        match self.find_cert(certs) {
-            None => SigCheckResult::MissingCert,
-            Some(cert) => {
-                let key = cert.signing_key();
-                match key.verify(signed_digest, &self.signature[..]) {
-                    Ok(()) => SigCheckResult::Valid,
-                    Err(_) => SigCheckResult::Invalid,
-                }
-            }
+        let Some(to_verify) = self.signature_to_verify(signed_digest, certs) else {
+            return SigCheckResult::MissingCert;
+        };
+        match to_verify.verify() {
+            Ok(()) => SigCheckResult::Valid,
+            Err(_) => SigCheckResult::Invalid,
         }
     }
 }
@@ -2091,6 +2106,35 @@ impl EncodeOrd for Signature {
     fn encode_cmp(&self, other: &Self) -> std::cmp::Ordering {
         let k: for<'s> fn(&'_ Signature) -> (&'_ _, &'_ _) = |s| (&s.key_ids, &s.signature);
         Ord::cmp(&k(self), &k(other))
+    }
+}
+
+/// Signature information in a consensus, to be verified
+///
+/// Used by callers of [`SignatureGroup::verify_general`],
+/// to allow verification to be suppressed if all we wanted to know was
+/// whether we have enough signatures and enough authcerts.
+//
+// TODO DIRAUTH make this module-private when poc is abolished
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ConsensusSignatureToVerify<'r> {
+    /// KP_auth_sign_rsa
+    key: &'r ll::pk::rsa::PublicKey,
+
+    /// The digest (actual RSA signature payload, before PKCS#11 padding)
+    signed_digest: &'r [u8],
+
+    /// The RSA signature value
+    signature: &'r [u8],
+}
+
+impl<'r> ConsensusSignatureToVerify<'r> {
+    /// Verify this signature
+    ///
+    // TODO DIRAUTH make this module-private when poc is abolished
+    pub(crate) fn verify(self) -> Result<(), VerifyFailed> {
+        self.key.verify(self.signed_digest, self.signature)?;
+        Ok(())
     }
 }
 
