@@ -2206,8 +2206,7 @@ impl SignatureGroup {
                 continue;
             }
 
-            let d: Option<&[u8]> = self.hashes.hash_slice_for_verification(digest_algo);
-            let Some(d) = d else {
+            let Some(d) = self.hashes.hash_slice_for_verification(digest_algo) else {
                 // We don't support this kind of digest for this kind
                 // of document.
                 continue;
