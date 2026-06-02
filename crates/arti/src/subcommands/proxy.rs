@@ -194,6 +194,7 @@ async fn run_proxy<R: ToplevelRuntime>(
                 &path_resolver,
                 &fs_mistrust,
                 client.clone(),
+                launchable_client.clone(),
             )
             .await?;
             let (rpc_mgr, mut rpc_state_sender) = rpc_data

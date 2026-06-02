@@ -266,6 +266,14 @@ impl<R: Runtime> LaunchableTorClient<R> {
         *have_launched = true;
         Ok(())
     }
+
+    /// As [`TorClient::bootstrap`], but performs necessary bookkeeping to remember
+    /// that we have launched a bootstrap attempt.
+    pub(crate) async fn bootstrap(&self) -> arti_client::Result<()> {
+        *self.have_launched.lock().expect("lock poisoned") = true;
+
+        self.client.bootstrap().await
+    }
 }
 
 /// Internal type to represent the Arti application as a `ReconfigurableModule`.
