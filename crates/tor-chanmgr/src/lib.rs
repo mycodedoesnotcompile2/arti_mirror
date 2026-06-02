@@ -319,7 +319,12 @@ impl<R: Runtime> ChanMgr<R> {
         src: Sensitive<std::net::SocketAddr>,
         stream: <R as tor_rtcompat::NetStreamProvider>::Stream,
     ) -> Result<Arc<Channel>> {
-        self.mgr.handle_incoming(src, stream).await
+        let result = self.mgr.handle_incoming(src, stream).await;
+
+        #[cfg(feature = "metrics")]
+        self.mgr.metrics.increment_inbound_channels_built(&result);
+
+        result
     }
 
     /// Try to get a suitable channel to the provided `target`,
