@@ -1888,7 +1888,6 @@ mod edcert {
         /// batch, as the [`tor_checkable`] primitives do not provide access
         /// to the inner signatures/expiries and also do not support operations
         /// like cloning due to being dyn.
-        #[allow(unused)] // XXX: Remove
         pub(crate) fn verify_inner(
             ntor_ed25519: ed25519::Ed25519Identity,
             id_ed25519: ed25519::Ed25519Identity,
