@@ -166,7 +166,7 @@ impl tor_error::HasKind for BadStatusCode {
 
 impl UploadError {
     /// Construct a `Result<(), UploadError>` from a [`tor_dirclient::DirResponse`].
-    pub(crate) fn from_directory_response(
+    pub fn from_directory_response(
         response: Result<tor_dirclient::DirResponse, tor_dirclient::Error>,
     ) -> Result<(), UploadError> {
         let response = response.map_err(Self::from)?;
