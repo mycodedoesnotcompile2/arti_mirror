@@ -2146,6 +2146,7 @@ impl SignatureGroup {
     /// to a real authority.
     fn validate(&self, n_authorities: usize, certs: &[AuthCert]) -> bool {
         self.verify_general(
+            None, // "Every cert in `certs` belongs to a real authority
             certs,
             (n_authorities / 2) + 1,
         )
@@ -2159,11 +2160,18 @@ impl SignatureGroup {
     ///
     ///  * Threshold is passed as a parameter (wanted for votes).
     ///
+    ///  * Ability to check authority identities, by passing `trusted_authorities`.
+    ///    (done with `authorities_are_correct` in old parser,
+    ///    apparently with no engineered safeguard against consensus user omitting to do so).
+    ///
+    ///    **If `trusted_authorities` is None, all authorities in `certs` are treated as trusted**.
+    ///
     ///  * We prefer the term `verify` to `validate`.  All this does is signature verification.
     ///
     // TODO DIRAUTH make this module-private when poc is abolished
     pub(crate) fn verify_general(
         &self,
+        trusted_authorities: Option<&[RsaIdentity]>,
         certs: &[AuthCert],
         threshold: usize,
     ) -> bool {
@@ -2174,6 +2182,13 @@ impl SignatureGroup {
 
         for sig in &self.signatures {
             let id_fingerprint = &sig.key_ids.id_fingerprint;
+
+            if let Some(trusted) = trusted_authorities {
+                if !trusted.iter().any(|trusted| trusted == id_fingerprint) {
+                    continue;
+                }
+            }
+
             if ok.contains(id_fingerprint) {
                 // We already checked at least one signature using this
                 // authority's identity fingerprint.
