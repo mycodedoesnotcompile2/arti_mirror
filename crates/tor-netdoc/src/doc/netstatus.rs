@@ -2188,15 +2188,13 @@ impl SignatureGroup {
                 KOS::Known(DSHA::Sha1) => self.hashes.sha1.as_ref().map(|a| &a[..]),
                 _ => None, // We don't know how to find this digest.
             };
-            if d.is_none() {
+            let Some(d) = d else {
                 // We don't support this kind of digest for this kind
                 // of document.
                 continue;
-            }
+            };
 
-            // Unwrap should be safe because of above `d.is_none()` check
-            #[allow(clippy::unwrap_used)]
-            match sig.check_signature(d.as_ref().unwrap(), certs) {
+            match sig.check_signature(d, certs) {
                 SigCheckResult::Valid => {
                     ok.insert(*id_fingerprint);
                 }
