@@ -250,6 +250,7 @@ mod test {
             "reject 1,1,1,1",
             "reject 1,2,foo,4",
             "reject 5,4,3,2",
+            "acce ¬",
         ] {
             assert!(s.parse::<PortPolicy>().is_err());
             assert!(
