@@ -135,7 +135,7 @@ where
     async fn connect(
         &self,
         addr: &general::SocketAddr,
-        _options: &Self::ConnectOptions,
+        (): &Self::ConnectOptions,
     ) -> IoResult<Stream> {
         use general::SocketAddr as G;
         match addr {
@@ -156,7 +156,7 @@ where
     async fn listen(
         &self,
         addr: &general::SocketAddr,
-        _options: &Self::ListenOptions,
+        (): &Self::ListenOptions,
     ) -> IoResult<Listener> {
         use general::SocketAddr as G;
         match addr {
