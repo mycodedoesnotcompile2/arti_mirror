@@ -753,6 +753,7 @@ impl RouterDesc {
         // ntor key
         let ntor_onion_key: Curve25519Public = body.required(NTOR_ONION_KEY)?.parse_arg(0)?;
         // ntor crosscert
+        // XXX: Use Ed25519NtorCrossCert::verify_inner().
         let crosscert_cert: tor_cert::UncheckedCert = {
             let cc = body.required(NTOR_ONION_KEY_CROSSCERT)?;
             let sign: u8 = cc.parse_arg(0)?;

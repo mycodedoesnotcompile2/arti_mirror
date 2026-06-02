@@ -1499,9 +1499,11 @@ mod edcert {
     };
     use saturating_time::SaturatingTime;
     use tor_cert::{CertType, CertifiedKey, Ed25519Cert, KeyUnknownCert};
+    use tor_checkable::signed::SignatureGated;
+    use tor_checkable::timed::TimerangeBound;
     use tor_checkable::{SelfSigned, Timebound};
     use tor_error::{Bug, into_internal};
-    use tor_llcrypto::pk::ed25519::{self, Ed25519PublicKey};
+    use tor_llcrypto::pk::ed25519::{self, Ed25519PublicKey, ValidatableEd25519Signature};
 
     /// An ed25519 certificate as parsed from a directory object, with
     /// signature not validated.
@@ -1823,6 +1825,8 @@ mod edcert {
         /// 5. Certified key MUST be equal to `id_ed25519`.
         /// 6. Both keys MUST be different.
         /// 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+        ///
+        // XXX: Use Ed25519NtorCrossCert::verify_inner().
         pub fn verify(
             ntor_ed25519: ed25519::Ed25519Identity,
             id_ed25519: ed25519::Ed25519Identity,
@@ -1886,6 +1890,93 @@ mod edcert {
                     _promise_we_verified: (),
                 },
                 cert,
+            ))
+        }
+
+        /// Verifies the validity of a [`KeyUnknownCert`] believed to be a
+        /// [`CertType::NTOR_CC_IDENTITY`].
+        ///
+        /// This function serves as glue between the legacy parser and
+        /// [`Self::verify()`].
+        ///
+        /// # Requirements
+        ///
+        /// 1. MUST be of [`CertType::NTOR_CC_IDENTITY`].
+        /// 2. Certified key MUST be of [`CertifiedKey::Ed25519`].
+        /// 3. Certified key MUST be equal to `id_ed25519`.
+        ///
+        /// # Return Type
+        ///
+        /// Actual signature and time validation is done by the caller, hence
+        /// why it returns a gated type as the first element of the tuple.
+        /// The other elements constitute the inner signature plus the
+        /// SystemTime denoting the expiry.  This is required for integration
+        /// with legacy parser in order to enable pushing it to the verification
+        /// batch, as the [`tor_checkable`] primitives do not provide access
+        /// to the inner signatures/expiries and also do not support operations
+        /// like cloning due to being dyn.
+        #[allow(unused)] // XXX: Remove
+        pub(crate) fn verify_inner(
+            ntor_ed25519: ed25519::Ed25519Identity,
+            id_ed25519: ed25519::Ed25519Identity,
+            cert: KeyUnknownCert,
+        ) -> StdResult<
+            (
+                SignatureGated<TimerangeBound<Self>>,
+                ValidatableEd25519Signature,
+                SystemTime,
+            ),
+            VerifyFailed,
+        > {
+            // 1. MUST be of [`CertType::NTOR_CC_IDENTITY`].
+            if cert.peek_cert_type() != CertType::NTOR_CC_IDENTITY {
+                return Err(ErrorProblem::ObjectInvalidData.into());
+            }
+
+            // 2. Certified key MUST be of [`CertifiedKey::Ed25519`].
+            // 3. Certified key MUST be equal to `id_ed25519`.
+            if cert.peek_subject_key() != &CertifiedKey::Ed25519(id_ed25519) {
+                return Err(VerifyFailed::VerifyFailed);
+            }
+
+            // Fish out the signature from the certificate and verify it later.
+            //
+            // It may fail if ntor_ed25519 is not a valid mapping to a public
+            // key.  This is okay.  The .should_be_signed_with() call is
+            // tor_cert boilerplate and only required to obtain an
+            // UncheckedCert, as ntor cross-certificates do not contain the
+            // signed-with extension.
+            let (cert, sig) = cert
+                .should_be_signed_with(&ntor_ed25519)?
+                .dangerously_split()?;
+
+            // Fish out the expiration date from the certificate.
+            //
+            // TimerangeBound also requires a lower-bound, for which we will use
+            // SystemTime::UNIX_EPOCH, because this is the minimum possible
+            // value allowed in the expiration date of Tor certificates.
+            // Besides, Tor certificates do not contain a valid-after anyways,
+            // meaning we cannot really put something more meaningful here.
+            // It differs from the legacy parser in that regard, because that
+            // parser uses the `published` field found in router descriptors
+            // minus a tolerance.  However, we cannot make use of this field
+            // here because we do not have access to the full router descriptor
+            // in this function.  This should be okay though.
+            let cert = cert.dangerously_assume_timely();
+            let expiration = SystemTime::UNIX_EPOCH..cert.expiry();
+
+            Ok((
+                SignatureGated::new(
+                    TimerangeBound::new(
+                        Self {
+                            _promise_we_verified: (),
+                        },
+                        expiration.clone(),
+                    ),
+                    vec![Box::new(sig.clone())],
+                ),
+                sig,
+                expiration.end,
             ))
         }
 
