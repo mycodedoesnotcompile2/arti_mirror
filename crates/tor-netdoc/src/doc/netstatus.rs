@@ -2144,6 +2144,28 @@ impl SignatureGroup {
     /// authorities we believe in, and that every cert in `certs` belongs
     /// to a real authority.
     fn validate(&self, n_authorities: usize, certs: &[AuthCert]) -> bool {
+        self.verify_general(
+            certs,
+            (n_authorities / 2) + 1,
+        )
+    }
+
+    /// Check signatures, but not timeliness
+    ///
+    /// Differs from [`SignatureGroup::validate`]:
+    ///
+    ///  * Intended also for use with types from parse2.
+    ///
+    ///  * Threshold is passed as a parameter (wanted for votes).
+    ///
+    ///  * We prefer the term `verify` to `validate`.  All this does is signature verification.
+    ///
+    // TODO DIRAUTH make this module-private when poc is abolished
+    pub(crate) fn verify_general(
+        &self,
+        certs: &[AuthCert],
+        threshold: usize,
+    ) -> bool {
         // A set of the authorities (by identity) who have have signed
         // this document.  We use a set here in case `certs` has more
         // than one certificate for a single authority.
@@ -2182,7 +2204,7 @@ impl SignatureGroup {
             }
         }
 
-        ok.len() > (n_authorities / 2)
+        ok.len() >= threshold
     }
 }
 
