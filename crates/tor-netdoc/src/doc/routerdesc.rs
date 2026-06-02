@@ -753,8 +753,7 @@ impl RouterDesc {
         // ntor key
         let ntor_onion_key: Curve25519Public = body.required(NTOR_ONION_KEY)?.parse_arg(0)?;
         // ntor crosscert
-        // XXX: Use Ed25519NtorCrossCert::verify_inner().
-        let crosscert_cert: tor_cert::UncheckedCert = {
+        let (cc_sig, cc_expiry) = {
             let cc = body.required(NTOR_ONION_KEY_CROSSCERT)?;
             let sign: u8 = cc.parse_arg(0)?;
             if sign != 0 && sign != 1 {
@@ -768,12 +767,14 @@ impl RouterDesc {
                             .with_msg("Uncheckable crosscert")
                     })?;
 
-            cc.parse_obj::<UnvalidatedEdCert>("ED25519 CERT")?
-                .check_cert_type(tor_cert::CertType::NTOR_CC_IDENTITY)?
-                .check_subject_key_is(identity_cert.peek_signing_key())?
-                .into_unchecked()
-                .should_be_signed_with(&ntor_as_ed.into())
-                .map_err(|err| EK::BadSignature.err().with_source(err))?
+            let cert = cc
+                .parse_obj::<UnvalidatedEdCert>("ED25519 CERT")?
+                .into_unchecked();
+            let (_, sig, expiry) =
+                Ed25519NtorCrossCert::verify_inner(ntor_as_ed.into(), ed25519_identity_key, cert)
+                    .map_err(|_| EK::BadSignature.err())?;
+
+            (sig, expiry)
         };
 
         // TAP key
@@ -930,11 +931,6 @@ impl RouterDesc {
                 .with_msg("missing public key")
                 .with_source(err)
         })?;
-        let (crosscert_cert, cc_sig) = crosscert_cert.dangerously_split().map_err(|err| {
-            EK::BadObjectVal
-                .with_msg("missing public key")
-                .with_source(err)
-        })?;
         let mut signatures: Vec<Box<dyn ll::pk::ValidatableSignature>> = vec![
             Box::new(rsa_signature),
             Box::new(ed_signature),
@@ -946,13 +942,12 @@ impl RouterDesc {
         }
 
         let identity_cert = identity_cert.dangerously_assume_timely();
-        let crosscert_cert = crosscert_cert.dangerously_assume_timely();
         let mut expirations = vec![
             published
                 .0
                 .saturating_add(time::Duration::new(ROUTER_EXPIRY_SECONDS, 0)),
             identity_cert.expiry(),
-            crosscert_cert.expiry(),
+            cc_expiry,
         ];
 
         // As outlined above, we have to do this ... :/
