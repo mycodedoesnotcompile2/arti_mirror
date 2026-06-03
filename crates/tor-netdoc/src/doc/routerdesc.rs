@@ -150,6 +150,12 @@ pub struct RouterDesc {
     /// * At most once.
     pub fingerprint: Option<SpFingerprint>,
 
+    /// `hibernating` --- Whether the relay is hibernating.
+    ///
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:hibernating>
+    // TODO: Mark this as `netdoc(default)` and skip during encoding if false.
+    pub hibernating: NumericBoolean,
+
     /// `uptime` --- How long this relay has been continously running
     ///
     /// * `uptime <number>`
@@ -189,6 +195,18 @@ pub struct RouterDesc {
     /// * At most once.
     pub ipv6_policy: Arc<PortPolicy>,
 
+    /// `overload-general` --- Relay is overloaded.
+    ///
+    /// * `overload-general 1 <time>`
+    /// * At most once.
+    // TODO in OverloadGeneral use ConstantString (from !3985) for version
+    pub overload_general: Option<OverloadGeneral>,
+
+    /// `contact` --- Server administrator contact information.
+    ///
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:contact>
+    pub contact: Option<ContactInfo>,
+
     /// `family` --- Group relays for the purpose of path selection.
     ///
     /// * `family <LongIdent> ...`
@@ -202,12 +220,18 @@ pub struct RouterDesc {
     /// * Any number of times.
     pub family_cert: RetainedOrderVec<EmbeddedCert<Ed25519FamilyCert, KeyUnknownCert>>,
 
+    // TODO DIRMIRROR: Abolish this field, assuming torspec!498 lands.
     /// `caches-extra-info` --- Router provides extra-info as a dirmirror.
     ///
     /// * `caches-extra-info`
     /// * At most once.
     /// * No extra arguments.
     pub caches_extra_info: bool,
+
+    /// `extra-info-digest` --- Hash of the extra-info document.
+    ///
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:extra-info-digest>
+    pub extra_info_digest: Option<ExtraInfoDigests>,
 
     /// `or-address` --- Alternative ORport address and port
     ///
@@ -556,6 +580,10 @@ impl RouterDesc {
     /// * [`RouterDesc::bandwidth`]
     /// * [`RouterDesc::or_address`]
     ///     * Extracts only the first IPv6 address.
+    /// * [`RouterDesc::hibernating`]
+    /// * [`RouterDesc::overload_general`]
+    /// * [`RouterDesc::contact`]
+    /// * [`RouterDesc::extra_info_digest`]
     pub fn parse(s: &str) -> Result<UncheckedRouterDesc> {
         let mut reader = crate::parse::tokenize::NetDocReader::new(s)?;
         let result = Self::parse_internal(&mut reader).map_err(|e| e.within(s))?;
@@ -971,15 +999,19 @@ impl RouterDesc {
             platform,
             published,
             fingerprint: Some(rsa_identity.into()),
+            hibernating: Default::default(),
             uptime,
             onion_key: tap_onion_key,
             ntor_onion_key,
             signing_key: rsa_identity_key,
             ipv4_policy,
             ipv6_policy: ipv6_policy.intern(),
+            overload_general: Default::default(),
+            contact: Default::default(),
             family,
             family_cert: embedded_family_certs.into(),
             caches_extra_info: is_extrainfo_cache,
+            extra_info_digest: Default::default(),
             or_address: ipv6addr,
             tunnelled_dir_server: is_dircache,
             proto,
