@@ -220,6 +220,7 @@ pub struct RouterDesc {
     /// * Any number of times.
     pub family_cert: RetainedOrderVec<EmbeddedCert<Ed25519FamilyCert, KeyUnknownCert>>,
 
+    // TODO DIRMIRROR: Abolish this field, assuming torspec!498 lands.
     /// `caches-extra-info` --- Router provides extra-info as a dirmirror.
     ///
     /// * `caches-extra-info`
