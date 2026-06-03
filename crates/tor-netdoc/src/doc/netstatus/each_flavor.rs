@@ -105,7 +105,7 @@ impl Consensus {
     }
 
     /// Try to parse a single networkstatus document from a string.
-    pub fn parse(s: &str) -> Result<(&str, &str, UncheckedConsensus)> {
+    pub fn parse(s: &str) -> crate::Result<(&str, &str, UncheckedConsensus)> {
         let mut reader = NetDocReader::new(s)?;
         Self::parse_from_reader(&mut reader).map_err(|e| e.within(s))
     }
@@ -113,7 +113,7 @@ impl Consensus {
     /// Ok(None) when we are out of voter-info sections.
     fn take_voterinfo(
         r: &mut NetDocReader<'_, NetstatusKwd>,
-    ) -> Result<Option<ConsensusAuthorityEntry>> {
+    ) -> crate::Result<Option<ConsensusAuthorityEntry>> {
         use NetstatusKwd::*;
 
         match r.peek() {
@@ -146,7 +146,7 @@ impl Consensus {
     }
 
     /// Extract the footer (but not signatures) from the reader.
-    fn take_footer(r: &mut NetDocReader<'_, NetstatusKwd>) -> Result<ConsensusFooterFields> {
+    fn take_footer(r: &mut NetDocReader<'_, NetstatusKwd>) -> crate::Result<ConsensusFooterFields> {
         use NetstatusKwd::*;
         let mut p = r.pause_at(|i| i.is_ok_with_kwd_in(&[DIRECTORY_SIGNATURE]));
         let footer_sec = NS_FOOTER_RULES.parse(&mut p)?;
@@ -156,7 +156,7 @@ impl Consensus {
 
     /// Extract a routerstatus from the reader.  Return Ok(None) if we're
     /// out of routerstatus entries.
-    fn take_routerstatus(r: &mut NetDocReader<'_, NetstatusKwd>) -> Result<Option<(Pos, RouterStatus)>> {
+    fn take_routerstatus(r: &mut NetDocReader<'_, NetstatusKwd>) -> crate::Result<Option<(Pos, RouterStatus)>> {
         use NetstatusKwd::*;
         match r.peek() {
             None => return Ok(None),
@@ -197,7 +197,7 @@ impl Consensus {
     /// string, and an UncheckedConsensus.
     fn parse_from_reader<'a>(
         r: &mut NetDocReader<'a, NetstatusKwd>,
-    ) -> Result<(&'a str, &'a str, UncheckedConsensus)> {
+    ) -> crate::Result<(&'a str, &'a str, UncheckedConsensus)> {
         use NetstatusKwd::*;
         let ((flavor, preamble), start_pos) = {
             let mut h = r.pause_at(|i| i.is_ok_with_kwd_in(&[DIR_SOURCE]));
@@ -308,7 +308,7 @@ impl Consensus {
 
 impl Preamble {
     /// Extract the CommonPreamble members from a single preamble section.
-    fn from_section(sec: &Section<'_, NetstatusKwd>) -> Result<(ConsensusFlavor, Preamble)> {
+    fn from_section(sec: &Section<'_, NetstatusKwd>) -> crate::Result<(ConsensusFlavor, Preamble)> {
         use NetstatusKwd::*;
 
         {

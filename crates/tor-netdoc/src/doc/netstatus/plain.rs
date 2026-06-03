@@ -36,14 +36,14 @@ pub struct VarietyKeyword;
 const VARIETY_KEYWORD: &str = "ns";
 
 impl ItemArgument for VarietyKeyword {
-    fn write_arg_onto(&self, out: &mut ItemEncoder<'_>) -> StdResult<(), Bug> {
+    fn write_arg_onto(&self, out: &mut ItemEncoder<'_>) -> Result<(), Bug> {
         out.add_arg(&VARIETY_KEYWORD);
         Ok(())
     }
 }
 
 impl ItemArgumentParseable for VarietyKeyword {
-    fn from_args<'s>(args: &mut ArgumentStream<'s>) -> StdResult<Self, ArgumentError> {
+    fn from_args<'s>(args: &mut ArgumentStream<'s>) -> Result<Self, ArgumentError> {
         match args.next() {
             None => Ok(VarietyKeyword),
             Some(s) if s == VARIETY_KEYWORD => Ok(VarietyKeyword),
