@@ -61,5 +61,4 @@ fn verify_general_timeless(
         &certs.iter().copied().cloned().collect_vec(),
         threshold,
     )
-    .then_some(()).ok_or(VerifyFailed::VerifyFailed) // XXXX
 }

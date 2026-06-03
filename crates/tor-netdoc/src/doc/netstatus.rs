@@ -2163,7 +2163,7 @@ impl SignatureGroup {
     /// authorities.  This API requires that `n_authorities` is the number of
     /// authorities we believe in, and that every cert in `certs` belongs
     /// to a real authority.
-    fn validate(&self, n_authorities: usize, certs: &[AuthCert]) -> bool {
+    fn validate(&self, n_authorities: usize, certs: &[AuthCert]) -> Result<(), VerifyFailed> {
         self.verify_general(
             None, // "Every cert in `certs` belongs to a real authority
             certs,
@@ -2185,6 +2185,8 @@ impl SignatureGroup {
     ///
     ///    **If `trusted_authorities` is None, all authorities in `certs` are treated as trusted**.
     ///
+    ///  * Returns `Result`, not a boolean
+    ///
     ///  * We prefer the term `verify` to `validate`.  All this does is signature verification.
     ///
     // TODO DIRAUTH make this module-private when poc is abolished
@@ -2193,7 +2195,7 @@ impl SignatureGroup {
         trusted_authorities: Option<&[RsaIdentity]>,
         certs: &[AuthCert],
         threshold: usize,
-    ) -> bool {
+    ) -> Result<(), VerifyFailed> {
         // A set of the authorities (by identity) who have have signed
         // this document.  We use a set here in case `certs` has more
         // than one certificate for a single authority.
@@ -2242,7 +2244,11 @@ impl SignatureGroup {
             }
         }
 
-        ok.len() >= threshold
+        if ok.len() >= threshold {
+            Ok(())
+        } else {
+            Err(VerifyFailed::VerifyFailed)
+        }
     }
 }
 
