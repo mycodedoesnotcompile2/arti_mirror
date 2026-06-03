@@ -2000,10 +2000,10 @@ mod proto_statuses_parse2_encode {
     } } }
 
     impl_proto_statuses! {
-        required client;
-        required relay;
         recommended client;
         recommended relay;
+        required client;
+        required relay;
     }
 }
 
