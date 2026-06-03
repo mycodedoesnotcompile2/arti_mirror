@@ -161,3 +161,16 @@ pub struct NetworkStatusSignatures {
     /// `directory-signature`s
     pub directory_signature: ns_type!(Vec<Signature>, Vec<Signature>, Signature),
 }
+
+impl Preamble {
+    /// Calculate the validity range (time interval) for this network status document
+    pub fn validity_time_range(&self) -> std::ops::Range<SystemTime> {
+        let preamble = self;
+        let lifetime = preamble.lifetime.clone();
+        let delay = preamble.voting_delay.unwrap_or((0, 0));
+        let dist_interval = time::Duration::from_secs(delay.1.into());
+        let starting_time = *lifetime.valid_after - dist_interval;
+        let timebound_range = starting_time..*lifetime.valid_until;
+        timebound_range
+    }
+}

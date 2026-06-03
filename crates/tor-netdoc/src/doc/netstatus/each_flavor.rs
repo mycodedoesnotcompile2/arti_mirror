@@ -297,12 +297,7 @@ impl Consensus {
             siggroup,
             n_authorities: None,
         };
-        let preamble = &unval.consensus.preamble;
-        let lifetime = preamble.lifetime.clone();
-        let delay = preamble.voting_delay.unwrap_or((0, 0));
-        let dist_interval = time::Duration::from_secs(delay.1.into());
-        let starting_time = *lifetime.valid_after - dist_interval;
-        let timebound_range = starting_time..*lifetime.valid_until;
+        let timebound_range = unval.consensus.preamble.validity_time_range();
         let timebound = TimerangeBound::new(unval, timebound_range);
         Ok((signed_str, remainder, timebound))
     }
