@@ -178,6 +178,16 @@ impl<'s> ParseInput<'s> {
             options: ParseOptions::default(),
         }
     }
+
+    /// Enable retention of unknown values during parsing
+    ///
+    /// Convenience method to set
+    /// [`.options_mut().retain_unknown_values`](ParseOptions::retain_unknown_values)
+    /// to [`Unknown::Retained`].
+    #[cfg(feature = "retain-unknown")]
+    pub fn retain_unknown_values(&mut self) {
+        self.options_mut().retain_unknown_values = Unknown::Retained(());
+    }
 }
 
 //---------- parser ----------
