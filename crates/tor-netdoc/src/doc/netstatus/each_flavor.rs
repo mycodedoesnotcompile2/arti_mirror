@@ -349,13 +349,18 @@ impl Preamble {
         let parse_rec_versions = |item| {
             let item = sec
                 .maybe(item);
-            item
-                // XXXX this does not comply with the spec: it eats *all* arguments,
-                // and might include spaces as elements!
+            let args = item
                 .args_as_str()
                 .unwrap_or("")
                 // C Tor emits an item with trailing whitespace which we must ignore
-                .trim()
+                .trim();
+            // We want only the first arg, according to the spec.
+            // We could want to use MaybeItem::parse_arg, but it treats absence of the
+            // argument as an error.  There is no parse_optional_arg on `MaybeItem`.
+            // We could add that, but I am trying to avoid adding code to the old parser.
+            // So instead we reimplement argument splitting (again).
+            args
+                .split_once(|c: char| c.is_ascii_whitespace()).map(|(l, _r)| l).unwrap_or(args)
                 .parse()
                 .map_err(|_e| EK::BadArgument.at_pos(item.pos()))
         };
