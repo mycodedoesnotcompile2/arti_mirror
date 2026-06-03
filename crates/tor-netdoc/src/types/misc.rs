@@ -725,7 +725,7 @@ mod ignored_impl {
     /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\nhello\n", "")).unwrap();
     /// assert!(doc.hello.is_some());
     ///
-    /// // hello has arguments (or an object) which is ignored.
+    /// // hello has arguments which are ignored.
     /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\nhello world\n", "")).unwrap();
     /// assert!(doc.hello.is_some());
     ///
@@ -925,7 +925,8 @@ mod ignored_impl {
     }
 
     impl<T: Default> ItemValueParseable for ItemPresent<T> {
-        fn from_unparsed(_item: UnparsedItem<'_>) -> StdResult<Self, EP> {
+        fn from_unparsed(item: UnparsedItem<'_>) -> StdResult<Self, EP> {
+            item.check_no_object()?;
             Ok(Self::default())
         }
     }
@@ -3123,7 +3124,7 @@ mod test {
             // Test with object.
             (
                 "intro\nfoo\n-----BEGIN RSA PUBLIC KEY-----\n-----END RSA PUBLIC KEY-----\n",
-                Ok(true),
+                Err(ErrorProblem::ObjectUnexpected),
             ),
         ];
 
