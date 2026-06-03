@@ -106,17 +106,11 @@ impl FromStr for PortPolicy {
     /// Very bad parser for [`PortPolicy`], please use `parse2`!
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // TODO: The error is bad but kept for backwards compatibility.
-        // Also, we should do split_whitespace but I feel doing this is not
-        // worth it anymore; introduces an unnecessary risk of adding
-        // bugs.
-        if s.len() < 7 {
-            // We need to do this because RuleKind::from_str does not check for
-            // the space between "accept/reject" and the arguments.
-            return Err(PolicyError::InvalidPort);
-        }
-        let kind = RuleKind::from_str(&s[..6]).map_err(|_| PolicyError::InvalidPort)?;
-        let s = &s[7..];
-        let mut allowed = PortRanges::from_str(s)?;
+        // Splitting with a UTF-8 honoring method here is important, as
+        // RuleKind and PortRanges need their arguments separately.
+        let (kind, ranges) = s.split_once(' ').ok_or(PolicyError::InvalidPort)?;
+        let kind = RuleKind::from_str(kind).map_err(|_| PolicyError::InvalidPort)?;
+        let mut allowed = PortRanges::from_str(ranges)?;
         if kind == RuleKind::Reject {
             allowed.invert();
         }
@@ -256,6 +250,7 @@ mod test {
             "reject 1,1,1,1",
             "reject 1,2,foo,4",
             "reject 5,4,3,2",
+            "acce ¬",
         ] {
             assert!(s.parse::<PortPolicy>().is_err());
             assert!(

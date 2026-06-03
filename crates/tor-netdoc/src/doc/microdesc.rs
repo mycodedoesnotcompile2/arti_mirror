@@ -630,6 +630,12 @@ mod test {
                 .at_pos(Pos::from_line(9, 1))
                 .with_source(PolicyError::InvalidPort),
         );
+        check(
+            "non-ascii-policy",
+            &EK::BadPolicy
+                .at_pos(Pos::from_line(9, 1))
+                .with_source(PolicyError::InvalidPort),
+        );
         check("wrong-id", &EK::MissingToken.with_msg("id ed25519"));
     }
 
