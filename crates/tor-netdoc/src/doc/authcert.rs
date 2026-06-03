@@ -15,7 +15,7 @@ use crate::parse::parser::{Section, SectionRules};
 use crate::parse::tokenize::{ItemResult, NetDocReader};
 use crate::parse2::{
     self, ArgumentError, ArgumentStream, ItemArgumentParseable, ItemObjectParseable,
-    NetdocUnverified as _, sig_hashes::Sha1WholeKeywordLine,
+    NetdocParseableUnverified as _, sig_hashes::Sha1WholeKeywordLine,
 };
 use crate::types::misc::{Fingerprint, Iso8601TimeSp, RsaPublicParse1Helper, RsaSha1Signature};
 use crate::util::str::Extent;

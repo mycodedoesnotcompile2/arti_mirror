@@ -509,7 +509,7 @@ define_derive_deftly! {
     /// To handle signed documents define two structures:
     ///
     ///  * `Foo`, containing only the content, not the signatures.
-    ///    Derive [`NetdocParseableUnverified`](derive_deftly_template_NetdocUnverified).
+    ///    Derive [`NetdocParseableUnverified`](crate::derive_deftly_template_NetdocParseableUnverified).
     ///  * `FooSignatures`, containing only the signatures.
     ///    Derive `NetdocParseableSignatures`.
     ///
@@ -693,7 +693,7 @@ define_derive_deftly! {
     ///
     /// This signatures sub-document will typically be included in a
     /// `FooUnverified` struct derived with
-    /// [`NetdocUnverified`](derive_deftly_template_NetdocUnverified),
+    /// [`NetdocParseableUnverified`](crate::derive_deftly_template_NetdocParseableUnverified),
     /// rather than included anywhere manually.
     ///
     /// ### Expected input structure
@@ -975,7 +975,7 @@ define_derive_deftly! {
     ///
     /// Supposing your input structure is `Foo`, this macro will
     /// generate a `**struct FooUnverified`**
-    /// implementing [`NetdocParseable`] and [`NetdocUnverified`]:
+    /// implementing [`NetdocParseable`] and [`NetdocParseableUnverified`]:
     ///
     /// ```rust,ignore
     /// # struct Foo; struct FooSignatures;
@@ -1004,7 +1004,7 @@ define_derive_deftly! {
     ///
     /// All the attributes supported by the `NetdocParseable` derive are supported.
     //
-    // We don't make NetdocUnverified a generic struct because
+    // We don't make NetdocParseableUnverified a generic struct because
     //  - the defining module (crate) will want to add verification methods,
     //    which means they must define the struct
     //  - that lets the actual `body` field be private to the defining module.
@@ -1100,7 +1100,7 @@ define_derive_deftly! {
         }
     }
 
-    impl<$tgens> $P::NetdocUnverified for $<$ttype Unverified> {
+    impl<$tgens> $P::NetdocParseableUnverified for $<$ttype Unverified> {
         type Body = $ttype;
         type Signatures = $SIGS_TYPE;
         fn inspect_unverified(&self) -> (&Self::Body, &$SIGS_DATA_TYPE) {

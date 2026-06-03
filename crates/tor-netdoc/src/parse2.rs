@@ -28,7 +28,7 @@
 //! In this case there are three types:
 //!
 //!   * **`FooUnverified`**: a signed `Foo`, with its signatures, not yet verified.
-//!     Implements [`NetdocUnverified`],
+//!     Implements [`NetdocParseableUnverified`],
 //!     typically by invoking the
 //!     [`NetdocUParseablenverified` derive macro](crate::derive_deftly_template_NetdocParseableUnverified)
 //!     on `Foo`.
@@ -105,9 +105,9 @@ pub use keyword::KeywordRef;
 pub use lex::{ArgumentStream, ItemStream, NoFurtherArguments, UnparsedItem, UnparsedObject};
 pub use lines::{Lines, Peeked, StrExt};
 pub use signatures::{
-    HasUnverifiedParsedBody, NetdocParseableSignatures, NetdocUnverified, SignatureHashInputs,
-    SignatureHashesAccumulator, SignatureItemParseable, SignaturesData, check_validity_time,
-    check_validity_time_tolerance, sig_hashes,
+    HasUnverifiedParsedBody, NetdocParseableSignatures, NetdocParseableUnverified,
+    SignatureHashInputs, SignatureHashesAccumulator, SignatureItemParseable, SignaturesData,
+    check_validity_time, check_validity_time_tolerance, sig_hashes,
 };
 pub use structural::{StopAt, StopPredicate};
 pub use traits::{

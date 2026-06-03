@@ -225,7 +225,7 @@ impl<'s> ItemStream<'s> {
     pub fn parse_signed<
         B: HasUnverifiedParsedBody,
         S: NetdocParseableSignatures,
-        O: NetdocUnverified<Body = B, Signatures = S>,
+        O: NetdocParseableUnverified<Body = B, Signatures = S>,
     >(
         &mut self,
         outer_stop: stop_at!(),
