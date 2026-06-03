@@ -1991,7 +1991,7 @@ mod proto_statuses_parse2_encode {
             fn encode_fields(&self, out: &mut NetdocEncoder) -> Result<(), Bug> {
               $(
                 self.$cr.$rr.write_item_value_onto(
-                    out.item(stringify!([<$rr _ $cr _protocols>]))
+                    out.item(concat!(stringify!($rr), "-", stringify!($cr), "-protocols"))
                 )?;
               )*
                 Ok(())
