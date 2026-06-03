@@ -54,20 +54,25 @@ pub struct RouterStatusIntroItem {
     /// Nicknames can be used for convenience purpose, but no more:
     /// there is no mechanism to enforce their uniqueness.
     pub nickname: Nickname,
+
     /// Fingerprint of the old-style RSA identity for this relay.
     pub identity: Base64Fingerprint,
+
     /// Digest of the document for this relay (except md consensuses)
     // TODO SPEC rename in the spec from `digest` to "doc_digest"
     // TODO SPEC in md consensuses the referenced document digest is in a separate `m` item
     pub doc_digest: ns_type!(DocDigestB64, NotPresent, DocDigestB64),
+
     /// Publication time.
     pub publication: ns_type!(
         IgnoredPublicationTimeSp,
         IgnoredPublicationTimeSp,
         Iso8601TimeSp
     ),
+
     /// IPv4 address
     pub ip: std::net::Ipv4Addr,
+
     /// Relay port
     pub or_port: u16,
 }
