@@ -37,6 +37,7 @@ use tor_llcrypto::pk::rsa::RsaIdentity;
 #[non_exhaustive]
 pub enum SoftwareVersion {
     /// A Tor version
+    #[display("Tor {_0}")]
     CTor(TorVersion),
     /// A string we couldn't parse.
     Other(Arc<str>),
