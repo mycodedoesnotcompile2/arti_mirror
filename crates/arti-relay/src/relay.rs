@@ -362,6 +362,10 @@ impl<R: Runtime> TorRelay<R> {
             }
         });
 
+        // Channel used to ask the descriptor publisher to rebuild and re-publish the descriptor.
+        let (desc_command_tx, desc_command_rx) = crate::tasks::descriptor::new_command_channel();
+        let (crypto_command_tx, crypto_command_rx) = crate::tasks::crypto::new_command_channel();
+
         // Start the crypto task.
         task_handles.spawn({
             let reactor = crate::tasks::crypto::Reactor::new(
@@ -370,12 +374,33 @@ impl<R: Runtime> TorRelay<R> {
                 self.create_request_handler.clone(),
                 self.keymgr,
                 self.client.dirmgr().clone(),
+                desc_command_tx,
+                crypto_command_rx,
             )?;
             async {
                 reactor
                     .run()
                     .await
                     .context("Failed to run key rotation task")
+            }
+        });
+
+        // Build and publish the relay's own descriptor.
+        task_handles.spawn({
+            let netdir = Arc::clone(self.client.dirmgr()) as Arc<_>;
+            let authorities = self.client.authorities().clone();
+            async move {
+                crate::tasks::RelayDescriptorPublisherTask::new(
+                    &self.runtime,
+                    netdir,
+                    authorities,
+                    crypto_command_tx,
+                    desc_command_rx,
+                )
+                .context("Failed to create descriptor publisher task")?
+                .start()
+                .await
+                .context("Failed to run descriptor publisher task")
             }
         });
 
