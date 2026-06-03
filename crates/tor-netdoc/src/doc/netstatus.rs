@@ -772,6 +772,35 @@ pub struct SignatureGroup {
     pub signatures: Vec<Signature>,
 }
 
+/// Error which will prevent us from attempting to verify signatures on a consensus
+///
+/// This error occurs if we the consensus isn't signed by the right people,
+/// or we are lacking authcerts.
+///
+/// Does not represent actual verification errors.
+/// Those show up as `VerifyFailed`, typically [`VerifyFailed::VerifyFailed`].
+///
+/// Can be converted to a `VerifyFailed`,
+/// giving [`InsufficientTrustedSigners`](VerifyFailed::InsufficientTrustedSigners).
+#[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
+// TODO DIRAUTH nothing tests that values in here are right, but there are no
+// public entrypoints that return one, so we don't need to cfg it "incomplete".
+pub enum ConsensusVerifiabilityError {
+    /// Insufficient trusted signers
+    #[error("consensus not signed by enough authorities")]
+    InsufficientTrustedSigners,
+
+    /// Insufficient trusted signers because we are missing authcerts
+    #[error("missing auth certs mean we could not verify enough consensuis signatures (need at least {deficit} more, out of {} that are missing)", missing.len())]
+    MissingAuthCerts {
+        /// The number of additional useful authcerts that would be sufficient
+        deficit: usize,
+        /// All the authcerts that would be useful
+        missing: HashSet<AuthCertKeyIds>,
+    },
+}
+
 /// A shared random value produced by the directory authorities.
 #[derive(
     Debug, Clone, Copy, Eq, PartialEq, derive_more::From, derive_more::Into, derive_more::AsRef,
@@ -2173,9 +2202,20 @@ impl SignatureGroup {
 
     /// Check signatures, but not timeliness
     ///
+    /// Examines the signatures and collates them with authcerts.
+    /// Performs the necessary consensus signature verifications.
+    ///
+    /// If there are not enough authcerts or not enough signatures,
+    /// throws a `ConsensusVerifiabilityError`.
+    // XXXX actually right now it gets unconditionally converted to a VerifyFailed
+    ///
     /// Differs from [`SignatureGroup::validate`]:
     ///
     ///  * Intended also for use with types from parse2.
+    ///
+    ///  * Yields information about missing authcerts directly in the return value,
+    ///    so there's no need for a separate "which certs are we missing" function.
+    // XXXX ^ this is not true yet
     ///
     ///  * Threshold is passed as a parameter (wanted for votes).
     ///
@@ -2200,6 +2240,8 @@ impl SignatureGroup {
         // this document.  We use a set here in case `certs` has more
         // than one certificate for a single authority.
         let mut ok: HashSet<RsaIdentity> = HashSet::new();
+        let mut missing = HashSet::new();
+        let mut verify_failed = Ok(());
 
         for sig in &self.signatures {
             let Signature {
@@ -2234,20 +2276,44 @@ impl SignatureGroup {
             };
 
             let Some(tv) = sig.signature_to_verify(d, certs) else {
+                missing.insert(sig.key_ids);
                 continue;
             };
             match tv.verify() {
                 Ok(()) => {
                     ok.insert(*id_fingerprint);
                 }
-                _ => continue,
+                Err(e) => {
+                    verify_failed = Err(e);
+                }
             }
         }
 
         if ok.len() >= threshold {
             Ok(())
         } else {
-            Err(VerifyFailed::VerifyFailed)
+            // Throw the verification error if any of the verifications failed
+            verify_failed?;
+
+            // Otherwise report that we're missing certs and/or signers
+            Err(if missing.is_empty() {
+                ConsensusVerifiabilityError::InsufficientTrustedSigners
+            } else {
+                let deficit = threshold - ok.len();
+                ConsensusVerifiabilityError::MissingAuthCerts { missing, deficit }
+            }
+            .into())
+        }
+    }
+}
+
+impl From<ConsensusVerifiabilityError> for VerifyFailed {
+    fn from(cve: ConsensusVerifiabilityError) -> VerifyFailed {
+        use ConsensusVerifiabilityError as CVE;
+        use VerifyFailed as VF;
+        match cve {
+            CVE::InsufficientTrustedSigners => VF::InsufficientTrustedSigners,
+            CVE::MissingAuthCerts { .. } => VF::InsufficientTrustedSigners,
         }
     }
 }
