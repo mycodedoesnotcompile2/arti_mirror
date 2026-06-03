@@ -4,7 +4,7 @@ use super::*;
 
 use crate::doc::{self, authcert};
 use crate::types;
-use authcert::{AuthCert as DirAuthKeyCert};
+use authcert::AuthCert as DirAuthKeyCert;
 pub use doc::netstatus::Signature as NdiDirectorySignature;
 use doc::netstatus::{
     ConsensusAuthoritySection, DirectorySignaturesHashesAccu, VoteAuthoritySection,

@@ -74,8 +74,7 @@ use crate::parse::tokenize::{Item, ItemResult, NetDocReader};
 use crate::parse2::{
     self, ArgumentError, ArgumentStream, ErrorProblem, IsStructural, ItemArgumentParseable,
     ItemStream, ItemValueParseable, KeywordRef, NetdocParseable, SignatureHashInputs,
-    SignatureItemParseable, StopAt, UnparsedItem,
-    VerifyFailed,
+    SignatureItemParseable, StopAt, UnparsedItem, VerifyFailed,
 };
 use crate::types::relay_flags::{self, DocRelayFlags};
 use crate::types::{self, *};
