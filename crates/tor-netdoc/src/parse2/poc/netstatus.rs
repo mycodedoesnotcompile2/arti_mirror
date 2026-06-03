@@ -60,5 +60,6 @@ fn verify_general_timeless(
         Some(trusted),
         &certs.iter().copied().cloned().collect_vec(),
         threshold,
+        |tv| tv.verify(),
     )
 }

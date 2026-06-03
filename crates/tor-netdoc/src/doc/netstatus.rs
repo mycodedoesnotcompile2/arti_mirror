@@ -2132,13 +2132,23 @@ pub(crate) struct ConsensusSignatureToVerify<'r> {
     signature: &'r [u8],
 }
 
+/// Token indicating that signature verification has been done, if required
+///
+/// Prevents accidentally passing an unintended no-op function as
+/// `do_verify` to [`SignatureGroup::verify_general`].
+///
+/// Write `SignatureVerifiedIfIntended {}` to construct this,
+/// only in code which has actually done the verification,
+/// or code which is deliberately not verifying at all.
+pub(crate) struct SignatureVerifiedIfIntended {}
+
 impl<'r> ConsensusSignatureToVerify<'r> {
     /// Verify this signature
     ///
     // TODO DIRAUTH make this module-private when poc is abolished
-    pub(crate) fn verify(self) -> Result<(), VerifyFailed> {
+    pub(crate) fn verify(self) -> Result<SignatureVerifiedIfIntended, VerifyFailed> {
         self.key.verify(self.signed_digest, self.signature)?;
-        Ok(())
+        Ok(SignatureVerifiedIfIntended {})
     }
 }
 
@@ -2197,25 +2207,25 @@ impl SignatureGroup {
             None, // "Every cert in `certs` belongs to a real authority
             certs,
             (n_authorities / 2) + 1,
+            |tv| tv.verify(),
         )
     }
 
-    /// Check signatures, but not timeliness
+    /// Check signatures (maybe), but not timeliness
     ///
     /// Examines the signatures and collates them with authcerts.
-    /// Performs the necessary consensus signature verifications.
+    /// Performs the necessary consensus signature verifications, via `do_verify`.
     ///
     /// If there are not enough authcerts or not enough signatures,
     /// throws a `ConsensusVerifiabilityError`.
-    // XXXX actually right now it gets unconditionally converted to a VerifyFailed
     ///
     /// Differs from [`SignatureGroup::validate`]:
     ///
     ///  * Intended also for use with types from parse2.
     ///
     ///  * Yields information about missing authcerts directly in the return value,
+    ///    and can be used without actually doing the verification,
     ///    so there's no need for a separate "which certs are we missing" function.
-    // XXXX ^ this is not true yet
     ///
     ///  * Threshold is passed as a parameter (wanted for votes).
     ///
@@ -2230,12 +2240,16 @@ impl SignatureGroup {
     ///  * We prefer the term `verify` to `validate`.  All this does is signature verification.
     ///
     // TODO DIRAUTH make this module-private when poc is abolished
-    pub(crate) fn verify_general(
+    pub(crate) fn verify_general<E>(
         &self,
         trusted_authorities: Option<&[RsaIdentity]>,
         certs: &[AuthCert],
         threshold: usize,
-    ) -> Result<(), VerifyFailed> {
+        do_verify: impl Fn(ConsensusSignatureToVerify) -> Result<SignatureVerifiedIfIntended, E>,
+    ) -> Result<(), E>
+    where
+        ConsensusVerifiabilityError: Into<E>,
+    {
         // A set of the authorities (by identity) who have have signed
         // this document.  We use a set here in case `certs` has more
         // than one certificate for a single authority.
@@ -2279,8 +2293,8 @@ impl SignatureGroup {
                 missing.insert(sig.key_ids);
                 continue;
             };
-            match tv.verify() {
-                Ok(()) => {
+            match do_verify(tv) {
+                Ok::<SignatureVerifiedIfIntended, _>(_) => {
                     ok.insert(*id_fingerprint);
                 }
                 Err(e) => {
