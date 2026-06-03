@@ -249,10 +249,12 @@ impl ConsensusBuilder {
             __non_exhaustive: (),
         };
 
+        let mk_versions = |v: &Vec<String>| Ok::<_, Error>(v.clone());
+
         let preamble = Preamble {
             lifetime,
-            client_versions: self.client_versions.clone(),
-            server_versions: self.server_versions.clone(),
+            client_versions: mk_versions(&self.client_versions)?,
+            server_versions: mk_versions(&self.server_versions)?,
             proto_statuses,
             params: self.params.clone(),
             voting_delay: self.voting_delay,
