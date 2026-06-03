@@ -165,6 +165,15 @@ pub struct RouterStatus {
     /// This field is not properly parsed in plain consensuses by the old parser.
     #[deftly(netdoc(keyword = "p"))]
     pub port_policy: ns_type!(Option<Arc<PortPolicy>>, NotPresent, Option<Arc<PortPolicy>>),
+
+    /// `id` --- Relay’s (ed25519) identity
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:id>
+    //
+    // TODO DIRAUTH: this is only right if torspec!499 is approved.
+    // otherwise, we are missing handling of `id none`.
+    #[deftly(netdoc(keyword = "id"))] 
+    pub ed25519_id: ns_type!(NotPresent, NotPresent, Ed25519IdentityLine),
 }
 
 impl RouterStatus {

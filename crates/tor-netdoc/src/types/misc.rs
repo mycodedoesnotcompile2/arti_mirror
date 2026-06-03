@@ -547,6 +547,8 @@ mod ed25519impl {
     ///  * `identity-ed25519` in routerdescs:
     ///    <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:identity-ed25519>
     ///
+    ///  * `id` in votes' routerstatus entries:
+    ///    <https://spec.torproject.org/dir-spec/consensus-formats.html#item:id>
     #[derive(Debug, Clone, PartialEq, Eq, Deftly)]
     #[derive_deftly(ItemValueEncodable, ItemValueParseable)]
     #[non_exhaustive]
