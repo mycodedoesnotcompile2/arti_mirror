@@ -346,20 +346,18 @@ impl Preamble {
             .into();
         let lifetime = Lifetime::new(valid_after, fresh_until, valid_until)?;
 
-        let client_versions = sec
-            .maybe(CLIENT_VERSIONS)
+        let parse_rec_versions = |item| Ok::<_, Error>({
+          // XXXX indenting is wrong
+          sec
+            .maybe(item)
             .args_as_str()
             .unwrap_or("")
             .split(',')
             .map(str::to_string)
-            .collect();
-        let server_versions = sec
-            .maybe(SERVER_VERSIONS)
-            .args_as_str()
-            .unwrap_or("")
-            .split(',')
-            .map(str::to_string)
-            .collect();
+            .collect()
+        });
+        let client_versions = parse_rec_versions(CLIENT_VERSIONS)?;
+        let server_versions = parse_rec_versions(CLIENT_VERSIONS)?;
 
         let proto_statuses = {
             let client = ProtoStatus::from_section(
