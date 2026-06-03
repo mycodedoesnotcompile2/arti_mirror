@@ -2913,7 +2913,8 @@ mod test {
         let text = fs::read_to_string(file)?;
         let now = parse_rfc3339("2000-01-01T00:02:25Z")?;
 
-        let input = ParseInput::new(&text, file);
+        let mut input = ParseInput::new(&text, file);
+        input.retain_unknown_values();
         let doc: plain::NetworkStatusUnverified = parse_netdoc(&input)?;
 
         let file = "testdata2/cached-certs";
