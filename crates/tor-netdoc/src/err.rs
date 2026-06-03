@@ -496,6 +496,12 @@ declare_into! { std::num::ParseIntError => BadArgument }
 declare_into! { std::net::AddrParseError => BadArgument }
 declare_into! { PolicyError => BadPolicy }
 
+impl From<std::convert::Infallible> for Error {
+    fn from(e: std::convert::Infallible) -> Error {
+        match e {}
+    }
+}
+
 impl From<tor_error::Bug> for Error {
     fn from(err: tor_error::Bug) -> Self {
         use tor_error::HasKind;
