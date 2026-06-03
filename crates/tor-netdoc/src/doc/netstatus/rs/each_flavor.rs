@@ -189,6 +189,7 @@ impl RouterStatus {
                 doc_digest: r_doc_digest.into(),
                 publication: IgnoredPublicationTimeSp,
                 ip,
+                dir_port: 0,
             },
             m: m_doc_digest.into(),
             a,

@@ -75,6 +75,11 @@ pub struct RouterStatusIntroItem {
 
     /// Relay port
     pub or_port: u16,
+
+    /// Directory port
+    ///
+    /// Always 0 when read by the old parser.
+    pub dir_port: u16,
 }
 
 /// A single relay's status, in a network status document.
