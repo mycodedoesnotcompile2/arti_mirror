@@ -14,3 +14,4 @@ ADDED: `F64Finite` type
 ADDED: `doc::netstatus::{plain, md, vote}::NetworkStatus`
 BREAKING: `AuthCertUnverified::verify` doesn't take times; instead returns `TimerangeBound`
 DEPRECATED: `parse2::check_validity_time` and `check_validity_time_tolerance`
+ADDED: `RouterStatus` fields `r.dir_port`, `p`, `id`
