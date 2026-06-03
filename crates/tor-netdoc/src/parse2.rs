@@ -154,6 +154,7 @@ pub struct ParseOptions {
 }
 
 /// Input to a network document top-level parsing operation
+#[derive(Debug, Clone)]
 pub struct ParseInput<'s> {
     /// The actual document text
     input: &'s str,
