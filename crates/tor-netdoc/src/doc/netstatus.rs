@@ -516,6 +516,121 @@ impl ProtoStatuses {
     }
 }
 
+/// List of recommended Tor versions
+///
+/// As seen in `client-versions` and `server-versions` in the preamble.
+///
+/// Technically these are supposed to be as according to
+/// "`version-spec.txt`" but we actually allow anything that doesn't contain commas.
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:client-versions>
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:server-versions>
+///
+/// An empty set means no information, not no recommended versions.
+//
+// TODO should we have a CommaSeparated<T> type for arguments like this?
+// But maybe we wouldn't be able to use it here anyway because of
+// the special handling of the missing value.
+//
+// This is yet a third version number representation in arti!  Here it's just String.
+// TODO unify RecommendedTorVersions, RelayPlatform, TorVersion
+#[derive(Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd)] //
+#[derive(derive_more::Deref, derive_more::Into)]
+pub struct RecommendedTorVersions(BTreeSet<String>);
+
+/// Erroneous "recommended Tor versions" information
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+pub enum InvalidRecommendedTorVersions {
+    /// Identical version appears twice
+    #[error("version {_0:?} contains whitespace")]
+    ContainsWhitespace(String),
+
+    /// Identical version appears twice
+    #[error("version {_0:?} is repeated")]
+    Repeated(String),
+}
+
+impl RecommendedTorVersions {
+    /// Return a `RecommendedTorVersions` that has no information
+    pub fn new_unknown() -> Self {
+        Self::default()
+    }
+
+    /// Does this `RecommendedTorVersions` have any information?
+    ///
+    /// Ie, is it not empty.
+    ///
+    /// The opposite of [`BTreeSet::is_empty()`] (which available via deref).
+    pub fn is_known(&self) -> bool {
+        !self.is_empty()
+    }
+
+    /// Construct a RecommendedTorVersions from a list of strings
+    #[allow(clippy::should_implement_trait)] // we can't due to coherence
+    pub fn from_iter<I, S>(i: I) -> Result<Self, InvalidRecommendedTorVersions>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut set = BTreeSet::new();
+        for v in i {
+            let v = v.as_ref();
+            if v.is_empty() {
+                continue;
+            }
+            if v.chars().any(|c| c.is_whitespace()) {
+                return Err(InvalidRecommendedTorVersions::ContainsWhitespace(
+                    v.to_owned(),
+                ));
+            }
+            if !set.insert(v.to_owned()) {
+                return Err(InvalidRecommendedTorVersions::Repeated(v.to_owned()));
+            }
+        }
+        Ok(RecommendedTorVersions(set))
+    }
+}
+
+impl FromStr for RecommendedTorVersions {
+    type Err = InvalidRecommendedTorVersions;
+    fn from_str(s: &str) -> Result<Self, InvalidRecommendedTorVersions> {
+        Self::from_iter(s.split(','))
+    }
+}
+
+impl Display for RecommendedTorVersions {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for s in Itertools::intersperse(
+            self.0.iter().map(|s| &**s), //
+            ",",
+        ) {
+            write!(f, "{s}")?;
+        }
+        Ok(())
+    }
+}
+
+impl NormalItemArgument for RecommendedTorVersions {}
+
+impl ItemValueEncodable for RecommendedTorVersions {
+    fn write_item_value_onto(&self, mut out: ItemEncoder) -> Result<(), Bug> {
+        out.args_raw_string(self);
+        Ok(())
+    }
+}
+
+impl ItemValueParseable for RecommendedTorVersions {
+    fn from_unparsed(mut item: UnparsedItem) -> Result<Self, ErrorProblem> {
+        const FIELD: &str = "versions";
+        item.check_no_object()?;
+        let args = item.args_mut();
+        let arg = args.next().unwrap_or("");
+        arg.parse::<Self>()
+            .map_err(|_| args.handle_error(FIELD, ArgumentError::Invalid))
+    }
+}
+
 /// A recognized 'flavor' of consensus document.
 ///
 /// The enum is exhaustive because the addition/removal of a consensus flavor

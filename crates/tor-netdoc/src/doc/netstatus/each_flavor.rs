@@ -346,16 +346,19 @@ impl Preamble {
             .into();
         let lifetime = Lifetime::new(valid_after, fresh_until, valid_until)?;
 
-        let parse_rec_versions = |item| Ok::<_, Error>({
+        let parse_rec_versions = |item| {
             let item = sec
                 .maybe(item);
             item
+                // XXXX this does not comply with the spec: it eats *all* arguments,
+                // and might include spaces as elements!
                 .args_as_str()
                 .unwrap_or("")
-                .split(',')
-                .map(str::to_string)
-                .collect()
-        });
+                // C Tor emits an item with trailing whitespace which we must ignore
+                .trim()
+                .parse()
+                .map_err(|_e| EK::BadArgument.at_pos(item.pos()))
+        };
         let client_versions = parse_rec_versions(CLIENT_VERSIONS)?;
         let server_versions = parse_rec_versions(CLIENT_VERSIONS)?;
 

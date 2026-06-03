@@ -156,16 +156,14 @@ pub struct Preamble {
     /// List of recommended Tor client versions.
     ///
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:client-versions>
-    #[deftly(constructor)]
-    #[deftly(netdoc(single_arg))]
-    pub client_versions: Vec<String>,
+    #[deftly(netdoc(default))]
+    pub client_versions: RecommendedTorVersions,
 
     /// List of recommended Tor relay versions.
     ///
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:server-versions>
-    #[deftly(constructor)]
-    #[deftly(netdoc(single_arg))]
-    pub server_versions: Vec<String>,
+    #[deftly(netdoc(default))]
+    pub server_versions: RecommendedTorVersions, 
 
     /// Router flags which could be determined
     #[deftly(constructor)]

@@ -249,7 +249,10 @@ impl ConsensusBuilder {
             __non_exhaustive: (),
         };
 
-        let mk_versions = |v: &Vec<String>| Ok::<_, Error>(v.clone());
+        let mk_versions = |v: &[String]| {
+            crate::doc::netstatus::RecommendedTorVersions::from_iter(v.iter())
+                .map_err(|_| crate::NetdocErrorKind::BadApiUsage.err())
+        };
 
         let preamble = Preamble {
             lifetime,
