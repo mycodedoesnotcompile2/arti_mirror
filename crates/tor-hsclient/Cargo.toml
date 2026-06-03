@@ -95,7 +95,7 @@ web-time-compat = { version = "0.1.0", path = "../web-time-compat" }
 
 [dev-dependencies]
 humantime = "2"
-tokio-crate = { package = "tokio", version = "1.7", features = ["full"] }
+tokio-crate = { package = "tokio", version = "1.47.1", features = ["full"] }
 tor-async-utils = { path = "../tor-async-utils", version = "0.43.0" }
 tor-basic-utils = { path = "../tor-basic-utils", version = "0.43.0" }
 tor-chanmgr = { path = "../tor-chanmgr", version = "0.43.0" }
