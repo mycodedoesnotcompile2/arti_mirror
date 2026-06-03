@@ -347,8 +347,9 @@ impl Preamble {
         let lifetime = Lifetime::new(valid_after, fresh_until, valid_until)?;
 
         let parse_rec_versions = |item| Ok::<_, Error>({
-            sec
-                .maybe(item)
+            let item = sec
+                .maybe(item);
+            item
                 .args_as_str()
                 .unwrap_or("")
                 .split(',')
