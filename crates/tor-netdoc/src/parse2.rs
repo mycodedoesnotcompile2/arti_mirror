@@ -158,8 +158,10 @@ pub struct ParseOptions {
 pub struct ParseInput<'s> {
     /// The actual document text
     input: &'s str,
+
     /// Filename (for error reporting)
     file: &'s str,
+
     /// Parsing options
     options: ParseOptions,
 }
