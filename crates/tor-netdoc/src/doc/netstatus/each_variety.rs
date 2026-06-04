@@ -22,7 +22,7 @@ ns_use_this_variety! {
 ///
 /// <https://spec.torproject.org/dir-spec/computing-consensus.html#flavors>
 #[derive(Clone, Debug, Deftly)]
-#[derive_deftly(Constructor, NetdocParseableUnverified)]
+#[derive_deftly(Constructor, NetdocEncodable, NetdocParseableUnverified)]
 #[deftly(netdoc(doctype_for_error = NETSTATUS_DOCTYPE_FOR_ERROR))]
 #[allow(clippy::exhaustive_structs)]
 #[cfg(feature = "incomplete")] // untested
