@@ -23,6 +23,11 @@ impl From<Option<GuardMonitor>> for GuardStatusHandle {
 }
 
 impl GuardStatusHandle {
+    /// Return true if this handle is actively reporting to the guard manager.
+    pub(crate) fn tracks_guard_status(&self) -> bool {
+        self.mon.lock().expect("Poisoned lock").is_some()
+    }
+
     /// Finalize this guard status handle, and report its pending status
     /// to the guard manager.
     ///

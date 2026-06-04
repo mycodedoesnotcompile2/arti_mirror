@@ -604,6 +604,10 @@ impl<R: Runtime> GuardMgr<R> {
 
         // (I am not 100% sure that we need to consider_all_retries here, but
         // it should _probably_ not hurt.)
+        inner
+            .guards
+            .active_guards_mut()
+            .release_expired_indeterminate_disables(wallclock);
         inner.guards.active_guards_mut().consider_all_retries(now);
 
         let (origin, guard) = inner.select_guard_with_expand(&usage, now, wallclock)?;
@@ -1015,6 +1019,7 @@ impl GuardMgrInner {
         active_guards: &mut GuardSet,
         universe: Option<&U>,
     ) -> ExtendedStatus {
+        active_guards.release_expired_indeterminate_disables(now);
         // Expire guards.  Do that early, in case doing so makes it clear that
         // we need to grab more guards or mark others as primary.
         active_guards.expire_old_guards(params, now);
@@ -1261,10 +1266,22 @@ impl GuardMgrInner {
                     self.guards.guards_mut(sample).record_attempt_abandoned(id);
                     pending.reply(false);
                 }
-                (GuardStatus::Indeterminate, FirstHopIdInner::Guard(sample, id)) => {
+                (GuardStatus::LocalNetworkSuspect, FirstHopIdInner::Guard(sample, id)) => {
+                    debug!(
+                        ?guard_id,
+                        "Not counting this post-hop-1 failure against the guard because the local network looks suspect"
+                    );
                     self.guards
                         .guards_mut(sample)
-                        .record_indeterminate_result(id);
+                        .record_local_network_suspect(id);
+                    pending.reply(false);
+                }
+                (GuardStatus::Indeterminate, FirstHopIdInner::Guard(sample, id)) => {
+                    self.guards.guards_mut(sample).record_indeterminate_result(
+                        id,
+                        runtime.wallclock(),
+                        &self.params,
+                    );
                     pending.reply(false);
                 }
             };
@@ -1460,7 +1477,7 @@ impl GuardMgrInner {
         wallclock: SystemTime,
     ) -> Result<(sample::ListKind, FirstHop), PickGuardError> {
         // Try to find a guard.
-        let first_error = match self.select_guard_once(usage, now) {
+        let mut selection_error = match self.select_guard_once(usage, now) {
             Ok(res1) => return Ok(res1),
             Err(e) => {
                 trace!("Couldn't select guard on first attempt: {}", e);
@@ -1468,8 +1485,36 @@ impl GuardMgrInner {
             }
         };
 
-        // That didn't work. If we have a netdir, expand the sample and try again.
-        let res = self.with_opt_universe(|this, univ| {
+        if let Some(res) =
+            self.try_select_after_sample_expand(usage, now, wallclock, &mut selection_error)
+        {
+            return Ok(res);
+        }
+
+        // For one-hop directory traffic, prefer fallbacks before reviving a
+        // path-bias-cooled guard.
+        if let Some(res) = self.try_select_one_hop_fallback(usage, now) {
+            return Ok(res);
+        }
+
+        if let Some(res) = self.try_select_after_heuristic_recovery(usage, now, &selection_error) {
+            return Ok(res);
+        }
+
+        // Couldn't extend the sample, use a fallback, or recover; return the
+        // most recent selection error.
+        Err(selection_error)
+    }
+
+    /// Try to expand the sample using the current netdir and then reselect.
+    fn try_select_after_sample_expand(
+        &mut self,
+        usage: &GuardUsage,
+        now: Instant,
+        wallclock: SystemTime,
+        selection_error: &mut PickGuardError,
+    ) -> Option<(sample::ListKind, FirstHop)> {
+        self.with_opt_universe(|this, univ| {
             let univ = univ?;
             trace!("No guards available, trying to extend the sample.");
             // Make sure that the status on all of our guards are accurate, and
@@ -1477,7 +1522,7 @@ impl GuardMgrInner {
             //
             // Our parameters and configuration did not change, so we do not
             // need to call update() or update_active_set_and_filter(). This
-            // call is sufficient to  extend the sample and recompute primary
+            // call is sufficient to extend the sample and recompute primary
             // guards.
             let extended = Self::update_guardset_internal(
                 &this.params,
@@ -1486,31 +1531,74 @@ impl GuardMgrInner {
                 this.guards.active_guards_mut(),
                 Some(univ),
             );
-            if extended == ExtendedStatus::Yes {
-                match this.select_guard_once(usage, now) {
-                    Ok(res) => return Some(res),
-                    Err(e) => {
-                        trace!("Couldn't select guard after update: {}", e);
-                    }
+            if extended != ExtendedStatus::Yes {
+                return None;
+            }
+
+            match this.select_guard_once(usage, now) {
+                Ok(res) => Some(res),
+                Err(e) => {
+                    trace!("Couldn't select guard after update: {}", e);
+                    *selection_error = e;
+                    None
                 }
             }
-            None
-        });
-        if let Some(res) = res {
-            return Ok(res);
-        }
+        })
+    }
 
-        // Okay, that didn't work either.  If we were asked for a directory
-        // guard, and we aren't using bridges, then we may be able to use a
-        // fallback.
-        if usage.kind == GuardUsageKind::OneHopDirectory
-            && self.guards.active_set.universe_type() == UniverseType::NetDir
+    /// Try a fallback directory for one-hop directory traffic.
+    fn try_select_one_hop_fallback(
+        &self,
+        usage: &GuardUsage,
+        now: Instant,
+    ) -> Option<(sample::ListKind, FirstHop)> {
+        if usage.kind != GuardUsageKind::OneHopDirectory
+            || self.guards.active_set.universe_type() != UniverseType::NetDir
         {
-            return self.select_fallback(now);
+            return None;
         }
 
-        // Couldn't extend the sample or use a fallback; return the original error.
-        Err(first_error)
+        match self.select_fallback(now) {
+            Ok(res) => Some(res),
+            Err(e) => {
+                trace!("Couldn't select fallback directory: {}", e);
+                None
+            }
+        }
+    }
+
+    /// Try reviving one heuristic-disabled guard and reselecting.
+    fn try_select_after_heuristic_recovery(
+        &mut self,
+        usage: &GuardUsage,
+        now: Instant,
+        selection_error: &PickGuardError,
+    ) -> Option<(sample::ListKind, FirstHop)> {
+        if !Self::should_try_heuristic_guard_recovery(selection_error) {
+            return None;
+        }
+
+        let recovered_id = self
+            .guards
+            .active_guards_mut()
+            .recover_heuristic_disabled_guard(usage)?;
+        warn!(
+            guard_id = ?recovered_id,
+            "No usable guards remained and no higher-priority guard attempts were still pending; reviving a path-bias cooled-down guard as an escape hatch."
+        );
+        self.guards
+            .active_guards_mut()
+            .select_primary_guards(&self.params);
+        self.select_guard_once(usage, now).ok()
+    }
+
+    /// Return true if a heuristic-disabled guard may be revived as a last
+    /// resort for this selection error.
+    fn should_try_heuristic_guard_recovery(error: &PickGuardError) -> bool {
+        matches!(
+            error,
+            PickGuardError::AllGuardsDown { pending, .. } if pending.n_rejected == 0
+        )
     }
 
     /// Helper: try to pick a single guard, without retrying on failure.
@@ -1618,6 +1706,18 @@ struct GuardParams {
     /// What fraction of the guards determine that our filter is "very
     /// restrictive"?
     extreme_threshold: f64,
+    /// Minimum observations before we evaluate indeterminate-failure ratios.
+    indeterminate_min_observations: usize,
+    /// Maximum number of recent outcomes kept in the rolling indeterminate window.
+    indeterminate_history_window: usize,
+    /// Warning threshold for indeterminate-failure ratios.
+    indeterminate_warn_threshold: f64,
+    /// Disable threshold for indeterminate-failure ratios.
+    indeterminate_disable_threshold: f64,
+    /// How long a heuristic indeterminate disable should last before retry.
+    indeterminate_cooldown: Duration,
+    /// Whether indeterminate-failure heuristics may disable guards at all.
+    indeterminate_disable_guards: bool,
 }
 
 impl Default for GuardParams {
@@ -1638,6 +1738,12 @@ impl Default for GuardParams {
             internet_down_timeout: Duration::from_secs(600),
             filter_threshold: 0.2,
             extreme_threshold: 0.01,
+            indeterminate_min_observations: 15,
+            indeterminate_history_window: 30,
+            indeterminate_warn_threshold: 0.5,
+            indeterminate_disable_threshold: 0.7,
+            indeterminate_cooldown: one_day,
+            indeterminate_disable_guards: false,
         }
     }
 }
@@ -1660,6 +1766,12 @@ impl TryFrom<&NetParameters> for GuardParams {
             internet_down_timeout: p.guard_internet_likely_down.try_into()?,
             filter_threshold: p.guard_meaningful_restriction.as_fraction(),
             extreme_threshold: p.guard_extreme_restriction.as_fraction(),
+            indeterminate_min_observations: p.guard_path_bias_min_circs.try_into()?,
+            indeterminate_history_window: p.guard_path_bias_window.try_into()?,
+            indeterminate_warn_threshold: p.guard_path_bias_warn_percent.as_fraction(),
+            indeterminate_disable_threshold: p.guard_path_bias_disable_percent.as_fraction(),
+            indeterminate_cooldown: p.guard_path_bias_cooldown.try_into()?,
+            indeterminate_disable_guards: bool::from(p.guard_path_bias_disable),
         })
     }
 }
@@ -1973,15 +2085,40 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
+    use tor_basic_utils::iter::FilterCount;
+    use tor_dircommon::fallback::FallbackDir;
     use tor_linkspec::{HasAddrs, HasRelayIds};
     use tor_persist::TestingStateMgr;
-    use tor_rtcompat::test_with_all_runtimes;
+    use tor_rtcompat::{SleepProvider, test_with_all_runtimes};
 
     #[test]
     fn guard_param_defaults() {
         let p1 = GuardParams::default();
         let p2: GuardParams = (&NetParameters::default()).try_into().unwrap();
         assert_eq!(p1, p2);
+    }
+
+    #[test]
+    fn guard_param_path_bias_overrides() {
+        let overrides: tor_netdoc::doc::netstatus::NetParams<i32> = [
+            ("guard-path-bias-min-circs", 9),
+            ("guard-path-bias-window", 12),
+            ("guard-path-bias-warn-percent", 34),
+            ("guard-path-bias-disable-percent", 56),
+            ("guard-path-bias-disable", 1),
+            ("guard-path-bias-cooldown-sec", 78),
+        ]
+        .into_iter()
+        .collect();
+        let params = NetParameters::from_map(&overrides);
+        let guard_params: GuardParams = (&params).try_into().unwrap();
+
+        assert_eq!(guard_params.indeterminate_min_observations, 9);
+        assert_eq!(guard_params.indeterminate_history_window, 12);
+        assert_eq!(guard_params.indeterminate_warn_threshold, 0.34);
+        assert_eq!(guard_params.indeterminate_disable_threshold, 0.56);
+        assert!(guard_params.indeterminate_disable_guards);
+        assert_eq!(guard_params.indeterminate_cooldown, Duration::from_secs(78));
     }
 
     fn init<R: Runtime>(rt: R) -> (GuardMgr<R>, TestingStateMgr, NetDir) {
@@ -2155,6 +2292,119 @@ mod test {
             // Now that the guard is working as a cache, asking for it should get us the same guard.
             let (g4, _mon, _usable) = guardmgr.select_guard(dir_usage).unwrap();
             assert_eq!(g4.ed_identity(), guard.ed_identity());
+        });
+    }
+
+    #[test]
+    fn recover_when_all_other_guards_are_down() {
+        test_with_all_runtimes!(|rt| async move {
+            let (guardmgr, _statemgr, netdir) = init(rt);
+            guardmgr.install_test_netdir(&netdir);
+            {
+                let mut inner = guardmgr.inner.lock().unwrap();
+                inner.params.indeterminate_min_observations = 2;
+                inner.params.indeterminate_disable_threshold = 0.4;
+                inner.params.indeterminate_history_window = 4;
+                inner.params.indeterminate_disable_guards = true;
+                inner.params.max_sample_size = 5;
+            }
+
+            let usage = GuardUsage::default();
+            let (guard1, mon, _usable) = guardmgr.select_guard(usage.clone()).unwrap();
+            mon.succeeded();
+            guardmgr.flush_msg_queue().await;
+
+            let (guard1_again, mon, _usable) = guardmgr.select_guard(usage.clone()).unwrap();
+            assert_eq!(guard1_again.ed_identity(), guard1.ed_identity());
+            mon.report(GuardStatus::Indeterminate);
+            guardmgr.flush_msg_queue().await;
+
+            for _ in 0..4 {
+                let (guard, mon, _usable) = guardmgr.select_guard(usage.clone()).unwrap();
+                assert_ne!(guard.ed_identity(), guard1.ed_identity());
+                mon.failed();
+                guardmgr.flush_msg_queue().await;
+            }
+
+            let (recovered, _mon, _usable) = guardmgr.select_guard(usage).unwrap();
+            assert_eq!(recovered.ed_identity(), guard1.ed_identity());
+        });
+    }
+
+    #[test]
+    fn heuristic_recovery_requires_no_pending_guards() {
+        let err_without_pending = PickGuardError::AllGuardsDown {
+            retry_at: None,
+            running: FilterCount::default(),
+            pending: FilterCount::default(),
+            suitable: FilterCount::default(),
+            filtered: FilterCount::default(),
+        };
+        assert!(GuardMgrInner::should_try_heuristic_guard_recovery(
+            &err_without_pending
+        ));
+
+        let err_with_pending = PickGuardError::AllGuardsDown {
+            retry_at: None,
+            running: FilterCount::default(),
+            pending: FilterCount {
+                n_accepted: 0,
+                n_rejected: 1,
+            },
+            suitable: FilterCount::default(),
+            filtered: FilterCount::default(),
+        };
+        assert!(!GuardMgrInner::should_try_heuristic_guard_recovery(
+            &err_with_pending
+        ));
+    }
+
+    #[test]
+    fn fallback_selection_still_works_with_heuristic_disabled_guard() {
+        test_with_all_runtimes!(|rt| async move {
+            let (guardmgr, _statemgr, netdir) = init(rt);
+            guardmgr.install_test_netdir(&netdir);
+            let relay = netdir.relays().next().unwrap();
+            let mut fallback = FallbackDir::builder();
+            fallback
+                .rsa_identity(*relay.rsa_identity().unwrap())
+                .ed_identity(*relay.ed_identity().unwrap());
+            for addr in relay.addrs() {
+                fallback.orports().push(addr);
+            }
+            let config = TestConfig {
+                fallbacks: vec![fallback.build().unwrap()].into(),
+                bridges: vec![],
+            };
+            let _ = guardmgr.reconfigure(&config).unwrap();
+            {
+                let mut inner = guardmgr.inner.lock().unwrap();
+                inner.params.indeterminate_min_observations = 2;
+                inner.params.indeterminate_disable_threshold = 0.4;
+                inner.params.indeterminate_history_window = 4;
+                inner.params.indeterminate_disable_guards = true;
+                inner.params.max_sample_size = 1;
+                inner.params.min_filtered_sample_size = 1;
+                inner.params.n_primary = 1;
+                inner.params.dir_parallelism = 1;
+            }
+
+            let data_usage = GuardUsage::default();
+
+            let (guard1, mon, _usable) = guardmgr.select_guard(data_usage.clone()).unwrap();
+            mon.succeeded();
+            guardmgr.flush_msg_queue().await;
+
+            let (guard1_again, mon, _usable) = guardmgr.select_guard(data_usage.clone()).unwrap();
+            assert_eq!(guard1_again.ed_identity(), guard1.ed_identity());
+            mon.report(GuardStatus::Indeterminate);
+            guardmgr.flush_msg_queue().await;
+            {
+                let inner = guardmgr.inner.lock().unwrap();
+                let id = GuardId::from_relay_ids(&guard1);
+                assert!(!inner.guards.active_guards().get(&id).unwrap().usable());
+                assert!(inner.select_fallback(guardmgr.runtime.now()).is_ok());
+            }
         });
     }
 

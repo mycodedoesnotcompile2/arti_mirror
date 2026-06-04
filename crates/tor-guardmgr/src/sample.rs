@@ -574,6 +574,7 @@ impl GuardSet {
     /// Remove all guards which should expire `now`, according to the settings
     /// in `params`.
     pub(crate) fn expire_old_guards(&mut self, params: &GuardParams, now: SystemTime) {
+        self.release_expired_indeterminate_disables(now);
         self.assert_consistency();
         let n_pre = self.guards.len();
         self.guards.retain(|g| !g.is_expired(params, now));
@@ -647,6 +648,29 @@ impl GuardSet {
                 guard
             })
             .collect();
+    }
+
+    /// Clear any heuristic disables whose cooldown has elapsed.
+    pub(crate) fn release_expired_indeterminate_disables(&mut self, now: SystemTime) {
+        let mut released_count = 0_usize;
+        let old_guards = std::mem::take(&mut self.guards);
+        self.guards = old_guards
+            .into_values()
+            .map(|mut guard| {
+                if guard.clear_expired_indeterminate_disable(now) {
+                    released_count += 1;
+                }
+                guard
+            })
+            .collect();
+
+        if released_count > 0 {
+            info!(
+                released_count,
+                "Released guards whose path-bias cooldowns had expired."
+            );
+            self.primary_guards_invalidated = true;
+        }
     }
 
     /// Return the earliest time at which any guard will be retriable.
@@ -749,14 +773,58 @@ impl GuardSet {
             .modify_by_all_ids(guard_id, |guard| guard.note_exploratory_circ(false));
     }
 
+    /// Record that an attempt ended because the client likely lost local
+    /// connectivity after the first hop was already working.
+    pub(crate) fn record_local_network_suspect(&mut self, guard_id: &GuardId) {
+        self.record_attempt_abandoned(guard_id);
+    }
+
     /// Record that an attempt to use the guard with `guard_id` has
     /// just failed in a way that we could not definitively attribute to
     /// the guard.
-    pub(crate) fn record_indeterminate_result(&mut self, guard_id: &GuardId) {
+    pub(crate) fn record_indeterminate_result(
+        &mut self,
+        guard_id: &GuardId,
+        now: SystemTime,
+        params: &GuardParams,
+    ) {
         self.guards.modify_by_all_ids(guard_id, |guard| {
             guard.note_exploratory_circ(false);
-            guard.record_indeterminate_result();
+            guard.record_indeterminate_result(now, params);
         });
+    }
+
+    /// Force-clear one heuristic-disabled guard so selection can recover.
+    pub(crate) fn recover_heuristic_disabled_guard(
+        &mut self,
+        usage: &GuardUsage,
+    ) -> Option<GuardId> {
+        let candidate = self
+            .preference_order()
+            .filter(|(_, guard)| {
+                self.active_filter.permits(*guard) && guard.conforms_to_usage(usage)
+            })
+            .filter_map(|(_, guard)| {
+                guard
+                    .indeterminate_disable_penalty()
+                    .map(|penalty| (penalty, guard.guard_id().clone()))
+            })
+            .min_by(|(lhs_penalty, lhs_id), (rhs_penalty, rhs_id)| {
+                lhs_penalty
+                    .partial_cmp(rhs_penalty)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| lhs_id.cmp(rhs_id))
+            })
+            .map(|(_, id)| id);
+
+        if let Some(id) = candidate.as_ref() {
+            self.guards.modify_by_all_ids(id, |guard| {
+                guard.clear_indeterminate_disable_for_recovery();
+            });
+            self.primary_guards_invalidated = true;
+        }
+
+        candidate
     }
 
     /// Record that a given guard has told us about clock skew.
@@ -1456,6 +1524,94 @@ mod test {
             .unwrap();
         assert_eq!(kind, ListKind::Primary);
         assert_eq!(p_id3, p_id1);
+    }
+
+    #[test]
+    fn recover_heuristic_disabled_guard() {
+        let netdir = netdir();
+        let usage = crate::GuardUsageBuilder::default().build().unwrap();
+        let params = GuardParams {
+            indeterminate_disable_guards: true,
+            min_filtered_sample_size: 1,
+            n_primary: 1,
+            ..GuardParams::default()
+        };
+        let now = SystemTime::get();
+
+        let mut guards = GuardSet::default();
+        guards.extend_sample_as_needed(now, &params, &netdir);
+        guards.select_primary_guards(&params);
+
+        let guard_id = guards.primary[0].clone();
+        guards.record_success(&guard_id, &params, None, now);
+        for _ in 0..14 {
+            guards.record_indeterminate_result(&guard_id, now, &params);
+        }
+
+        assert!(!guards.get(&guard_id).unwrap().usable());
+
+        let recovered = guards.recover_heuristic_disabled_guard(&usage);
+        assert_eq!(recovered, Some(guard_id.clone()));
+        assert!(guards.get(&guard_id).unwrap().usable());
+    }
+
+    #[test]
+    fn heuristic_disable_persists_and_expires() {
+        let netdir = netdir();
+        let params = GuardParams {
+            indeterminate_disable_guards: true,
+            min_filtered_sample_size: 1,
+            n_primary: 1,
+            ..GuardParams::default()
+        };
+        let now = SystemTime::get();
+
+        let mut guards = GuardSet::default();
+        guards.extend_sample_as_needed(now, &params, &netdir);
+        guards.select_primary_guards(&params);
+
+        let guard_id = guards.primary[0].clone();
+        guards.record_success(&guard_id, &params, None, now);
+        for _ in 0..14 {
+            guards.record_indeterminate_result(&guard_id, now, &params);
+        }
+
+        let state: GuardSample = (&guards).into();
+        let mut restored: GuardSet = state.into();
+        assert!(!restored.get(&guard_id).unwrap().usable());
+
+        restored.release_expired_indeterminate_disables(
+            now + params.indeterminate_cooldown + Duration::from_secs(1),
+        );
+        assert!(restored.get(&guard_id).unwrap().usable());
+    }
+
+    #[test]
+    fn local_network_suspect_is_non_blaming() {
+        let netdir = netdir();
+        let params = GuardParams {
+            min_filtered_sample_size: 1,
+            n_primary: 1,
+            ..GuardParams::default()
+        };
+        let now = SystemTime::get();
+
+        let mut guards = GuardSet::default();
+        guards.extend_sample_as_needed(now, &params, &netdir);
+        guards.select_primary_guards(&params);
+
+        let guard_id = guards.primary[0].clone();
+        guards.record_success(&guard_id, &params, None, now);
+
+        for _ in 0..64 {
+            guards.record_local_network_suspect(&guard_id);
+        }
+
+        assert!(guards.get(&guard_id).unwrap().usable());
+        assert_eq!(
+            guards.recover_heuristic_disabled_guard(&GuardUsage::default()),
+            None
+        );
     }
 
     #[test]
