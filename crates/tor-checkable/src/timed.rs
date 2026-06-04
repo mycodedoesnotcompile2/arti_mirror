@@ -185,13 +185,17 @@ impl<T> crate::Timebound<T> for TimerangeBound<T> {
     fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), Self::Error> {
         use crate::TimeValidityError;
         if let Some(start) = self.start {
-            if let Ok(d) = start.duration_since(*t) && d > time::Duration::ZERO {
+            if let Ok(d) = start.duration_since(*t)
+                && d > time::Duration::ZERO
+            {
                 return Err(TimeValidityError::NotYetValid(d));
             }
         }
 
         if let Some(end) = self.end {
-            if let Ok(d) = t.duration_since(end) && d > time::Duration::ZERO {
+            if let Ok(d) = t.duration_since(end)
+                && d > time::Duration::ZERO
+            {
                 return Err(TimeValidityError::Expired(d));
             }
         }
