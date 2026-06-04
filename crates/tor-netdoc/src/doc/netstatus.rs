@@ -2283,6 +2283,34 @@ pub(crate) enum VerifyGeneralTrustedAuthorities<'r> {
     },
 }
 
+/// Return the minimum number of authorities that we need signatures from
+///
+/// Enough is strictly more than half.
+///
+/// The actual number should be tested against this with `>=`, not `>`.
+///
+/// # Example
+///
+/// ```
+/// use tor_netdoc::{doc::netstatus::consensus_threshold, parse2::VerifyFailed};
+/// # fn main() -> Result<(), VerifyFailed> {
+///
+/// let n_trusted_authorities = 3;
+/// let n_good_signatures_from_different_authorities = 2;
+///
+/// if n_good_signatures_from_different_authorities
+///     >= consensus_threshold(n_trusted_authorities)
+/// {
+///     Ok(())
+/// } else {
+///     Err(VerifyFailed::InsufficientTrustedSigners)
+/// }
+/// # }
+/// ```
+pub fn consensus_threshold(n_authorities: usize) -> usize {
+    (n_authorities / 2) + 1 // strict majority
+}
+
 impl SignatureGroup {
     // TODO: these functions are pretty similar and could probably stand to be
     // refactored a lot.
@@ -2324,7 +2352,7 @@ impl SignatureGroup {
             }
         }
 
-        signed_by.len() > (authorities.len() / 2)
+        signed_by.len() >= consensus_threshold(authorities.len())
     }
 
     /// Return true if the signature group defines a valid signature.
@@ -2446,7 +2474,7 @@ impl SignatureGroup {
             TA::TrustThese { trusted } => trusted.len(),
             TA::HazardouslyAssumeAllAuthCertsAreReal { n_authorities: n } => n,
         };
-        let threshold = (n_authorities / 2) + 1; // strict majority
+        let threshold = consensus_threshold(n_authorities);
 
         if ok.len() >= threshold {
             Ok(())
