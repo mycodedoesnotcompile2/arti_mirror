@@ -218,7 +218,7 @@ pub(crate) mod test {
     use crate::stream::flow_ctrl::params::FlowCtrlParameters;
     use crate::stream::incoming::{IncomingStream, IncomingStreamRequestFilter};
 
-    use futures::{AsyncReadExt as _, SinkExt as _, StreamExt as _};
+    use futures::{AsyncReadExt as _, StreamExt as _};
     use tracing_test::traced_test;
 
     use tor_cell::chancell::{ChanCell, ChanCmd, msg as chanmsg};
