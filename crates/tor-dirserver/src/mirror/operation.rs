@@ -596,14 +596,14 @@ impl StaticEngine {
                     return None;
                 }
 
-                let verified = unverified.verify(
-                    self.authorities.v3idents(),
-                ).and_then(|v| Ok(
-                    self.tolerance.extend_tolerance(v)
-                        .check_valid_at(&
-                    now.into(),
-                        )?)
-                );
+                let verified = unverified
+                    .verify(self.authorities.v3idents())
+                    .and_then(|v| {
+                        Ok(self
+                            .tolerance
+                            .extend_tolerance(v)
+                            .check_valid_at(&now.into())?)
+                    });
                 let verified = match verified {
                     Ok(v) => v,
                     Err(e) => {

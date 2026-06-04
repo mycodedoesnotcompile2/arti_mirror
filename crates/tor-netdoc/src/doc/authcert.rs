@@ -22,7 +22,10 @@ use crate::util::str::Extent;
 use crate::{NetdocErrorKind as EK, NormalItemArgument, Result};
 
 use tor_basic_utils::impl_debug_hex;
-use tor_checkable::{signed, timed::{self, TimerangeBound}, Timebound};
+use tor_checkable::{
+    Timebound, signed,
+    timed::{self, TimerangeBound},
+};
 use tor_error::into_internal;
 use tor_llcrypto::pk::rsa;
 use tor_llcrypto::{d, pk, pk::rsa::RsaIdentity};
@@ -1052,90 +1055,65 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, "")).unwrap();
 
         // Test a valid signature.
-        let _: AuthCert = res.clone()
-            .verify(
-                &[to_rsa_id(FINGERPRINT)],
-            )
+        let _: AuthCert = res
+            .clone()
+            .verify(&[to_rsa_id(FINGERPRINT)])
             .unwrap()
-            .check_valid_at(&
-                to_system_time(VALID_SYSTEM_TIME),
-            )
+            .check_valid_at(&to_system_time(VALID_SYSTEM_TIME))
             .unwrap();
 
         // Test with an invalid authority.
         assert_eq!(
-            res.clone()
-                .verify(
-                    &[],
-                )
-                .unwrap_err(),
+            res.clone().verify(&[],).unwrap_err(),
             VerifyFailed::InsufficientTrustedSigners
         );
 
         // Test a key too far in the future.
         assert_eq!(
             res.clone()
-                .verify(
-                    &[to_rsa_id(FINGERPRINT)],
-                )
+                .verify(&[to_rsa_id(FINGERPRINT)],)
                 .unwrap()
-                .check_valid_at(&
-                    SystemTime::UNIX_EPOCH,
-                )
+                .check_valid_at(&SystemTime::UNIX_EPOCH,)
                 .map_err(VerifyFailed::from)
                 .unwrap_err(),
             VerifyFailed::TooNew
         );
 
         // Test an almost too new.
-        let _: AuthCert = res.clone()
-            .verify(
-                &[to_rsa_id(FINGERPRINT)],
-            )
+        let _: AuthCert = res
+            .clone()
+            .verify(&[to_rsa_id(FINGERPRINT)])
             .unwrap()
-            .check_valid_at(&
-                to_system_time(DIR_KEY_PUBLISHED),
-            )
+            .check_valid_at(&to_system_time(DIR_KEY_PUBLISHED))
             .unwrap();
 
         // Now fail when we are 1s below ...
         assert_eq!(
             res.clone()
-                .verify(
-                    &[to_rsa_id(FINGERPRINT)],
-                )
+                .verify(&[to_rsa_id(FINGERPRINT)],)
                 .unwrap()
-                .check_valid_at(&
-                    (to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)),
-                )
+                .check_valid_at(&(to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)),)
                 .map_err(VerifyFailed::from)
                 .unwrap_err(),
             VerifyFailed::TooNew
         );
 
         // ... but succeed again with a clock skew tolerance.
-        let _: AuthCert = res.clone()
-            .verify(
-                &[to_rsa_id(FINGERPRINT)],
-            )
+        let _: AuthCert = res
+            .clone()
+            .verify(&[to_rsa_id(FINGERPRINT)])
             .unwrap()
-            .extend_pre_tolerance(
-                Duration::from_secs(1),
-            )
-            .check_valid_at(&
-                (to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)),
-            )
+            .extend_pre_tolerance(Duration::from_secs(1))
+            .check_valid_at(&(to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)))
             .unwrap();
 
         // Test a key too old.
         assert_eq!(
             res.clone()
-                .verify(
-                    &[to_rsa_id(FINGERPRINT)],
-                )
+                .verify(&[to_rsa_id(FINGERPRINT)],)
                 .unwrap()
-                .check_valid_at(&
-                    SystemTime::UNIX_EPOCH
+                .check_valid_at(
+                    &SystemTime::UNIX_EPOCH
                         .checked_add(Duration::from_secs(2000000000))
                         .unwrap(),
                 )
@@ -1145,43 +1123,31 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         );
 
         // Test an almost too old.
-        let _: AuthCert = res.clone()
-            .verify(
-                &[to_rsa_id(FINGERPRINT)],
-            )
+        let _: AuthCert = res
+            .clone()
+            .verify(&[to_rsa_id(FINGERPRINT)])
             .unwrap()
-            .check_valid_at(&
-                to_system_time(DIR_KEY_EXPIRES),
-            )
+            .check_valid_at(&to_system_time(DIR_KEY_EXPIRES))
             .unwrap();
 
         // Now fail when we are 1s above ...
         assert_eq!(
             res.clone()
-                .verify(
-                    &[to_rsa_id(FINGERPRINT)],
-                )
+                .verify(&[to_rsa_id(FINGERPRINT)],)
                 .unwrap()
-                .check_valid_at(&
-                    (to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1)),
-                )
+                .check_valid_at(&(to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1)),)
                 .map_err(VerifyFailed::from)
                 .unwrap_err(),
             VerifyFailed::TooOld
         );
 
         // ... but succeed again with a clock skew tolerance.
-        let _: AuthCert = res.clone()
-            .verify(
-                &[to_rsa_id(FINGERPRINT)],
-            )
+        let _: AuthCert = res
+            .clone()
+            .verify(&[to_rsa_id(FINGERPRINT)])
             .unwrap()
-            .extend_tolerance(
-                Duration::from_secs(1),
-            )
-            .check_valid_at(&
-                (to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1)),
-            )
+            .extend_tolerance(Duration::from_secs(1))
+            .check_valid_at(&(to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1)))
             .unwrap();
 
         // Check with non-matching fingerprint and long-term identity key.
@@ -1194,10 +1160,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         .unwrap();
         cert.body.dir_identity_key = alternative_cert.body.dir_identity_key.clone();
         assert_eq!(
-            cert.verify(
-                &[to_rsa_id(FINGERPRINT)],
-            )
-            .unwrap_err(),
+            cert.verify(&[to_rsa_id(FINGERPRINT)],).unwrap_err(),
             VerifyFailed::Inconsistent
         );
 
@@ -1206,10 +1169,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, "")).unwrap();
         cert.body.dir_key_crosscert = alternative_cert.body.dir_key_crosscert.clone();
         assert_eq!(
-            cert.verify(
-                &[to_rsa_id(FINGERPRINT)],
-            )
-            .unwrap_err(),
+            cert.verify(&[to_rsa_id(FINGERPRINT)],).unwrap_err(),
             VerifyFailed::VerifyFailed
         );
 
@@ -1218,10 +1178,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, "")).unwrap();
         cert.sigs = alternative_cert.sigs.clone();
         assert_eq!(
-            cert.verify(
-                &[to_rsa_id(FINGERPRINT)],
-            )
-            .unwrap_err(),
+            cert.verify(&[to_rsa_id(FINGERPRINT)],).unwrap_err(),
             VerifyFailed::VerifyFailed
         );
     }
@@ -1276,18 +1233,11 @@ ids 1234567812345678123456781234567812345678 ABCDABCDABCDABCDABCDABCDABCDABCDABC
 
         let reparsed_uv: AuthCertUnverified =
             parse_netdoc(&ParseInput::new(encoded.as_ref(), "<encoded>"))?;
-        let reparsed_value = reparsed_uv.verify(
-            &[k_auth_id_rsa.to_public_key().to_rsa_identity()],
-        )?
-        .extend_pre_tolerance(
-            tolerance,
-        )
-        .extend_tolerance(
-            tolerance,
-        )
-        .check_valid_at(&
-            now,
-        )?;
+        let reparsed_value = reparsed_uv
+            .verify(&[k_auth_id_rsa.to_public_key().to_rsa_identity()])?
+            .extend_pre_tolerance(tolerance)
+            .extend_tolerance(tolerance)
+            .check_valid_at(&now)?;
         dbg!(&reparsed_value);
 
         assert_eq!(input_value, reparsed_value);
