@@ -22,7 +22,7 @@ use crate::util::str::Extent;
 use crate::{NetdocErrorKind as EK, NormalItemArgument, Result};
 
 use tor_basic_utils::impl_debug_hex;
-use tor_checkable::{signed, timed};
+use tor_checkable::{signed, timed::{self, TimerangeBound}, Timebound};
 use tor_error::into_internal;
 use tor_llcrypto::pk::rsa;
 use tor_llcrypto::{d, pk, pk::rsa::RsaIdentity};
@@ -30,7 +30,7 @@ use tor_llcrypto::{d, pk, pk::rsa::RsaIdentity};
 use std::sync::LazyLock;
 
 use std::result::Result as StdResult;
-use std::{net, time, time::Duration, time::SystemTime};
+use std::{net, time, time::SystemTime};
 
 use derive_deftly::Deftly;
 use digest::Digest;
@@ -623,10 +623,7 @@ impl AuthCertUnverified {
     pub fn verify(
         self,
         v3idents: &[RsaIdentity],
-        pre_tolerance: Duration,
-        post_tolerance: Duration,
-        now: SystemTime,
-    ) -> StdResult<AuthCert, parse2::VerifyFailed> {
+    ) -> StdResult<TimerangeBound<AuthCert>, parse2::VerifyFailed> {
         let (body, sigs) = (self.body, self.sigs);
 
         // (1) Check whether this comes from a valid authority in `v3idents`.
@@ -636,7 +633,6 @@ impl AuthCertUnverified {
 
         // (2) Check whether the timestamps are valid (± tolerance).
         let validity = *body.dir_key_published..=*body.dir_key_expires;
-        parse2::check_validity_time_tolerance(now, validity, pre_tolerance, post_tolerance)?;
 
         // (3) Check whether the fingerprint and long-term identity key match.
         if body.dir_identity_key.to_rsa_identity() != *body.fingerprint {
@@ -655,7 +651,7 @@ impl AuthCertUnverified {
             &sigs.sigs.dir_key_certification.signature,
         )?;
 
-        Ok(body)
+        Ok(TimerangeBound::new(body, validity))
     }
 
     /// Verify the signatures (and check validity times)
@@ -667,7 +663,7 @@ impl AuthCertUnverified {
     /// The caller must check that the KP_auth_id is correct/relevant.
     pub fn verify_selfcert(self, now: SystemTime) -> StdResult<AuthCert, parse2::VerifyFailed> {
         let h_kp_auth_id_rsa = self.inspect_unverified().0.fingerprint.0;
-        self.verify(&[h_kp_auth_id_rsa], Duration::ZERO, Duration::ZERO, now)
+        Ok(self.verify(&[h_kp_auth_id_rsa])?.check_valid_at(&now)?)
     }
 }
 
@@ -768,6 +764,7 @@ mod test {
     use std::{
         net::{Ipv4Addr, SocketAddrV4},
         str::FromStr,
+        time::Duration,
     };
     use tor_basic_utils::test_rng;
 
@@ -1058,8 +1055,9 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         let _: AuthCert = res.clone()
             .verify(
                 &[to_rsa_id(FINGERPRINT)],
-                Duration::ZERO,
-                Duration::ZERO,
+            )
+            .unwrap()
+            .check_valid_at(&
                 to_system_time(VALID_SYSTEM_TIME),
             )
             .unwrap();
@@ -1069,9 +1067,6 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             res.clone()
                 .verify(
                     &[],
-                    Duration::ZERO,
-                    Duration::ZERO,
-                    to_system_time(VALID_SYSTEM_TIME),
                 )
                 .unwrap_err(),
             VerifyFailed::InsufficientTrustedSigners
@@ -1082,10 +1077,12 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             res.clone()
                 .verify(
                     &[to_rsa_id(FINGERPRINT)],
-                    Duration::ZERO,
-                    Duration::ZERO,
+                )
+                .unwrap()
+                .check_valid_at(&
                     SystemTime::UNIX_EPOCH,
                 )
+                .map_err(VerifyFailed::from)
                 .unwrap_err(),
             VerifyFailed::TooNew
         );
@@ -1094,8 +1091,9 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         let _: AuthCert = res.clone()
             .verify(
                 &[to_rsa_id(FINGERPRINT)],
-                Duration::ZERO,
-                Duration::ZERO,
+            )
+            .unwrap()
+            .check_valid_at(&
                 to_system_time(DIR_KEY_PUBLISHED),
             )
             .unwrap();
@@ -1105,10 +1103,12 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             res.clone()
                 .verify(
                     &[to_rsa_id(FINGERPRINT)],
-                    Duration::ZERO,
-                    Duration::ZERO,
+                )
+                .unwrap()
+                .check_valid_at(&
                     (to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)),
                 )
+                .map_err(VerifyFailed::from)
                 .unwrap_err(),
             VerifyFailed::TooNew
         );
@@ -1117,8 +1117,12 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         let _: AuthCert = res.clone()
             .verify(
                 &[to_rsa_id(FINGERPRINT)],
+            )
+            .unwrap()
+            .extend_pre_tolerance(
                 Duration::from_secs(1),
-                Duration::ZERO,
+            )
+            .check_valid_at(&
                 (to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)),
             )
             .unwrap();
@@ -1128,12 +1132,14 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             res.clone()
                 .verify(
                     &[to_rsa_id(FINGERPRINT)],
-                    Duration::ZERO,
-                    Duration::ZERO,
+                )
+                .unwrap()
+                .check_valid_at(&
                     SystemTime::UNIX_EPOCH
                         .checked_add(Duration::from_secs(2000000000))
                         .unwrap(),
                 )
+                .map_err(VerifyFailed::from)
                 .unwrap_err(),
             VerifyFailed::TooOld
         );
@@ -1142,8 +1148,9 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         let _: AuthCert = res.clone()
             .verify(
                 &[to_rsa_id(FINGERPRINT)],
-                Duration::ZERO,
-                Duration::ZERO,
+            )
+            .unwrap()
+            .check_valid_at(&
                 to_system_time(DIR_KEY_EXPIRES),
             )
             .unwrap();
@@ -1153,10 +1160,12 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             res.clone()
                 .verify(
                     &[to_rsa_id(FINGERPRINT)],
-                    Duration::ZERO,
-                    Duration::ZERO,
+                )
+                .unwrap()
+                .check_valid_at(&
                     (to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1)),
                 )
+                .map_err(VerifyFailed::from)
                 .unwrap_err(),
             VerifyFailed::TooOld
         );
@@ -1165,8 +1174,12 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         let _: AuthCert = res.clone()
             .verify(
                 &[to_rsa_id(FINGERPRINT)],
-                Duration::ZERO,
+            )
+            .unwrap()
+            .extend_tolerance(
                 Duration::from_secs(1),
+            )
+            .check_valid_at(&
                 (to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1)),
             )
             .unwrap();
@@ -1183,9 +1196,6 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         assert_eq!(
             cert.verify(
                 &[to_rsa_id(FINGERPRINT)],
-                Duration::ZERO,
-                Duration::ZERO,
-                to_system_time(VALID_SYSTEM_TIME),
             )
             .unwrap_err(),
             VerifyFailed::Inconsistent
@@ -1198,9 +1208,6 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         assert_eq!(
             cert.verify(
                 &[to_rsa_id(FINGERPRINT)],
-                Duration::ZERO,
-                Duration::ZERO,
-                to_system_time(VALID_SYSTEM_TIME),
             )
             .unwrap_err(),
             VerifyFailed::VerifyFailed
@@ -1213,9 +1220,6 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         assert_eq!(
             cert.verify(
                 &[to_rsa_id(FINGERPRINT)],
-                Duration::ZERO,
-                Duration::ZERO,
-                to_system_time(VALID_SYSTEM_TIME),
             )
             .unwrap_err(),
             VerifyFailed::VerifyFailed
@@ -1274,8 +1278,14 @@ ids 1234567812345678123456781234567812345678 ABCDABCDABCDABCDABCDABCDABCDABCDABC
             parse_netdoc(&ParseInput::new(encoded.as_ref(), "<encoded>"))?;
         let reparsed_value = reparsed_uv.verify(
             &[k_auth_id_rsa.to_public_key().to_rsa_identity()],
+        )?
+        .extend_pre_tolerance(
             tolerance,
+        )
+        .extend_tolerance(
             tolerance,
+        )
+        .check_valid_at(&
             now,
         )?;
         dbg!(&reparsed_value);
