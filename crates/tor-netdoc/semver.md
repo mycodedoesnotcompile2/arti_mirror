@@ -32,3 +32,4 @@ ADDED: `impl From<std::convert::Infallible> for Error`
 ADDED: `RouterStatus` fields `r.dir_port`, `p`, `id`, `stats`
 ADDED: `plain::NetworkStatus` and `md::NetworkStatus` implement `NetdocEncodable`
 ADDED: `plain::NetworkStatus` and `md::NetworkStatus` have `verify` methods
+ADDED: `EmbeddedCert` implements `NetdocEncodable` and `NetdocParseable`
