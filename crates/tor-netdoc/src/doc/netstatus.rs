@@ -1357,7 +1357,7 @@ pub struct VoteAuthoritySection {
 
     /// Authority key certificate
     #[deftly(constructor)]
-    pub cert: EncodedAuthCert,
+    pub cert: EmbeddedCert<AuthCert, EncodedAuthCert>,
 
     #[doc(hidden)]
     #[deftly(netdoc(skip))]
