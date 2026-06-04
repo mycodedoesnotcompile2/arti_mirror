@@ -1055,7 +1055,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(AUTHCERT_RAW, "")).unwrap();
 
         // Test a valid signature.
-        res.clone()
+        let _: AuthCert = res.clone()
             .verify(
                 &[to_rsa_id(FINGERPRINT)],
                 Duration::ZERO,
@@ -1091,7 +1091,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         );
 
         // Test an almost too new.
-        res.clone()
+        let _: AuthCert = res.clone()
             .verify(
                 &[to_rsa_id(FINGERPRINT)],
                 Duration::ZERO,
@@ -1114,7 +1114,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         );
 
         // ... but succeed again with a clock skew tolerance.
-        res.clone()
+        let _: AuthCert = res.clone()
             .verify(
                 &[to_rsa_id(FINGERPRINT)],
                 Duration::from_secs(1),
@@ -1139,7 +1139,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         );
 
         // Test an almost too old.
-        res.clone()
+        let _: AuthCert = res.clone()
             .verify(
                 &[to_rsa_id(FINGERPRINT)],
                 Duration::ZERO,
@@ -1162,7 +1162,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
         );
 
         // ... but succeed again with a clock skew tolerance.
-        res.clone()
+        let _: AuthCert = res.clone()
             .verify(
                 &[to_rsa_id(FINGERPRINT)],
                 Duration::ZERO,
