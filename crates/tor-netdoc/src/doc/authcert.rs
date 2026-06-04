@@ -1107,7 +1107,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
                     &[to_rsa_id(FINGERPRINT)],
                     Duration::ZERO,
                     Duration::ZERO,
-                    to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1),
+                    (to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)),
                 )
                 .unwrap_err(),
             VerifyFailed::TooNew
@@ -1119,7 +1119,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
                 &[to_rsa_id(FINGERPRINT)],
                 Duration::from_secs(1),
                 Duration::ZERO,
-                to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1),
+                (to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)),
             )
             .unwrap();
 
@@ -1155,7 +1155,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
                     &[to_rsa_id(FINGERPRINT)],
                     Duration::ZERO,
                     Duration::ZERO,
-                    to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1),
+                    (to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1)),
                 )
                 .unwrap_err(),
             VerifyFailed::TooOld
@@ -1167,7 +1167,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
                 &[to_rsa_id(FINGERPRINT)],
                 Duration::ZERO,
                 Duration::from_secs(1),
-                to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1),
+                (to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1)),
             )
             .unwrap();
 
