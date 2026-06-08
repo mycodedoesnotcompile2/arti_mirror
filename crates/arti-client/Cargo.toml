@@ -78,7 +78,7 @@ bridge-client = ["tor-guardmgr/bridge-client", "tor-dirmgr/bridge-client"]
 # but the feature is kept for backwards compatibility
 # https://gitlab.torproject.org/tpo/core/arti/-/issues/2030
 memquota = []
-tokio = ["tor-rtcompat/tokio", "tor-proto/tokio"]
+tokio = ["tor-async-utils/tokio", "tor-rtcompat/tokio", "tor-proto/tokio"]
 native-tls = ["tor-rtcompat/native-tls"]
 pt-client = [
     "bridge-client",

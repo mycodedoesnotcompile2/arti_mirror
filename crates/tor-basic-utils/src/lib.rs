@@ -60,6 +60,7 @@ pub mod rand_hostname;
 pub mod rangebounds;
 pub mod retry;
 pub mod test_rng;
+pub mod token_bucket;
 
 mod byte_qty;
 pub use byte_qty::ByteQty;

@@ -39,8 +39,9 @@ use crate::stream::StreamTarget;
 use crate::stream::cmdcheck::{AnyCmdChecker, CmdChecker, StreamStatus};
 use crate::stream::flow_ctrl::state::StreamRateLimit;
 use crate::stream::flow_ctrl::xon_xoff::reader::{BufferIsEmpty, XonXoffReader, XonXoffReaderCtrl};
-use crate::util::token_bucket::dynamic_writer::DynamicRateLimitedWriter;
-use crate::util::token_bucket::writer::{RateLimitedWriter, RateLimitedWriterConfig};
+use tor_async_utils::rate_limited_writer::{
+    DynamicRateLimitedWriter, RateLimitedWriter, RateLimitedWriterConfig,
+};
 use tor_basic_utils::skip_fmt;
 use tor_cell::relaycell::msg::Data;
 use tor_error::internal;

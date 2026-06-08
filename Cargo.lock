@@ -6845,6 +6845,7 @@ dependencies = [
 name = "tor-async-utils"
 version = "0.43.0"
 dependencies = [
+ "cfg-if",
  "derive-deftly",
  "educe",
  "futures",
@@ -6852,12 +6853,18 @@ dependencies = [
  "oneshot-fused-workaround",
  "pin-project",
  "postage",
+ "sync_wrapper",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
+ "tor-basic-utils",
  "tor-error",
  "tor-rtcompat",
  "tor-rtmock",
+ "tracing",
+ "visibility",
  "void",
+ "web-time-compat",
 ]
 
 [[package]]
@@ -6879,6 +6886,7 @@ dependencies = [
  "slab",
  "smallvec",
  "thiserror 2.0.18",
+ "tracing",
  "weak-table",
  "web-time-compat",
 ]
@@ -8001,7 +8009,6 @@ dependencies = [
  "statrs",
  "strum",
  "subtle",
- "sync_wrapper",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
