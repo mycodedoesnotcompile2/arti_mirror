@@ -1,6 +1,5 @@
-//! A token bucket implementation,
-//! and async types which use the token bucket for rate limiting.
+//! Async types which use a [`tor_basic_utils::token_bucket::TokenBucket`] for rate
+//! limiting.
 
-pub(crate) mod bucket;
 pub(crate) mod dynamic_writer;
 pub(crate) mod writer;

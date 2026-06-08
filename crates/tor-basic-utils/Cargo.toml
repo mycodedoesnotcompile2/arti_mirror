@@ -23,6 +23,7 @@ serde = { version = "1.0.103", optional = true, features = ["derive"] }
 slab = "0.4.7"
 smallvec = "1.10"
 thiserror = "2"
+tracing = "0.1"
 weak-table = "0.3.0"
 web-time-compat = { version = "0.1.0", path = "../web-time-compat" }
 

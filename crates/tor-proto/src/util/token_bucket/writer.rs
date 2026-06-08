@@ -11,7 +11,7 @@ use futures::io::Error;
 use sync_wrapper::SyncFuture;
 use tor_rtcompat::SleepProvider;
 
-use super::bucket::{NeverEnoughTokensError, TokenBucket, TokenBucketConfig};
+use tor_basic_utils::token_bucket::{NeverEnoughTokensError, TokenBucket, TokenBucketConfig};
 
 /// A rate-limited async [writer](AsyncWrite).
 ///
