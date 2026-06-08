@@ -615,11 +615,13 @@ impl DataStream {
                 crate::stream::Tunnel::Relay(_) => None,
             };
 
-            tunnel.map(|tunnel| Arc::new(ClientDataStreamCtrl {
-                tunnel,
-                status: status.clone(),
-                _memquota: memquota.clone(),
-            }))
+            tunnel.map(|tunnel| {
+                Arc::new(ClientDataStreamCtrl {
+                    tunnel,
+                    status: status.clone(),
+                    _memquota: memquota.clone(),
+                })
+            })
         };
         let r = DataReaderInner {
             state: Some(DataReaderState::Open(DataReaderImpl {
