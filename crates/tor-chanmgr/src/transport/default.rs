@@ -127,7 +127,9 @@ async fn connect_to_one<R: Runtime>(
                         }
                     } else {
                         // Direct connection
-                        rt.connect(&a).await?
+                        // We don't (yet) use any custom options on the socket.
+                        let connect_options = Default::default();
+                        rt.connect(&a, &connect_options).await?
                     };
                     Ok((stream, a))
                 }
