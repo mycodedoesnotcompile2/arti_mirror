@@ -786,7 +786,6 @@ pub(crate) mod test {
 
     #[traced_test]
     #[test]
-    #[ignore] // TODO(relay): Sad trombone, this is not yet supported
     fn data_stream() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
             const TO_SEND: &[u8] = b"The bells were musical in the silvery sun";
