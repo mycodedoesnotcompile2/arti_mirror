@@ -610,12 +610,12 @@ impl DataStream {
         #[cfg(feature = "stream-ctrl")]
         let ctrl = {
             let tunnel = match target.tunnel() {
-                crate::stream::Tunnel::Client(t) => Arc::downgrade(t),
+                crate::stream::Tunnel::Client(t) => Some(Arc::downgrade(t)),
                 #[cfg(feature = "relay")]
-                crate::stream::Tunnel::Relay(_) => panic!("created a relay tunnel in the client?!"),
+                crate::stream::Tunnel::Relay(_) => None,
             };
 
-            Some(Arc::new(ClientDataStreamCtrl {
+            tunnel.map(|tunnel| Arc::new(ClientDataStreamCtrl {
                 tunnel,
                 status: status.clone(),
                 _memquota: memquota.clone(),
