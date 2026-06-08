@@ -109,11 +109,15 @@ pub struct HsDesc {
 
     /// A list of offered proof-of-work parameters, at most one per type.
     pow_params: pow::PowParamSet,
-    // /// A list of recognized CREATE handshakes that this onion service supports.
-    //
-    // TODO:  When someday we add a "create2 format" other than "hs-ntor", we
-    // should turn this into a caret enum, record this info, and expose it.
-    // create2_formats: Vec<u32>,
+
+    /// A specified sendme increment and sub protocol capability list, if they were provided.
+    ///
+    /// Note that for historical reasons the protocol capabilities here are treated separately
+    /// from those in `protos`.
+    pub(super) flow_control: Option<(tor_protover::Protocols, u8)>,
+
+    /// A list of subprotocol capabilities advertised by the onion service.
+    protos: tor_protover::Protocols,
 }
 
 /// A type of authentication that is required when introducing to an onion
@@ -351,6 +355,17 @@ impl HsDesc {
     pub fn revision(&self) -> RevisionCounter {
         self.idx_info.revision
     }
+
+    /// Return the set of protocol capabilities declared in this descriptor.
+    pub fn declared_capabilities(&self) -> &tor_protover::Protocols {
+        &self.protos
+    }
+
+    /// Return the `sendme_inc` value declared for congestion control in this descriptor,
+    /// if there was one.
+    pub fn flow_control(&self) -> Option<&(tor_protover::Protocols, u8)> {
+        self.flow_control.as_ref()
+    }
 }
 
 /// An error returned by [`HsDesc::parse_decrypt_validate`], indicating what
@@ -547,6 +562,8 @@ impl EncryptedHsDesc {
                 is_single_onion_service: inner.single_onion_service,
                 intro_points: inner.intro_points,
                 pow_params: inner.pow_params,
+                flow_control: inner.flow_control.clone(),
+                protos: inner.protos,
             })
         });
         Ok(time_bound)
