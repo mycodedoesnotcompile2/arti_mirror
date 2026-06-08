@@ -364,7 +364,8 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
-    use crate::{client::circuit::padding::new_padding, fake_mpsc};
+    use crate::circuit::test::fake_mpsc;
+    use crate::client::circuit::padding::new_padding;
     use tor_basic_utils::test_rng::testing_rng;
     use tor_rtcompat::DynTimeProvider;
 

@@ -153,6 +153,7 @@ impl CreateRequestHandler {
         let time_provider = DynTimeProvider::new(runtime.clone());
         let account = memquota.as_raw_account();
         let (sender, receiver) = MpscSpec::new(10_000_000).new_mq(time_provider, account)?;
+        let (sender, receiver) = crate::circuit::circ_sender::channel(sender, receiver);
 
         // TODO(relay): Do we really want a client padding machine here?
         let (padding_ctrl, padding_stream) =
