@@ -163,7 +163,7 @@ pub struct Preamble {
     ///
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:server-versions>
     #[deftly(netdoc(default))]
-    pub server_versions: RecommendedTorVersions, 
+    pub server_versions: RecommendedTorVersions,
 
     /// Router flags which could be determined
     #[deftly(constructor)]
