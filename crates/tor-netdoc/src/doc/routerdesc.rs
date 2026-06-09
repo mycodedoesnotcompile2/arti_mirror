@@ -232,6 +232,11 @@ pub struct RouterDesc {
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:extra-info-digest>
     pub extra_info_digest: Option<ExtraInfoDigests>,
 
+    /// `hidden-service-dir` --- Declares this router to be a hidden service directory
+    ///
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:hidden-service-dir>
+    pub hidden_service_dir: Option<ItemPresent<HiddenServiceDirToken>>,
+
     /// `or-address` --- Alternative ORport address and port
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:or-address>
@@ -291,6 +296,11 @@ pub enum RelayPlatform {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub struct CachesExtraInfoToken;
+
+/// Zero-sized token type for use in [`RouterDesc::hidden_service_dir`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub struct HiddenServiceDirToken;
 
 /// Zero-sized token type for use in [`RouterDesc::tunnelled_dir_server`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -593,6 +603,7 @@ impl RouterDesc {
     /// * [`RouterDesc::overload_general`]
     /// * [`RouterDesc::contact`]
     /// * [`RouterDesc::extra_info_digest`]
+    /// * [`RouterDesc::hidden_service_dir`]
     pub fn parse(s: &str) -> Result<UncheckedRouterDesc> {
         let mut reader = crate::parse::tokenize::NetDocReader::new(s)?;
         let result = Self::parse_internal(&mut reader).map_err(|e| e.within(s))?;
@@ -1019,6 +1030,7 @@ impl RouterDesc {
             family_cert: embedded_family_certs.into(),
             caches_extra_info: is_extrainfo_cache,
             extra_info_digest: Default::default(),
+            hidden_service_dir: Default::default(),
             or_address: ipv6addr,
             tunnelled_dir_server: is_dircache,
             proto,

@@ -1,3 +1,5 @@
+ADDED: `HiddenServiceDirToken`
+ADDED: `RouterDesc::hidden_service_dir`
 ADDED: `CachesExtraInfoToken`
 ADDED: `TunnelledDirServerToken`
 BREAKING: `RouterDesc::caches_extra_info` stored as `CachesExtraInfoToken`
