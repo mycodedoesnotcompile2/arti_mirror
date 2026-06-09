@@ -670,12 +670,20 @@ impl ClientCirc {
     /// circuits by a single "virtual" encryption hop that represents their
     /// shared cryptographic context.
     ///
+    /// Protocol settings, capabilities, and parameters
+    /// are based on the `params` and `capabilities` arguments.
+    /// The `capabilities` argument should contains a set of capabilities that both
+    /// parties have agreed to use.  Only explicitly negotiable capabilities[^2] need
+    /// to be listed.
+    ///
     /// Once a circuit has been extended in this way, it is an error to try to
     /// extend it in any other way.
     ///
     /// [^1]: Technically, the handshake is only _mostly_ out of band: the
     ///     client sends their half of the handshake in an ` message, and the
     ///     service's response is inline in its `RENDEZVOUS2` message.
+    /// [^2]: That is to say, if a capability is always-on, then there is no need to list
+    ///     it.
     //
     // TODO hs: let's try to enforce the "you can't extend a circuit again once
     // it has been extended this way" property.  We could do that with internal
