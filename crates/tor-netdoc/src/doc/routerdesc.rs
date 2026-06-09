@@ -828,7 +828,8 @@ impl RouterDesc {
         };
 
         // tunneled-dir-server
-        let is_dircache = ((dirport != 0) || body.get(TUNNELLED_DIR_SERVER).is_some()).then_some(ItemPresent::default());
+        let is_dircache = ((dirport != 0) || body.get(TUNNELLED_DIR_SERVER).is_some())
+            .then_some(ItemPresent::default());
 
         // caches-extra-info
         let is_extrainfo_cache = body.get(CACHES_EXTRA_INFO).map(|_| ItemPresent::default());
