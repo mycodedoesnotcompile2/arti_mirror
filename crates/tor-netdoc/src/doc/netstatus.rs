@@ -2271,7 +2271,7 @@ impl SignatureGroup {
             } = sig;
 
             if let Some(trusted) = trusted_authorities {
-                if !trusted.iter().any(|trusted| trusted == id_fingerprint) {
+                if !trusted.contains(id_fingerprint) {
                     continue;
                 }
             }
