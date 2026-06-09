@@ -46,6 +46,7 @@ type DocDigestB64 = FixedB64<DOC_DIGEST_LEN>;
 /// `r` item.
 #[derive(Debug, Clone, Deftly)]
 #[derive_deftly(ItemValueParseable)]
+#[cfg_attr(feature = "incomplete", derive_deftly(ItemValueEncodable))] // untested
 #[non_exhaustive]
 pub struct RouterStatusIntroItem {
     /// The nickname for this relay.
@@ -83,6 +84,7 @@ pub struct RouterStatusIntroItem {
 // use longer names in the struct and specify the keyword separately.
 #[derive(Debug, Clone, Deftly)]
 #[derive_deftly(NetdocParseable)]
+#[cfg_attr(feature = "incomplete", derive_deftly(NetdocEncodable))] // untested
 #[non_exhaustive]
 pub struct RouterStatus {
     /// `r` --- Introduce a routerstatus entry
@@ -153,5 +155,13 @@ impl RouterStatus {
     /// in md routerstatus entries.
     pub fn doc_digest(&self) -> &DocDigest {
         ns_expr!(&self.r.doc_digest, &self.m, &self.r.doc_digest,)
+    }
+}
+
+impl EncodeOrd for RouterStatus {
+    fn encode_cmp(&self, other: &Self) -> Ordering {
+        // Type inference seems to need a *lot* of help here!
+        let k: for <'i> fn(&'i RouterStatus) -> &'i _  = |rs| &rs .r.identity;
+        EncodeOrd::encode_cmp(k(self), k(other))
     }
 }
