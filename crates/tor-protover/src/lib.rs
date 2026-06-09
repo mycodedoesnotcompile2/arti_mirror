@@ -554,6 +554,50 @@ fn is_good_number(n: &str) -> bool {
     n.chars().all(|ch| ch.is_ascii_digit()) && !n.starts_with('0')
 }
 
+/// Parse a version-list in `versions` into a bitmask.
+#[allow(clippy::string_slice)] // TODO
+fn parse_version_mask(versions: &str) -> Result<u64, ParseError> {
+    if versions.is_empty() {
+        // We need to handle this case specially, since otherwise
+        // it would be treated below as a single empty value, which
+        // would be rejected.
+        return Ok(0);
+    }
+    // Construct a bitmask based on the comma-separated versions.
+    let mut supported = 0_u64;
+    for ent in versions.split(',') {
+        // Find and parse lo and hi for a single range of versions.
+        // (If this is not a range, but rather a single version v,
+        // treat it as if it were a range v-v.)
+        let (lo_s, hi_s) = ent.split_once('-').unwrap_or((ent, ent));
+
+        if !is_good_number(lo_s) {
+            return Err(ParseError::Malformed);
+        }
+        if !is_good_number(hi_s) {
+            return Err(ParseError::Malformed);
+        }
+        let lo: u64 = lo_s.parse().map_err(|_| ParseError::Malformed)?;
+        let hi: u64 = hi_s.parse().map_err(|_| ParseError::Malformed)?;
+        // Make sure that lo and hi are in-bounds and consistent.
+        if lo > (MAX_VER as u64) || hi > (MAX_VER as u64) {
+            return Err(ParseError::OutOfRange);
+        }
+        if lo > hi {
+            return Err(ParseError::Malformed);
+        }
+        let mask = bitrange(lo, hi);
+        // Make sure that no version is included twice.
+        if (supported & mask) != 0 {
+            return Err(ParseError::Duplicate);
+        }
+        // Add the appropriate bits to the mask.
+        supported |= mask;
+    }
+
+    Ok(supported)
+}
+
 /// A single SubprotocolEntry is parsed from a string of the format
 /// Name=Versions, where Versions is a comma-separated list of
 /// integers or ranges of integers.
@@ -569,47 +613,10 @@ impl std::str::FromStr for SubprotocolEntry {
             Some(p) => Protocol::Proto(p),
             None => Protocol::Unrecognized(name.to_string()),
         };
-        if versions.is_empty() {
-            // We need to handle this case specially, since otherwise
-            // it would be treated below as a single empty value, which
-            // would be rejected.
-            return Ok(SubprotocolEntry {
-                proto,
-                supported: 0,
-            });
-        }
-        // Construct a bitmask based on the comma-separated versions.
-        let mut supported = 0_u64;
-        for ent in versions.split(',') {
-            // Find and parse lo and hi for a single range of versions.
-            // (If this is not a range, but rather a single version v,
-            // treat it as if it were a range v-v.)
-            let (lo_s, hi_s) = ent.split_once('-').unwrap_or((ent, ent));
-
-            if !is_good_number(lo_s) {
-                return Err(ParseError::Malformed);
-            }
-            if !is_good_number(hi_s) {
-                return Err(ParseError::Malformed);
-            }
-            let lo: u64 = lo_s.parse().map_err(|_| ParseError::Malformed)?;
-            let hi: u64 = hi_s.parse().map_err(|_| ParseError::Malformed)?;
-            // Make sure that lo and hi are in-bounds and consistent.
-            if lo > (MAX_VER as u64) || hi > (MAX_VER as u64) {
-                return Err(ParseError::OutOfRange);
-            }
-            if lo > hi {
-                return Err(ParseError::Malformed);
-            }
-            let mask = bitrange(lo, hi);
-            // Make sure that no version is included twice.
-            if (supported & mask) != 0 {
-                return Err(ParseError::Duplicate);
-            }
-            // Add the appropriate bits to the mask.
-            supported |= mask;
-        }
-        Ok(SubprotocolEntry { proto, supported })
+        Ok(SubprotocolEntry {
+            proto,
+            supported: parse_version_mask(versions)?,
+        })
     }
 }
 
