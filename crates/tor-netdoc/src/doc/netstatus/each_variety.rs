@@ -70,7 +70,7 @@ pub struct NetworkStatus {
 
     /// Footer
     ///
-    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:footer>>
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:footer>
     #[deftly(netdoc(subdoc))]
     #[deftly(constructor)]
     pub footer: Footer,
