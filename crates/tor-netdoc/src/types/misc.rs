@@ -25,7 +25,8 @@ pub use fingerprint::{Base64Fingerprint, Fingerprint};
 pub use identified_digest::{DigestName, IdentifiedDigest};
 
 pub use ignored_impl::{
-    Ignored, IgnoredItemOrObjectValue, NoMoreArguments, NotPresent, NotPresentEachValue,
+    Ignored, IgnoredItemOrObjectValue, ItemPresent, NoMoreArguments, NotPresent,
+    NotPresentEachValue,
 };
 
 use crate::NormalItemArgument;
@@ -106,6 +107,9 @@ define_derive_deftly_module! {
         }
     }
 
+    // TODO: This implementation is probably a bug, as it forbids to derive
+    // Transparent on types like `struct Foo<T>(T)`, namely `T` not being
+    // covered by something else, like `PhantomData<T>` or `Vec<T>`.
     impl<$tgens> From<$ttype> for $ftype {
         fn from(self_: $ttype) -> $ftype {
             self_.$fname
@@ -683,6 +687,72 @@ mod ignored_impl {
     #[allow(clippy::exhaustive_structs)]
     pub struct NoMoreArguments;
 
+    /// An item that only matters in terms of presence of absence.
+    ///
+    /// Useful for items such as `tunnelled-dir-server` where the mere presence
+    /// implies a truthful value.
+    ///
+    /// This wrapper implements [`ItemValueParseable`] and [`ItemValueEncodable`]
+    /// rejecting all arguments and objects and just expecting/emitting the
+    /// keyword (or not).
+    ///
+    /// # Examples
+    ///
+    /// The following shows an except from a hypothetical netdoc with a
+    /// [`ItemPresent`] item.
+    ///
+    /// ```
+    /// use derive_deftly::Deftly;
+    /// use tor_netdoc::types::*;
+    /// use tor_netdoc::parse2::*;
+    /// use tor_netdoc::*;
+    ///
+    /// #[derive(Debug, Default)]
+    /// struct Hello;
+    ///
+    /// #[derive(Deftly, Debug)]
+    /// #[derive_deftly(NetdocParseable)]
+    /// struct TestDoc {
+    ///     intro: Ignored,
+    ///     hello: Option<ItemPresent<Hello>>,
+    /// }
+    ///
+    /// // hello is not present.
+    /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\n", "")).unwrap();
+    /// assert!(doc.hello.is_none());
+    ///
+    /// // hello is present.
+    /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\nhello\n", "")).unwrap();
+    /// assert!(doc.hello.is_some());
+    ///
+    /// // hello has arguments which are ignored.
+    /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\nhello world\n", "")).unwrap();
+    /// assert!(doc.hello.is_some());
+    ///
+    /// // hello is present twice which is not allowed.
+    /// let doc = parse_netdoc::<TestDoc>(&ParseInput::new("intro\nhello\nhello\n", "")).unwrap_err();
+    /// ```
+    //
+    // We cannot derive Transparent here, because it is not possible to
+    // implement `From<ItemPresent<T>> for T` due to orphan rule.
+    //
+    // Otherwise, a downstream crate could for example implement
+    // `From<ItemPresent<U>> for U` with `U` being a locally defined type,
+    // leading to a conflicting implementation.  A solution would be to cover
+    // `T` behind another generic type such as `PhantomData`, as this can't be
+    // a type in a downstream crate, but that level of indirection feels wrong.
+    #[derive(Debug, Copy, Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+    //
+    #[derive(
+        derive_more::From,
+        derive_more::Deref,
+        derive_more::DerefMut,
+        derive_more::AsRef,
+        derive_more::AsMut,
+    )]
+    #[allow(clippy::exhaustive_structs)]
+    pub struct ItemPresent<T: Default>(pub T);
+
     impl ItemSetMethods for P2MultiplicitySelector<NotPresent> {
         type Each = NotPresentEachValue;
         type Field = NotPresent;
@@ -850,6 +920,20 @@ mod ignored_impl {
 
     impl ItemArgument for NoMoreArguments {
         fn write_arg_onto(&self, _: &mut ItemEncoder) -> Result<(), Bug> {
+            Ok(())
+        }
+    }
+
+    impl<T: Default> ItemValueParseable for ItemPresent<T> {
+        fn from_unparsed(item: UnparsedItem<'_>) -> StdResult<Self, EP> {
+            item.check_no_object()?;
+            Ok(Self::default())
+        }
+    }
+
+    impl<T: Default> ItemValueEncodable for ItemPresent<T> {
+        fn write_item_value_onto(&self, out: ItemEncoder) -> StdResult<(), Bug> {
+            out.finish();
             Ok(())
         }
     }
@@ -2441,7 +2525,12 @@ mod test {
     use tor_llcrypto::pk::ed25519::{self, Ed25519Identity, Ed25519PublicKey};
 
     use super::*;
-    use crate::{Pos, Result, parse2::VerifyFailed, types::EmbeddedCert};
+    use crate::{
+        Pos, Result,
+        encode::NetdocEncodable,
+        parse2::{ErrorProblem, ParseInput, VerifyFailed},
+        types::EmbeddedCert,
+    };
 
     /// Decode s as a multi-line base64 string, ignoring ascii whitespace.
     fn base64_decode_ignore_ws(s: &str) -> std::result::Result<Vec<u8>, base64ct::Error> {
@@ -3001,6 +3090,83 @@ mod test {
             parse2(&vec!["ZZZZ"; 10].join(" ")).unwrap_err(),
             ErrorProblem::InvalidArgument { .. }
         ));
+    }
+
+    /// Verifies the parsing of [`ItemPresent`].
+    #[test]
+    fn item_present_parse2() {
+        #[derive(Default)]
+        struct Token;
+
+        #[derive(Deftly)]
+        #[derive_deftly(NetdocParseable)]
+        struct TestDoc {
+            #[allow(unused)]
+            intro: Ignored,
+            foo: Option<ItemPresent<Token>>,
+        }
+
+        // The test cases with their respective result; boolean indicating that
+        // it was present.
+        let tests = [
+            // Test valid present.
+            ("intro\nfoo\n", Ok(true)),
+            // Test valid absent.
+            ("intro\n", Ok(false)),
+            // Test repeated.
+            ("intro\nfoo\nfoo\n", Err(ErrorProblem::ItemRepeated)),
+            // Test repeated with unknown.
+            ("intro\nbar\nfoo\nfoo\n", Err(ErrorProblem::ItemRepeated)),
+            // Test with argument.
+            ("intro\nfoo bar\n", Ok(true)),
+            // Test with two arguments.
+            ("intro\nfoo bar baz\n", Ok(true)),
+            // Test with object.
+            (
+                "intro\nfoo\n-----BEGIN RSA PUBLIC KEY-----\n-----END RSA PUBLIC KEY-----\n",
+                Err(ErrorProblem::ObjectUnexpected),
+            ),
+        ];
+
+        for (input, expect) in tests {
+            println!("{input:?}, {expect:?}");
+
+            // Convert the result by calling .is_present() and extracting EP.
+            let got = parse2::parse_netdoc::<TestDoc>(&ParseInput::new(input, ""))
+                .map(|x| x.foo.is_some())
+                .map_err(|e| e.problem);
+            assert_eq!(got, expect);
+        }
+    }
+
+    #[test]
+    fn item_present_encode() {
+        #[derive(Default)]
+        struct Token;
+
+        #[derive(Deftly)]
+        #[derive_deftly(NetdocEncodable)]
+        struct TestDoc {
+            #[allow(unused)]
+            intro: (),
+            foo: Option<ItemPresent<Token>>,
+        }
+
+        let tests = [
+            (Some(ItemPresent(Token)), "intro\nfoo\n"),
+            (None, "intro\n"),
+        ];
+
+        for (present, output) in tests {
+            let mut encoder = NetdocEncoder::new();
+            TestDoc {
+                intro: (),
+                foo: present,
+            }
+            .encode_unsigned(&mut encoder)
+            .unwrap();
+            assert_eq!(encoder.finish().unwrap(), output);
+        }
     }
 
     /// Helper to call methods for edcerts.
