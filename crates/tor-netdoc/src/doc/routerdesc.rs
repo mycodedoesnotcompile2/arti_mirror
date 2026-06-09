@@ -225,7 +225,7 @@ pub struct RouterDesc {
     /// * `caches-extra-info`
     /// * At most once.
     /// * No extra arguments.
-    pub caches_extra_info: bool,
+    pub caches_extra_info: Option<ItemPresent<CachesExtraInfoToken>>,
 
     /// `extra-info-digest` --- Hash of the extra-info document.
     ///
@@ -242,7 +242,7 @@ pub struct RouterDesc {
     /// * `tunnelled-dir-server`
     /// * At most once.
     /// * No extra arguments.
-    pub tunnelled_dir_server: bool,
+    pub tunnelled_dir_server: Option<ItemPresent<TunnelledDirServerToken>>,
 
     /// `proto` --- Subprotocol capabilities supported.
     ///
@@ -286,6 +286,16 @@ pub enum RelayPlatform {
     /// Software not advertised to be Tor.
     Other(String),
 }
+
+/// Zero-sized token type for use in [`RouterDesc::caches_extra_info`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub struct CachesExtraInfoToken;
+
+/// Zero-sized token type for use in [`RouterDesc::tunnelled_dir_server`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub struct TunnelledDirServerToken;
 
 impl std::str::FromStr for RelayPlatform {
     type Err = Error;
@@ -818,10 +828,10 @@ impl RouterDesc {
         };
 
         // tunneled-dir-server
-        let is_dircache = (dirport != 0) || body.get(TUNNELLED_DIR_SERVER).is_some();
+        let is_dircache = ((dirport != 0) || body.get(TUNNELLED_DIR_SERVER).is_some()).then_some(ItemPresent::default());
 
         // caches-extra-info
-        let is_extrainfo_cache = body.get(CACHES_EXTRA_INFO).is_some();
+        let is_extrainfo_cache = body.get(CACHES_EXTRA_INFO).map(|_| ItemPresent::default());
 
         // fingerprint: check for consistency with RSA identity.
         if let Some(fp_tok) = body.get(FINGERPRINT) {
