@@ -297,6 +297,23 @@ impl Protocols {
         Protocols::default()
     }
 
+    /// Construct a new [`Protocols`] from a single recognized kind and a list of associated versions.
+    ///
+    /// (This method should not usually be needed for new parts of Arti:
+    /// its only use-case is a legacy piece of hsdesc parsing.)
+    pub fn from_kind_and_versions(kind: ProtoKind, versions: &str) -> Result<Self, ParseError> {
+        let versions = parse_version_mask(versions)?;
+        let mut protocols = ProtocolsInner::default();
+
+        if let Some(p) = protocols.recognized.get_mut(usize::from(kind.get())) {
+            *p = versions;
+        } else {
+            return Err(ParseError::Malformed);
+        }
+
+        Ok(protocols.into())
+    }
+
     /// Helper: return true iff this protocol set contains the
     /// version `ver` of the protocol represented by the integer `proto`.
     fn supports_recognized_ver(&self, proto: usize, ver: u8) -> bool {
