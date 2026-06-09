@@ -136,11 +136,6 @@ impl HopSettings {
         };
         if hoptype == HopNegotiationType::None {
             ccontrol.use_fallback_alg();
-        } else if hoptype == HopNegotiationType::HsV3 {
-            // TODO #2037, TODO-CGO: We need a way to send congestion control extensions
-            // in this case too.  But since we aren't sending them, we
-            // should use the fallback algorithm.
-            ccontrol.use_fallback_alg();
         }
         let ccontrol = ccontrol; // drop mut
 
