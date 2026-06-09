@@ -154,12 +154,18 @@ pub struct ParseOptions {
 }
 
 /// Input to a network document top-level parsing operation
+#[derive(Debug, Clone, amplify::Getters)]
 pub struct ParseInput<'s> {
     /// The actual document text
+    #[getter(as_copy)]
     input: &'s str,
+
     /// Filename (for error reporting)
+    #[getter(as_copy)]
     file: &'s str,
+
     /// Parsing options
+    #[getter(as_ref, as_mut)]
     options: ParseOptions,
 }
 
@@ -171,6 +177,16 @@ impl<'s> ParseInput<'s> {
             file,
             options: ParseOptions::default(),
         }
+    }
+
+    /// Enable retention of unknown values during parsing
+    ///
+    /// Convenience method to set
+    /// [`.options_mut().retain_unknown_values`](ParseOptions::retain_unknown_values)
+    /// to [`Unknown::Retained`].
+    #[cfg(feature = "retain-unknown")]
+    pub fn retain_unknown_values(&mut self) {
+        self.options_mut().retain_unknown_values = Unknown::Retained(());
     }
 }
 
