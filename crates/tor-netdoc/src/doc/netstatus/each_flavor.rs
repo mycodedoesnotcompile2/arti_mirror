@@ -365,7 +365,7 @@ impl Preamble {
                 .map_err(|_e| EK::BadArgument.at_pos(item.pos()))
         };
         let client_versions = parse_rec_versions(CLIENT_VERSIONS)?;
-        let server_versions = parse_rec_versions(CLIENT_VERSIONS)?;
+        let server_versions = parse_rec_versions(SERVER_VERSIONS)?;
 
         let proto_statuses = {
             let client = ProtoStatus::from_section(
