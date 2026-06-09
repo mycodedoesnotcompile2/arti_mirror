@@ -41,6 +41,7 @@ impl CmdLine {
 
     /// Try to adjust the contents of a toml deserialization error so
     /// that instead it refers to a single command-line argument.
+    #[allow(clippy::string_slice)] // TODO
     fn convert_toml_error(
         &self,
         toml_str: &str,

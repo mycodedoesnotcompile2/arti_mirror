@@ -142,6 +142,7 @@ pub fn iter_join(
 // Using `.as_ref()` as a supertrait lets us make the method a provided one.
 pub trait StrExt: AsRef<str> {
     /// Like `str.strip_suffix()` but ASCII-case-insensitive
+    #[allow(clippy::string_slice)] // TODO
     fn strip_suffix_ignore_ascii_case(&self, suffix: &str) -> Option<&str> {
         let whole = self.as_ref();
         let suffix_start = whole.len().checked_sub(suffix.len())?;

@@ -268,6 +268,7 @@ impl Microdesc {
     }
 
     /// Extract a single microdescriptor from a NetDocReader.
+    #[allow(clippy::string_slice)] // TODO
     fn parse_from_reader(
         reader: &mut NetDocReader<'_, MicrodescKwd>,
     ) -> Result<(Microdesc, Option<Extent>)> {

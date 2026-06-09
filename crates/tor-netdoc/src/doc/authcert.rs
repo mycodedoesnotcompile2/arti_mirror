@@ -280,6 +280,7 @@ impl AuthCert {
     }
 
     /// Parse an authority certificate from a reader.
+    #[allow(clippy::string_slice)] // TODO
     fn from_body(body: &Section<'_, AuthCertKwd>, s: &str) -> Result<UncheckedAuthCert> {
         use AuthCertKwd::*;
 

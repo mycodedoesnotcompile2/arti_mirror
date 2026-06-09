@@ -371,6 +371,7 @@ impl Debug for Ed25519Identity {
 impl safelog::Redactable for Ed25519Identity {
     /// Warning: This displays 12 bits of the ed25519 identity, which is
     /// enough to narrow down a public relay by a great deal.
+    #[allow(clippy::string_slice)] // TODO
     fn display_redacted(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

@@ -563,6 +563,7 @@ fn is_good_number(n: &str) -> bool {
 impl std::str::FromStr for SubprotocolEntry {
     type Err = ParseError;
 
+    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, ParseError> {
         // split the string on the =.
         let (name, versions) = {

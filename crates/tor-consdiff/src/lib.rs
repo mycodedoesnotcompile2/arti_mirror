@@ -141,6 +141,7 @@ pub fn gen_cons_diff(base: &str, target: &str) -> Result<String> {
 }
 
 /// Splits `input` at the first `directory-signature`.
+#[allow(clippy::string_slice)] // TODO
 fn split_directory_signatures(input: &str) -> Result<(&str, &str)> {
     let parse_input = ParseInput::new(input, "");
     let mut items = ItemStream::new(&parse_input)?;
@@ -575,6 +576,7 @@ impl<'a> DiffCommand<'a> {
 
     /// Extract a single command from a line iterator that yields lines
     /// of the diffs.  Return None if we're at the end of the iterator.
+    #[allow(clippy::string_slice)] // TODO
     fn from_line_iterator<I>(iter: &mut I) -> Result<Option<Self>>
     where
         I: Iterator<Item = &'a str>,

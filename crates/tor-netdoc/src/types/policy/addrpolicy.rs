@@ -190,6 +190,7 @@ impl Display for AddrPortPattern {
 
 impl FromStr for AddrPortPattern {
     type Err = PolicyError;
+    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, PolicyError> {
         let last_colon = s.rfind(':').ok_or(PolicyError::InvalidPolicy)?;
         let pattern: IpPattern = s[..last_colon].parse()?;
@@ -275,6 +276,7 @@ impl Display for IpPattern {
 
 /// Helper: try to parse a plain ipv4 address, or an IPv6 address
 /// wrapped in brackets.
+#[allow(clippy::string_slice)] // TODO
 fn parse_addr(mut s: &str) -> Result<IpAddr, PolicyError> {
     let bracketed = s.starts_with('[') && s.ends_with(']');
     if bracketed {
@@ -289,6 +291,7 @@ fn parse_addr(mut s: &str) -> Result<IpAddr, PolicyError> {
 
 impl FromStr for IpPattern {
     type Err = PolicyError;
+    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, PolicyError> {
         let (ip_s, mask_s) = match s.find('/') {
             Some(slash_idx) => (&s[..slash_idx], Some(&s[slash_idx + 1..])),

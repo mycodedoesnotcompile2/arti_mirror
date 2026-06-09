@@ -100,6 +100,7 @@ impl InputString {
     }
 
     /// Helper for [`Self::as_str()`], with unwrapped error type.
+    #[allow(clippy::string_slice)] // TODO
     fn as_str_impl(&self) -> std::result::Result<&str, Utf8Error> {
         // It is not necessary to re-check the UTF8 every time
         // this function is called so remember the result

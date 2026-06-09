@@ -301,6 +301,7 @@ impl<'n> ItemEncoder<'n> {
     /// `data` will be PEM (base64) encoded.
     //
     // If keyword is not in the correct syntax, a `Bug` is stored in self.doc.
+    #[allow(clippy::string_slice)] // TODO
     pub fn object_bytes(
         self,
         keywords: &str,

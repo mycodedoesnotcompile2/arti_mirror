@@ -114,6 +114,7 @@ pub enum PtMessage {
 
 /// Parse a value (something on the RHS of an =), which could be a CString as defined by
 /// control-spec.txt §2. Returns (value, unparsed rest of string).
+#[allow(clippy::string_slice)] // TODO
 fn parse_one_value(from: &str) -> Result<(String, &str), &'static str> {
     let first_char = from.chars().next();
     Ok(if first_char.is_none() {
@@ -193,6 +194,7 @@ impl FromStr for PtMessage {
     // NOTE(eta): This, of course, implies that the PT IPC communications are valid UTF-8.
     //            This assumption might turn out to be false.
     #[allow(clippy::cognitive_complexity)]
+    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // TODO(eta): Maybe tolerate additional whitespace (using `split_whitespace`)?.
         //            This requires modified words.join() logic, though.
