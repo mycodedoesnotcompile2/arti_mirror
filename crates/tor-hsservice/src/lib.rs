@@ -59,6 +59,7 @@ mod time_store;
 mod internal_prelude;
 
 mod anon_level;
+mod caps;
 pub mod config;
 mod err;
 mod helpers;

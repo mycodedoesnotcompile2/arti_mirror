@@ -1598,6 +1598,7 @@ impl<R: Runtime, M: Mockable> Reactor<R, M> {
                                 &imm.keymgr,
                                 &imm.pow_manager,
                                 &config,
+                                netdir.params(),
                                 authorized_clients.as_deref(),
                                 ipts,
                                 time_period,
