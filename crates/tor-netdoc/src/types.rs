@@ -35,6 +35,7 @@ pub use misc::{
 };
 pub use misc::{Curve25519Public, Ed25519AlgorithmString, Ed25519IdentityLine, Ed25519Public};
 pub use misc::{DigestName, IdentifiedDigest};
+pub use misc::{F64Finite, F64FiniteParseError};
 pub use misc::{Iso8601TimeNoSp, Iso8601TimeSp};
 
 pub use misc::routerdesc;
