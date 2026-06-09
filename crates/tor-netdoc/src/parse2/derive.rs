@@ -974,7 +974,7 @@ define_derive_deftly! {
     /// ### Generated code
     ///
     /// Supposing your input structure is `Foo`, this macro will
-    /// generate a `**struct FooUnverified`**
+    /// generate a **`struct FooUnverified`**
     /// implementing [`NetdocParseable`] and [`NetdocParseableUnverified`]:
     ///
     /// ```rust,ignore
