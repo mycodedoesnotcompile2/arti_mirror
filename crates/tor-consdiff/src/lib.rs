@@ -44,6 +44,7 @@
 #![allow(mismatched_lifetime_syntaxes)] // temporary workaround for arti#2060
 #![allow(clippy::collapsible_if)] // See arti#2342
 #![deny(clippy::unused_async)]
+#![deny(clippy::string_slice)] // See arti#2571
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 
 use std::fmt::{Display, Formatter, Write};
@@ -140,6 +141,7 @@ pub fn gen_cons_diff(base: &str, target: &str) -> Result<String> {
 }
 
 /// Splits `input` at the first `directory-signature`.
+#[allow(clippy::string_slice)] // TODO
 fn split_directory_signatures(input: &str) -> Result<(&str, &str)> {
     let parse_input = ParseInput::new(input, "");
     let mut items = ItemStream::new(&parse_input)?;
@@ -574,6 +576,7 @@ impl<'a> DiffCommand<'a> {
 
     /// Extract a single command from a line iterator that yields lines
     /// of the diffs.  Return None if we're at the end of the iterator.
+    #[allow(clippy::string_slice)] // TODO
     fn from_line_iterator<I>(iter: &mut I) -> Result<Option<Self>>
     where
         I: Iterator<Item = &'a str>,
@@ -808,6 +811,7 @@ mod test {
     #![allow(clippy::unchecked_time_subtraction)]
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
 
     use rand::seq::IndexedRandom;

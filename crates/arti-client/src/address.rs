@@ -240,6 +240,7 @@ impl TorAddr {
     }
 
     /// Get instructions for how to make a stream to this address
+    #[allow(clippy::string_slice)] // TODO
     pub(crate) fn into_stream_instructions(
         self,
         cfg: &crate::config::ClientAddrConfig,
@@ -490,6 +491,7 @@ impl IntoTorAddr for &str {
 }
 
 impl IntoTorAddr for String {
+    #[allow(clippy::string_slice)] // TODO
     fn into_tor_addr(self) -> Result<TorAddr, TorAddrError> {
         self[..].into_tor_addr()
     }
@@ -511,6 +513,7 @@ impl IntoTorAddr for (&str, u16) {
 }
 
 impl IntoTorAddr for (String, u16) {
+    #[allow(clippy::string_slice)] // TODO
     fn into_tor_addr(self) -> Result<TorAddr, TorAddrError> {
         let (host, port) = self;
         (&host[..], port).into_tor_addr()
@@ -586,6 +589,7 @@ mod test {
     #![allow(clippy::unchecked_time_subtraction)]
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
 

@@ -423,6 +423,7 @@ impl Display for PtTargetAddr {
 impl<SA: Debug + Redactable, HN: Debug + Display + AsRef<str>> Redactable
     for BridgeAddrInner<SA, HN>
 {
+    #[allow(clippy::string_slice)] // TODO
     fn display_redacted(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BridgeAddrInner::IpPort(a) => a.display_redacted(f),
@@ -804,6 +805,7 @@ mod test {
     #![allow(clippy::unchecked_time_subtraction)]
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
     use itertools::Itertools;

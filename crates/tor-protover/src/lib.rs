@@ -44,6 +44,7 @@
 #![allow(mismatched_lifetime_syntaxes)] // temporary workaround for arti#2060
 #![allow(clippy::collapsible_if)] // See arti#2342
 #![deny(clippy::unused_async)]
+#![deny(clippy::string_slice)] // See arti#2571
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 
 #![allow(non_upper_case_globals)]
@@ -562,6 +563,7 @@ fn is_good_number(n: &str) -> bool {
 impl std::str::FromStr for SubprotocolEntry {
     type Err = ParseError;
 
+    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, ParseError> {
         // split the string on the =.
         let (name, versions) = {
@@ -820,6 +822,7 @@ mod test {
     #![allow(clippy::unchecked_time_subtraction)]
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use std::str::FromStr;
 

@@ -195,6 +195,7 @@ impl Consensus {
     ///
     /// Returns the signed portion of the string, the remainder of the
     /// string, and an UncheckedConsensus.
+    #[allow(clippy::string_slice)] // TODO
     fn parse_from_reader<'a>(
         r: &mut NetDocReader<'a, NetstatusKwd>,
     ) -> crate::Result<(&'a str, &'a str, UncheckedConsensus)> {

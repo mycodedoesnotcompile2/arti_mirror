@@ -134,6 +134,7 @@ impl safelog::DisplayRedacted for HsId {
     // We here display some of the end.  We don't want to display the
     // *start* because vanity domains, which would perhaps suffer from
     // reduced deniability.
+    #[allow(clippy::string_slice)] // TODO
     fn fmt_redacted(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let unredacted = self.display_unredacted().to_string();
         /// Length of the base32 data part of the address
@@ -814,6 +815,7 @@ mod test {
     #![allow(clippy::unchecked_time_subtraction)]
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
 
     use hex_literal::hex;

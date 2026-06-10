@@ -141,6 +141,7 @@ impl Display for PortRange {
 
 impl FromStr for PortRange {
     type Err = PolicyError;
+    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, PolicyError> {
         let idx = s.find('-');
         // Find "lo" and "hi".
@@ -345,6 +346,7 @@ mod test {
     #![allow(clippy::unchecked_time_subtraction)]
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
     use crate::Result;

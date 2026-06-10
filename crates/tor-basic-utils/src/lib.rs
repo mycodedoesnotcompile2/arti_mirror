@@ -44,6 +44,7 @@
 #![allow(mismatched_lifetime_syntaxes)] // temporary workaround for arti#2060
 #![allow(clippy::collapsible_if)] // See arti#2342
 #![deny(clippy::unused_async)]
+#![deny(clippy::string_slice)] // See arti#2571
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 
 use std::fmt;
@@ -141,6 +142,7 @@ pub fn iter_join(
 // Using `.as_ref()` as a supertrait lets us make the method a provided one.
 pub trait StrExt: AsRef<str> {
     /// Like `str.strip_suffix()` but ASCII-case-insensitive
+    #[allow(clippy::string_slice)] // TODO
     fn strip_suffix_ignore_ascii_case(&self, suffix: &str) -> Option<&str> {
         let whole = self.as_ref();
         let suffix_start = whole.len().checked_sub(suffix.len())?;
@@ -635,6 +637,7 @@ mod test {
     #![allow(clippy::unchecked_time_subtraction)]
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
 

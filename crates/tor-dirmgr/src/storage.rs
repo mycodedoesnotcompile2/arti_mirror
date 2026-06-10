@@ -100,6 +100,7 @@ impl InputString {
     }
 
     /// Helper for [`Self::as_str()`], with unwrapped error type.
+    #[allow(clippy::string_slice)] // TODO
     fn as_str_impl(&self) -> std::result::Result<&str, Utf8Error> {
         // It is not necessary to re-check the UTF8 every time
         // this function is called so remember the result
@@ -372,6 +373,7 @@ mod test {
     #![allow(clippy::unchecked_time_subtraction)]
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
     use tempfile::tempdir;

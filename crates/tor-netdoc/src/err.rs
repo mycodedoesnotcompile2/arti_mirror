@@ -58,6 +58,7 @@ unsafe impl Sync for Pos {}
 
 impl Pos {
     /// Construct a Pos from an offset within a &str slice.
+    #[allow(clippy::string_slice)] // TODO
     pub fn from_offset(s: &str, off: usize) -> Self {
         if off > s.len() || !s.is_char_boundary(off) {
             Pos::Invalid(off)
@@ -87,6 +88,7 @@ impl Pos {
         Pos::Raw { ptr }
     }
     /// Construct Pos from the end of some other string.
+    #[allow(clippy::string_slice)] // TODO
     pub fn at_end_of(s: &str) -> Self {
         let ending = &s[s.len()..];
         Pos::at(ending)

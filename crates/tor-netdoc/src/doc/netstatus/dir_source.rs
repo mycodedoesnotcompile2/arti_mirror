@@ -229,6 +229,7 @@ impl NetdocParseable for ConsensusAuthoritySection {
         ConsensusAuthorityEntry::is_structural_keyword(kw)
     }
 
+    #[allow(clippy::string_slice)] // TODO
     fn from_items(input: &mut ItemStream<'_>, stop_at: stop_at!()) -> Result<Self, ErrorProblem> {
         let mut accum = ConsensusAuthoritySection {
             authorities: vec![],

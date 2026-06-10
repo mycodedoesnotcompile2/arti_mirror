@@ -539,6 +539,7 @@ where
 
 /// Configure a panic handler to send everything to tracing, in addition to our
 /// default panic behavior.
+#[allow(clippy::string_slice)] // TODO
 fn install_panic_handler() {
     // TODO library support: There's a library called `tracing-panic` that
     // provides a hook we could use instead, but that doesn't have backtrace

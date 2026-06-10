@@ -480,6 +480,7 @@ impl StaticEngine {
 
     /// Fetches a consensus from an upstream authority.
     // TODO DIRMIRROR: Add logging.
+    #[allow(clippy::string_slice)] // TODO
     async fn fetch_consensus(
         &self,
         data: &mut ConsensusBoundData,
@@ -535,6 +536,7 @@ impl StaticEngine {
     // AND to ignore all ID PKs we do not recognize.  Also, it would probably
     // be best to move the v3idents structure to a HashMap based implementation,
     // as well as the signatories result.
+    #[allow(clippy::string_slice)] // TODO
     async fn auth_certs(
         &self,
         pool: &Pool<SqliteConnectionManager>,
@@ -736,6 +738,7 @@ mod test {
     #![allow(clippy::unchecked_time_subtraction)]
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
 
     use std::time::{Duration, SystemTime};

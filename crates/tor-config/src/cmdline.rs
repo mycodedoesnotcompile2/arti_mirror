@@ -41,6 +41,7 @@ impl CmdLine {
 
     /// Try to adjust the contents of a toml deserialization error so
     /// that instead it refers to a single command-line argument.
+    #[allow(clippy::string_slice)] // TODO
     fn convert_toml_error(
         &self,
         toml_str: &str,
@@ -142,6 +143,7 @@ mod test {
     #![allow(clippy::unchecked_time_subtraction)]
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
     use figment::Provider as _;

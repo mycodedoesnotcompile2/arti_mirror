@@ -2041,6 +2041,7 @@ mod fingerprint {
 
     impl FromStr for LongIdent {
         type Err = Error;
+        #[allow(clippy::string_slice)] // TODO
         fn from_str(mut s: &str) -> Result<LongIdent> {
             if s.starts_with('$') {
                 s = &s[1..];
@@ -2598,6 +2599,7 @@ mod test {
     #![allow(clippy::unchecked_time_subtraction)]
     #![allow(clippy::useless_vec)]
     #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use std::{
         fmt::Debug,
