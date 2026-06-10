@@ -42,7 +42,10 @@ use crate::types::routerdesc::*;
 use crate::types::version::TorVersion;
 use crate::types::{EmbeddedCert, misc::*};
 use crate::util::PeekableIterator;
-use crate::{AllowAnnotations, Error, KeywordEncodable, NetdocErrorKind as EK, NormalItemArgument, Pos, Result};
+use crate::{
+    AllowAnnotations, Error, KeywordEncodable, NetdocErrorKind as EK, NormalItemArgument, Pos,
+    Result,
+};
 
 use derive_deftly::Deftly;
 use ll::pk::ed25519::Ed25519Identity;
