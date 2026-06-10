@@ -118,7 +118,7 @@ vanguards = ["tor-guardmgr/vanguards", "tor-circmgr/vanguards"]
 
 flowctl-cc = ["tor-circmgr/flowctl-cc"]
 
-rpc = ["dyn-clone", "tor-rpcbase"]
+rpc = ["dyn-clone", "dep:tor-rpcbase"]
 
 __is_nonadditive = []
 

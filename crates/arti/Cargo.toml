@@ -105,7 +105,7 @@ ctor-keystore = ["arti-client/ctor-keystore", "__is_experimental"]
 flowctl-cc = ["arti-client/flowctl-cc"]
 counter-galois-onion = ["arti-client/counter-galois-onion", "flowctl-cc", "__is_experimental"]
 
-rpc = ["arti-rpcserver", "tor-rpcbase", "tor-rpc-connect", "arti-client/rpc", "derive-deftly"]
+rpc = ["dep:arti-rpcserver", "dep:tor-rpcbase", "dep:tor-rpc-connect", "arti-client/rpc", "derive-deftly"]
 
 # These are not nonadditive from a software POV, but we mark them as such because
 # they introduce a different backend, and only one backend can actually be used.
