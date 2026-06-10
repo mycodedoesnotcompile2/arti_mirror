@@ -3778,6 +3778,8 @@ mod test {
         }
     }
 
+    // TODO: Merge all those generic functions.
+
     #[test]
     fn ed25519_identity_cert_rng() {
         ed25519_cert_rng::<Ed25519IdentityCert>();
