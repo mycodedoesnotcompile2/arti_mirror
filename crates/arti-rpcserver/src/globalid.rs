@@ -118,15 +118,14 @@ impl GlobalId {
     /// Try to decode and validate `s` as a [`GlobalId`].
     ///
     /// Returns `Ok(None)` if `s` is not tagged as an identifier for a `GlobalId`.
-    #[allow(clippy::string_slice)] // TODO
     pub(crate) fn try_decode(key: &MacKey, s: &ObjectId) -> Result<Option<Self>, LookupError> {
         use base64ct::{Base64Unpadded as B64, Encoding};
-        if !s.as_ref().starts_with(GlobalId::TAG_CHAR) {
+        let Some(remainder) = s.as_ref().strip_prefix(GlobalId::TAG_CHAR) else {
             return Ok(None);
-        }
+        };
         let mut bytes = [0_u8; Self::ENCODED_LEN];
-        let byte_slice = B64::decode(&s.as_ref()[1..], &mut bytes[..])
-            .map_err(|_| LookupError::NoObject(s.clone()))?;
+        let byte_slice =
+            B64::decode(remainder, &mut bytes[..]).map_err(|_| LookupError::NoObject(s.clone()))?;
         Self::try_decode_from_bytes(key, byte_slice)
             .ok_or_else(|| LookupError::NoObject(s.clone()))
             .map(Some)
