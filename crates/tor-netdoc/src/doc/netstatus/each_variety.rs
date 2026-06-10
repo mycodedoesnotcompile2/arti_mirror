@@ -168,7 +168,7 @@ impl Preamble {
         let lifetime = self.lifetime.clone();
         let delay = self.voting_delay.unwrap_or((0, 0));
         let dist_interval = time::Duration::from_secs(delay.1.into());
-        let starting_time = *lifetime.valid_after - dist_interval;
+        let starting_time = lifetime.valid_after.saturating_sub(dist_interval);
         starting_time..*lifetime.valid_until
     }
 }

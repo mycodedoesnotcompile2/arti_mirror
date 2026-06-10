@@ -94,6 +94,7 @@ use void::ResultVoidExt as _;
 use derive_deftly::{Deftly, define_derive_deftly};
 use digest::Digest;
 use itertools::Itertools;
+use saturating_time::SaturatingTime as _;
 use std::sync::LazyLock;
 use tor_checkable::{ExternallySigned, timed::TimerangeBound};
 use tor_llcrypto as ll;
