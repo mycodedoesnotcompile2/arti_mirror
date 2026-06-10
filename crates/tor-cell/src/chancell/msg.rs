@@ -475,6 +475,13 @@ pub struct Destroy {
 }
 impl Destroy {
     /// Create a new destroy cell.
+    ///
+    /// If generating a new destroy cell,
+    /// you should always create it with [`DestroyReason::NONE`].
+    ///
+    /// `tor-spec/tearing-down-circuits.md`:
+    ///
+    /// > Implementations SHOULD always use the NONE reason to avoid side channels: [...]
     pub fn new(reason: DestroyReason) -> Self {
         Destroy { reason }
     }
