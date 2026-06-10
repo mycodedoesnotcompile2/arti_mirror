@@ -506,12 +506,16 @@ define_derive_deftly! {
     ///
     /// ### Signed documents
     ///
-    /// To handle signed documents define two structures:
+    /// To handle signed documents:
     ///
-    ///  * `Foo`, containing only the content, not the signatures.
+    ///  * Define `struct Foo`, containing only the content, not the signatures.
     ///    Derive [`NetdocParseableUnverified`](crate::derive_deftly_template_NetdocParseableUnverified).
-    ///  * `FooSignatures`, containing only the signatures.
+    ///  * Define `struct FooSignatures`, containing only the signatures.
     ///    Derive `NetdocParseableSignatures`.
+    ///
+    ///  * Implement a suitable `FooUnverified::verify`.
+    ///    See [`NetdocParseableUnverified`](crate::derive_deftly_template_NetdocParseableUnverified)
+    ///    for guidance.
     ///
     /// Don't mix signature items with non-signature items in the same struct.
     /// (This wouldn't compile, because the field type would implement the wrong trait.)
@@ -647,6 +651,9 @@ define_derive_deftly! {
     ///
     /// impl NdThingUnverified {
     ///     pub fn verify_foolish(self) -> Result<TimerangeBound<NdThing>, VerifyFailed> {
+    ///         // See docs for derive_deftly_template_NetdocParseableUnverified
+    ///         // for how to write a verify function.
+    ///
     ///         let sig = &self.sigs.sigs.signature;
     ///         let hash = self.sigs.hashes.doc_len_actual_pretending_to_be_hash
     ///             .as_ref().ok_or(VerifyFailed::Bug)?;
@@ -973,6 +980,22 @@ define_derive_deftly! {
     ///
     /// Usually, the caller will provide suitable ad-hoc `.verify_...` methods
     /// on `FooUnverified`.
+    ///
+    /// The `verify` method should:
+    ///
+    ///   * Take as an argument(s) the expected (trustworthy) signer(s),
+    ///     (if the document is not always just supposed to be self-signed).
+    ///
+    ///   * Work directly with the fields `body` and `sigs` in `FooUnverified`.
+    ///
+    ///   * Verify all the signatures, including any [`EmbeddedCert`]s in the body.
+    ///
+    ///   * Cross-check any information that is supposed to be duplicated.
+    ///
+    ///   * Determine the validity period, from the validity time
+    ///     information contained in the document or signatures.
+    ///
+    ///   * Return `TimeRangebound<Foo>`.
     ///
     /// ### Generated code
     ///
