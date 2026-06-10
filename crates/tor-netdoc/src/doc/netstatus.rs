@@ -2225,6 +2225,8 @@ impl SignatureGroup {
     /// authorities we believe in, and that every cert in `certs` belongs
     /// to a real authority.
     fn validate(&self, n_authorities: usize, certs: &[AuthCert]) -> Result<(), VerifyFailed> {
+        // TODO we ought to take the set of trusted authorities as an argument,
+        // rather than use VGTA::HazardouslyAssumeAllAuthCertsAreRealAuthorities.
         self.verify_general(
             VerifyGeneralTrustedAuthorities::HazardouslyAssumeAllAuthCertsAreRealAuthorities {
                 n_authorities,
