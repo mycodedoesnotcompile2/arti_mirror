@@ -12,6 +12,7 @@
 use base64ct::{Base64Unpadded, Encoding as _};
 use curve25519_dalek::Scalar;
 use derive_deftly::Deftly;
+use safelog::util::write_start_redacted;
 use std::fmt::{self, Debug, Display, Formatter};
 use subtle::{Choice, ConstantTimeEq};
 
@@ -371,13 +372,8 @@ impl Debug for Ed25519Identity {
 impl safelog::Redactable for Ed25519Identity {
     /// Warning: This displays 12 bits of the ed25519 identity, which is
     /// enough to narrow down a public relay by a great deal.
-    #[allow(clippy::string_slice)] // TODO
     fn display_redacted(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}…",
-            &Base64Unpadded::encode_string(self.id.as_ref())[..2]
-        )
+        write_start_redacted(f, &Base64Unpadded::encode_string(self.id.as_ref()), 2, "…")
     }
 
     fn debug_redacted(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
