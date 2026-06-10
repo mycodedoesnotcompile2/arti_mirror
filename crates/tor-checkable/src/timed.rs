@@ -7,6 +7,7 @@ use web_time_compat as time;
 ///
 /// The range is given as an argument, as in `t1..t2`.
 ///
+/// The range is always treated as inclusive.
 ///
 /// ```
 /// use web_time_compat::{SystemTime, SystemTimeExt, Duration};
@@ -57,7 +58,7 @@ impl<T> TimerangeBound<T> {
     ///
     /// Note that we do not distinguish between inclusive and
     /// exclusive bounds: `x..y` and `x..=y` are treated the same
-    /// here.
+    /// here - as an inclusive range.
     pub fn new<U>(obj: T, range: U) -> Self
     where
         U: RangeBounds<time::SystemTime>,
