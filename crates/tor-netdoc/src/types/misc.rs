@@ -3805,6 +3805,6 @@ mod test {
 
     #[test]
     fn ed25519_ntor_crosscert_invalid() {
-        ed25519_cert_rng::<Ed25519NtorCrossCert>();
+        ed25519_cert_invalid::<Ed25519NtorCrossCert>();
     }
 }
