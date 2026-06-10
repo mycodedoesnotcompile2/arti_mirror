@@ -7,9 +7,8 @@ use crate::types;
 use authcert::AuthCert as DirAuthKeyCert;
 pub use doc::netstatus::Signature as NdiDirectorySignature;
 use doc::netstatus::{
-    ConsensusAuthoritySection, DirectorySignaturesHashesAccu, VoteAuthoritySection,
-    VoteStatusConsensus, VoteStatusVote,
-    VerifyGeneralTrustedAuthorities,
+    ConsensusAuthoritySection, DirectorySignaturesHashesAccu, VerifyGeneralTrustedAuthorities,
+    VoteAuthoritySection, VoteStatusConsensus, VoteStatusVote,
 };
 
 mod ns_per_flavour_macros;

@@ -2296,14 +2296,14 @@ impl SignatureGroup {
             } = sig;
 
             match trusted_authorities {
-              TA::TrustTheseAuthorities { trusted } => {
-                if !trusted.contains(id_fingerprint) {
-                    continue;
+                TA::TrustTheseAuthorities { trusted } => {
+                    if !trusted.contains(id_fingerprint) {
+                        continue;
+                    }
                 }
-              }
-              TA::HazardouslyAssumeAllAuthCertsAreRealAuthorities { .. } => {
-                  // OK then!
-              }
+                TA::HazardouslyAssumeAllAuthCertsAreRealAuthorities { .. } => {
+                    // OK then!
+                }
             }
 
             if ok.contains(id_fingerprint) {
