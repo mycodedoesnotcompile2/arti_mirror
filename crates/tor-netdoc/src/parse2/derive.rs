@@ -591,6 +591,7 @@ define_derive_deftly! {
     ///
     /// ```
     /// use derive_deftly::Deftly;
+    /// use tor_checkable::{Timebound, timed::TimerangeBound};
     /// use tor_netdoc::derive_deftly_template_AsMutSelf;
     /// use tor_netdoc::derive_deftly_template_NetdocParseableSignatures;
     /// use tor_netdoc::derive_deftly_template_NetdocParseableUnverified;
@@ -645,20 +646,22 @@ define_derive_deftly! {
     /// "#;
     ///
     /// impl NdThingUnverified {
-    ///     pub fn verify_foolish_timeless(self) -> Result<NdThing, VerifyFailed> {
+    ///     pub fn verify_foolish(self) -> Result<TimerangeBound<NdThing>, VerifyFailed> {
     ///         let sig = &self.sigs.sigs.signature;
     ///         let hash = self.sigs.hashes.doc_len_actual_pretending_to_be_hash
     ///             .as_ref().ok_or(VerifyFailed::Bug)?;
     ///         if sig.doc_len != *hash {
     ///             return Err(VerifyFailed::VerifyFailed);
     ///         }
-    ///         Ok(self.body)
+    ///         let foolish_lack_of_validity_time_info = ..;
+    ///         let body = TimerangeBound::new(self.body, foolish_lack_of_validity_time_info);
+    ///         Ok(body)
     ///     }
     /// }
     ///
     /// let input = ParseInput::new(&doc_text, "<input>");
     /// let doc: NdThingUnverified = parse_netdoc(&input).unwrap();
-    /// let doc = doc.verify_foolish_timeless().unwrap();
+    /// let doc = doc.verify_foolish().unwrap().dangerously_assume_timely();
     /// assert_eq!(doc.value.0, "something");
     /// ```
     export NetdocParseable for struct, meta_quoted rigorous, expect items, beta_deftly:
