@@ -604,11 +604,25 @@ macro_rules! derive_serde_raw { {
 
 // ----------------------------------------------------------------------
 
-/// Give a compile time error if the type $t implements $trait.
+/// Give a compile time error if TYPE implements TRAIT
 ///
 /// Includes the identifier $rule in the error message, to help the user diagnose
 /// the problem.  (This is the main difference between this macro and the one in
 /// `static_assertions`.)
+///
+/// # Input syntaxes
+///
+/// ```
+// With a fair amount of trickery, we can get the compiler to syntax-check this!
+/// # use tor_basic_utils::assert_not_impl;
+/// # use std::cell::Cell;
+/// # type TYPE = Cell<u32>;
+/// # use Sync as TRAIT;
+/// assert_not_impl! { [RULE_IDENTIFIER] TYPE: TRAIT }
+/// ```
+///
+///  * `RULE_IDENTIFIER` is an arbitrary identifier; it will appear in the error message.
+///    (There is no way to include arbitrary explanatory text.)
 ///
 /// # Examples
 ///
