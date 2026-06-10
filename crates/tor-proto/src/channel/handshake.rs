@@ -906,7 +906,7 @@ where
     let m = m.try_into().map_err(|m: AnyChanMsg| {
         Error::HandshakeProto(format!(
             "Expected [{}] cell, but received {} cell instead",
-            tor_basic_utils::iter_join(", ", T::cmds_for_logging().iter()),
+            tor_basic_utils::iter_join(", ", T::cmds_for_logging()),
             m.cmd(),
         ))
     })?;
