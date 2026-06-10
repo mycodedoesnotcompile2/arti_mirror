@@ -1633,11 +1633,12 @@ should_not_be_used_in_collection! {
 /// # Example (Succeeding.)
 ///
 /// ```
+/// use std::cell::Cell;
 /// use tor_config::derive::assert_not_impl;
 ///
-/// // No error will occur; String is not Buildable.
+/// // No error will occur; Cell is not Sync
 /// assert_not_impl!{
-///     [copy_is_forbidden_here] String : tor_config::load::Buildable
+///     [cell_must_not_be_sync] Cell<u32> : Sync
 /// }
 /// ```
 ///
