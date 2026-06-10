@@ -19,6 +19,9 @@ Because of file encoding issues,
 the plugin DOES NOT have to build or run on Windows.
 If it builds on Windows, it SHOULD fail when run.
 
+Unless otherwise stated, each of the plugin's input or output files
+is in the Tor Network Document metaformat.
+
 The plugin does not write partial files; it does the write-then-rename
 trick to make sure that its writes are as atomic as possible.
 For an output file OUT, the plugin may use the filename OUT.tmp
@@ -73,6 +76,7 @@ plugin list-methods -o <FILENAME>
 
 This method should write every consensus method supported by the plugin to
 `FILENAME`, as a space-separated newline-terminated list.
+(Therefore, this output file is not in the netdoc metaformat.)
 
 ### Mode 2: Compute microdescriptors.
 
@@ -85,7 +89,8 @@ plugin compute-mds -i <FILENAME> [-i <FILENAME>...] --mds-out <MDFILE> --meta-ou
 Every input file will contain a set of zero or more server descriptors.
 These will be concatenated,
 with optional "annotation lines" beginning with '@' at the start of each descriptor.
-The plugin SHOULD ignore all annotations line.
+The annotation lines are an extension/exception to the network metaformat.
+The plugin MUST ignore all lines starting with `@`.
 A file MAY end with a truncated descriptor,
 or contain a descriptor that Arti considers invalid.
 If it does, the plugin SHOULD ignore any such descriptor.
@@ -208,6 +213,9 @@ When generating a vote (2):
  - Read the `new_mds` and `mds_meta` files.  Parse the `new_mds` and add them
    to our cache if they are not already there.  Then use the `mds_meta` file
    contents when building `m` lines for the vote.
+   (I.e. C Tor must merge the microdescriptor information
+   for Arti consensus methods from the plugin
+   with its own internally-generated md information for its own consensus methods.)
 
 When computing a consensus:
  - (After deciding that we will not receive any more votes, like usual...)
