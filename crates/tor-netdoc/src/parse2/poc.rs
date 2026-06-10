@@ -13,6 +13,7 @@
 //!     Often not needed since `ItemValueParseable` is implemented for suitable tuples.
 //!   * `NdaArgumentValue`: parsed value for a single argument;
 //!     eg `NdaVoteStatus` representing the `vote` or `status` argument.
+#![allow(deprecated)]
 
 use super::*;
 
