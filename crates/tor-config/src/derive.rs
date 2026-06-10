@@ -1633,15 +1633,19 @@ should_not_be_used_in_collection! {
 /// # Example (Succeeding.)
 ///
 /// ```
+/// use tor_config::derive::assert_not_impl;
+///
 /// // No error will occur; String is not Buildable.
-/// tor_config::derive::assert_not_impl!{
+/// assert_not_impl!{
 ///     [copy_is_forbidden_here] String : tor_config::load::Buildable
 /// }
 /// ```
 ///
 /// ```compile_fail
+/// use tor_config::derive::assert_not_impl;
+///
 /// // Compile-time error _is_ given; String implements Clone.
-/// tor_config::derive::assert_not_impl!{
+/// assert_not_impl!{
 ///     [clone_is_forbidden_here] String : Clone
 /// }
 /// ```
