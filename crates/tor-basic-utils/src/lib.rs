@@ -617,15 +617,15 @@ macro_rules! derive_serde_raw { {
 /// use tor_basic_utils::assert_not_impl;
 ///
 /// // No error will occur; Cell is not Sync
-/// assert_not_impl!{
-///     [cell_must_not_be_sync] Cell<u32> : Sync
+/// assert_not_impl! {
+///     [cell_must_not_be_sync] Cell<u32>: Sync
 /// }
 /// ```
 ///
 /// ```compile_fail
 /// // Compile-time error _is_ given; String implements Clone.
-/// assert_not_impl!{
-///     [clone_is_forbidden_here] String : Clone
+/// assert_not_impl! {
+///     [clone_is_forbidden_here] String: Clone
 /// }
 /// ```
 #[macro_export]
