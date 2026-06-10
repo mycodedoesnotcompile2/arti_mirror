@@ -607,22 +607,34 @@ macro_rules! derive_serde_raw { {
 /// Give a compile time error if TYPE implements TRAIT
 ///
 /// Includes the identifier $rule in the error message, to help the user diagnose
-/// the problem.  (This is the main difference between this macro and the one in
-/// `static_assertions`.)
+/// the problem (unlike the similar macro in `static_assertions`.
+///
+/// Supports generics (also, unlike the one in static_assertions`).
 ///
 /// # Input syntaxes
 ///
 /// ```
-// With a fair amount of trickery, we can get the compiler to syntax-check this!
+// With a fair amount of trickery, we can get the compiler to (mostly) syntax-check this!
+/// # #![allow(nonstandard_style)]
 /// # use tor_basic_utils::assert_not_impl;
 /// # use std::cell::Cell;
 /// # type TYPE = Cell<u32>;
 /// # use Sync as TRAIT;
 /// assert_not_impl! { [RULE_IDENTIFIER] TYPE: TRAIT }
+//
+// We can't get the compiler to syntax check this one:
+// error[E0207]: the type parameter `TYPE_GENERICS` is not constrained ...
+// Instead, we hide it from the compiler and write a very similar test, hidden from the reader.
+/// # let _ = r#"
+/// assert_not_impl! { [RULE_IDENTIFIER <TYPE_GENERICS>] TYPE: TRAIT }
+/// # "#;
+/// # assert_not_impl! { [RULE_IDENTIFIER <TYPE_GENERICS>] Cell<TYPE_GENERICS>: TRAIT }
 /// ```
 ///
 ///  * `RULE_IDENTIFIER` is an arbitrary identifier; it will appear in the error message.
 ///    (There is no way to include arbitrary explanatory text.)
+///  * `TYPE_GENERICS` are generic bindings needed for `TYPE`.
+///    (Generics on the trait are not supported.)
 ///
 /// # Examples
 ///
@@ -634,6 +646,10 @@ macro_rules! derive_serde_raw { {
 /// assert_not_impl! {
 ///     [cell_must_not_be_sync] Cell<u32>: Sync
 /// }
+/// assert_not_impl! {
+///     [cell_must_not_be_sync <T: Copy>]
+///     Cell<T>: Sync
+/// }
 /// ```
 ///
 /// ```compile_fail
@@ -644,13 +660,14 @@ macro_rules! derive_serde_raw { {
 /// ```
 #[macro_export]
 macro_rules! assert_not_impl {
-    {[$rule:ident] $t:ty : $trait:path } => {
+    // we can't match the trailing > of generics - only the leading <
+    {[$rule:ident $( < $($gens:tt)* )? ] $t:ty : $trait:path } => {
         const _ : () = {
             #[allow(dead_code, non_camel_case_types)]
             trait $rule<X> {
                 fn item();
             }
-            impl $rule<()> for $t {
+            impl$( < $($gens)* )? $rule<()> for $t {
                 fn item() {
                     let _ = Self::item;
                 }
