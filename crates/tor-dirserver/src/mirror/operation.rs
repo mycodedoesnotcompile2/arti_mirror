@@ -27,6 +27,7 @@ use rusqlite::Transaction;
 use strum::IntoEnumIterator;
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncReadCompatExt;
+use tor_checkable::Timebound;
 use tor_dirclient::request::{AuthCertRequest, ConsensusRequest, Requestable};
 use tor_dircommon::{authority::AuthorityContacts, config::DirTolerance};
 use tor_error::{internal, into_internal};
@@ -595,12 +596,14 @@ impl StaticEngine {
                     return None;
                 }
 
-                let verified = unverified.verify(
-                    self.authorities.v3idents(),
-                    self.tolerance.pre_valid_tolerance(),
-                    self.tolerance.post_valid_tolerance(),
-                    now.into(),
-                );
+                let verified = unverified
+                    .verify(self.authorities.v3idents())
+                    .and_then(|v| {
+                        Ok(self
+                            .tolerance
+                            .extend_tolerance(v)
+                            .check_valid_at(&now.into())?)
+                    });
                 let verified = match verified {
                     Ok(v) => v,
                     Err(e) => {

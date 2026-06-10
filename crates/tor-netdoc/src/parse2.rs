@@ -107,8 +107,11 @@ pub use lines::{Lines, Peeked, StrExt};
 pub use signatures::{
     HasUnverifiedParsedBody, NetdocParseableSignatures, NetdocParseableUnverified,
     SignatureHashInputs, SignatureHashesAccumulator, SignatureItemParseable, SignaturesData,
-    check_validity_time, check_validity_time_tolerance, sig_hashes,
+    sig_hashes,
 };
+#[allow(deprecated)]
+#[deprecated]
+pub use signatures::{check_validity_time, check_validity_time_tolerance};
 pub use structural::{StopAt, StopPredicate};
 pub use traits::{
     IsStructural, ItemArgumentParseable, ItemObjectParseable, ItemValueParseable, NetdocParseable,

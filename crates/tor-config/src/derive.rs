@@ -1624,43 +1624,8 @@ should_not_be_used_in_collection! {
     std::time::Duration,
 }
 
-/// Give a compile time error if the type $t implements $trait.
-///
-/// Includes the identifier $rule in the error message, to help the user diagnose
-/// the problem.  (This is the main difference between this macro and the one in
-/// `static_assertions`.)
-///
-/// # Example (Succeeding.)
-///
-/// ```
-/// // No error will occur; String is not Buildable.
-/// tor_config::derive::assert_not_impl!{
-///     [copy_is_forbidden_here] String : tor_config::load::Buildable
-/// }
-/// ```
-///
-/// ```compile_fail
-/// // Compile-time error _is_ given; String implements Clone.
-/// tor_config::derive::assert_not_impl!{
-///     [clone_is_forbidden_here] String : Clone
-/// }
-/// ```
-#[macro_export]
-macro_rules! assert_not_impl {
-    {[$rule:ident] $t:ty : $trait:path } => {
-        const _ : () = {
-            #[allow(dead_code, non_camel_case_types)]
-            trait $rule<X> {
-                fn item();
-            }
-            impl $rule<()> for $t { fn item() {}}
-            struct Invalid;
-            impl<T : $trait + ?Sized> $rule<Invalid> for T { fn item() {} }
-            let _ = <$t as $rule<_>>::item;
-        };
-    }
-}
-pub use assert_not_impl;
+#[deprecated = "use as tor_basic_utils::assert_not_impl instead"]
+pub use tor_basic_utils::assert_not_impl;
 
 define_derive_deftly! {
     /// Define a builder type for a given type, with settings appropriate to participate in the Arti

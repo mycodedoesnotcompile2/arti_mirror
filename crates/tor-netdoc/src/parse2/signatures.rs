@@ -309,6 +309,7 @@ pub mod sig_hashes {
 }
 
 /// Utility function to check that a time is within a validity period
+#[deprecated]
 pub fn check_validity_time(
     now: SystemTime,
     validity: std::ops::RangeInclusive<SystemTime>,
@@ -326,6 +327,8 @@ pub fn check_validity_time(
 ///
 /// This function does not use the `DirTolerance` struct because we want to be
 /// agnostic of directories in this context.
+#[allow(deprecated)]
+#[deprecated]
 pub fn check_validity_time_tolerance(
     now: SystemTime,
     validity: std::ops::RangeInclusive<SystemTime>,
