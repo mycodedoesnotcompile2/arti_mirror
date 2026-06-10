@@ -111,19 +111,19 @@ pub fn skip_fmt<T>(_: &T, f: &mut fmt::Formatter) -> fmt::Result {
 /// of items from `iter`.
 pub fn iter_join(
     separator: &str,
-    iter: impl Iterator<Item: fmt::Display> + Clone,
+    iter: impl IntoIterator<Item: fmt::Display> + Clone,
 ) -> impl fmt::Display {
     // TODO MSRV 1.93: Replace with `std::fmt::from_fn()`?
-    struct Fmt<'a, I: Iterator<Item: fmt::Display> + Clone> {
+    struct Fmt<'a, I: IntoIterator<Item: fmt::Display> + Clone> {
         /// Separates items in `iter`.
         separator: &'a str,
         /// Iterator to join.
         iter: I,
     }
-    impl<'a, I: Iterator<Item: fmt::Display> + Clone> fmt::Display for Fmt<'a, I> {
+    impl<'a, I: IntoIterator<Item: fmt::Display> + Clone> fmt::Display for Fmt<'a, I> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             let Self { separator, iter } = self;
-            let mut iter = iter.clone();
+            let mut iter = iter.clone().into_iter();
             if let Some(first) = iter.next() {
                 write!(f, "{first}")?;
             }
