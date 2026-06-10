@@ -610,7 +610,7 @@ macro_rules! derive_serde_raw { {
 /// the problem.  (This is the main difference between this macro and the one in
 /// `static_assertions`.)
 ///
-/// # Example (Succeeding.)
+/// # Examples
 ///
 /// ```
 /// use std::cell::Cell;
