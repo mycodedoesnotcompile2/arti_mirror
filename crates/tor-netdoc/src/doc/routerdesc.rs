@@ -42,12 +42,13 @@ use crate::types::routerdesc::*;
 use crate::types::version::TorVersion;
 use crate::types::{EmbeddedCert, misc::*};
 use crate::util::PeekableIterator;
-use crate::{AllowAnnotations, Error, KeywordEncodable, NetdocErrorKind as EK, Result};
+use crate::{AllowAnnotations, Error, KeywordEncodable, NetdocErrorKind as EK, NormalItemArgument, Pos, Result};
 
 use derive_deftly::Deftly;
 use ll::pk::ed25519::Ed25519Identity;
 use saturating_time::SaturatingTime;
 use std::fmt::Display;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::{iter, net, time};
@@ -323,6 +324,87 @@ impl ItemArgumentParseable for RelayPlatform {
             .map_err(|_| ArgumentError::Invalid)
     }
 }
+
+/// The method found in a `bridge-distribution-request` item.
+///
+/// The actual set is volatile and this list is only advisory in order to warn
+/// operators in case they might have made a spelling mistake, even though
+/// mispelled methods are accepted.
+///
+/// * <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:bridge-distribution-request>
+/// * <https://gitlab.torproject.org/tpo/anti-censorship/rdsys/-/blob/main/doc/distributors.md>
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum BridgeDistributionRequestMethod {
+    /// The distributor will avoid distributing your bridge address.
+    None,
+    /// The distributor will choose how to distribute your bridge address.
+    Any,
+    /// Bridge is handed out on <https://bridges.torproject.org>.
+    HTTPS,
+    /// Bridge is handed out by writing to `bridges@torproject.org`.
+    Email,
+    /// Bridge is handed out on Telegram via `@GetBridgesBot`.
+    Telegram,
+    /// Method was not recognized but will be published as it is.
+    Other(UnrecognizedBridgeMethod),
+}
+
+impl Display for BridgeDistributionRequestMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // We cannot derive this because of Self::Other.
+        let s = match &self {
+            Self::None => "none",
+            Self::Any => "any",
+            Self::HTTPS => "https",
+            Self::Email => "email",
+            Self::Telegram => "telegram",
+            Self::Other(s) => s,
+        };
+        write!(f, "{s}")
+    }
+}
+
+impl FromStr for BridgeDistributionRequestMethod {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        // We cannot derive this because of Self::Other.
+        let res = match s {
+            "none" => Self::None,
+            "any" => Self::Any,
+            "https" => Self::HTTPS,
+            "email" => Self::Email,
+            "telegram" => Self::Telegram,
+            other => Self::Other(other.parse()?),
+        };
+        Ok(res)
+    }
+}
+
+impl NormalItemArgument for BridgeDistributionRequestMethod {}
+
+/// An unrecognized method for [`BridgeDistributionRequestMethod`].
+///
+/// These values SHOULD be accepted nonetheless.
+///
+/// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:bridge-distribution-request>
+#[derive(Debug, Clone, PartialEq, Eq, Hash)] //
+#[derive(derive_more::Deref, derive_more::AsRef, derive_more::Into, derive_more::Display)]
+pub struct UnrecognizedBridgeMethod(String);
+
+impl FromStr for UnrecognizedBridgeMethod {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        let invalid = s.chars().position(|c| !matches!(c, 'a'..='z' | '0'..='9' ));
+        if let Some(idx) = invalid {
+            return Err(EK::BadArgument.at_pos(Pos::from_offset(s, idx)));
+        }
+
+        Ok(Self(s.to_string()))
+    }
+}
+
+impl NormalItemArgument for UnrecognizedBridgeMethod {}
 
 decl_keyword! {
     /// RouterKwd is an instance of Keyword, used to denote the different
