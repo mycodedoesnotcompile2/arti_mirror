@@ -16,6 +16,70 @@ ns_use_this_variety! {
     pub use [crate::doc::netstatus::rs]::?::{RouterStatus};
 }
 
+/// Network status document - consensus, or vote
+///
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html>
+///
+/// <https://spec.torproject.org/dir-spec/computing-consensus.html#flavors>
+#[derive(Clone, Debug, Deftly)]
+#[derive_deftly(Constructor, NetdocParseableUnverified)]
+#[deftly(netdoc(doctype_for_error = NETSTATUS_DOCTYPE_FOR_ERROR))]
+#[allow(clippy::exhaustive_structs)]
+#[cfg(feature = "incomplete")] // untested
+pub struct NetworkStatus {
+    /// The `network-status-version` intro item
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:network-status-version>
+    ///
+    /// In the "preamble" in the spec, but not in our `Preamble` type for Reasons.
+    pub network_status_version: NetworkStatusVersionItem,
+
+    /// `vote-status`
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:vote-status>
+    ///
+    /// In the "preamble" in the spec, but not in our `Preamble` type for Reasons.
+    #[deftly(netdoc(single_arg))]
+    pub vote_status: ns_type!(
+        VoteStatusConsensus,
+        VoteStatusConsensus,
+        VoteStatusVote,
+    ),
+
+    /// The rest of the preamble
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:preable>
+    #[deftly(constructor, netdoc(flatten))]
+    pub preamble: Preamble,
+
+    /// Authority section
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:authority>
+    #[deftly(constructor, netdoc(subdoc))]
+    pub authority: ns_type!(
+        ConsensusAuthoritySection,
+        ConsensusAuthoritySection,
+        VoteAuthoritySection,
+    ),
+
+    /// Router status entries
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:router-status>
+    #[deftly(netdoc(subdoc))]
+    pub routers: Vec<RouterStatus>,
+
+    /// Footer
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#section:footer>
+    #[deftly(netdoc(subdoc))]
+    #[deftly(constructor)]
+    pub footer: Footer,
+
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
+}
+
 /// `network-status-version` intro item in a consensus
 ///
 /// This is hard to parse because it's so irregular (even, ambiguous).
