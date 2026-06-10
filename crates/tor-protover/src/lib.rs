@@ -563,13 +563,10 @@ fn is_good_number(n: &str) -> bool {
 impl std::str::FromStr for SubprotocolEntry {
     type Err = ParseError;
 
-    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, ParseError> {
         // split the string on the =.
-        let (name, versions) = {
-            let eq_idx = s.find('=').ok_or(ParseError::Malformed)?;
-            (&s[..eq_idx], &s[eq_idx + 1..])
-        };
+        let (name, versions) = s.split_once('=').ok_or(ParseError::Malformed)?;
+
         // Look up the protocol by name.
         let proto = match ProtoKind::from_name(name) {
             Some(p) => Protocol::Proto(p),
@@ -590,12 +587,8 @@ impl std::str::FromStr for SubprotocolEntry {
             // Find and parse lo and hi for a single range of versions.
             // (If this is not a range, but rather a single version v,
             // treat it as if it were a range v-v.)
-            let (lo_s, hi_s) = {
-                match ent.find('-') {
-                    Some(pos) => (&ent[..pos], &ent[pos + 1..]),
-                    None => (ent, ent),
-                }
-            };
+            let (lo_s, hi_s) = ent.split_once('-').unwrap_or((ent, ent));
+
             if !is_good_number(lo_s) {
                 return Err(ParseError::Malformed);
             }
