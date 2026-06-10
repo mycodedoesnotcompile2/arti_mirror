@@ -1273,6 +1273,17 @@ define_derive_deftly! {
     // SignatureItemParseable::HashAccu
     ${define SIG_HASH_ACCU_TYPE ${tmeta(netdoc(signature(hash_accu))) as ty}}
 
+    // Avoid that someone wanting to parse a signed netdoc
+    //   - tries to use parse2 on Foo rather than FooUnverified
+    //   - fails to notice the impl on FooUnverified
+    //   - adds a derive of NetdocParseable
+    //   - calls that parser
+    // thereby completely ignoring the signatures.
+    $P::assert_not_impl! {
+        [signed_documents_should_be_parsed_only_as_foo_unverified <$tgens>]
+        $ttype: $P::NetdocParseable
+    }
+
     impl<$tgens> $P::$TRAIT for $ttype {
       ${if T_IS_SIGNATURE {
         type HashAccu = $SIG_HASH_ACCU_TYPE;
