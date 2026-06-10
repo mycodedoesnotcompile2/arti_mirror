@@ -1,5 +1,6 @@
 ADDED: `BridgeDistributionRequestMethod`
 ADDED: `UnrecognizedBridgeMethod`
+ADDED: `RouterDesc::bridge_distribution_request`
 ADDED: `ItemPresent` type
 ADDED: `RouterDesc::extra_info_digest` field
 ADDED: `RouterDesc::contact` field

@@ -211,6 +211,11 @@ pub struct RouterDesc {
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:contact>
     pub contact: Option<ContactInfo>,
 
+    /// `bridge-distribution-request` --- Request distribution method.
+    ///
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:bridge-distribution-request>
+    pub bridge_distribution_request: Option<BridgeDistributionRequestMethod>,
+
     /// `family` --- Group relays for the purpose of path selection.
     ///
     /// * `family <LongIdent> ...`
@@ -668,6 +673,7 @@ impl RouterDesc {
     /// * [`RouterDesc::hibernating`]
     /// * [`RouterDesc::overload_general`]
     /// * [`RouterDesc::contact`]
+    /// * [`RouterDesc::bridge_distribution_request`]
     /// * [`RouterDesc::extra_info_digest`]
     pub fn parse(s: &str) -> Result<UncheckedRouterDesc> {
         let mut reader = crate::parse::tokenize::NetDocReader::new(s)?;
@@ -1093,6 +1099,7 @@ impl RouterDesc {
             ipv6_policy: ipv6_policy.intern(),
             overload_general: Default::default(),
             contact: Default::default(),
+            bridge_distribution_request: Default::default(),
             family,
             family_cert: embedded_family_certs.into(),
             caches_extra_info: is_extrainfo_cache,
