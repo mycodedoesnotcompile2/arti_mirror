@@ -2795,7 +2795,6 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use std::{
-        any::TypeId,
         fmt::Debug,
         time::{Duration, SystemTime},
     };
@@ -3695,7 +3694,7 @@ mod test {
     }
 
     /// Tests invalid Ed25519 certificates by violating various constraints.
-    fn ed25519_cert_invalid<T: Ed25519CertTest + 'static>() {
+    fn ed25519_cert_invalid<T: Ed25519CertTest + 'static>(requires_signed_with_ext: bool) {
         let mut rng = testing_rng();
         let now = str_to_st("2000-01-01 06:00:00");
         let expiry = str_to_st("2000-01-01 12:00:00");
@@ -3743,7 +3742,7 @@ mod test {
 
         // Violate absence of `signed-with-ed25519-key`.
         // This is not a violation in Ed25519NtorCrossCert.
-        if TypeId::of::<T>() != TypeId::of::<Ed25519NtorCrossCert>() {
+        if requires_signed_with_ext {
             tests.push((
                 T::cert_type(),
                 expiry,
@@ -3787,7 +3786,7 @@ mod test {
 
     #[test]
     fn ed25519_identity_cert_invalid() {
-        ed25519_cert_invalid::<Ed25519IdentityCert>();
+        ed25519_cert_invalid::<Ed25519IdentityCert>(true);
     }
 
     #[test]
@@ -3797,7 +3796,7 @@ mod test {
 
     #[test]
     fn ed25519_family_cert_invalid() {
-        ed25519_cert_invalid::<Ed25519FamilyCert>();
+        ed25519_cert_invalid::<Ed25519FamilyCert>(true);
     }
 
     #[test]
@@ -3807,6 +3806,6 @@ mod test {
 
     #[test]
     fn ed25519_ntor_crosscert_invalid() {
-        ed25519_cert_invalid::<Ed25519NtorCrossCert>();
+        ed25519_cert_invalid::<Ed25519NtorCrossCert>(false);
     }
 }
