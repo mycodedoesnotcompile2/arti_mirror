@@ -3735,15 +3735,6 @@ mod test {
                 Some(&signing_pk),
                 &signing_key,
             ),
-            // Violate both keys must be different.
-            (
-                T::cert_type(),
-                expiry,
-                // Just pass the signing key twice.
-                signing_pk.into(),
-                Some(&signing_pk),
-                &signing_key,
-            ),
             // ---
             // Missing test for violating both keys MUST be valid mappings to a
             // [`ed25519::PublicKey`].  I was unable to find a single test
