@@ -320,6 +320,16 @@ mod test {
         );
         let tr = TimerangeBound::new("hello world", ..za);
         assert!(tr.check_valid_at_opt(None).is_err());
+
+        // edge cases
+        let tr = TimerangeBound::new("Hello world", de..eu);
+        let nano = Duration::from_nanos(1);
+        assert!(tr.is_valid_at(&(de - nano)).is_err());
+        assert!(tr.is_valid_at(&de).is_ok());
+        assert!(tr.is_valid_at(&(de + nano)).is_ok());
+        assert!(tr.is_valid_at(&(eu - nano)).is_ok());
+        assert!(tr.is_valid_at(&eu).is_ok());
+        assert!(tr.is_valid_at(&(eu + nano)).is_err());
     }
 
     #[test]
