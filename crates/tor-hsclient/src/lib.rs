@@ -47,6 +47,7 @@
 #![deny(clippy::string_slice)] // See arti#2571
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 
+mod caps;
 mod connect;
 mod err;
 mod isol_map;

@@ -52,10 +52,12 @@ full = [
     "web-time-compat/full",
 ]
 __is_experimental = []
-experimental = ["keymgr", "hs-pow-full"]
+experimental = ["keymgr", "hs-pow-full", "negotiate-extensions"]
+negotiate-extensions = ["__is_experimental"]
 
 [dependencies]
 async-trait = "0.1.54"
+cfg-if = "1.0.0"
 derive-deftly = { version = "~1.11.3", features = ["full", "beta"] }
 derive_more = { version = "2.0.1", features = ["full"] }
 educe = "0.4.22"

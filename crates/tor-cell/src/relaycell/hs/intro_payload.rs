@@ -190,4 +190,9 @@ impl IntroduceHandshakePayload {
     pub fn subprotocol_request_extension(&self) -> Option<&SubprotocolRequest> {
         self.extensions.get_subprotocol_request()
     }
+
+    /// Add a new extension `ext` to the list of extensions in this payload.
+    pub fn add_extension(&mut self, ext: CircRequestExt) {
+        self.extensions.push(ext);
+    }
 }
