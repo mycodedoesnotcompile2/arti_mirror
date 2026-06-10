@@ -21,10 +21,10 @@ use crate::util::notify::NotifyReceiver;
 /// events.
 #[derive(Debug)]
 #[pin_project]
-pub(crate) struct XonXoffReader<R> {
+pub(crate) struct XonXoffReader<R, T: DrainRateNotifier = StreamTarget> {
     /// How we communicate with the circuit reactor.
     #[pin]
-    ctrl: XonXoffReaderCtrl,
+    ctrl: XonXoffReaderCtrl<T>,
     /// The inner reader.
     #[pin]
     reader: R,
@@ -33,12 +33,12 @@ pub(crate) struct XonXoffReader<R> {
     pending_drain_rate_update: bool,
 }
 
-impl<R> XonXoffReader<R> {
+impl<R, T: DrainRateNotifier> XonXoffReader<R, T> {
     /// Create a new [`XonXoffReader`].
     ///
     /// The reader must implement [`BufferIsEmpty`], which allows the `XonXoffReader` to check if
     /// the incoming stream buffer is empty or not.
-    pub(crate) fn new(ctrl: XonXoffReaderCtrl, reader: R) -> Self {
+    pub(crate) fn new(ctrl: XonXoffReaderCtrl<T>, reader: R) -> Self {
         Self {
             ctrl,
             reader,
@@ -63,7 +63,7 @@ impl<R> XonXoffReader<R> {
     }
 }
 
-impl<R: AsyncRead + BufferIsEmpty> AsyncRead for XonXoffReader<R> {
+impl<R: AsyncRead + BufferIsEmpty, T: DrainRateNotifier> AsyncRead for XonXoffReader<R, T> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -100,8 +100,8 @@ impl<R: AsyncRead + BufferIsEmpty> AsyncRead for XonXoffReader<R> {
             // send an "unlimited" drain rate
             self_
                 .ctrl
-                .stream_target
-                .drain_rate_update(XonKbpsEwma::Unlimited)?;
+                .drain_rate_notifier
+                .notify(XonKbpsEwma::Unlimited)?;
             *self_.pending_drain_rate_update = false;
         }
 
@@ -109,31 +109,53 @@ impl<R: AsyncRead + BufferIsEmpty> AsyncRead for XonXoffReader<R> {
     }
 }
 
+/// Something that sends drain rate updates to the flow control logic (the `XonXoffFlowCtrl`).
+pub(crate) trait DrainRateNotifier {
+    /// Send the drain rate update.
+    fn notify(&mut self, rate: XonKbpsEwma) -> Result<(), Error>;
+}
+
+impl DrainRateNotifier for StreamTarget {
+    fn notify(&mut self, rate: XonKbpsEwma) -> Result<(), Error> {
+        self.drain_rate_update(rate).map_err(Into::into)
+    }
+}
+
 /// The control structure for a stream that partakes in XON/XOFF flow control.
 ///
 /// Used to construct an [`XonXoffReader`].
+///
+/// This contains a mechanism for us to be asked for our drain rate,
+/// and a mechanism of sending the drain rate in response.
+///
+/// The `DrainRateNotifier` is typically a `StreamTarget`,
+/// which sends the drain rate to the circuit reactor so that it can be sent in an XON message.
+/// We make this a trait to make unit testing possible.
 #[derive(Debug)]
 #[pin_project]
-pub(crate) struct XonXoffReaderCtrl {
+pub(crate) struct XonXoffReaderCtrl<T: DrainRateNotifier = StreamTarget> {
     /// Receive notifications when the reactor requests a new drain rate.
     /// When we do, we should begin waiting for the receive buffer to clear.
     /// Then when the buffer clears, we should send a new drain rate update to the reactor.
     #[pin]
     drain_rate_request_stream: NotifyReceiver<DrainRateRequest>,
-    /// A handle to the reactor for this stream.
+    /// An abstract handle to the reactor for this stream.
     /// This allows us to send drain rate updates to the circuit reactor.
-    stream_target: StreamTarget,
+    drain_rate_notifier: T,
 }
 
-impl XonXoffReaderCtrl {
+impl<T: DrainRateNotifier> XonXoffReaderCtrl<T> {
     /// Create a new [`XonXoffReaderCtrl`].
+    ///
+    /// The `drain_rate_request_stream` informs us when we need to send our drain rate,
+    /// and `drain_rate_notifier` allows us to send that drain rate.
     pub(crate) fn new(
         drain_rate_request_stream: NotifyReceiver<DrainRateRequest>,
-        stream_target: StreamTarget,
+        drain_rate_notifier: T,
     ) -> Self {
         Self {
             drain_rate_request_stream,
-            stream_target,
+            drain_rate_notifier,
         }
     }
 }
