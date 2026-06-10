@@ -9,6 +9,7 @@ pub use doc::netstatus::Signature as NdiDirectorySignature;
 use doc::netstatus::{
     ConsensusAuthoritySection, DirectorySignaturesHashesAccu, VoteAuthoritySection,
     VoteStatusConsensus, VoteStatusVote,
+    VerifyGeneralTrustedAuthorities,
 };
 
 mod ns_per_flavour_macros;
@@ -49,7 +50,6 @@ fn verify_general_timeless(
     signatures: &[NdiDirectorySignature],
     trusted: &[pk::rsa::RsaIdentity],
     certs: &[&DirAuthKeyCert],
-    threshold: usize,
 ) -> Result<(), VF> {
     let group = crate::doc::netstatus::SignatureGroup {
         hashes: *hashes,
@@ -57,9 +57,8 @@ fn verify_general_timeless(
     };
 
     group.verify_general(
-        Some(trusted),
+        VerifyGeneralTrustedAuthorities::TrustTheseAuthorities { trusted },
         &certs.iter().copied().cloned().collect_vec(),
-        threshold,
         |tv| tv.verify(),
     )
 }

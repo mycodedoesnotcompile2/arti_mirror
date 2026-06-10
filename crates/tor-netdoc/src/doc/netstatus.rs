@@ -2151,6 +2151,29 @@ impl<'r> ConsensusSignatureToVerify<'r> {
     }
 }
 
+/// How `verify_general` should decide who is a trusted authority
+///
+/// Don't use this for other purposes
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum VerifyGeneralTrustedAuthorities<'r> {
+    /// Trust these authorities.
+    TrustTheseAuthorities {
+        /// The HKP_auth_id_rsa
+        trusted: &'r [RsaIdentity],
+    },
+
+    /// For the benefit of `SignatureGroup::validate`, used by the old parser, only
+    ///
+    /// Every `AuthCert` passed to `verify_general` is a real authority (!)
+    /// (But not necessarily a different one!)
+    HazardouslyAssumeAllAuthCertsAreRealAuthorities {
+        /// Total number of authorities that we trust
+        ///
+        /// Used only to calculate the threshold
+        n_authorities: usize,
+    },
+}
+
 impl SignatureGroup {
     // TODO: these functions are pretty similar and could probably stand to be
     // refactored a lot.
@@ -2203,9 +2226,10 @@ impl SignatureGroup {
     /// to a real authority.
     fn validate(&self, n_authorities: usize, certs: &[AuthCert]) -> Result<(), VerifyFailed> {
         self.verify_general(
-            None, // "Every cert in `certs` belongs to a real authority
+            VerifyGeneralTrustedAuthorities::HazardouslyAssumeAllAuthCertsAreRealAuthorities {
+                n_authorities,
+            },
             certs,
-            (n_authorities / 2) + 1,
             |tv| tv.verify(),
         )
     }
@@ -2241,14 +2265,15 @@ impl SignatureGroup {
     // TODO DIRAUTH make this module-private when poc is abolished
     pub(crate) fn verify_general<E>(
         &self,
-        trusted_authorities: Option<&[RsaIdentity]>,
+        trusted_authorities: VerifyGeneralTrustedAuthorities,
         certs: &[AuthCert],
-        threshold: usize,
         do_verify: impl Fn(ConsensusSignatureToVerify) -> Result<SignatureVerifiedIfIntended, E>,
     ) -> Result<(), E>
     where
         ConsensusVerifiabilityError: Into<E>,
     {
+        use VerifyGeneralTrustedAuthorities as TA;
+
         // A set of the authorities (by identity) who have have signed
         // this document.  We use a set here in case `certs` has more
         // than one certificate for a single authority.
@@ -2270,10 +2295,15 @@ impl SignatureGroup {
                 signature: _,
             } = sig;
 
-            if let Some(trusted) = trusted_authorities {
+            match trusted_authorities {
+              TA::TrustTheseAuthorities { trusted } => {
                 if !trusted.contains(id_fingerprint) {
                     continue;
                 }
+              }
+              TA::HazardouslyAssumeAllAuthCertsAreRealAuthorities { .. } => {
+                  // OK then!
+              }
             }
 
             if ok.contains(id_fingerprint) {
@@ -2301,6 +2331,12 @@ impl SignatureGroup {
                 }
             }
         }
+
+        let n_authorities = match trusted_authorities {
+            TA::TrustTheseAuthorities { trusted } => trusted.len(),
+            TA::HazardouslyAssumeAllAuthCertsAreRealAuthorities { n_authorities: n } => n,
+        };
+        let threshold = (n_authorities / 2) + 1; // strict majority
 
         if ok.len() >= threshold {
             Ok(())

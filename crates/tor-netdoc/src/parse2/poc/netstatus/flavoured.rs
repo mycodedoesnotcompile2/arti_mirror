@@ -152,7 +152,6 @@ ns_choose! { (
                 slice::from_ref(&self.sigs.sigs.directory_signature),
                 &[*cert.fingerprint],
                 &[&cert],
-                1,
             )?;
 
             Ok(self.unwrap_unverified())
@@ -212,7 +211,6 @@ ns_choose! { (
             authorities: &[pk::rsa::RsaIdentity],
             certs: &[&DirAuthKeyCert],
         ) -> Result<(NetworkStatus, SignaturesData<NetworkStatusUnverified>), VF> {
-            let threshold = authorities.len() / 2 + 1; // strict majority
             let validity_start = self.body.valid_after.0
                 .checked_sub(Duration::from_secs(self.body.voting_delay.dist_seconds.into()))
                 .ok_or(VF::Other)?;
@@ -223,7 +221,6 @@ ns_choose! { (
                 &self.sigs.sigs.directory_signature,
                 authorities,
                 certs,
-                threshold,
             )?;
 
             Ok(self.unwrap_unverified())
