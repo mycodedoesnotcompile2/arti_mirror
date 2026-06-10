@@ -26,6 +26,7 @@ default = [
     "pt-client",
     "onion-service-client",
     "vanguards",
+    "flowctl-cc",
 ]
 
 full = [
