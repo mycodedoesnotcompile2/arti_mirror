@@ -51,6 +51,7 @@ full = [
     "rpc",
     "http-connect",
     "flowctl-cc",
+    "counter-galois-onion",
     "safelog/full",
     "tor-config/full",
     "tor-error/full",
@@ -103,7 +104,7 @@ hs-pow-full = ["arti-client/hs-pow-full", "__is_experimental"]
 pt-client = ["bridge-client", "arti-client/pt-client"]
 ctor-keystore = ["arti-client/ctor-keystore", "__is_experimental"]
 flowctl-cc = ["arti-client/flowctl-cc"]
-counter-galois-onion = ["arti-client/counter-galois-onion", "flowctl-cc", "__is_experimental"]
+counter-galois-onion = ["arti-client/counter-galois-onion", "flowctl-cc"]
 
 rpc = ["dep:arti-rpcserver", "dep:tor-rpcbase", "dep:tor-rpc-connect", "arti-client/rpc", "derive-deftly"]
 
@@ -150,7 +151,6 @@ experimental = [
     "tor-hsservice/experimental",
     "ctor-keystore",
     "onion-service-cli-extra",
-    "counter-galois-onion",
     "opentelemetry",
     "tokio-console",
 ]
