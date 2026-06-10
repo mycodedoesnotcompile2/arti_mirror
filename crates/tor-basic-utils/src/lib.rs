@@ -604,6 +604,48 @@ macro_rules! derive_serde_raw { {
 
 // ----------------------------------------------------------------------
 
+/// Give a compile time error if the type $t implements $trait.
+///
+/// Includes the identifier $rule in the error message, to help the user diagnose
+/// the problem.  (This is the main difference between this macro and the one in
+/// `static_assertions`.)
+///
+/// # Example (Succeeding.)
+///
+/// ```
+/// use std::cell::Cell;
+/// use tor_basic_utils::assert_not_impl;
+///
+/// // No error will occur; Cell is not Sync
+/// assert_not_impl!{
+///     [cell_must_not_be_sync] Cell<u32> : Sync
+/// }
+/// ```
+///
+/// ```compile_fail
+/// // Compile-time error _is_ given; String implements Clone.
+/// assert_not_impl!{
+///     [clone_is_forbidden_here] String : Clone
+/// }
+/// ```
+#[macro_export]
+macro_rules! assert_not_impl {
+    {[$rule:ident] $t:ty : $trait:path } => {
+        const _ : () = {
+            #[allow(dead_code, non_camel_case_types)]
+            trait $rule<X> {
+                fn item();
+            }
+            impl $rule<()> for $t { fn item() {}}
+            struct Invalid;
+            impl<T : $trait + ?Sized> $rule<Invalid> for T { fn item() {} }
+            let _ = <$t as $rule<_>>::item;
+        };
+    }
+}
+
+// ----------------------------------------------------------------------
+
 /// Asserts that the type of the expression implements the given trait.
 ///
 /// Example:
