@@ -650,10 +650,13 @@ macro_rules! assert_not_impl {
             trait $rule<X> {
                 fn item();
             }
-            impl $rule<()> for $t { fn item() {}}
+            impl $rule<()> for $t {
+                fn item() {
+                    let _ = Self::item;
+                }
+            }
             struct Invalid;
             impl<T : $trait + ?Sized> $rule<Invalid> for T { fn item() {} }
-            let _ = <$t as $rule<_>>::item;
         };
     }
 }
