@@ -240,7 +240,6 @@ impl TorAddr {
     }
 
     /// Get instructions for how to make a stream to this address
-    #[allow(clippy::string_slice)] // TODO
     pub(crate) fn into_stream_instructions(
         self,
         cfg: &crate::config::ClientAddrConfig,
@@ -262,7 +261,9 @@ impl TorAddr {
                     .nth(1)
                     .map(|(i, _)| i + 1)
                     .unwrap_or(0);
-                let rhs = &onion[rhs..];
+                let rhs = onion
+                    .get(rhs..)
+                    .expect("character index was not a valid index!?");
                 let hsid = rhs.parse()?;
                 StreamInstructions::Hs {
                     hsid,
@@ -491,9 +492,8 @@ impl IntoTorAddr for &str {
 }
 
 impl IntoTorAddr for String {
-    #[allow(clippy::string_slice)] // TODO
     fn into_tor_addr(self) -> Result<TorAddr, TorAddrError> {
-        self[..].into_tor_addr()
+        self.as_str().into_tor_addr()
     }
 }
 
@@ -513,10 +513,9 @@ impl IntoTorAddr for (&str, u16) {
 }
 
 impl IntoTorAddr for (String, u16) {
-    #[allow(clippy::string_slice)] // TODO
     fn into_tor_addr(self) -> Result<TorAddr, TorAddrError> {
         let (host, port) = self;
-        (&host[..], port).into_tor_addr()
+        (host.as_str(), port).into_tor_addr()
     }
 }
 
