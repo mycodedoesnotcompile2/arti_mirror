@@ -114,7 +114,11 @@ impl CreateRequestHandler {
                 // TODO(relay): The log messages throughout could be very noisy, so should have rate limiting.
                 let cmd = msg.cmd();
                 debug_report!(&e, %cmd, "Failed to handle circuit create request");
-                Err(Destroy::new(e.destroy_reason()))
+
+                // `tor-spec/tearing-down-circuits.md`:
+                //
+                // > Implementations SHOULD always use the NONE reason to avoid side channels: [...]
+                Err(Destroy::new(DestroyReason::NONE))
             }
         }
     }
@@ -266,20 +270,6 @@ enum HandleCreateError {
     /// may themselves contain internal errors.
     #[error("Internal error")]
     Internal(#[from] tor_error::Bug),
-}
-
-impl HandleCreateError {
-    /// The reason to use in a DESTROY message for this failure.
-    fn destroy_reason(&self) -> DestroyReason {
-        // Note that this may return an INTERNAL destroy reason even when
-        // the inner error is not `ErrorKind::Internal`.
-        match self {
-            Self::Handshake(e) => e.destroy_reason(),
-            Self::Memquota(_) => DestroyReason::INTERNAL,
-            Self::Spawn(_) => DestroyReason::INTERNAL,
-            Self::Internal(_) => DestroyReason::INTERNAL,
-        }
-    }
 }
 
 impl HasKind for HandleCreateError {
