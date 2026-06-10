@@ -9,17 +9,26 @@ For arti authorities, we won't use a plugin.
 In every mode, the plugin runs to completion or error, and then exits.
 It exits with the following exit codes:
  - 0: Success.
- - 1: Invalid inputs or invocation.
+ - 8: Invalid inputs or invocation.
  - 10: "Fall back to C tor consensus" (See below.)
  - 32: Internal error.
 
+C Tor must treat any other exit status as a total failure of the plugin.
 
 Because of file encoding issues,
 the plugin DOES NOT have to build or run on Windows.
-It should exit with an error when run on Windows.
+If it builds on Windows, it SHOULD fail when run.
 
 The plugin does not write partial files; it does the write-then-rename
 trick to make sure that its writes are as atomic as possible.
+For an output file OUT, the plugin may use the filename OUT.tmp
+in the same directory, for this purpose.
+C Tor MUST NOT read such .tmp files;
+it MAY delete them (when it's not running the plugiin).
+
+C Tor MUST NOT read any output file
+it expects to be created by a plugin invocation
+unless the plugin exited with status 0.
 
 The plugin should write error messages to stderr.  C Tor may log those
 messages.
@@ -40,7 +49,7 @@ with `-` to indicate `write to stdout` or `read from stdin`.
 > In examples below I'll pretend that the name of the plugin binary
 > is `plugin`.  It should probably be something different.
 >
-> The binary flags are chosen more or less arbitrarily,
+> The command line options are chosen more or less arbitrarily,
 > with no design taste.  Feel free to change to something more sensible.
 
 ## Modes of operation
@@ -65,14 +74,12 @@ plugin list-methods -o <FILENAME>
 This method should write every consensus method supported by the plugin to
 `FILENAME`, as a space-separated newline-terminated list.
 
-If `FILENAME` is `-`, the method should write to stdout.
-
 ### Mode 2: Compute microdescriptors.
 
 Invocation:
 
 ```
-plugin compute-mds -i <FILENAME> [-i <FILENAME>...] --mds_out <MDFILE> --meta_out <METAFILE>
+plugin compute-mds -i <FILENAME> [-i <FILENAME>...] --mds-out <MDFILE> --meta-out <METAFILE>
 ```
 
 Every input file will contain a set of zero or more server descriptors.
@@ -123,8 +130,8 @@ Where...
   This is computed in the same way as the "digest" field of a vote's
   `m` line.
 
-Implementations SHOULD ignore extra arguments and spaces in this line.
-Implementations SHOULD generate a warning for unparseable lines.
+C Tor SHOULD ignore extra arguments and spaces in this line.
+C Tor SHOULD treat unparseable lines as a total failure of the plugin.
 
 > The formats here are meant to be as close as possible to what we have to
 > put in our votes, and to what C tor expects to put into its md cache(s).
