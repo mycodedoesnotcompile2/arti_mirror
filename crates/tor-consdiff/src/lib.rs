@@ -141,7 +141,6 @@ pub fn gen_cons_diff(base: &str, target: &str) -> Result<String> {
 }
 
 /// Splits `input` at the first `directory-signature`.
-#[allow(clippy::string_slice)] // TODO
 fn split_directory_signatures(input: &str) -> Result<(&str, &str)> {
     let parse_input = ParseInput::new(input, "");
     let mut items = ItemStream::new(&parse_input)?;
@@ -159,7 +158,9 @@ fn split_directory_signatures(input: &str) -> Result<(&str, &str)> {
         match item {
             Some(DIRECTORY_SIGNATURE_KEYWORD) => {
                 let offset = items.byte_position();
-                return Ok((&input[..offset], &input[offset..]));
+                return Ok(input
+                    .split_at_checked(offset)
+                    .ok_or_else(|| internal!("Calculated an invalid offset"))?);
             }
             Some(_) => {
                 // Consume the just peeked item.
@@ -576,7 +577,6 @@ impl<'a> DiffCommand<'a> {
 
     /// Extract a single command from a line iterator that yields lines
     /// of the diffs.  Return None if we're at the end of the iterator.
-    #[allow(clippy::string_slice)] // TODO
     fn from_line_iterator<I>(iter: &mut I) -> Result<Option<Self>>
     where
         I: Iterator<Item = &'a str>,
@@ -594,11 +594,8 @@ impl<'a> DiffCommand<'a> {
         }
 
         let (range, command) = command.split_at(command.len() - 1);
-        let (low, high) = if let Some(comma_pos) = range.find(',') {
-            (
-                range[..comma_pos].parse::<usize>()?,
-                Some(range[comma_pos + 1..].parse::<RangeEnd>()?),
-            )
+        let (low, high) = if let Some((lo, hi)) = range.split_once(',') {
+            (lo.parse::<usize>()?, Some(hi.parse::<RangeEnd>()?))
         } else {
             (range.parse::<usize>()?, None)
         };
