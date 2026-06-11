@@ -2337,9 +2337,7 @@ impl SignatureGroup {
         // TODO we ought to take the set of trusted authorities as an argument,
         // rather than use VGTA::HazardouslyAssumeAllAuthCertsAreReal.
         self.verify_general(
-            VerifyGeneralTrustedAuthorities::HazardouslyAssumeAllAuthCertsAreReal {
-                n_authorities,
-            },
+            VerifyGeneralTrustedAuthorities::HazardouslyAssumeAllAuthCertsAreReal { n_authorities },
             certs,
             |tv| tv.verify(),
         )
