@@ -1,3 +1,9 @@
+ADDED: `HiddenServiceDirToken`
+ADDED: `RouterDesc::hidden_service_dir`
+ADDED: `CachesExtraInfoToken`
+ADDED: `TunnelledDirServerToken`
+BREAKING: `RouterDesc::caches_extra_info` stored as `CachesExtraInfoToken`
+BREAKING: `RouterDesc::tunnelled_dir_server` stored as `TunnelledDirServerToken`
 ADDED: `Ed25519NtorCrossCert` type
 ADDED: `ItemPresent` type
 ADDED: `RouterDesc::extra_info_digest` field
