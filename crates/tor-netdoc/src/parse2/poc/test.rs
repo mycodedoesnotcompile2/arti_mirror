@@ -17,9 +17,7 @@
 use super::*;
 use super::netstatus::md;
 use super::netstatus::cons as plain; // XXXX
-use crate::doc::authcert;
-use authcert::AuthCert as DirAuthKeyCert;
-use authcert::AuthCertUnverified as DirAuthKeyCertUnverified;
+use crate::doc::authcert::{AuthCert, AuthCertUnverified};
 
 use std::fs;
 
@@ -37,11 +35,11 @@ fn parse_consensus_ns() -> anyhow::Result<()> {
     let file = "testdata2/cached-certs";
     let text = fs::read_to_string(&file)?;
     let input = ParseInput::new(&text, file);
-    let certs: Vec<DirAuthKeyCertUnverified> = parse_netdoc_multiple(&input)?;
+    let certs: Vec<AuthCertUnverified> = parse_netdoc_multiple(&input)?;
     let certs = certs
         .into_iter()
         .map(|cert| cert.verify_selfcert(now))
-        .collect::<Result<Vec<DirAuthKeyCert>, _>>()?;
+        .collect::<Result<Vec<AuthCert>, _>>()?;
 
     let doc = doc.verify(
         now,
@@ -73,7 +71,7 @@ fn parse_authcert() -> anyhow::Result<()> {
     let now = parse_rfc3339("2000-06-01T00:00:05Z")?;
     let text = fs::read_to_string(file)?;
     let input = ParseInput::new(&text, file);
-    let doc: DirAuthKeyCertUnverified = parse_netdoc(&input)?;
+    let doc: AuthCertUnverified = parse_netdoc(&input)?;
     let doc = doc.verify_selfcert(now)?;
     println!("{doc:?}");
     assert_eq!(
