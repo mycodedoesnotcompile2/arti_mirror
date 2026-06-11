@@ -220,7 +220,7 @@ pub struct Footer {
 
 /// Signatures on a network status document
 #[derive(Deftly, Clone, Debug)]
-#[derive_deftly(NetdocParseableSignatures)]
+#[derive_deftly(NetdocEncodableFields, NetdocParseableSignatures)]
 #[deftly(netdoc(signatures(hashes_accu = "DirectorySignaturesHashesAccu")))]
 #[non_exhaustive]
 pub struct NetworkStatusSignatures {

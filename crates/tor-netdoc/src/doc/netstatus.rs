@@ -2561,7 +2561,9 @@ mod test {
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
     use crate::doc::authcert::{AuthCert, AuthCertUnverified};
+    use crate::encode::{NetdocEncodable, NetdocEncodableFields};
     use crate::parse2::{ParseInput, parse_netdoc, parse_netdoc_multiple};
+    use crate::util::regsub;
     use hex_literal::hex;
     use humantime::parse_rfc3339;
     use std::fs;
@@ -2906,9 +2908,14 @@ mod test {
         assert_eq!(ps, ps3);
     }
 
+    /// Test that we can re-encode the consensus we parsed, and that we get the same thing back.
+    ///
+    /// Well, roughly the same thing.
+    //
+    // TODO DIRAUTH want more comprehensive test; testdata2's netstatus lacks many things
     #[cfg(feature = "incomplete")]
     #[test]
-    fn parse_consensus_ns() -> anyhow::Result<()> {
+    fn roundtrip_consensus_plain() -> anyhow::Result<()> {
         let file = "testdata2/cached-consensus";
         let text = fs::read_to_string(file)?;
         let now = parse_rfc3339("2000-01-01T00:02:25Z")?;
@@ -2928,6 +2935,8 @@ mod test {
                 .collect::<Result<Vec<AuthCert>, _>>()?
         };
 
+        let sigs = doc.inspect_unverified().1.sigs.clone();
+
         let doc = doc.verify(
             &certs.iter().map(|cert| *cert.fingerprint).collect_vec(),
             &certs,
@@ -2935,6 +2944,38 @@ mod test {
         .check_valid_at(&now)?;
 
         println!("{doc:?}");
+
+        let mut enc = NetdocEncoder::new();
+        doc.encode_unsigned(&mut enc)?;
+        sigs.encode_fields(&mut enc)?;
+        let enc = enc.finish()?;
+
+        let mut exp: String = text.clone();
+        let mut regsub = |re, repl| regsub(&mut exp, re, repl);
+
+        // We emit the optional `ns`
+        // https://spec.torproject.org/dir-spec/consensus-formats.html#item:network-status-version
+        regsub(
+            r#"^network-status-version 3$"#,
+            "network-status-version 3 ns",
+        );
+
+        // C Tor writes empty versions lines with trailing space
+        regsub(
+            //
+            r#"^((?:client|server)-versions) $"#,
+            "$1",
+        );
+
+        // C Tor writes nontrivial values for `publication` in rs `r` items,
+        // but we use a fixed string.
+        // https://spec.torproject.org/dir-spec/consensus-formats.html#item:r
+        regsub(
+            r#"^(r \S+ \S+ \S+) \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#,
+            "$1 2000-01-01 00:00:01",
+        );
+
+        assert_eq_or_diff!(&exp, &enc);
 
         Ok(())
     }
