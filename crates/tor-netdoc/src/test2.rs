@@ -326,10 +326,7 @@ where
 
     eprintln!("====== enc got ======\n{reenc}====== end ======");
 
-    assert_eq_or_diff!(
-        &enc,
-        &reenc,
-    );
+    assert_eq_or_diff!(&enc, &reenc,);
 
     Ok(())
 }
