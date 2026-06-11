@@ -417,6 +417,8 @@ impl Ed25519Cert {
     }
 
     /// Return true iff this certificate will be expired at the time `when`.
+    ///
+    /// This is inclusive, meaning that `when == self.expiry()` is still valid.
     pub fn is_expired_at(&self, when: std::time::SystemTime) -> bool {
         when > self.expiry()
     }
