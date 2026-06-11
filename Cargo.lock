@@ -7892,6 +7892,7 @@ dependencies = [
  "hex-literal",
  "hostname-validator",
  "humantime",
+ "imara-diff",
  "itertools 0.14.0",
  "memchr",
  "paste",
