@@ -86,6 +86,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{self, SystemTime};
 use std::{net, result};
+use tor_basic_utils::iter_join;
 use tor_error::{Bug, HasKind, bad_api_usage, internal};
 use tor_protover::Protocols;
 use void::ResultVoidExt as _;
@@ -323,9 +324,7 @@ pub mod consensus_methods_comma_separated {
     /// Encode
     #[cfg(feature = "incomplete")] // untested
     pub fn write_arg_onto(self_: &ConsensusMethods, out: &mut ItemEncoder) -> Result<(), Bug> {
-        for s in Itertools::intersperse(self_.methods.iter().map(|v| v as &dyn Display), &",") {
-            out.args_raw_string(s);
-        }
+        out.args_raw_string(&iter_join(",", &self_.methods));
         Ok(())
     }
 }
