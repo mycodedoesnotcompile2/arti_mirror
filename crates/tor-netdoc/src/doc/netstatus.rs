@@ -74,7 +74,7 @@ use crate::parse::tokenize::{Item, ItemResult, NetDocReader};
 use crate::parse2::{
     self, ArgumentError, ArgumentStream, ErrorProblem, IsStructural, ItemArgumentParseable,
     ItemStream, ItemValueParseable, KeywordRef, NetdocParseable, SignatureHashInputs,
-    SignatureItemParseable, StopAt, UnparsedItem,
+    SignatureItemParseable, StopAt, UnparsedItem, VerifyFailed,
 };
 use crate::types::relay_flags::{self, DocRelayFlags};
 use crate::types::{self, *};
@@ -878,6 +878,35 @@ pub struct SignatureGroup {
     pub hashes: DirectorySignaturesHashesAccu,
     /// The signatures listed on the document.
     pub signatures: Vec<Signature>,
+}
+
+/// Error which will prevent us from attempting to verify signatures on a consensus
+///
+/// This error occurs if we the consensus isn't signed by the right people,
+/// or we are lacking authcerts.
+///
+/// Does not represent actual verification errors.
+/// Those show up as `VerifyFailed`, typically [`VerifyFailed::VerifyFailed`].
+///
+/// Can be converted to a `VerifyFailed`,
+/// giving [`InsufficientTrustedSigners`](VerifyFailed::InsufficientTrustedSigners).
+#[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
+// TODO DIRAUTH nothing tests that values in here are right, but there are no
+// public entrypoints that return one, so we don't need to cfg it "incomplete".
+pub enum ConsensusVerifiabilityError {
+    /// Insufficient trusted signers
+    #[error("consensus not signed by enough authorities")]
+    InsufficientTrustedSigners,
+
+    /// Insufficient trusted signers because we are missing authcerts
+    #[error("missing auth certs mean we could not verify enough consensuis signatures (need at least {deficit} more, out of {} that are missing)", missing.len())]
+    MissingAuthCerts {
+        /// The number of additional useful authcerts that would be sufficient
+        deficit: usize,
+        /// All the authcerts that would be useful
+        missing: HashSet<AuthCertKeyIds>,
+    },
 }
 
 /// A shared random value produced by the directory authorities.
@@ -2116,18 +2145,6 @@ mod proto_statuses_parse2_encode {
     }
 }
 
-/// Result of checking a single authority signature.
-enum SigCheckResult {
-    /// The signature checks out.  Great!
-    Valid,
-    /// The signature is invalid; no additional information could make it
-    /// valid.
-    Invalid,
-    /// We can't check the signature because we don't have a
-    /// certificate with the right signing key.
-    MissingCert,
-}
-
 impl Signature {
     /// Parse a Signature from a directory-signature section
     fn from_item(item: &Item<'_, NetstatusKwd>) -> crate::Result<Signature> {
@@ -2146,6 +2163,7 @@ impl Signature {
                 item.required_arg(2)?,
             )
         } else {
+            // TODO #2530 digest_algo needs to depend on whether SHA1 was stated
             ("sha1", item.required_arg(0)?, item.required_arg(1)?)
         };
 
@@ -2178,20 +2196,21 @@ impl Signature {
         certs.iter().find(|&c| self.matches_cert(c))
     }
 
-    /// Try to check whether this signature is a valid signature of a
-    /// provided digest, given a slice of certificates that might contain
-    /// its signing key.
-    fn check_signature(&self, signed_digest: &[u8], certs: &[AuthCert]) -> SigCheckResult {
-        match self.find_cert(certs) {
-            None => SigCheckResult::MissingCert,
-            Some(cert) => {
-                let key = cert.signing_key();
-                match key.verify(signed_digest, &self.signature[..]) {
-                    Ok(()) => SigCheckResult::Valid,
-                    Err(_) => SigCheckResult::Invalid,
-                }
-            }
-        }
+    /// Find the certificate and assemble the pieces ready for verification
+    ///
+    /// `None` means precisely that we're missing the authcert.
+    fn signature_to_verify<'r>(
+        &'r self,
+        signed_digest: &'r [u8],
+        certs: &'r [AuthCert],
+    ) -> Option<ConsensusSignatureToVerify> {
+        let cert = self.find_cert(certs)?;
+        let key = cert.signing_key();
+        Some(ConsensusSignatureToVerify {
+            key,
+            signed_digest,
+            signature: &self.signature,
+        })
     }
 }
 
@@ -2200,6 +2219,68 @@ impl EncodeOrd for Signature {
         let k: for<'s> fn(&'_ Signature) -> (&'_ _, &'_ _) = |s| (&s.key_ids, &s.signature);
         Ord::cmp(&k(self), &k(other))
     }
+}
+
+/// Signature information in a consensus, to be verified
+///
+/// Used by callers of [`SignatureGroup::verify_general`],
+/// to allow verification to be suppressed if all we wanted to know was
+/// whether we have enough signatures and enough authcerts.
+//
+// TODO DIRAUTH make this module-private when poc is abolished
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ConsensusSignatureToVerify<'r> {
+    /// KP_auth_sign_rsa
+    key: &'r ll::pk::rsa::PublicKey,
+
+    /// The digest (actual RSA signature payload, before PKCS#11 padding)
+    signed_digest: &'r [u8],
+
+    /// The RSA signature value
+    signature: &'r [u8],
+}
+
+/// Token indicating that signature verification has been done, if required
+///
+/// Prevents accidentally passing an unintended no-op function as
+/// `do_verify` to [`SignatureGroup::verify_general`].
+///
+/// Write `SignatureVerifiedIfIntended {}` to construct this,
+/// only in code which has actually done the verification,
+/// or code which is deliberately not verifying at all.
+pub(crate) struct SignatureVerifiedIfIntended {}
+
+impl<'r> ConsensusSignatureToVerify<'r> {
+    /// Verify this signature
+    ///
+    // TODO DIRAUTH make this module-private when poc is abolished
+    pub(crate) fn verify(self) -> Result<SignatureVerifiedIfIntended, VerifyFailed> {
+        self.key.verify(self.signed_digest, self.signature)?;
+        Ok(SignatureVerifiedIfIntended {})
+    }
+}
+
+/// How `verify_general` should decide who is a trusted authority
+///
+/// Don't use this for other purposes
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum VerifyGeneralTrustedAuthorities<'r> {
+    /// Trust these authorities.
+    TrustTheseAuthorities {
+        /// The HKP_auth_id_rsa
+        trusted: &'r [RsaIdentity],
+    },
+
+    /// For the benefit of `SignatureGroup::validate`, used by the old parser, only
+    ///
+    /// Every `AuthCert` passed to `verify_general` is a real authority (!)
+    /// (But not necessarily a different one!)
+    HazardouslyAssumeAllAuthCertsAreRealAuthorities {
+        /// Total number of authorities that we trust
+        ///
+        /// Used only to calculate the threshold
+        n_authorities: usize,
+    },
 }
 
 impl SignatureGroup {
@@ -2252,46 +2333,149 @@ impl SignatureGroup {
     /// authorities.  This API requires that `n_authorities` is the number of
     /// authorities we believe in, and that every cert in `certs` belongs
     /// to a real authority.
-    fn validate(&self, n_authorities: usize, certs: &[AuthCert]) -> bool {
+    fn validate(&self, n_authorities: usize, certs: &[AuthCert]) -> Result<(), VerifyFailed> {
+        // TODO we ought to take the set of trusted authorities as an argument,
+        // rather than use VGTA::HazardouslyAssumeAllAuthCertsAreRealAuthorities.
+        self.verify_general(
+            VerifyGeneralTrustedAuthorities::HazardouslyAssumeAllAuthCertsAreRealAuthorities {
+                n_authorities,
+            },
+            certs,
+            |tv| tv.verify(),
+        )
+    }
+
+    /// Check signatures (maybe), but not timeliness
+    ///
+    /// Examines the signatures and collates them with authcerts.
+    /// Performs the necessary consensus signature verifications, via `do_verify`.
+    ///
+    /// If there are not enough authcerts or not enough signatures,
+    /// throws a `ConsensusVerifiabilityError`.
+    ///
+    /// Differs from [`SignatureGroup::validate`]:
+    ///
+    ///  * Intended also for use with types from parse2.
+    ///
+    ///  * Yields information about missing authcerts directly in the return value,
+    ///    and can be used without actually doing the verification,
+    ///    so there's no need for a separate "which certs are we missing" function.
+    ///
+    ///  * Threshold is passed as a parameter (wanted for votes).
+    ///
+    ///  * Ability to check authority identities, by passing `trusted_authorities`.
+    ///    (done with `authorities_are_correct` in old parser,
+    ///    apparently with no engineered safeguard against consensus user omitting to do so).
+    ///
+    ///    **If `trusted_authorities` is None, all authorities in `certs` are treated as trusted**.
+    ///
+    ///  * Returns `Result`, not a boolean
+    ///
+    ///  * We prefer the term `verify` to `validate`.  All this does is signature verification.
+    ///
+    // TODO DIRAUTH make this module-private when poc is abolished
+    pub(crate) fn verify_general<E>(
+        &self,
+        trusted_authorities: VerifyGeneralTrustedAuthorities,
+        certs: &[AuthCert],
+        do_verify: impl Fn(ConsensusSignatureToVerify) -> Result<SignatureVerifiedIfIntended, E>,
+    ) -> Result<(), E>
+    where
+        ConsensusVerifiabilityError: Into<E>,
+    {
+        use VerifyGeneralTrustedAuthorities as TA;
+
         // A set of the authorities (by identity) who have have signed
         // this document.  We use a set here in case `certs` has more
         // than one certificate for a single authority.
         let mut ok: HashSet<RsaIdentity> = HashSet::new();
+        let mut missing = HashSet::new();
+        let mut verify_failed = Ok(());
 
         for sig in &self.signatures {
-            let id_fingerprint = &sig.key_ids.id_fingerprint;
+            // Exhaustive pattern makes it hard to accidentally ignore a field.
+            let Signature {
+                digest_algo,
+                key_ids:
+                    AuthCertKeyIds {
+                        id_fingerprint,
+                        // h_kp_auth_sign_rsa, which Signature::check_signature
+                        // checks against the authcert.
+                        sk_fingerprint: _,
+                    },
+                // Used by Signature::check_signature
+                signature: _,
+            } = sig;
+
+            match trusted_authorities {
+                TA::TrustTheseAuthorities { trusted } => {
+                    if !trusted.contains(id_fingerprint) {
+                        continue;
+                    }
+                }
+                TA::HazardouslyAssumeAllAuthCertsAreRealAuthorities { .. } => {
+                    // OK then!
+                }
+            }
+
             if ok.contains(id_fingerprint) {
                 // We already checked at least one signature using this
                 // authority's identity fingerprint.
                 continue;
             }
 
-            use DirectorySignatureHashAlgo as DSHA;
-            use KeywordOrString as KOS;
-
-            let d: Option<&[u8]> = match sig.digest_algo.algorithm() {
-                KOS::Known(DSHA::Sha256) => self.hashes.sha256.as_ref().map(|a| &a[..]),
-                // TODO #2530 this needs to depend on whether `sha1` was stated (!)
-                KOS::Known(DSHA::Sha1) => self.hashes.sha1.as_ref().map(|a| &a[..]),
-                _ => None, // We don't know how to find this digest.
-            };
-            if d.is_none() {
+            let Some(d) = self.hashes.hash_slice_for_verification(digest_algo) else {
                 // We don't support this kind of digest for this kind
                 // of document.
                 continue;
-            }
+            };
 
-            // Unwrap should be safe because of above `d.is_none()` check
-            #[allow(clippy::unwrap_used)]
-            match sig.check_signature(d.as_ref().unwrap(), certs) {
-                SigCheckResult::Valid => {
+            let Some(tv) = sig.signature_to_verify(d, certs) else {
+                missing.insert(sig.key_ids);
+                continue;
+            };
+            match do_verify(tv) {
+                Ok::<SignatureVerifiedIfIntended, _>(_) => {
                     ok.insert(*id_fingerprint);
                 }
-                _ => continue,
+                Err(e) => {
+                    verify_failed = Err(e);
+                }
             }
         }
 
-        ok.len() > (n_authorities / 2)
+        let n_authorities = match trusted_authorities {
+            TA::TrustTheseAuthorities { trusted } => trusted.len(),
+            TA::HazardouslyAssumeAllAuthCertsAreRealAuthorities { n_authorities: n } => n,
+        };
+        let threshold = (n_authorities / 2) + 1; // strict majority
+
+        if ok.len() >= threshold {
+            Ok(())
+        } else {
+            // Throw the verification error if any of the verifications failed
+            verify_failed?;
+
+            // Otherwise report that we're missing certs and/or signers
+            Err(if missing.is_empty() {
+                ConsensusVerifiabilityError::InsufficientTrustedSigners
+            } else {
+                let deficit = threshold - ok.len();
+                ConsensusVerifiabilityError::MissingAuthCerts { missing, deficit }
+            }
+            .into())
+        }
+    }
+}
+
+impl From<ConsensusVerifiabilityError> for VerifyFailed {
+    fn from(cve: ConsensusVerifiabilityError) -> VerifyFailed {
+        use ConsensusVerifiabilityError as CVE;
+        use VerifyFailed as VF;
+        match cve {
+            CVE::InsufficientTrustedSigners => VF::InsufficientTrustedSigners,
+            CVE::MissingAuthCerts { .. } => VF::InsufficientTrustedSigners,
+        }
     }
 }
 

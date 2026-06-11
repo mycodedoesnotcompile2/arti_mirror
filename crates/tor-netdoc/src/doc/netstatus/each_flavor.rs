@@ -537,11 +537,8 @@ impl ExternallySigned<Consensus> for UnvalidatedConsensus {
                 "Didn't set authorities on consensus"
             ))),
             Some(authority) => {
-                if self.siggroup.validate(authority, k) {
-                    Ok(())
-                } else {
-                    Err(EK::BadSignature.err())
-                }
+                self.siggroup.validate(authority, k)
+                    .map_err(|_: VerifyFailed| EK::BadSignature.err())
             }
         }
     }
