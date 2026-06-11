@@ -2284,6 +2284,7 @@ impl SignatureGroup {
         let mut verify_failed = Ok(());
 
         for sig in &self.signatures {
+            // Exhaustive pattern makes it hard to accidentally ignore a field.
             let Signature {
                 digest_algo,
                 key_ids:
