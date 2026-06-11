@@ -2560,8 +2560,10 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
-    use crate::parse2::{ParseInput, parse_netdoc};
+    use crate::doc::authcert::{AuthCert, AuthCertUnverified};
+    use crate::parse2::{ParseInput, parse_netdoc, parse_netdoc_multiple};
     use hex_literal::hex;
+    use humantime::parse_rfc3339;
     use std::fs;
 
     const CERTS: &str = include_str!("../../testdata/authcerts2.txt");
@@ -2901,5 +2903,51 @@ mod test {
         )
         .unwrap();
         assert_eq!(ps, ps3);
+    }
+
+    #[cfg(feature = "incomplete")]
+    #[test]
+    fn parse_consensus_ns() -> anyhow::Result<()> {
+        use crate::parse2::poc::netstatus::cons as plain; // XXXX
+
+        let file = "testdata2/cached-consensus";
+        let text = fs::read_to_string(file)?;
+        let now = parse_rfc3339("2000-01-01T00:02:25Z")?;
+
+        let input = ParseInput::new(&text, file);
+        let doc: plain::NetworkStatusUnverified = parse_netdoc(&input)?;
+
+        let file = "testdata2/cached-certs";
+        let text = fs::read_to_string(file)?;
+        let input = ParseInput::new(&text, file);
+        let certs: Vec<AuthCertUnverified> = parse_netdoc_multiple(&input)?;
+        let certs = certs
+            .into_iter()
+            .map(|cert| cert.verify_selfcert(now))
+            .collect::<Result<Vec<AuthCert>, _>>()?;
+
+        let doc = doc.verify(
+            now,
+            &certs.iter().map(|cert| *cert.fingerprint).collect_vec(),
+            &certs.iter().collect_vec(),
+        )?;
+
+        println!("{doc:?}");
+
+        Ok(())
+    }
+
+    #[cfg(feature = "incomplete")]
+    #[test]
+    fn parse_consensus_md() -> anyhow::Result<()> {
+        let file = "testdata2/cached-microdesc-consensus";
+        let text = fs::read_to_string(file)?;
+
+        let input = ParseInput::new(&text, file);
+        let doc: md::NetworkStatusUnverified = parse_netdoc(&input)?;
+
+        println!("{doc:?}");
+
+        Ok(())
     }
 }
