@@ -6,10 +6,12 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use crate::encode::{ItemEncoder, ItemValueEncodable};
 use crate::parse2::{ErrorProblem as EP, ItemValueParseable, UnparsedItem};
 
 use super::{PolicyError, PortRanges, RuleKind};
 use tor_basic_utils::intern::InternCache;
+use tor_error::Bug;
 
 use derive_deftly::Deftly;
 
@@ -149,6 +151,13 @@ impl ItemValueParseable for PortPolicy {
             RuleKind::Reject => ranges.invert(),
         }
         Ok(Self { allowed: ranges })
+    }
+}
+
+impl ItemValueEncodable for PortPolicy {
+    fn write_item_value_onto(&self, mut out: ItemEncoder) -> Result<(), Bug> {
+        out.args_raw_string(self);
+        Ok(())
     }
 }
 
