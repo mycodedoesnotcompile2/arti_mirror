@@ -2541,8 +2541,11 @@ mod boolean {
 
 /// Types for router descriptors.
 pub mod routerdesc {
+    use crate::types::EmbeddedCert;
+
     use super::*;
     use parse2::ErrorProblem as EP;
+    use tor_cert::KeyUnknownCert;
     use tor_llcrypto::pk::ed25519;
 
     /// Version argument found in an `overload-general` item.
@@ -2785,6 +2788,33 @@ pub mod routerdesc {
         /// The estimate of the capacity this relay can handle.
         pub observed: u64,
     }
+
+    /// Ntor onion key cross-certificate.
+    ///
+    /// This struct contains an [`Ed25519NtorCrossCert`] alongside the `bit`
+    /// field required for converting the ntor X25519 key to an Ed25519 key.
+    ///
+    /// # See Also
+    ///
+    /// * [`Ed25519NtorCrossCert`]
+    /// * <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:ntor-onion-key-crosscert>
+    #[derive(Debug, Clone, Deftly)]
+    #[derive_deftly(ItemValueParseable, ItemValueEncodable)]
+    #[deftly(netdoc(no_extra_args))]
+    #[non_exhaustive]
+    pub struct NtorOnionKeyCrossCert {
+        /// True if X coordinate of the ntor onion key is negative, false if
+        /// positive.
+        // TODO spec: This name is very unfortunate, how about we change it
+        // to `is_negative`.  Also, using a boolean for storing a sign bit feels
+        // wrong to me due to the zero edge case, which would not be negative,
+        // but also not positive either.
+        pub bit: NumericBoolean,
+
+        /// The actual embedded ntor onion key certificate.
+        #[deftly(netdoc(object))]
+        pub cert: EmbeddedCert<Ed25519NtorCrossCert, KeyUnknownCert>,
+    }
 }
 
 #[cfg(test)]
@@ -2820,7 +2850,10 @@ mod test {
         Pos, Result,
         encode::NetdocEncodable,
         parse2::{ErrorProblem, ParseInput, VerifyFailed},
-        types::EmbeddedCert,
+        types::{
+            EmbeddedCert,
+            routerdesc::{NtorOnionKeyCrossCert, RouterDescIntroItem},
+        },
     };
 
     /// Decode s as a multi-line base64 string, ignoring ascii whitespace.
@@ -3504,6 +3537,73 @@ mod test {
             .unwrap();
             assert_eq!(encoder.finish().unwrap(), output);
         }
+    }
+
+    #[test]
+    fn ntor_onion_key_cross_cert() {
+        // Dummy helper for parsing a subset of a router desc.
+        #[derive(Debug, Deftly)]
+        #[derive_deftly(NetdocParseable)]
+        #[allow(unused)]
+        struct TestDoc {
+            /// Intro item.
+            router: RouterDescIntroItem,
+
+            /// Timestamp used for `now` in certificate validation.
+            #[deftly(netdoc(single_arg))]
+            published: Iso8601TimeSp,
+
+            /// Required to ensure certified key of the crosscert.
+            #[deftly(netdoc(single_arg))]
+            master_key_ed25519: Ed25519Public,
+
+            /// Required to obtain the key signing the crosscert.
+            #[deftly(netdoc(single_arg))]
+            ntor_onion_key: Curve25519Public,
+
+            /// The actual crosscert.
+            ntor_onion_key_crosscert: NtorOnionKeyCrossCert,
+        }
+
+        impl TestDoc {
+            // Quick verify helper.
+            fn verify(&self, now: SystemTime) {
+                Ed25519NtorCrossCert::verify(
+                    // Converts X25519 to Ed25519.
+                    tor_llcrypto::pk::keymanip::convert_curve25519_to_ed25519_public(
+                        &self.ntor_onion_key.0,
+                        self.ntor_onion_key_crosscert.bit.0.into(),
+                    )
+                    .unwrap()
+                    .into(),
+                    self.master_key_ed25519.0,
+                    self.ntor_onion_key_crosscert.cert.raw_unverified().clone(),
+                    Duration::ZERO,
+                    now,
+                )
+                .unwrap();
+            }
+        }
+
+        let descs = include_str!("../../testdata2/cached-descriptors.new");
+        let descs = parse2::parse_netdoc_multiple::<TestDoc>(&ParseInput::new(
+            descs,
+            "cached-descriptors.new",
+        ))
+        .unwrap();
+
+        // Find the first with negative and first with positive X coordinate.
+        let negative_rd = descs
+            .iter()
+            .find(|rd| rd.ntor_onion_key_crosscert.bit.0)
+            .unwrap();
+        let positive_rd = descs
+            .iter()
+            .find(|rd| !rd.ntor_onion_key_crosscert.bit.0)
+            .unwrap();
+
+        negative_rd.verify(negative_rd.published.0);
+        positive_rd.verify(positive_rd.published.0);
     }
 
     /// Helper to call methods for edcerts.
