@@ -2560,12 +2560,9 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
+    use crate::parse2::{ParseInput, parse_netdoc};
     use hex_literal::hex;
-    #[cfg(feature = "incomplete")]
-    use {
-        crate::parse2::{ParseInput, parse_netdoc},
-        std::fs,
-    };
+    use std::fs;
 
     const CERTS: &str = include_str!("../../testdata/authcerts2.txt");
     const CONSENSUS: &str = include_str!("../../testdata/mdconsensus1.txt");
