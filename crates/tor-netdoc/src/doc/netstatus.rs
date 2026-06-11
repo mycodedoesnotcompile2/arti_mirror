@@ -601,13 +601,7 @@ impl FromStr for RecommendedTorVersions {
 
 impl Display for RecommendedTorVersions {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for s in Itertools::intersperse(
-            self.0.iter().map(|s| &**s), //
-            ",",
-        ) {
-            write!(f, "{s}")?;
-        }
-        Ok(())
+        write!(f, "{}", iter_join(",", &self.0))
     }
 }
 
