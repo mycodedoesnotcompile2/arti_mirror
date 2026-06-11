@@ -20,7 +20,6 @@ use std::slice;
 
 use anyhow::Context as _;
 use derive_deftly::Deftly;
-use itertools::{Itertools, chain};
 use testresult::TestResult;
 use tor_error::{Bug, ErrorReport as _};
 
@@ -327,24 +326,7 @@ where
 
     eprintln!("====== enc got ======\n{reenc}====== end ======");
 
-    assert_eq!(
-        &enc,
-        &reenc,
-        "re-encode mismatch:\n{}",
-        Itertools::zip_longest(
-            chain!(["EXPECTED"], enc.lines()),
-            chain!(["GOT"], reenc.lines()),
-        )
-        .enumerate()
-        .map(|(i, eob)| {
-            let lno = i + 1;
-            let [l, r] = [eob.clone().left(), eob.right()];
-            let yn = if l == r { "  " } else { "!=" };
-            let [l, r] = [l, r].map(|s| s.unwrap_or_default());
-            format!(" {lno:2} {l:30} {yn} {r}\n")
-        })
-        .collect::<String>(),
-    );
+    assert_eq_or_diff!(&enc, &reenc,);
 
     Ok(())
 }
