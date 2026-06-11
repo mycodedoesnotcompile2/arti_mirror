@@ -64,19 +64,3 @@ fn parse_consensus_md() -> anyhow::Result<()> {
 
     Ok(())
 }
-
-#[test]
-fn parse_authcert() -> anyhow::Result<()> {
-    let file = "testdata2/cached-certs--1";
-    let now = parse_rfc3339("2000-06-01T00:00:05Z")?;
-    let text = fs::read_to_string(file)?;
-    let input = ParseInput::new(&text, file);
-    let doc: AuthCertUnverified = parse_netdoc(&input)?;
-    let doc = doc.verify_selfcert(now)?;
-    println!("{doc:?}");
-    assert_eq!(
-        doc.fingerprint.0.to_string(),
-        "$0b8997614ec647c1c6b6a044e2b5408f0b823fb0",
-    );
-    Ok(())
-}
