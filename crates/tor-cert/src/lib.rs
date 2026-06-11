@@ -59,6 +59,7 @@ use tor_bytes::{Readable, Reader, Writeable, Writer};
 use tor_llcrypto::pk::*;
 
 use web_time_compat as time;
+use saturating_time::SaturatingTime;
 
 pub use err::CertError;
 
@@ -621,12 +622,12 @@ impl tor_checkable::SelfSigned<SigCheckedCert> for UncheckedCert {
 impl tor_checkable::Timebound<Ed25519Cert> for Ed25519Cert {
     type Error = tor_checkable::TimeValidityError;
 
+    #[allow(unstable_name_collisions)]
     fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), Self::Error> {
         if self.is_expired_at(*t) {
             let expiry = self.expiry();
             Err(Self::Error::Expired(
-                t.duration_since(expiry)
-                    .expect("certificate expiry time inconsistent"),
+                t.saturating_duration_since(expiry)
             ))
         } else {
             Ok(())
