@@ -73,9 +73,8 @@ use crate::parse::parser::{Section, SectionRules, SectionRulesBuilder};
 use crate::parse::tokenize::{Item, ItemResult, NetDocReader};
 use crate::parse2::{
     self, ArgumentError, ArgumentStream, ErrorProblem, IsStructural, ItemArgumentParseable,
-    ItemStream, ItemValueParseable, KeywordRef, NetdocParseable, SignatureHashInputs,
-    SignatureItemParseable, StopAt, UnparsedItem, VerifyFailed,
-    NetdocParseableUnverified,
+    ItemStream, ItemValueParseable, KeywordRef, NetdocParseable, NetdocParseableUnverified,
+    SignatureHashInputs, SignatureItemParseable, StopAt, UnparsedItem, VerifyFailed,
 };
 use crate::types::relay_flags::{self, DocRelayFlags};
 use crate::types::{self, *};
