@@ -26,14 +26,14 @@ use humantime::parse_rfc3339;
 #[test]
 fn parse_consensus_ns() -> anyhow::Result<()> {
     let file = "testdata2/cached-consensus";
-    let text = fs::read_to_string(&file)?;
+    let text = fs::read_to_string(file)?;
     let now = parse_rfc3339("2000-01-01T00:02:25Z")?;
 
     let input = ParseInput::new(&text, file);
     let doc: plain::NetworkStatusUnverified = parse_netdoc(&input)?;
 
     let file = "testdata2/cached-certs";
-    let text = fs::read_to_string(&file)?;
+    let text = fs::read_to_string(file)?;
     let input = ParseInput::new(&text, file);
     let certs: Vec<AuthCertUnverified> = parse_netdoc_multiple(&input)?;
     let certs = certs
@@ -55,7 +55,7 @@ fn parse_consensus_ns() -> anyhow::Result<()> {
 #[test]
 fn parse_consensus_md() -> anyhow::Result<()> {
     let file = "testdata2/cached-microdesc-consensus";
-    let text = fs::read_to_string(&file)?;
+    let text = fs::read_to_string(file)?;
 
     let input = ParseInput::new(&text, file);
     let doc: md::NetworkStatusUnverified = parse_netdoc(&input)?;
