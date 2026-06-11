@@ -2622,6 +2622,7 @@ mod test {
     use humantime::parse_rfc3339;
     use std::fmt::Debug;
     use std::fs;
+    use std::time::Duration;
     use tor_checkable::Timebound;
 
     const CERTS: &str = include_str!("../../testdata/authcerts2.txt");
@@ -3048,6 +3049,7 @@ mod test {
     fn roundtrip_netstatus<UV, V, VE>(
         file: &str,
         verify: impl FnOnce(UV, &[RsaIdentity], &[AuthCert]) -> Result<TimerangeBound<V>, VE>,
+        adjust_now: Duration,
         adjust_exp: impl FnOnce(&mut String),
     ) -> anyhow::Result<()>
     where
@@ -3057,7 +3059,7 @@ mod test {
         V: Debug + NetdocEncodable,
     {
         let text = fs::read_to_string(file)?;
-        let now = parse_rfc3339("2000-01-01T00:02:25Z")?;
+        let now = parse_rfc3339("2000-01-01T00:02:25Z")? + adjust_now;
 
         let mut input = ParseInput::new(&text, file);
         input.retain_unknown_values();
@@ -3119,6 +3121,7 @@ mod test {
         roundtrip_netstatus::<plain::NetworkStatusUnverified, _, _>(
             "testdata2/cached-consensus",
             plain::NetworkStatusUnverified::verify,
+            Duration::ZERO,
             |exp| {
                 let mut regsub = |re, repl| regsub(exp, re, repl);
 
@@ -3146,6 +3149,7 @@ mod test {
         roundtrip_netstatus::<md::NetworkStatusUnverified, _, _>(
             "testdata2/cached-microdesc-consensus",
             md::NetworkStatusUnverified::verify,
+            Duration::ZERO,
             |exp| {
                 let mut regsub = |re, repl| regsub(exp, re, repl);
 
