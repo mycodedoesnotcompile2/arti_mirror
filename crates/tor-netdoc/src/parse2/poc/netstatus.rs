@@ -56,7 +56,7 @@ fn verify_general_timeless(
     };
 
     group.verify_general(
-        VerifyGeneralTrustedAuthorities::TrustTheseAuthorities { trusted },
+        VerifyGeneralTrustedAuthorities::TrustThese { trusted },
         &certs.iter().copied().cloned().collect_vec(),
         |tv| tv.verify(),
     )

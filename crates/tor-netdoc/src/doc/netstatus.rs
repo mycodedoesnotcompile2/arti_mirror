@@ -2266,7 +2266,7 @@ impl<'r> ConsensusSignatureToVerify<'r> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum VerifyGeneralTrustedAuthorities<'r> {
     /// Trust these authorities.
-    TrustTheseAuthorities {
+    TrustThese {
         /// The HKP_auth_id_rsa
         trusted: &'r [RsaIdentity],
     },
@@ -2275,7 +2275,7 @@ pub(crate) enum VerifyGeneralTrustedAuthorities<'r> {
     ///
     /// Every `AuthCert` passed to `verify_general` is a real authority (!)
     /// (But not necessarily a different one!)
-    HazardouslyAssumeAllAuthCertsAreRealAuthorities {
+    HazardouslyAssumeAllAuthCertsAreReal {
         /// Total number of authorities that we trust
         ///
         /// Used only to calculate the threshold
@@ -2335,9 +2335,9 @@ impl SignatureGroup {
     /// to a real authority.
     fn validate(&self, n_authorities: usize, certs: &[AuthCert]) -> Result<(), VerifyFailed> {
         // TODO we ought to take the set of trusted authorities as an argument,
-        // rather than use VGTA::HazardouslyAssumeAllAuthCertsAreRealAuthorities.
+        // rather than use VGTA::HazardouslyAssumeAllAuthCertsAreReal.
         self.verify_general(
-            VerifyGeneralTrustedAuthorities::HazardouslyAssumeAllAuthCertsAreRealAuthorities {
+            VerifyGeneralTrustedAuthorities::HazardouslyAssumeAllAuthCertsAreReal {
                 n_authorities,
             },
             certs,
@@ -2408,12 +2408,12 @@ impl SignatureGroup {
             } = sig;
 
             match trusted_authorities {
-                TA::TrustTheseAuthorities { trusted } => {
+                TA::TrustThese { trusted } => {
                     if !trusted.contains(id_fingerprint) {
                         continue;
                     }
                 }
-                TA::HazardouslyAssumeAllAuthCertsAreRealAuthorities { .. } => {
+                TA::HazardouslyAssumeAllAuthCertsAreReal { .. } => {
                     // OK then!
                 }
             }
@@ -2445,8 +2445,8 @@ impl SignatureGroup {
         }
 
         let n_authorities = match trusted_authorities {
-            TA::TrustTheseAuthorities { trusted } => trusted.len(),
-            TA::HazardouslyAssumeAllAuthCertsAreRealAuthorities { n_authorities: n } => n,
+            TA::TrustThese { trusted } => trusted.len(),
+            TA::HazardouslyAssumeAllAuthCertsAreReal { n_authorities: n } => n,
         };
         let threshold = (n_authorities / 2) + 1; // strict majority
 
