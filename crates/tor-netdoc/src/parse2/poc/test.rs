@@ -15,6 +15,8 @@
 #![allow(clippy::needless_borrows_for_generic_args)] // TODO add to maint/add_warning
 
 use super::*;
+use super::netstatus::md;
+use super::netstatus::cons as plain; // XXXX
 use crate::doc::authcert;
 use authcert::AuthCert as DirAuthKeyCert;
 use authcert::AuthCertUnverified as DirAuthKeyCertUnverified;
@@ -30,7 +32,7 @@ fn parse_consensus_ns() -> anyhow::Result<()> {
     let now = parse_rfc3339("2000-01-01T00:02:25Z")?;
 
     let input = ParseInput::new(&text, file);
-    let doc: netstatus::NetworkStatusUnverifiedNs = parse_netdoc(&input)?;
+    let doc: plain::NetworkStatusUnverified = parse_netdoc(&input)?;
 
     let file = "testdata2/cached-certs";
     let text = fs::read_to_string(&file)?;
@@ -58,7 +60,7 @@ fn parse_consensus_md() -> anyhow::Result<()> {
     let text = fs::read_to_string(&file)?;
 
     let input = ParseInput::new(&text, file);
-    let doc: netstatus::md::NetworkStatusUnverified = parse_netdoc(&input)?;
+    let doc: md::NetworkStatusUnverified = parse_netdoc(&input)?;
 
     println!("{doc:?}");
 
