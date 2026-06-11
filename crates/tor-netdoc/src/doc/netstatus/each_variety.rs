@@ -154,14 +154,16 @@ pub struct Preamble {
     pub voting_delay: Option<(u32, u32)>,
 
     /// List of recommended Tor client versions.
-    #[deftly(constructor)]
-    #[deftly(netdoc(single_arg))]
-    pub client_versions: Vec<String>,
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:client-versions>
+    #[deftly(netdoc(default))]
+    pub client_versions: RecommendedTorVersions,
 
     /// List of recommended Tor relay versions.
-    #[deftly(constructor)]
-    #[deftly(netdoc(single_arg))]
-    pub server_versions: Vec<String>,
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:server-versions>
+    #[deftly(netdoc(default))]
+    pub server_versions: RecommendedTorVersions,
 
     /// Router flags which could be determined
     #[deftly(constructor)]

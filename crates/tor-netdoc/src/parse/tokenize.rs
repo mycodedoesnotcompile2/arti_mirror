@@ -504,7 +504,7 @@ pub(crate) struct MaybeItem<'a, 'b, K: Keyword>(Option<&'a Item<'b, K>>);
 // All methods here are as for Item.
 impl<'a, 'b, K: Keyword> MaybeItem<'a, 'b, K> {
     /// Return the position of this item, if it has one.
-    fn pos(&self) -> Pos {
+    pub(crate) fn pos(&self) -> Pos {
         match self.0 {
             Some(item) => item.pos(),
             None => Pos::None,

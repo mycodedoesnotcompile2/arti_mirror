@@ -346,20 +346,26 @@ impl Preamble {
             .into();
         let lifetime = Lifetime::new(valid_after, fresh_until, valid_until)?;
 
-        let client_versions = sec
-            .maybe(CLIENT_VERSIONS)
-            .args_as_str()
-            .unwrap_or("")
-            .split(',')
-            .map(str::to_string)
-            .collect();
-        let server_versions = sec
-            .maybe(SERVER_VERSIONS)
-            .args_as_str()
-            .unwrap_or("")
-            .split(',')
-            .map(str::to_string)
-            .collect();
+        let parse_rec_versions = |item| {
+            let item = sec
+                .maybe(item);
+            let args = item
+                .args_as_str()
+                .unwrap_or("")
+                // C Tor emits an item with trailing whitespace which we must ignore
+                .trim();
+            // We want only the first arg, according to the spec.
+            // We could want to use MaybeItem::parse_arg, but it treats absence of the
+            // argument as an error.  There is no parse_optional_arg on `MaybeItem`.
+            // We could add that, but I am trying to avoid adding code to the old parser.
+            // So instead we reimplement argument splitting (again).
+            args
+                .split_once(|c: char| c.is_ascii_whitespace()).map(|(l, _r)| l).unwrap_or(args)
+                .parse()
+                .map_err(|_e| EK::BadArgument.at_pos(item.pos()))
+        };
+        let client_versions = parse_rec_versions(CLIENT_VERSIONS)?;
+        let server_versions = parse_rec_versions(SERVER_VERSIONS)?;
 
         let proto_statuses = {
             let client = ProtoStatus::from_section(
