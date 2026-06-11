@@ -2565,6 +2565,7 @@ mod test {
     use hex_literal::hex;
     use humantime::parse_rfc3339;
     use std::fs;
+    use tor_checkable::Timebound;
 
     const CERTS: &str = include_str!("../../testdata/authcerts2.txt");
     const CONSENSUS: &str = include_str!("../../testdata/mdconsensus1.txt");
@@ -2908,8 +2909,6 @@ mod test {
     #[cfg(feature = "incomplete")]
     #[test]
     fn parse_consensus_ns() -> anyhow::Result<()> {
-        use crate::parse2::poc::netstatus::cons as plain; // XXXX
-
         let file = "testdata2/cached-consensus";
         let text = fs::read_to_string(file)?;
         let now = parse_rfc3339("2000-01-01T00:02:25Z")?;
@@ -2927,9 +2926,10 @@ mod test {
             .collect::<Result<Vec<AuthCert>, _>>()?;
 
         let doc = doc.verify(
-            now,
             &certs.iter().map(|cert| *cert.fingerprint).collect_vec(),
-            &certs.iter().collect_vec(),
+            &certs,
+        )?.check_valid_at(
+            &now,
         )?;
 
         println!("{doc:?}");
