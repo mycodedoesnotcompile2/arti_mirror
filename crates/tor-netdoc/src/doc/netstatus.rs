@@ -2928,9 +2928,8 @@ mod test {
         let doc = doc.verify(
             &certs.iter().map(|cert| *cert.fingerprint).collect_vec(),
             &certs,
-        )?.check_valid_at(
-            &now,
-        )?;
+        )?
+        .check_valid_at(&now)?;
 
         println!("{doc:?}");
 
