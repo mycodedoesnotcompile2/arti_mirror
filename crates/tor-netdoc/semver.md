@@ -1,3 +1,4 @@
+ADDED: `Ed25519NtorCrossCert` type
 ADDED: `ItemPresent` type
 ADDED: `RouterDesc::extra_info_digest` field
 ADDED: `RouterDesc::contact` field
