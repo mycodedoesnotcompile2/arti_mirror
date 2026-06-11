@@ -117,10 +117,6 @@ pub struct NetworkStatusVersionItem {
 /// instead, in `Consensus.flavor`, there's just the `ConsensusFlavor`.
 /// `parse2` doesn't (currently) support subdocuments which contain the parent's intro item
 /// (ie, `#[deftly(netdoc(flatten))]` is not supported on the first field.)
-//
-// TODO DIRAUTH this is missing some fields that need to be included in votes,
-// by dirauths, when voting.  They are not needed for calculating a consensus from votes.
-// there are individual TODO comments about each such defect.
 #[derive(Clone, Debug, Deftly)]
 #[derive_deftly(Constructor, NetdocEncodableFields, NetdocParseableFields)]
 #[allow(clippy::exhaustive_structs)]
@@ -170,8 +166,6 @@ pub struct Preamble {
     #[deftly(netdoc(with = "relay_flags::ParserEncoder::<relay_flags::NoImplicitRepr>"))]
     pub known_flags: DocRelayFlags,
 
-    // TODO DIRAUTH torspec#404 missing field: flag-thresholds (in votes)
-
     /// Lists of recommended and required subprotocols.
     ///
     /// **`{recommended,required}-{client,relay}-protocols`**
@@ -188,9 +182,6 @@ pub struct Preamble {
     /// Global shared-random values
     #[deftly(netdoc(flatten))]
     pub shared_rand: ns_type!( SharedRandStatuses, SharedRandStatuses, NotPresent ),
-
-    // TODO DIRAUTH missing field: bandwidth-file-headers (in votes)
-    // TODO DIRAUTH missing field: bandwidth-file-digest (in votes)
 
     #[doc(hidden)]
     #[deftly(netdoc(skip))]

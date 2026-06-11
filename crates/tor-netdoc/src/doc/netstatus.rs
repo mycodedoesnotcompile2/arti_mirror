@@ -2734,24 +2734,6 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "incomplete")]
-    fn parse2_vote() -> anyhow::Result<()> {
-        let file = "testdata2/v3-status-votes--1";
-        let text = fs::read_to_string(file)?;
-
-        // TODO DIRAUTH replace the poc struct here when we have parsing of proper whole votes
-        use crate::parse2::poc::netstatus::NetworkStatusUnverifiedVote;
-
-        let input = ParseInput::new(&text, file);
-        let doc: NetworkStatusUnverifiedVote = parse_netdoc(&input)?;
-
-        println!("{doc:?}");
-        println!("{:#?}", doc.inspect_unverified().0.r[0]);
-
-        Ok(())
-    }
-
-    #[test]
     fn test_bad() {
         use crate::Pos;
         fn check(fname: &str, e: &Error) {
@@ -3212,6 +3194,89 @@ mod test {
                 r#"^(r \S+ \S+) \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#,
                 "$1 2000-01-01 00:00:01",
             );
+        }
+    }
+
+    #[cfg(feature = "incomplete")]
+    #[test]
+    fn roundtrip_netstatus_vote() -> anyhow::Result<()> {
+        roundtrip_netstatus::<vote::NetworkStatusUnverified, _, _>(
+            "testdata2/v3-status-votes--1",
+            |doc, trusted, _| vote::NetworkStatusUnverified::verify(doc, trusted),
+            Duration::from_secs(20),
+        )
+    }
+
+    #[cfg(feature = "incomplete")]
+    impl MungeForRoundtrip for vote::NetworkStatusUnverified {
+        fn adjust_exp(exp: &mut String) {
+            // C Tor writes items in consensuses a different order to in votes!
+
+            // C Tor writes different stats items with different floating point formats!
+            let stats_massage_entry = |e: &str| {
+                let mut e = e.to_owned();
+                if e.contains('.') {
+                    regsub(
+                        &mut e,
+                        // strip trailing 0's and then trailing `.`
+                        r#"(?x)^ ( (?:wfu) = [0-9.]*? )( \.? 0+ ) $"#,
+                        "$1",
+                    );
+                }
+                e
+            };
+
+            // C Tor writes stats items in votes in an apparently arbitrarily chosen order
+            regsub(exp, r#"^stats (.+)$"#, |c: &regex::Captures| -> String {
+                format!(
+                    "stats {}",
+                    iter_join(" ", c[1].split(' ').sorted().map(stats_massage_entry)),
+                )
+            });
+
+            let mut regsub = |re: &_, repl| regsub(exp, re, repl);
+
+            // C Tor writes *-protocols in an apparently arbitrarily chosen order
+            regsub(
+                r#"(?x)
+                       ^ (recommended-relay-protocols\ .*)  \n
+                         (recommended-client-protocols\ .*) \n
+                         (required-relay-protocols\ .*)     \n
+                         (required-client-protocols\ .*)    \n
+                         (known-flags .*)$                  \n
+                    "#,
+                r#"$5
+$2
+$1
+$4
+$3
+"#,
+            );
+
+            // C Tor emits empty `client-versions` in consensuses, but not in votes.
+            // (See also the fixup in `roundtrip_netstatus`, which relates to the *syntax*)
+            //
+            // Some of our inputs (eg the testdata2 votes) don't contain meaningful
+            // info, so to make the C Tor output match our output, add them.
+            regsub(
+                r#"(?x) ^ (voting-delay\ .*) \n
+                          (known-flags\ .*) \n"#,
+                "$1
+client-versions
+server-versions
+$2
+",
+            );
+
+            //#                         (?:  a\ .* \n )?    )   #    a? )           we want to put m's
+
+            for missing_field in [
+                "bandwidth-file-headers", // TODO DIRAUTH implement
+                "bandwidth-file-digest",  // TODO DIRAUTH implement
+                "flag-thresholds",        // TODO DIRAUTH implement
+            ] {
+                regsub(&format!(r#"^{missing_field} .*\n"#), "");
+            }
         }
     }
 }
