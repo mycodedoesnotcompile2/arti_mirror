@@ -243,9 +243,10 @@ define_derive_deftly! {
     /// ```
     export HasMemoryCost expect items, beta_deftly:
 
-    impl<$tgens> $crate::HasMemoryCostStructural for $ttype
+    ${impl $crate::HasMemoryCostStructural
     where $twheres
               ${tmeta(has_memory_cost(bounds)) as token_stream, default {}}
+    }
     {
         fn indirect_memory_cost(&self, #[allow(unused)] et: $crate::EnabledToken) -> usize {
             ${define F_INDIRECT_COST {
