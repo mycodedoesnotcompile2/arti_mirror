@@ -3007,15 +3007,23 @@ mod test {
 
     #[cfg(feature = "incomplete")]
     #[test]
-    fn parse_consensus_md() -> anyhow::Result<()> {
-        let file = "testdata2/cached-microdesc-consensus";
-        let text = fs::read_to_string(file)?;
+    fn roundtrip_netstatus_md() -> anyhow::Result<()> {
+        roundtrip_netstatus::<md::NetworkStatusUnverified, _, _>(
+            "testdata2/cached-microdesc-consensus",
+            md::NetworkStatusUnverified::verify,
+            |exp| {
+                let mut regsub = |re, repl| regsub(exp, re, repl);
 
-        let input = ParseInput::new(&text, file);
-        let doc: md::NetworkStatusUnverified = parse_netdoc(&input)?;
-
-        println!("{doc:?}");
-
-        Ok(())
+                // C Tor writes nontrivial values for `publication` in rs `r` items,
+                // but we use a fixed string.
+                // https://spec.torproject.org/dir-spec/consensus-formats.html#item:r
+                //
+                // Not the same as in plain consensus: one fewer fields!
+                regsub(
+                    r#"^(r \S+ \S+) \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#,
+                    "$1 2000-01-01 00:00:01",
+                );
+            },
+        )
     }
 }
