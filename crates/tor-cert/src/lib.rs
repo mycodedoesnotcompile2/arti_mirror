@@ -418,7 +418,7 @@ impl Ed25519Cert {
 
     /// Return true iff this certificate will be expired at the time `when`.
     pub fn is_expired_at(&self, when: std::time::SystemTime) -> bool {
-        when >= self.expiry()
+        when > self.expiry()
     }
 
     /// Return the signed key or object that is authenticated by this
