@@ -2917,16 +2917,16 @@ mod test {
         input.retain_unknown_values();
         let doc: plain::NetworkStatusUnverified = parse_netdoc(&input)?;
 
-      let certs = {
-        let file = "testdata2/cached-certs";
-        let text = fs::read_to_string(file)?;
-        let input = ParseInput::new(&text, file);
-        let certs: Vec<AuthCertUnverified> = parse_netdoc_multiple(&input)?;
-        certs
-            .into_iter()
-            .map(|cert| cert.verify_selfcert(now))
-            .collect::<Result<Vec<AuthCert>, _>>()?
-      };
+        let certs = {
+            let file = "testdata2/cached-certs";
+            let text = fs::read_to_string(file)?;
+            let input = ParseInput::new(&text, file);
+            let certs: Vec<AuthCertUnverified> = parse_netdoc_multiple(&input)?;
+            certs
+                .into_iter()
+                .map(|cert| cert.verify_selfcert(now))
+                .collect::<Result<Vec<AuthCert>, _>>()?
+        };
 
         let doc = doc.verify(
             &certs.iter().map(|cert| *cert.fingerprint).collect_vec(),
