@@ -1,7 +1,12 @@
 //! Types related to certificates
 
-use crate::encode::{ItemEncoder, ItemObjectEncodable, ItemValueEncodable, NetdocEncodable, NetdocEncoder};
-use crate::parse2::{ErrorProblem as P2EP, IsStructural, ItemStream, KeywordRef, ItemObjectParseable, ItemValueParseable, NetdocParseable, UnparsedItem};
+use crate::encode::{
+    ItemEncoder, ItemObjectEncodable, ItemValueEncodable, NetdocEncodable, NetdocEncoder,
+};
+use crate::parse2::{
+    ErrorProblem as P2EP, IsStructural, ItemObjectParseable, ItemStream, ItemValueParseable,
+    KeywordRef, NetdocParseable, UnparsedItem,
+};
 use tor_bytes::{Writeable, Writer};
 use tor_error::{Bug, internal};
 
