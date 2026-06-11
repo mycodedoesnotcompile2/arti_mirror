@@ -2957,6 +2957,14 @@ mod test {
         let enc = enc.finish()?;
 
         let mut exp: String = text.clone();
+        let mut regsub = |re, repl| regsub(&mut exp, re, repl);
+
+        // C Tor writes empty versions lines with trailing space
+        regsub(
+            //
+            r#"^((?:client|server)-versions) $"#,
+            "$1",
+        );
 
         adjust_exp(&mut exp);
 
@@ -2986,13 +2994,6 @@ mod test {
         regsub(
             r#"^network-status-version 3$"#,
             "network-status-version 3 ns",
-        );
-
-        // C Tor writes empty versions lines with trailing space
-        regsub(
-            //
-            r#"^((?:client|server)-versions) $"#,
-            "$1",
         );
 
         // C Tor writes nontrivial values for `publication` in rs `r` items,
