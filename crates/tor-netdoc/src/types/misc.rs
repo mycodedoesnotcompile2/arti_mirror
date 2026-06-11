@@ -3484,8 +3484,8 @@ mod test {
             // Violate timestamp.
             (
                 T::cert_type(),
-                // We achieve this by setting expiry to now.
-                now,
+                // We achieve this by setting expiry to now - 1 day.
+                now - Duration::from_secs(64 * 64 * 24),
                 certified_pk.into(),
                 Some(&signing_pk),
                 &signing_key,

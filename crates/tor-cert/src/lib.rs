@@ -58,6 +58,7 @@ use tor_bytes::{Error as BytesError, Result as BytesResult};
 use tor_bytes::{Readable, Reader, Writeable, Writer};
 use tor_llcrypto::pk::*;
 
+use saturating_time::SaturatingTime;
 use web_time_compat as time;
 
 pub use err::CertError;
@@ -416,8 +417,10 @@ impl Ed25519Cert {
     }
 
     /// Return true iff this certificate will be expired at the time `when`.
+    ///
+    /// This is inclusive, meaning that `when == self.expiry()` is still valid.
     pub fn is_expired_at(&self, when: std::time::SystemTime) -> bool {
-        when >= self.expiry()
+        when > self.expiry()
     }
 
     /// Return the signed key or object that is authenticated by this
@@ -621,13 +624,11 @@ impl tor_checkable::SelfSigned<SigCheckedCert> for UncheckedCert {
 impl tor_checkable::Timebound<Ed25519Cert> for Ed25519Cert {
     type Error = tor_checkable::TimeValidityError;
 
+    #[allow(unstable_name_collisions)]
     fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), Self::Error> {
         if self.is_expired_at(*t) {
             let expiry = self.expiry();
-            Err(Self::Error::Expired(
-                t.duration_since(expiry)
-                    .expect("certificate expiry time inconsistent"),
-            ))
+            Err(Self::Error::Expired(t.saturating_duration_since(expiry)))
         } else {
             Ok(())
         }

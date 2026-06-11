@@ -6952,6 +6952,7 @@ dependencies = [
  "hex-literal",
  "humantime",
  "rand 0.10.1",
+ "saturating-time",
  "thiserror 2.0.18",
  "tor-basic-utils",
  "tor-bytes",
