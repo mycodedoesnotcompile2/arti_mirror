@@ -2560,12 +2560,13 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
-    use crate::doc::authcert::{AuthCert, AuthCertUnverified};
+    use crate::doc::authcert::AuthCertUnverified;
     use crate::encode::{NetdocEncodable, NetdocEncodableFields};
     use crate::parse2::{ParseInput, parse_netdoc, parse_netdoc_multiple};
     use crate::util::regsub;
     use hex_literal::hex;
     use humantime::parse_rfc3339;
+    use std::fmt::Debug;
     use std::fs;
     use tor_checkable::Timebound;
 
@@ -2908,21 +2909,25 @@ mod test {
         assert_eq!(ps, ps3);
     }
 
-    /// Test that we can re-encode the consensus we parsed, and that we get the same thing back.
-    ///
-    /// Well, roughly the same thing.
-    //
-    // TODO DIRAUTH want more comprehensive test; testdata2's netstatus lacks many things
     #[cfg(feature = "incomplete")]
-    #[test]
-    fn roundtrip_consensus_plain() -> anyhow::Result<()> {
-        let file = "testdata2/cached-consensus";
+    fn roundtrip_netstatus<UV, V, VE>(
+        file: &str,
+        verify: impl FnOnce(UV, &[RsaIdentity], &[AuthCert]) -> Result<TimerangeBound<V>, VE>,
+        adjust_exp: impl FnOnce(&mut String),
+    ) -> anyhow::Result<()>
+    where
+        UV: NetdocParseable + NetdocParseableUnverified,
+        UV::Signatures: Clone + NetdocEncodableFields,
+        VE: Debug + std::error::Error + Send + Sync + 'static,
+        V: Debug + NetdocEncodable,
+    {
         let text = fs::read_to_string(file)?;
         let now = parse_rfc3339("2000-01-01T00:02:25Z")?;
 
         let mut input = ParseInput::new(&text, file);
         input.retain_unknown_values();
-        let doc: plain::NetworkStatusUnverified = parse_netdoc(&input)?;
+
+        let doc: UV = parse_netdoc(&input)?;
 
         let certs = {
             let file = "testdata2/cached-certs";
@@ -2937,7 +2942,8 @@ mod test {
 
         let sigs = doc.inspect_unverified().1.sigs.clone();
 
-        let doc = doc.verify(
+        let doc = verify(
+            doc,
             &certs.iter().map(|cert| *cert.fingerprint).collect_vec(),
             &certs,
         )?
@@ -2951,7 +2957,29 @@ mod test {
         let enc = enc.finish()?;
 
         let mut exp: String = text.clone();
-        let mut regsub = |re, repl| regsub(&mut exp, re, repl);
+
+        adjust_exp(&mut exp);
+
+        assert_eq_or_diff!(&exp, &enc);
+
+        Ok(())
+    }
+
+    /// Test that we can re-encode the consensus we parsed, and that we get the same thing back.
+    ///
+    /// Well, roughly the same thing.
+    //
+    // TODO DIRAUTH want more comprehensive test; testdata2's netstatus lacks many things
+    #[cfg(feature = "incomplete")]
+    #[test]
+    fn roundtrip_netstatus_plain() -> anyhow::Result<()> {
+        roundtrip_netstatus::<plain::NetworkStatusUnverified, _, _>(
+            "testdata2/cached-consensus",
+            plain::NetworkStatusUnverified::verify,
+            |exp| {
+        // XXXX indentation is grossly wrong
+
+        let mut regsub = |re, repl| regsub(exp, re, repl);
 
         // We emit the optional `ns`
         // https://spec.torproject.org/dir-spec/consensus-formats.html#item:network-status-version
@@ -2975,9 +3003,8 @@ mod test {
             "$1 2000-01-01 00:00:01",
         );
 
-        assert_eq_or_diff!(&exp, &enc);
-
-        Ok(())
+            },
+        )
     }
 
     #[cfg(feature = "incomplete")]
