@@ -937,6 +937,7 @@ pub(crate) mod test {
 
     #[cfg(feature = "relay")]
     use {
+        crate::circuit::reactor::test::AllowAllStreamsFilter,
         crate::relay::channel::handshake::RelayInitiatorHandshake,
         crate::relay::channel::test::{RelayMsgBuf, fake_auth_material},
         tor_basic_utils::test_rng::{TestingRng, testing_rng},
@@ -1312,6 +1313,7 @@ pub(crate) mod test {
                     Arc::downgrade(&chan_provider) as Weak<_>,
                     new_circ_net_params(),
                     ntor_keys,
+                    Box::new(|| Box::new(AllowAllStreamsFilter) as Box<_>),
                 ));
                 let peer_target = OwnedChanTargetBuilder::default().build().unwrap();
                 let unverified = RelayInitiatorHandshake::new(
