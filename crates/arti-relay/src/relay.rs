@@ -21,7 +21,7 @@ use tor_memquota::MemoryQuotaTracker;
 use tor_netdir::params::NetParameters;
 use tor_persist::state_dir::StateDirectory;
 use tor_persist::{FsStateMgr, StateMgr};
-use tor_proto::relay::CreateRequestHandler;
+use tor_proto::relay::{CircuitIncomingStreamReceiver, CreateRequestHandler};
 use tor_rtcompat::{NetStreamProvider, Runtime};
 
 use crate::client::RelayClient;
@@ -29,6 +29,8 @@ use crate::config::TorRelayConfig;
 use crate::stream::RequestFilter;
 use crate::tasks::channel::build_circ_net_params;
 use crate::tasks::crypto::InitKeyMaterial;
+
+use futures::channel::mpsc;
 
 /// An initialized but unbootstrapped relay.
 ///
@@ -178,6 +180,12 @@ pub(crate) struct TorRelay<R: Runtime> {
     /// We can access this handler directly to update consensus parameters or keys.
     create_request_handler: Arc<CreateRequestHandler>,
 
+    /// The receiver for the [`Stream`](futures::Stream)s of `IncomingStream` of all circuits.
+    ///
+    /// Receives one [`Stream`](futures::Stream) (of tor streams) per circuit.
+    /// Each of these is handled in a new task.
+    circuit_stream_rx: CircuitIncomingStreamReceiver,
+
     /// See [`InertTorRelay::keymgr`].
     keymgr: KeyMgr,
 
@@ -238,7 +246,7 @@ impl<R: Runtime> TorRelay<R> {
         let allow_incoming = &[RelayCmd::BEGIN, RelayCmd::BEGIN_DIR, RelayCmd::RESOLVE];
 
         // A handler that will process CREATE* requests on channels.
-        let create_request_handler = CreateRequestHandler::new(
+        let (create_request_handler, circuit_stream_rx) = CreateRequestHandler::new(
             Arc::downgrade(&chanmgr) as Weak<_>,
             circ_net_params,
             init_key_material.ntor_keys,
@@ -319,6 +327,7 @@ impl<R: Runtime> TorRelay<R> {
             create_request_handler,
             keymgr: inert.keymgr,
             or_listeners,
+            circuit_stream_rx,
         })
     }
 
