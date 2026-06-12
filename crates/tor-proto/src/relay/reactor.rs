@@ -45,8 +45,10 @@ use std::time::Duration;
 use futures::channel::mpsc;
 
 use tor_cell::chancell::CircId;
+use tor_cell::relaycell::RelayCmd;
 use tor_linkspec::OwnedChanTarget;
-use tor_rtcompat::Runtime;
+use tor_memquota::mq_queue::{ChannelSpec, MpscSpec};
+use tor_rtcompat::{DynTimeProvider, Runtime};
 
 use crate::channel::Channel;
 use crate::circuit::circhop::{CircHopOutbound, HopSettings};
@@ -55,11 +57,14 @@ use crate::circuit::reactor::hop_mgr::HopMgr;
 use crate::circuit::reactor::stream;
 use crate::circuit::{CircuitRxReceiver, UniqId};
 use crate::crypto::cell::{InboundRelayLayer, OutboundRelayLayer};
-use crate::memquota::CircuitAccount;
+use crate::memquota::{CircuitAccount, SpecificAccount};
 use crate::relay::RelayCirc;
 use crate::relay::channel_provider::ChannelProvider;
 use crate::relay::reactor::backward::Backward;
 use crate::relay::reactor::forward::Forward;
+use crate::stream::incoming::{
+    IncomingCmdChecker, IncomingStreamRequestFilter, IncomingStreamRequestHandler,
+};
 
 // TODO(circpad): once padding is stabilized, the padding module will be moved out of client.
 use crate::client::circuit::padding::{PaddingController, PaddingEventStream};
@@ -120,6 +125,7 @@ impl<R: Runtime> Reactor<R> {
         chan_provider: Arc<dyn ChannelProvider<BuildSpec = OwnedChanTarget> + Send + Sync>,
         padding_ctrl: PaddingController,
         padding_event_stream: PaddingEventStream,
+        incoming_filter: Box<dyn IncomingStreamRequestFilter>,
         memquota: &CircuitAccount,
     ) -> crate::Result<(Self, Arc<RelayCirc>)> {
         // NOTE: not registering this channel with the memquota subsystem is okay,
@@ -129,11 +135,34 @@ impl<R: Runtime> Reactor<R> {
         #[allow(clippy::disallowed_methods)]
         let (stream_tx, stream_rx) = mpsc::channel(0);
 
-        let mut hop_mgr = HopMgr::new(
+        /// The size of the channel receiving IncomingStreamRequestContexts.
+        ///
+        // TODO(relay-tuning): buffer size
+        const INCOMING_BUFFER: usize = crate::stream::STREAM_READER_BUFFER;
+
+        let time_provider = DynTimeProvider::new(runtime.clone());
+        let (incoming_sender, incoming_receiver) = MpscSpec::new(INCOMING_BUFFER)
+            .new_mq(time_provider.clone(), memquota.as_raw_account())?;
+
+        // Our IncomingCmdChecker does not reject BEGIN, BEGIN_DIR, RESOLVE cells,
+        // but that doesn't necessarily mean the stream will be accepted.
+        // An incoming stream can still be rejected at a later stage,
+        // by the IncomingStreamRequestFilter, or directly by the consumer of the
+        // futures::Stream<Item = IncomingStream> (by calling IncomingStream::reject()).
+        let cmd_checker =
+            IncomingCmdChecker::new_any(&[RelayCmd::BEGIN, RelayCmd::BEGIN_DIR, RelayCmd::RESOLVE]);
+        let incoming_handler = IncomingStreamRequestHandler {
+            incoming_sender,
+            hop_num: None,
+            cmd_checker,
+            filter: incoming_filter,
+        };
+        let mut hop_mgr = HopMgr::new_with_incoming_handler(
             runtime.clone(),
             unique_id,
             StreamHandler,
             stream_tx,
+            incoming_handler,
             memquota.clone(),
         );
 
@@ -343,6 +372,7 @@ pub(crate) mod test {
                 chan_provider,
                 padding_ctrl,
                 padding_stream,
+                Box::new(AllowAllStreamsFilter),
                 &CircuitAccount::new_noop(),
             )
             .unwrap();

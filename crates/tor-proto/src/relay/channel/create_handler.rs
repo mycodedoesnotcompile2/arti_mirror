@@ -173,6 +173,8 @@ impl CreateRequestHandler {
             return Err(internal!("Unable to upgrade weak `ChannelProvider`").into());
         };
 
+        let incoming = todo!();
+
         // Build the relay circuit reactor.
         let (reactor, circ) = Reactor::new(
             runtime.clone(),
@@ -186,6 +188,7 @@ impl CreateRequestHandler {
             chan_provider,
             padding_ctrl.clone(),
             padding_stream,
+            incoming,
             &memquota,
         )
         .map_err(into_internal!("Failed to start circuit reactor"))?;
