@@ -791,9 +791,12 @@ impl RouterDesc {
             let cert = cc
                 .parse_obj::<UnvalidatedEdCert>("ED25519 CERT")?
                 .into_unchecked();
-            let (_, sig, expiry) =
-                Ed25519NtorCrossCert::verify_inner(ntor_as_ed.into(), ed25519_identity_key, cert.clone())
-                    .map_err(|_| EK::BadSignature.err())?;
+            let (_, sig, expiry) = Ed25519NtorCrossCert::verify_inner(
+                ntor_as_ed.into(),
+                ed25519_identity_key,
+                cert.clone(),
+            )
+            .map_err(|_| EK::BadSignature.err())?;
 
             (sig, expiry, NumericBoolean(sign != 0), cert)
         };
