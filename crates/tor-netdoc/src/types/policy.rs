@@ -19,6 +19,7 @@
 mod addrpolicy;
 mod portpolicy;
 
+use std::fmt;
 use std::str::FromStr;
 use std::{collections::BTreeSet, fmt::Display};
 use thiserror::Error;
@@ -249,6 +250,30 @@ impl PortRanges {
     fn iter(&self) -> impl Iterator<Item = &PortRange> {
         self.0.iter()
     }
+
+    /// If set of ranges is non-empty, returns a string representation
+    ///
+    /// We don't provide a normal `Display` impl, because it would have to
+    /// emit the empty string for an empty range, which would be quite odd.
+    ///
+    /// When displaying accept/reject ranges, the caller needs to
+    /// choose between prepending `accept` and prepending `reject`.
+    fn display(&self) -> Option<impl Display + '_> {
+        struct DisplayWrapper<'r>(&'r PortRanges);
+
+        impl Display for DisplayWrapper<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                let mut comma = "";
+                for range in self.0.iter() {
+                    write!(f, "{}{}", comma, range)?;
+                    comma = ",";
+                }
+                Ok(())
+            }
+        }
+
+        (!self.is_empty()).then(|| DisplayWrapper(self))
+    }
 }
 
 impl FromIterator<u16> for PortRanges {
@@ -286,11 +311,6 @@ impl FromIterator<u16> for PortRanges {
         out
     }
 }
-
-// There is deliberately no Display implementation for PortRanges because this
-// highly depends on the semantic wrapper around it.  For example, an empty
-// PortRanges may either be represented as `reject 1-65535` or `accept 1-65535`
-// depending on the context.
 
 impl FromStr for PortRanges {
     type Err = PolicyError;

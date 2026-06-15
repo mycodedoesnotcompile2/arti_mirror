@@ -51,12 +51,7 @@ impl Display for PortPolicy {
         if self.allowed.is_empty() {
             write!(f, "reject 1-65535")?;
         } else {
-            write!(f, "accept ")?;
-            let mut comma = "";
-            for range in self.allowed.iter() {
-                write!(f, "{}{}", comma, range)?;
-                comma = ",";
-            }
+            write!(f, "accept {}", self.allowed.display().expect("not empty"))?;
         }
         Ok(())
     }
