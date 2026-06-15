@@ -23,6 +23,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::{collections::BTreeSet, fmt::Display};
 use thiserror::Error;
+use tor_basic_utils::iter_join;
 
 pub use addrpolicy::{AddrPolicy, AddrPortPattern};
 pub use portpolicy::PortPolicy;
@@ -263,12 +264,7 @@ impl PortRanges {
 
         impl Display for DisplayWrapper<'_> {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                let mut comma = "";
-                for range in self.0.iter() {
-                    write!(f, "{}{}", comma, range)?;
-                    comma = ",";
-                }
-                Ok(())
+                write!(f, "{}", iter_join(",", self.0.iter()))
             }
         }
 
