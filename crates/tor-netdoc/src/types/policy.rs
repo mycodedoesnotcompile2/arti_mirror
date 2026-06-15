@@ -227,10 +227,10 @@ impl PortRanges {
             .is_ok()
     }
 
-    /// Inverts a [`PortRanges`].
+    /// Returns an inverted [`PortRanges`].
     ///
     /// For example, a [`PortRanges`] of `80-443` would become `1-79,444-65535`.
-    fn invert(&mut self) {
+    fn inverted(&self) -> PortRanges {
         let mut prev_hi = 0;
         let mut new_allowed = Vec::new();
         for entry in &self.0 {
@@ -244,7 +244,14 @@ impl PortRanges {
         if prev_hi < 65535 {
             new_allowed.push(PortRange::new_unchecked(prev_hi + 1, 65535));
         }
-        self.0 = new_allowed;
+        PortRanges(new_allowed)
+    }
+
+    /// Inverts a [`PortRanges`] in place
+    ///
+    /// For example, a [`PortRanges`] of `80-443` would become `1-79,444-65535`.
+    fn invert(&mut self) {
+        *self = self.inverted();
     }
 
     /// Returns an iterator for [`PortRanges`].
