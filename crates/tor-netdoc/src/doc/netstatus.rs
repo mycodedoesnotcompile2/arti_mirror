@@ -3054,7 +3054,7 @@ mod test {
     ) -> anyhow::Result<()>
     where
         UV: NetdocParseable + NetdocParseableUnverified,
-        UV::Signatures: Clone + NetdocEncodableFields,
+        UV::Signatures: Clone + Debug + NetdocEncodableFields,
         VE: Debug + std::error::Error + Send + Sync + 'static,
         V: Debug + NetdocEncodable,
     {
