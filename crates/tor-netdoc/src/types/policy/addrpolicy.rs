@@ -276,14 +276,13 @@ impl Display for IpPattern {
 
 /// Helper: try to parse a plain ipv4 address, or an IPv6 address
 /// wrapped in brackets.
-#[allow(clippy::string_slice)] // TODO
 fn parse_addr(mut s: &str) -> Result<IpAddr, PolicyError> {
-    let bracketed = s.starts_with('[') && s.ends_with(']');
-    if bracketed {
-        s = &s[1..s.len() - 1];
+    let trimmed = s.strip_prefix('[').and_then(|s| s.strip_suffix(']'));
+    if let Some(trimmed) = trimmed {
+        s = trimmed;
     }
     let addr: IpAddr = s.parse().map_err(|_| PolicyError::InvalidAddress)?;
-    if addr.is_ipv6() != bracketed {
+    if addr.is_ipv6() != trimmed.is_some() {
         return Err(PolicyError::InvalidAddress);
     }
     Ok(addr)
