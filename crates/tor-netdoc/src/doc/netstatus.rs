@@ -3045,15 +3045,26 @@ mod test {
         Ok(())
     }
 
+    /// Check that a network document can be parsed and regenerated, mostly identically
+    ///
+    /// The regenerated encoded form doesn't need to be 100% identical:
+    /// it is compared with a *munged* version of the the original input file,
+    /// to cope with differences between C Tor and Arti.
+    ///
+    /// The mungings are:
+    ///
+    ///  * Some fields' syntax are adjusted, where C Tor and Arti disagree
+    ///    in all kinds of network document.
+    ///
+    ///  * Document-specific, [`MungeForRoundtrip::adjust_exp`]
     #[cfg(feature = "incomplete")]
     fn roundtrip_netstatus<UV, V, VE>(
         file: &str,
         verify: impl FnOnce(UV, &[RsaIdentity], &[AuthCert]) -> Result<TimerangeBound<V>, VE>,
         adjust_now: Duration,
-        adjust_exp: impl FnOnce(&mut String),
     ) -> anyhow::Result<()>
     where
-        UV: NetdocParseable + NetdocParseableUnverified,
+        UV: NetdocParseable + NetdocParseableUnverified + MungeForRoundtrip,
         UV::Signatures: Clone + Debug + NetdocEncodableFields,
         VE: Debug + std::error::Error + Send + Sync + 'static,
         V: Debug + NetdocEncodable,
@@ -3103,11 +3114,16 @@ mod test {
             "$1",
         );
 
-        adjust_exp(&mut exp);
+        UV::adjust_exp(&mut exp);
 
         assert_eq_or_diff!(&exp, &enc);
 
         Ok(())
+    }
+
+    trait MungeForRoundtrip {
+        /// Munge `s` so that it resembles the output of C Tor
+        fn adjust_exp(exp: &mut String);
     }
 
     /// Test that we can re-encode the consensus we parsed, and that we get the same thing back.
@@ -3122,7 +3138,12 @@ mod test {
             "testdata2/cached-consensus",
             plain::NetworkStatusUnverified::verify,
             Duration::ZERO,
-            |exp| {
+        )
+    }
+
+    #[cfg(feature = "incomplete")]
+    impl MungeForRoundtrip for plain::NetworkStatusUnverified {
+        fn adjust_exp(exp: &mut String) {
                 let mut regsub = |re, repl| regsub(exp, re, repl);
 
                 // We emit the optional `ns`
@@ -3139,8 +3160,7 @@ mod test {
                     r#"^(r \S+ \S+ \S+) \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#,
                     "$1 2000-01-01 00:00:01",
                 );
-            },
-        )
+        }
     }
 
     #[cfg(feature = "incomplete")]
@@ -3150,7 +3170,12 @@ mod test {
             "testdata2/cached-microdesc-consensus",
             md::NetworkStatusUnverified::verify,
             Duration::ZERO,
-            |exp| {
+        )
+    }
+
+    #[cfg(feature = "incomplete")]
+    impl MungeForRoundtrip for md::NetworkStatusUnverified {
+        fn adjust_exp(exp: &mut String) {
                 let mut regsub = |re, repl| regsub(exp, re, repl);
 
                 // C Tor writes nontrivial values for `publication` in rs `r` items,
@@ -3162,7 +3187,6 @@ mod test {
                     r#"^(r \S+ \S+) \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#,
                     "$1 2000-01-01 00:00:01",
                 );
-            },
-        )
+        }
     }
 }
