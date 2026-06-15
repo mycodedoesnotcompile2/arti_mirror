@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+#
+# usage:
+#   testdata-live-download
+#
+# This has to be run inside the git repository!
+
+set -euo pipefail
+
+case "$#" in
+0) ;;
+*) echo >&2 'bad usage'; exit 8 ;;
+esac
+
+root="$(git rev-parse --show-toplevel)"
+out="$root/crates/tor-netdoc/testdata-live"
+cd "$out"
+
+# We include only a handful of relays, because:
+#  - routerdescs can contain personal data that we ought not to immemorialise in git
+#  - we don't want a whole consensus because it's too large
+
+files=(consensus authority consensus-microdesc)
+
+start () {
+    for f in "${files[@]}"; do
+	curl "$auth/tor/status-vote/current/$f" >.entire."$f"
+
+	perl -ne 'print or die $! unless m/^r /..0' \
+	     <.entire."$f" >"$f.new"
+    done
+}
+
+include_relay () {
+    id=$1; nick=$2
+    for f in "${files[@]}"; do
+	perl -ne '
+              BEGIN { $exp = shift @ARGV; }
+    	      $y = ($1 eq $exp) if m/^r (\S+ \S+) /;
+	      print or die $! if $y;
+        ' <.entire."$f" >>"$f.new" "$nick $id"
+    done
+}
+
+finish () {
+    for f in "${files[@]}"; do
+	perl -ne 'print or die $! if m/^directory-footer\s/..0' \
+	     <.entire."$f" >>"$f.new"
+
+	mv "$f"{.new,}
+    done
+
+
+    echo
+    echo "Updated $out.  Don't forget to git add."
+}
+
+#---------- configuration section ----------
+
+# which dirauth we use
+#auth=faravahar.redteam.net
+auth=tor.cypherpunks.eu
+
+start
+
+# which relays we include
+# must be sorted by id
+include_relay 'AAAErLudKby6FyVrs1ko3b/Iq6k' lisdex
+include_relay 'GiXGNY25E0KqUXIKUDi3J0JzJJg' moria1
+include_relay 'MDUJq5EO8ge3Q4wnQ1xKL9V58bE' Ukko
+include_relay 'UEheA8o505O9VNMVzrpl5t0P3bk' d2d4
+include_relay 'VpJ+YbUebzY/tVSYFQpt389wd/I' Akka
+
+finish
