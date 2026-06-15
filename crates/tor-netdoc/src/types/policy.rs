@@ -141,24 +141,17 @@ impl Display for PortRange {
 
 impl FromStr for PortRange {
     type Err = PolicyError;
-    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, PolicyError> {
-        let idx = s.find('-');
-        // Find "lo" and "hi".
-        let (lo, hi) = if let Some(pos) = idx {
-            // This is a range; parse each part.
-            (
-                s[..pos]
-                    .parse::<u16>()
-                    .map_err(|_| PolicyError::InvalidPort)?,
-                s[pos + 1..]
-                    .parse::<u16>()
-                    .map_err(|_| PolicyError::InvalidPort)?,
-            )
-        } else {
-            // There was no hyphen, so try to parse this range as a singleton.
-            let v = s.parse::<u16>().map_err(|_| PolicyError::InvalidPort)?;
-            (v, v)
+        let (lo, hi) = match s.split_once('-') {
+            Some((lo, hi)) => (
+                lo.parse::<u16>().map_err(|_| PolicyError::InvalidPort)?,
+                hi.parse::<u16>().map_err(|_| PolicyError::InvalidPort)?,
+            ),
+            None => {
+                // There was no hyphen, so try to parse this range as a singleton.
+                let v = s.parse::<u16>().map_err(|_| PolicyError::InvalidPort)?;
+                (v, v)
+            }
         };
         PortRange::new(lo, hi).ok_or(PolicyError::InvalidRange)
     }
