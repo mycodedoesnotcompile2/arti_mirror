@@ -197,6 +197,7 @@ impl RouterStatusBuilder {
             weight,
             port_policy: ns_expr!(None, NotPresent, Void {}),
             ed25519_id: NotPresent,
+            stats: NotPresent,
         })
     }
 
