@@ -42,6 +42,7 @@ pub(crate) mod forward;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::StreamExt as _;
 use futures::channel::mpsc;
 
 use tor_cell::chancell::CircId;
@@ -51,20 +52,26 @@ use tor_memquota::mq_queue::{ChannelSpec, MpscSpec};
 use tor_rtcompat::{DynTimeProvider, Runtime};
 
 use crate::channel::Channel;
+use crate::circuit::circhop::ReactorStreamComponents;
 use crate::circuit::circhop::{CircHopOutbound, HopSettings};
 use crate::circuit::reactor::Reactor as BaseReactor;
 use crate::circuit::reactor::hop_mgr::HopMgr;
 use crate::circuit::reactor::stream;
 use crate::circuit::{CircuitRxReceiver, UniqId};
+use crate::congestion::sendme::StreamRecvWindow;
 use crate::crypto::cell::{InboundRelayLayer, OutboundRelayLayer};
 use crate::memquota::{CircuitAccount, SpecificAccount};
 use crate::relay::RelayCirc;
 use crate::relay::channel_provider::ChannelProvider;
 use crate::relay::reactor::backward::Backward;
 use crate::relay::reactor::forward::Forward;
+use crate::stream::flow_ctrl::xon_xoff::reader::XonXoffReaderCtrl;
 use crate::stream::incoming::{
-    IncomingCmdChecker, IncomingStreamRequestFilter, IncomingStreamRequestHandler,
+    IncomingCmdChecker, IncomingStream, IncomingStreamRequestFilter, IncomingStreamRequestHandler,
+    StreamReqInfo,
 };
+use crate::stream::raw::StreamReceiver;
+use crate::stream::{RECV_WINDOW_INIT, StreamComponents, StreamTarget, Tunnel};
 
 // TODO(circpad): once padding is stabilized, the padding module will be moved out of client.
 use crate::client::circuit::padding::{PaddingController, PaddingEventStream};
@@ -107,11 +114,43 @@ impl stream::StreamHandler for StreamHandler {
 impl<R: Runtime> Reactor<R> {
     /// Create a new circuit reactor.
     ///
+    /// Returns the [`Reactor`], a [`RelayCirc`] handle to it,
+    /// and a [`Stream`](futures::Stream) of `IncomingStream`s.
+    ///
     /// The reactor will send outbound messages on `channel`, receive incoming
     /// messages on `input`, and identify this circuit by the channel-local
     /// [`CircId`] provided.
     ///
     /// The internal unique identifier for this circuit will be `unique_id`.
+    ///
+    /// The returned `IncomingStream`s are exit, dns, or directory streams.
+    /// An incoming stream is automatically rejected by the reactor
+    /// if the provided `IncomingStreamRequestFilter` rejects it.
+    /// You can also explicitly reject a stream by calling [`IncomingStream::reject`].
+    /// If the `Stream` is dropped, the next request on this reactor will cause it to close.
+    ///
+    /// The streams not rejected by the `IncomingStreamRequestFilter` will
+    /// get an entry in the circuit's stream map.
+    /// Rejecting such a stream using [`IncomingStream::reject`] will remove the entry.
+    ///
+    /// The `IncomingStreamRequestFilter` should only perform inexpensive checks
+    /// that won't block the reactor.
+    /// More expensive, or blocking checks, should be handled outside of the circuit reactor,
+    /// when processing new `IncomingStream`s from the returned Rust stream.
+    ///
+    /// The user of the reactor **must** handle this stream
+    /// (either by accepting it and opening and proxying the corresponding
+    /// streams as appropriate, or by [.reject()](IncomingStream::reject)ing it).
+    ///
+    // TODO: declare a type-alias for the impl futures::Stream return type
+    // when support for impl in type aliases gets stabilized.
+    //
+    // See issue #63063 <https://github.com/rust-lang/rust/issues/63063>
+    //
+    // TODO(DEDUP): the incoming stream handling is *very* similar
+    // to the impll from ServiceOnionServiceDataTunnel::allow_stream_requests.
+    // We should dedupe these someday, when we rewrite the client reactor
+    // to use the new multi-reactor architecture
     #[allow(clippy::too_many_arguments)] // TODO
     pub(crate) fn new(
         runtime: R,
@@ -127,7 +166,11 @@ impl<R: Runtime> Reactor<R> {
         padding_event_stream: PaddingEventStream,
         incoming_filter: Box<dyn IncomingStreamRequestFilter>,
         memquota: &CircuitAccount,
-    ) -> crate::Result<(Self, Arc<RelayCirc>)> {
+    ) -> crate::Result<(
+        Self,
+        Arc<RelayCirc>,
+        impl futures::Stream<Item = IncomingStream> + use<R>,
+    )> {
         // NOTE: not registering this channel with the memquota subsystem is okay,
         // because it has no buffering (if ever decide to make the size of this buffer
         // non-zero for whatever reason, we must remember to register it with memquota
@@ -205,7 +248,59 @@ impl<R: Runtime> Reactor<R> {
         let reactor = Self(inner);
         let handle = Arc::new(RelayCirc(handle));
 
-        Ok((reactor, handle))
+        // Note: tunnel is a bit of a misnomer for relays
+        let tunnel = Arc::clone(&handle);
+        // TODO(relay): this is more or less copy-pasta from client code
+        let stream = incoming_receiver.map(move |req_ctx| {
+            let StreamReqInfo {
+                req,
+                stream_id,
+                hop,
+                stream_components:
+                    ReactorStreamComponents {
+                        stream_inbound_rx,
+                        stream_outbound_tx,
+                        rate_limit_rx,
+                        drain_rate_request_rx,
+                    },
+                memquota,
+                relay_cell_format,
+            } = req_ctx;
+
+            // There is no originating hop if we're a relay
+            debug_assert!(hop.is_none());
+
+            let target = StreamTarget {
+                tunnel: Tunnel::Relay(Arc::clone(&tunnel)),
+                tx: stream_outbound_tx,
+                hop: None,
+                stream_id,
+                relay_cell_format,
+                rate_limit_stream: rate_limit_rx,
+            };
+
+            // can be used to build a reader that supports XON/XOFF flow control
+            let xon_xoff_reader_ctrl =
+                XonXoffReaderCtrl::new(drain_rate_request_rx, target.clone());
+
+            let reader = StreamReceiver {
+                target: target.clone(),
+                receiver: stream_inbound_rx,
+                recv_window: StreamRecvWindow::new(RECV_WINDOW_INIT),
+                ended: false,
+            };
+
+            let components = StreamComponents {
+                stream_receiver: reader,
+                target,
+                memquota,
+                xon_xoff_reader_ctrl,
+            };
+
+            IncomingStream::new(time_provider.clone(), req, components)
+        });
+
+        Ok((reactor, handle, stream))
     }
 
     /// Launch the reactor, and run until the circuit closes or we
@@ -243,17 +338,16 @@ pub(crate) mod test {
     use crate::congestion::test_utils::params::build_cc_vegas_params;
     use crate::crypto::cell::RelayCellBody;
     use crate::crypto::cell::{InboundRelayLayer, OutboundRelayLayer};
-    use crate::memquota::SpecificAccount as _;
     use crate::relay::channel::test::{DummyChan, DummyChanProvider, working_dummy_channel};
     use crate::stream::flow_ctrl::params::FlowCtrlParameters;
-    use crate::stream::incoming::{IncomingStream, IncomingStreamRequestFilter};
+    use crate::stream::incoming::IncomingStream;
 
-    use futures::{AsyncReadExt as _, StreamExt as _};
+    use futures::AsyncReadExt as _;
     use tracing_test::traced_test;
 
     use tor_cell::chancell::{ChanCell, ChanCmd, msg as chanmsg};
     use tor_cell::relaycell::{
-        AnyRelayMsgOuter, RelayCellFormat, RelayCmd, StreamId, msg as relaymsg,
+        AnyRelayMsgOuter, RelayCellFormat, StreamId, msg as relaymsg,
     };
     use tor_linkspec::{EncodedLinkSpec, HasRelayIds, LinkSpec};
     use tor_protover::{Protocols, named};
@@ -335,7 +429,7 @@ pub(crate) mod test {
     impl ReactorTestCtrl {
         /// Spawn a relay circuit reactor, returning a `ReactorTestCtrl` for
         /// controlling it.
-        fn spawn_reactor<R: Runtime>(rt: &R) -> Self {
+        fn spawn_reactor<R: Runtime>(rt: &R) -> (Self, impl futures::Stream<Item = IncomingStream>) {
             let inbound_chan = working_dummy_channel(rt);
             let circid = CircId::new(1337).unwrap();
             let unique_id = UniqId::new(8, 17);
@@ -360,7 +454,7 @@ pub(crate) mod test {
                 Arc::clone(&outbound_chan),
             ));
 
-            let (reactor, relay_circ) = Reactor::new(
+            let (reactor, relay_circ, incoming_streams) = Reactor::new(
                 rt.clone(),
                 &Arc::clone(&inbound_chan.channel),
                 circid,
@@ -382,13 +476,15 @@ pub(crate) mod test {
             })
             .unwrap();
 
-            Self {
+            let ctrl = Self {
                 relay_circ,
                 circmsg_send,
                 recognized_tx,
                 inbound_chan,
                 outbound_chan,
-            }
+            };
+
+            (ctrl, incoming_streams)
         }
 
         /// Simulate the sending of a forward relay message through our relay.
@@ -419,23 +515,6 @@ pub(crate) mod test {
         /// (i.e. a channel to the next relay in the circuit).
         fn outbound_chan_launched(&self) -> bool {
             self.outbound_chan.lock().unwrap().is_some()
-        }
-
-        /// Allow inbound stream requests.
-        ///
-        /// Used for testing leaky pipe and exit functionality.
-        async fn allow_stream_requests<'a, FILT>(
-            &self,
-            allow_commands: &'a [RelayCmd],
-            filter: FILT,
-        ) -> impl futures::Stream<Item = IncomingStream> + use<'a, FILT>
-        where
-            FILT: IncomingStreamRequestFilter,
-        {
-            Arc::clone(&self.relay_circ)
-                .allow_stream_requests(allow_commands, filter)
-                .await
-                .unwrap()
         }
 
         /// Perform the CREATE2 handshake.
@@ -584,7 +663,7 @@ pub(crate) mod test {
     #[test]
     fn reject_extend2_relay() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
             rt.advance_until_stalled().await;
 
             let linkspecs = dummy_linkspecs();
@@ -602,7 +681,7 @@ pub(crate) mod test {
     #[test]
     fn reject_extend2_previous_hop() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
             rt.advance_until_stalled().await;
 
             // No outbound circuits yet
@@ -644,7 +723,7 @@ pub(crate) mod test {
     #[test]
     fn extend_and_forward() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
             rt.advance_until_stalled().await;
 
             // No outbound circuits yet
@@ -695,7 +774,7 @@ pub(crate) mod test {
     #[test]
     fn forward_before_extend() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
             rt.advance_until_stalled().await;
 
             // Send an arbitrary unrecognized cell. The reactor should flag this as
@@ -716,12 +795,8 @@ pub(crate) mod test {
     #[test]
     fn reject_invalid_begin() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
             rt.advance_until_stalled().await;
-
-            let _streams = ctrl
-                .allow_stream_requests(&[RelayCmd::BEGIN], AllowAllStreamsFilter)
-                .await;
 
             let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
 
@@ -741,7 +816,7 @@ pub(crate) mod test {
     #[test]
     fn destroy_from_client() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
             rt.advance_until_stalled().await;
 
             // Simulate the client sending us a DESTROY cell
@@ -762,7 +837,7 @@ pub(crate) mod test {
     #[test]
     fn destroy_from_next_hop() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
             rt.advance_until_stalled().await;
 
             // Extend the circuit by another hop
@@ -800,7 +875,7 @@ pub(crate) mod test {
     #[test]
     fn truncate() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
             rt.advance_until_stalled().await;
 
             // Simulate the client sending us a TRUNCATE cell
@@ -822,12 +897,8 @@ pub(crate) mod test {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
             const TO_SEND: &[u8] = b"The bells were musical in the silvery sun";
 
-            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, mut incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
             rt.advance_until_stalled().await;
-
-            let mut incoming_streams = ctrl
-                .allow_stream_requests(&[RelayCmd::BEGIN], AllowAllStreamsFilter)
-                .await;
 
             let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
             ctrl.send_fwd(StreamId::new(1), begin, Recognized::Yes, false)
@@ -857,12 +928,8 @@ pub(crate) mod test {
     #[test]
     fn reject_stream() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, mut incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
             rt.advance_until_stalled().await;
-
-            let mut incoming_streams = ctrl
-                .allow_stream_requests(&[RelayCmd::BEGIN], AllowAllStreamsFilter)
-                .await;
 
             let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
             ctrl.send_fwd(StreamId::new(1), begin, Recognized::Yes, false)

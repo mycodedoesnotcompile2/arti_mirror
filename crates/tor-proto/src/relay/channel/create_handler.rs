@@ -161,7 +161,8 @@ impl CreateRequestHandler {
         // a bounded queue.
         let time_provider = DynTimeProvider::new(runtime.clone());
         let account = memquota.as_raw_account();
-        let (sender, receiver) = MpscSpec::new(10_000_000).new_mq(time_provider, account)?;
+        let (sender, receiver) =
+            MpscSpec::new(10_000_000).new_mq(time_provider.clone(), account)?;
         let (sender, receiver) = crate::circuit::circ_sender::channel(sender, receiver);
 
         // TODO(relay): Do we really want a client padding machine here?
@@ -176,7 +177,7 @@ impl CreateRequestHandler {
         let incoming = todo!();
 
         // Build the relay circuit reactor.
-        let (reactor, circ) = Reactor::new(
+        let (reactor, circ, _incoming_streams) = Reactor::new(
             runtime.clone(),
             channel,
             circ_id,
@@ -192,6 +193,8 @@ impl CreateRequestHandler {
             &memquota,
         )
         .map_err(into_internal!("Failed to start circuit reactor"))?;
+
+        // TODO(relay): send the incoming_streams stream to the handler in arti-relay
 
         // Start the reactor in a task.
         let () = runtime.spawn(async {
