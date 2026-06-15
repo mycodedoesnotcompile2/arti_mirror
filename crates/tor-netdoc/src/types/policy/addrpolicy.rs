@@ -190,11 +190,9 @@ impl Display for AddrPortPattern {
 
 impl FromStr for AddrPortPattern {
     type Err = PolicyError;
-    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, PolicyError> {
-        let last_colon = s.rfind(':').ok_or(PolicyError::InvalidPolicy)?;
-        let pattern: IpPattern = s[..last_colon].parse()?;
-        let ports_s = &s[last_colon + 1..];
+        let (pattern, ports_s) = s.rsplit_once(':').ok_or(PolicyError::InvalidPolicy)?;
+        let pattern: IpPattern = pattern.parse()?;
         let ports: PortRange = if ports_s == "*" {
             PortRange::new_all()
         } else {
