@@ -247,7 +247,7 @@ impl PortRanges {
     }
 
     /// Returns an iterator for [`PortRanges`].
-    fn iter(&self) -> impl Iterator<Item = &PortRange> {
+    fn iter(&self) -> impl Iterator<Item = &PortRange> + Clone {
         self.0.iter()
     }
 
