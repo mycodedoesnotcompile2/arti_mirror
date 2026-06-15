@@ -1727,7 +1727,7 @@ impl NetDir {
                         .cloned()
                         .collect();
                     if nonzero_weight_relays.is_empty() {
-                        warn!(
+                        tracing::debug!(
                             "After filtering, all {} relays had zero weight! Picking some at random. See bug #1907.",
                             filtered_weighted_items.len()
                         );
@@ -1741,7 +1741,7 @@ impl NetDir {
                             filtered_relays
                         }
                     } else {
-                        warn!(
+                        tracing::debug!(
                             "After filtering, only had {}/{} relays with nonzero weight. Returning them all. See bug #1907.",
                             nonzero_weight_relays.len(),
                             filtered_weighted_items.len()
@@ -1787,7 +1787,15 @@ impl NetDir {
             .filter(usable)
             .map(|r| (r.clone(), self.weights.weight_rs_for_role(r.rs, role)))
             .collect();
-        return NetDir::pick_n_filtered_weighted(rng, n, filtered_weighted_relays.as_slice());
+        let res = NetDir::pick_n_filtered_weighted(rng, n, filtered_weighted_relays.as_slice());
+        let n_found = res.len();
+        if n_found < n {
+            warn!(?self.weights, ?role,
+                "Requested {n} relays, but only {n_usable} were usable, and only {n_found} were chosen after weighting {role:?}.",
+                n_usable=filtered_weighted_relays.len(),
+            );
+        }
+        res
     }
 
     /// Compute the weight with which `relay` will be selected for a given
