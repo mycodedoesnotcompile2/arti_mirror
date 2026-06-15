@@ -3032,7 +3032,6 @@ mod test {
         // in the presence of items whose weight is 0.
         //
         // We think that the behavior is:
-        //   - An item with weight 0 is never returned.
         //   - If all items have weight 0, choose_weighted returns an error.
         //   - If all items have weight 0, sample_weighted returns an empty list.
         //   - If we request n items from sample_weighted,
