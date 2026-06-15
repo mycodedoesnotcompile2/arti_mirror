@@ -774,7 +774,7 @@ impl RouterDesc {
         // ntor key
         let ntor_onion_key: Curve25519Public = body.required(NTOR_ONION_KEY)?.parse_arg(0)?;
         // ntor crosscert
-        let (cc_sig, cc_expiry) = {
+        let (cc_sig, cc_expiry, cc_bit, cc_cert) = {
             let cc = body.required(NTOR_ONION_KEY_CROSSCERT)?;
             let sign: u8 = cc.parse_arg(0)?;
             if sign != 0 && sign != 1 {
@@ -792,10 +792,10 @@ impl RouterDesc {
                 .parse_obj::<UnvalidatedEdCert>("ED25519 CERT")?
                 .into_unchecked();
             let (_, sig, expiry) =
-                Ed25519NtorCrossCert::verify_inner(ntor_as_ed.into(), ed25519_identity_key, cert)
+                Ed25519NtorCrossCert::verify_inner(ntor_as_ed.into(), ed25519_identity_key, cert.clone())
                     .map_err(|_| EK::BadSignature.err())?;
 
-            (sig, expiry)
+            (sig, expiry, NumericBoolean(sign != 0), cert)
         };
 
         // TAP key
