@@ -1709,59 +1709,48 @@ impl NetDir {
         R: rand::Rng,
         T: Clone,
     {
-        // NOTE: See discussion in pick_relay().
         let mut sampled_relays = match filtered_weighted_items[..].sample_weighted(
             rng,
             n,
             |(_r, w)| *w as f64,
         ) {
-            Err(WeightError::InsufficientNonZero) => {
-                // Too few relays had nonzero weights: return all of those that are okay.
-                // (This is behavior used to come up with rand 0.9; it no longer does.
-                // We still detect it.)
-                let nonzero_weight_relays: Vec<_> = filtered_weighted_items
-                    .iter()
-                    .filter_map(|(r, w)| if *w > 0 { Some(r) } else { None })
-                    .cloned()
-                    .collect();
-                if nonzero_weight_relays.is_empty() {
-                    warn!(
-                        "After filtering, all {} relays had zero weight! Picking some at random. See bug #1907.",
-                        filtered_weighted_items.len()
-                    );
-                    let filtered_relays: Vec<_> = filtered_weighted_items
-                        .iter()
-                        .map(|(r, _w)| r.clone())
-                        .collect();
-                    if filtered_relays.len() >= n {
-                        filtered_relays.sample(rng, n).cloned().collect()
-                    } else {
-                        filtered_relays
-                    }
-                } else {
-                    warn!(
-                        "After filtering, only had {}/{} relays with nonzero weight. Returning them all. See bug #1907.",
-                        nonzero_weight_relays.len(),
-                        filtered_weighted_items.len()
-                    );
-                    nonzero_weight_relays
-                }
-            }
             Err(e) => {
                 warn_report!(e, "Unexpected error while sampling a set of relays");
                 Vec::new()
             }
             Ok(iter) => {
-                let selection: Vec<_> = iter.map(|(r, _w)| r.clone()).collect();
-                if selection.len() < n && selection.len() < filtered_weighted_items.len() {
-                    warn!(
-                        "sample_weighted returned only {returned}, despite requesting {n}, \
-                          and having {filtered_len} available after filtering. See bug #1907.",
-                        returned = selection.len(),
-                        filtered_len = filtered_weighted_items.len()
-                    );
+                if iter.len() < n {
+                    // Too few relays had nonzero weights: return all of those that are okay.
+                    let nonzero_weight_relays: Vec<_> = filtered_weighted_items
+                        .iter()
+                        .filter_map(|(r, w)| if *w > 0 { Some(r) } else { None })
+                        .cloned()
+                        .collect();
+                    if nonzero_weight_relays.is_empty() {
+                        warn!(
+                            "After filtering, all {} relays had zero weight! Picking some at random. See bug #1907.",
+                            filtered_weighted_items.len()
+                        );
+                        let filtered_relays: Vec<_> = filtered_weighted_items
+                            .iter()
+                            .map(|(r, _w)| r.clone())
+                            .collect();
+                        if filtered_relays.len() >= n {
+                            filtered_relays.sample(rng, n).cloned().collect()
+                        } else {
+                            filtered_relays
+                        }
+                    } else {
+                        warn!(
+                            "After filtering, only had {}/{} relays with nonzero weight. Returning them all. See bug #1907.",
+                            nonzero_weight_relays.len(),
+                            filtered_weighted_items.len()
+                        );
+                        nonzero_weight_relays
+                    }
+                } else {
+                    iter.map(|(r, _w)| r.clone()).collect()
                 }
-                selection
             }
         };
         sampled_relays.shuffle(rng);
@@ -2522,6 +2511,40 @@ mod test {
     }
 
     #[test]
+    fn test_pick_multiple_from_insufficient() {
+        // This is intended to test `NetDir::pick_n_relays`, but targets the internal,
+        // easier-to-test `NetDir::pick_n_filtered_weighted` that is used to implement it.
+
+        let mut rng = testing_rng();
+
+        // If *any* item (relay) has non-zero weight, then we return only those, even if we asked for more.
+        let mostly_zeros = vec![("dud1", 0), ("dud2", 0), ("ok", 1), ("dud3", 0)];
+        for n in [1, 2, 10] {
+            assert_eq!(
+                NetDir::pick_n_filtered_weighted(&mut rng, n, &mostly_zeros[..]),
+                vec!["ok"],
+                "where n={n}"
+            );
+        }
+
+        // If *all* items have zero weight, and we ask for as many or more than
+        // we have, we get back all of them.
+        let all_zeros = vec![("dud1", 0), ("dud2", 0), ("dud3", 0)];
+        let all_zeros_items = all_zeros.iter().map(|(x, _w)| *x).collect::<Vec<_>>();
+        for n in [all_zeros.len(), all_zeros.len() + 10] {
+            let mut res = NetDir::pick_n_filtered_weighted(&mut rng, n, &all_zeros[..]);
+            res.sort();
+            assert_eq!(res, all_zeros_items, "where n={n}");
+        }
+
+        // If *all* items have zero weight, and we ask for fewer than we have,
+        // we get back as many as we asked for.
+        let n = all_zeros.len() / 2;
+        let res = NetDir::pick_n_filtered_weighted(&mut rng, n, &all_zeros[..]);
+        assert_eq!(res.len(), n);
+    }
+
+    #[test]
     fn subnets() {
         let cfg = SubnetConfig::default();
 
@@ -3069,57 +3092,22 @@ mod test {
 
     #[test]
     fn zero_weights() {
-        // Here we check the behavior of IndexedRandom::{choose_weighted, sample_weighted}
+        // Here we check the behavior of IndexedRandom::choose_weighted
         // in the presence of items whose weight is 0.
         //
         // We think that the behavior is:
         //   - If all items have weight 0, choose_weighted returns an error.
-        //   - If all items have weight 0, sample_weighted returns an empty list.
-        //   - If we request n items from sample_weighted,
-        //     but only m<n items have nonzero weight, we return all m of those items.
-        //   - if the request for n items can't be completely satisfied with n items of weight >= 0,
-        //     we get InsufficientNonZero.
+        //   - If any items have non-zero weight, one of them will be returned.
         let items = vec![1, 2, 3];
         let mut rng = testing_rng();
 
         let a = items.choose_weighted(&mut rng, |_| 0);
         assert!(matches!(a, Err(WeightError::InsufficientNonZero)));
 
-        let x = items.sample_weighted(&mut rng, 2, |_| 0);
-        let xs: Vec<_> = x.unwrap().collect();
-        assert!(xs.is_empty());
-
         let only_one = |n: &i32| if *n == 1 { 1 } else { 0 };
-        let x = items.sample_weighted(&mut rng, 2, only_one);
-        let xs: Vec<_> = x.unwrap().collect();
-        assert_eq!(&xs[..], &[&1]);
-
         for _ in 0..100 {
             let a = items.choose_weighted(&mut rng, only_one);
             assert_eq!(a.unwrap(), &1);
-
-            let x = items
-                .sample_weighted(&mut rng, 1, only_one)
-                .unwrap()
-                .collect::<Vec<_>>();
-            assert_eq!(x, vec![&1]);
         }
-    }
-
-    #[test]
-    fn insufficient_but_nonzero() {
-        // Here we check IndexedRandom::sample_weighted when there no zero values,
-        // but there are insufficient values.
-        // (If this behavior changes, we need to change our usage.)
-
-        let items = vec![1, 2, 3];
-        let mut rng = testing_rng();
-        let mut a = items
-            .sample_weighted(&mut rng, 10, |_| 1)
-            .unwrap()
-            .copied()
-            .collect::<Vec<_>>();
-        a.sort();
-        assert_eq!(a, items);
     }
 }
