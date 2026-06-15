@@ -45,13 +45,20 @@ to see if we can reject the stream right away:
     (for example, the onion service `IncomingStreamRequestFilter`
     checks the current number of open streams on the circuit,
     and rejects the incoming stream request if it would cause the circuit
-    to exceed the max allowed number of concurrent streams)
-  * a `CmdChecker` to checks if the message
-    is one of the allowed stream-opening messages for the circuit
+    to exceed the max allowed number of concurrent streams).
+    `IncomingStreamRequestFilter` returns an `IncomingStreamRequestDisposition`,
+    which instructs the reactor to either accept the stream request, or to reject it,
+    either by closing the circuit (`CloseCircuit`),
+    or by sending a given `END` cell (`RejectRequest(End)`)
+  * a `CmdChecker` (`IncomingCmdChecker` in `tor-proto`), which checks if the message
+    is one of the allowed stream-opening messages for the circuit.
+    If it is not, its `CmdChecker::check_msg()` function will return a
+    `StreamProto` error, causing the circuit to be torn down.
   * if the stream request arrived on a hop
     that is not expecting stream requests, it will be rejected immediately
     (this is irrelevant for relays, because they only have a single hop,
-    namely themselves)
+    namely themselves), and the circuit will be closed with a protocol violation
+    error
 
 If the stream request passes these checks,
 the reactor will create a new stream entry in its stream map
