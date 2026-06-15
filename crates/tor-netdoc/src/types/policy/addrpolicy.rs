@@ -291,10 +291,9 @@ fn parse_addr(mut s: &str) -> Result<IpAddr, PolicyError> {
 
 impl FromStr for IpPattern {
     type Err = PolicyError;
-    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, PolicyError> {
-        let (ip_s, mask_s) = match s.find('/') {
-            Some(slash_idx) => (&s[..slash_idx], Some(&s[slash_idx + 1..])),
+        let (ip_s, mask_s) = match s.split_once('/') {
+            Some((ip_s, mask_s)) => (ip_s, Some(mask_s)),
             None => (s, None),
         };
         match (ip_s, mask_s) {
