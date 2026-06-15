@@ -64,7 +64,7 @@ pub use proto_statuses_parse2_encode::ProtoStatusesNetdocParseAccumulator;
 #[cfg(feature = "incomplete")]
 use crate::doc::authcert::EncodedAuthCert;
 
-use crate::doc::authcert::{self, AuthCert, AuthCertKeyIds};
+use crate::doc::authcert::{self, AuthCert, AuthCertKeyIds, AuthCertUnverified};
 use crate::encode::{
     EncodeOrd, ItemArgument, ItemEncoder, ItemValueEncodable, NetdocEncodable, NetdocEncoder,
 };
@@ -82,6 +82,7 @@ use crate::util::PeekableIterator;
 use crate::{Error, KeywordEncodable, NetdocErrorKind as EK, NormalItemArgument, Pos};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Display};
+use std::slice;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{self, SystemTime};
@@ -96,7 +97,7 @@ use digest::Digest;
 use itertools::Itertools;
 use saturating_time::SaturatingTime as _;
 use std::sync::LazyLock;
-use tor_checkable::{ExternallySigned, timed::TimerangeBound};
+use tor_checkable::{ExternallySigned, Timebound, timed::TimerangeBound};
 use tor_llcrypto as ll;
 use tor_llcrypto::pk::rsa::RsaIdentity;
 
@@ -934,6 +935,39 @@ pub enum ConsensusVerifyFailed {
     // ConsensusVerifiabilityError -> VerifyFailed -> ConsensusVerifyFailed
     // since that would give the wrong variant.
     InvalidSignature(#[source] VerifyFailed),
+}
+
+/// Error encountered while verifying a vote
+///
+/// Thrown by
+/// [`vote::NetworkStatusUnverified::verify`].
+///
+/// Not used for problems with the validity period:
+/// that's handled by `tor-checkable` and shows up as [`tor_checkable::TimeValidityError`].
+///
+/// Can be converted to a `VerifyFailed` (which, in effect, summarises the error).
+#[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum VoteVerifyFailed {
+    /// The document signature failed to verify
+    #[error("invalid signature")]
+    //
+    // Not `#[from]` because we don't want to accidentally convert
+    // VoteVerifyFailed::Something -> VerifyFailed -> VoteVerifyFailed
+    // since that would give the wrong variant.
+    InvalidSignature(#[source] VerifyFailed),
+
+    /// Authcert couldn't be parsed
+    #[error("unparseable authcert")]
+    AuthCertParseError(#[source] parse2::ParseError),
+
+    /// Authcert isn't valid for this vote's validity period
+    #[error("authcert not valid for vote period")]
+    AuthCertWrongValidity(#[source] tor_checkable::TimeValidityError),
+
+    /// Authcert is for a different authority
+    #[error("wrong authcert")]
+    AuthCertWrongAuthority,
 }
 
 /// A shared random value produced by the directory authorities.
@@ -2298,6 +2332,12 @@ pub(crate) enum VerifyGeneralTrustedAuthorities<'r> {
         trusted: &'r [RsaIdentity],
     },
 
+    /// Document is a a vote, so OK if signed by any one of the listed authorities
+    AnyOneOfThese {
+        /// The HKP_auth_id_rsa
+        trusted: &'r [RsaIdentity],
+    },
+
     /// For the benefit of `SignatureGroup::validate`, used by the old parser, only
     ///
     /// Every `AuthCert` passed to `verify_general` is a real authority (!)
@@ -2467,7 +2507,7 @@ impl SignatureGroup {
             } = sig;
 
             match trusted_authorities {
-                TA::TrustThese { trusted } => {
+                TA::TrustThese { trusted } | TA::AnyOneOfThese { trusted } => {
                     if !trusted.contains(id_fingerprint) {
                         continue;
                     }
@@ -2506,6 +2546,12 @@ impl SignatureGroup {
         let n_authorities = match trusted_authorities {
             TA::TrustThese { trusted } => trusted.len(),
             TA::HazardouslyAssumeAllAuthCertsAreReal { n_authorities: n } => n,
+            TA::AnyOneOfThese { .. } => {
+                // strict majority of 1 is 1, so n_authorites being 1 leads to threshold of 1
+                // (doing it this way avoids having both thresholds and authority counts
+                // in the same code area, which might lead to confusing one with the other.
+                1
+            }
         };
         let threshold = consensus_threshold(n_authorities);
 
