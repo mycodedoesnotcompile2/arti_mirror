@@ -2243,14 +2243,10 @@ mod fingerprint {
 
     impl FromStr for LongIdent {
         type Err = Error;
-        #[allow(clippy::string_slice)] // TODO
         fn from_str(mut s: &str) -> Result<LongIdent> {
-            if s.starts_with('$') {
-                s = &s[1..];
-            }
-            if let Some(idx) = s.find(['=', '~']) {
-                s = &s[..idx];
-            }
+            s = s.strip_prefix('$').unwrap_or(s);
+            // Strip at '=' or '~' if found.
+            s = s.split_once(['=', '~']).map(|(a, _)| a).unwrap_or(s);
             let ident = parse_hex_ident(s)?;
             Ok(LongIdent(ident))
         }

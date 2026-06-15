@@ -190,11 +190,9 @@ impl Display for AddrPortPattern {
 
 impl FromStr for AddrPortPattern {
     type Err = PolicyError;
-    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, PolicyError> {
-        let last_colon = s.rfind(':').ok_or(PolicyError::InvalidPolicy)?;
-        let pattern: IpPattern = s[..last_colon].parse()?;
-        let ports_s = &s[last_colon + 1..];
+        let (pattern, ports_s) = s.rsplit_once(':').ok_or(PolicyError::InvalidPolicy)?;
+        let pattern: IpPattern = pattern.parse()?;
         let ports: PortRange = if ports_s == "*" {
             PortRange::new_all()
         } else {
@@ -276,14 +274,13 @@ impl Display for IpPattern {
 
 /// Helper: try to parse a plain ipv4 address, or an IPv6 address
 /// wrapped in brackets.
-#[allow(clippy::string_slice)] // TODO
 fn parse_addr(mut s: &str) -> Result<IpAddr, PolicyError> {
-    let bracketed = s.starts_with('[') && s.ends_with(']');
-    if bracketed {
-        s = &s[1..s.len() - 1];
+    let trimmed = s.strip_prefix('[').and_then(|s| s.strip_suffix(']'));
+    if let Some(trimmed) = trimmed {
+        s = trimmed;
     }
     let addr: IpAddr = s.parse().map_err(|_| PolicyError::InvalidAddress)?;
-    if addr.is_ipv6() != bracketed {
+    if addr.is_ipv6() != trimmed.is_some() {
         return Err(PolicyError::InvalidAddress);
     }
     Ok(addr)
@@ -291,10 +288,9 @@ fn parse_addr(mut s: &str) -> Result<IpAddr, PolicyError> {
 
 impl FromStr for IpPattern {
     type Err = PolicyError;
-    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, PolicyError> {
-        let (ip_s, mask_s) = match s.find('/') {
-            Some(slash_idx) => (&s[..slash_idx], Some(&s[slash_idx + 1..])),
+        let (ip_s, mask_s) = match s.split_once('/') {
+            Some((ip_s, mask_s)) => (ip_s, Some(mask_s)),
             None => (s, None),
         };
         match (ip_s, mask_s) {
