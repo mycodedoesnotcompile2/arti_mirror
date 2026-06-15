@@ -32,6 +32,9 @@ use crate::tasks::crypto::InitKeyMaterial;
 
 use futures::channel::mpsc;
 
+// TODO(relay): this is in the client module, but not client-specific
+use tor_proto::client::stream::DataStream;
+
 /// An initialized but unbootstrapped relay.
 ///
 /// This intentionally does not have access to the runtime to prevent it from doing network io.
@@ -373,6 +376,25 @@ impl<R: Runtime> TorRelay<R> {
                     .context("Failed to run OR listener task")
             }
         });
+
+        // TODO(relay-tuning): The buffer size here was picked mostly arbitrarily
+        // (on my new and not-very-busy relay, I noticed bursts of ~5000 BEGIN_DIR requests per second,
+        // but I'm not sure how representative this is).
+        //
+        // We may be able to make this buffer even smaller, assuming the consumer (i.e. DirMirror)
+        // reads from it quickly enough (presumably it will read from this in a loop,
+        // dispatching each request to a new task?)
+        #[allow(clippy::disallowed_methods)]
+        let (begin_dir_tx, begin_dir_rx) = mpsc::channel::<tor_proto::Result<DataStream>>(4096);
+
+        let runtime = self.runtime.clone();
+        // Listen for new Tor streams
+        task_handles.spawn(
+            // TODO: Should we give all tasks a `start` method?
+            crate::stream::handle_incoming_streams(runtime, begin_dir_tx, self.circuit_stream_rx),
+        );
+
+        // XXX: pass begin_dir_rx to DirMirror::serve()
 
         // Start the crypto task.
         task_handles.spawn({
