@@ -1607,7 +1607,10 @@ impl NetDir {
     /// returns true for it.
     ///
     /// This function returns None if (and only if) there are no relays
-    /// with nonzero weight where `usable` returned true.
+    /// where `usable` returned true.
+    ///
+    /// A relay with zero weight will be chosen iff all `usable` relays have
+    /// zero weight.
     //
     // TODO this API, with the `usable` closure, invites mistakes where we fail to
     // check conditions that are implied by the role we have selected for the relay:
