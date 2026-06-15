@@ -175,6 +175,11 @@ pub struct RouterDesc {
     /// * Exactly once.
     pub ntor_onion_key: Curve25519Public,
 
+    /// `ntor-onion-key-crosscert` --- Reverse cert by K_ntor on KP_relayid_ed
+    ///
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:ntor-onion-key-crosscert>
+    pub ntor_onion_key_crosscert: NtorOnionKeyCrossCert,
+
     /// `signing-key` --- Obsolete RSA identity key.
     ///
     /// * `signing-key\n<rsa public key>`
@@ -1024,6 +1029,13 @@ impl RouterDesc {
             uptime,
             onion_key: tap_onion_key,
             ntor_onion_key,
+            ntor_onion_key_crosscert: NtorOnionKeyCrossCert {
+                bit: cc_bit,
+                // Calling .dangerous_new_unverified() is not super nice but
+                // okay because the legacy parser checks the signature anyways.
+                // I don't want to do EmbeddedCert::new_unverified_hazardous().
+                cert: EmbeddedCert::new(Ed25519NtorCrossCert::dangerous_new_unverified(), cc_cert),
+            },
             signing_key: rsa_identity_key,
             ipv4_policy,
             ipv6_policy: ipv6_policy.intern(),
