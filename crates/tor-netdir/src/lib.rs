@@ -1711,24 +1711,40 @@ impl NetDir {
         R: rand::Rng,
         P: FnMut(&Relay<'a>) -> bool,
     {
-        let filtered_weighted_relays: Vec<_> = self.relays().filter_map(|r| if usable(&r) { Some((r.clone(), self.weights.weight_rs_for_role(r.rs, role))) } else { None }).collect();
+        let filtered_weighted_relays: Vec<_> = self
+            .relays()
+            .filter_map(|r| {
+                if usable(&r) {
+                    Some((r.clone(), self.weights.weight_rs_for_role(r.rs, role)))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         // NOTE: See discussion in pick_relay().
-        let mut sampled_relays = match filtered_weighted_relays[..].sample_weighted(rng, n, |(_r, w)| *w as f64) {
+        let mut sampled_relays = match filtered_weighted_relays[..].sample_weighted(
+            rng,
+            n,
+            |(_r, w)| *w as f64,
+        ) {
             Err(WeightError::InsufficientNonZero) => {
                 // Too few relays had nonzero weights: return all of those that are okay.
                 // (This is behavior used to come up with rand 0.9; it no longer does.
                 // We still detect it.)
                 let nonzero_weight_relays: Vec<_> = filtered_weighted_relays
                     .iter()
-                    .filter_map(|(r, w)| if *w > 0 { Some(r) } else { None})
+                    .filter_map(|(r, w)| if *w > 0 { Some(r) } else { None })
                     .cloned()
                     .collect();
                 if nonzero_weight_relays.is_empty() {
                     warn!(?self.weights, ?role,
                           "After filtering, all {} relays had zero weight! Picking some at random. See bug #1907.",
                           filtered_weighted_relays.len());
-                    let filtered_relays: Vec<_> = filtered_weighted_relays.iter().map(|(r, _w)| r.clone()).collect();
+                    let filtered_relays: Vec<_> = filtered_weighted_relays
+                        .iter()
+                        .map(|(r, _w)| r.clone())
+                        .collect();
                     if filtered_relays.len() >= n {
                         filtered_relays.sample(rng, n).cloned().collect()
                     } else {
@@ -1746,7 +1762,7 @@ impl NetDir {
                 Vec::new()
             }
             Ok(iter) => {
-                let selection: Vec<_> = iter.map(|(r, _w)|Relay::clone(r)).collect();
+                let selection: Vec<_> = iter.map(|(r, _w)| Relay::clone(r)).collect();
                 if selection.len() < n && selection.len() < filtered_weighted_relays.len() {
                     warn!(?self.weights, ?role,
                           "sample_weighted returned only {returned}, despite requesting {n}, \
