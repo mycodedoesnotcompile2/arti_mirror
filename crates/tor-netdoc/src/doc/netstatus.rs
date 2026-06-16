@@ -743,8 +743,7 @@ define_derive_deftly! {
         ///
         /// `None` if the value wasn't computed.
         /// That shouldn't happen.
-        // TODO DIRAUTH make private when poc's verification is abolished
-        pub(crate) fn hash_slice_for_verification(
+        fn hash_slice_for_verification(
             &self,
             algo: &DigestAlgoInSignature,
         ) -> Option<&[u8]> {
@@ -2287,10 +2286,8 @@ impl EncodeOrd for Signature {
 /// Used by callers of [`SignatureGroup::verify_general`],
 /// to allow verification to be suppressed if all we wanted to know was
 /// whether we have enough signatures and enough authcerts.
-//
-// TODO DIRAUTH make this module-private when poc is abolished
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ConsensusSignatureToVerify<'r> {
+struct ConsensusSignatureToVerify<'r> {
     /// KP_auth_sign_rsa
     key: &'r ll::pk::rsa::PublicKey,
 
@@ -2314,8 +2311,7 @@ pub(crate) struct SignatureVerifiedIfIntended {}
 impl<'r> ConsensusSignatureToVerify<'r> {
     /// Verify this signature
     ///
-    // TODO DIRAUTH make this module-private when poc is abolished
-    pub(crate) fn verify(self) -> Result<SignatureVerifiedIfIntended, VerifyFailed> {
+    fn verify(self) -> Result<SignatureVerifiedIfIntended, VerifyFailed> {
         self.key.verify(self.signed_digest, self.signature)?;
         Ok(SignatureVerifiedIfIntended {})
     }
@@ -2472,8 +2468,7 @@ impl SignatureGroup {
     ///
     ///  * We prefer the term `verify` to `validate`.  All this does is signature verification.
     ///
-    // TODO DIRAUTH make this module-private when poc is abolished
-    pub(crate) fn verify_general<E>(
+    fn verify_general<E>(
         &self,
         trusted_authorities: VerifyGeneralTrustedAuthorities,
         certs: &[AuthCert],
