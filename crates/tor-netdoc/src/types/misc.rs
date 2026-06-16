@@ -2585,7 +2585,7 @@ pub mod routerdesc {
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:extra-info-digest>
     #[derive(Clone, Debug, PartialEq, Eq, Deftly)]
-    #[derive_deftly(ItemValueParseable)]
+    #[derive_deftly(ItemValueParseable, ItemValueEncodable)]
     #[non_exhaustive]
     pub struct ExtraInfoDigests {
         /// Mandatory SHA-1 of the signed data in base 16.
