@@ -361,6 +361,8 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use crate::encode::{NetdocEncodable, NetdocEncoder};
+
     use super::*;
 
     #[test]
@@ -509,7 +511,7 @@ mod test {
         }
 
         let wrapper = parse2::parse_netdoc::<Wrapper>(&ParseInput::new(RULES, "")).unwrap();
-        let ap = wrapper.ipv4_policy;
+        let ap = wrapper.ipv4_policy.clone();
 
         assert_eq!(
             ap.allows_sockaddr(&"1.1.1.1:80".parse().unwrap()),
@@ -536,5 +538,10 @@ mod test {
             ap.allows_sockaddr(&"1.1.1.1:70".parse().unwrap()),
             Some(RuleKind::Reject)
         );
+
+        // Do round-trip encoding.
+        let mut enc = NetdocEncoder::default();
+        wrapper.encode_unsigned(&mut enc).unwrap();
+        assert_eq!(RULES, enc.finish().unwrap());
     }
 }
