@@ -3127,6 +3127,18 @@ mod test {
             "$1",
         );
 
+        // C Tor emits `m` in varying places: after `a` in votes,
+        // and at the end of each routerstatus in md consensuses.
+        // We emit it at the start of each routerstatus, right after `r`.
+        regsub(
+            r#"(?x)
+                   ( ^    r\ .* \n     )  #  ( r  )  $1, part before where we want to put m's
+                   ( (?:     .* \n )*? )  #  (.*? )  $2, the rest, before the m's
+                   ( (?:  m\ .* \n )+  )  #  ( m+ )  $3, one or more m's
+            "#,
+            r#"$1$3$2"#,
+        );
+
         UV::adjust_exp(&mut exp);
 
         assert_eq_or_diff!(&exp, &enc);
