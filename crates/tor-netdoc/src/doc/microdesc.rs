@@ -109,26 +109,6 @@ pub struct Microdesc {
 }
 
 impl Microdesc {
-    /// Create a new MicrodescBuilder that can be used to construct
-    /// microdescriptors.
-    ///
-    /// This function is only available when the crate is built with the
-    /// `build_docs` feature.
-    ///
-    /// # Limitations
-    ///
-    /// The generated microdescriptors cannot yet be encoded, and do
-    /// not yet have correct sha256 digests. As such they are only
-    /// useful for testing.
-    #[cfg(feature = "build_docs")]
-    pub fn builder() -> MicrodescBuilder {
-        MicrodescBuilder::new()
-    }
-
-    /// Return the sha256 digest of this microdesc.
-    pub fn digest(&self) -> &MdDigest {
-        &self.sha256
-    }
     /// Return the ntor onion key for this microdesc
     pub fn ntor_key(&self) -> &curve25519::PublicKey {
         &self.ntor_onion_key.0
@@ -153,6 +133,29 @@ impl Microdesc {
     /// Return a list of family ids for this microdesc.
     pub fn family_ids(&self) -> &[RelayFamilyId] {
         self.family_ids.as_ref()
+    }
+}
+
+impl Microdesc {
+    /// Create a new MicrodescBuilder that can be used to construct
+    /// microdescriptors.
+    ///
+    /// This function is only available when the crate is built with the
+    /// `build_docs` feature.
+    ///
+    /// # Limitations
+    ///
+    /// The generated microdescriptors cannot yet be encoded, and do
+    /// not yet have correct sha256 digests. As such they are only
+    /// useful for testing.
+    #[cfg(feature = "build_docs")]
+    pub fn builder() -> MicrodescBuilder {
+        MicrodescBuilder::new()
+    }
+
+    /// Return the sha256 digest of this microdesc.
+    pub fn digest(&self) -> &MdDigest {
+        &self.sha256
     }
 }
 
