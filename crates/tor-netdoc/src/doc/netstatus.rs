@@ -892,8 +892,6 @@ pub struct SignatureGroup {
 /// giving [`InsufficientTrustedSigners`](VerifyFailed::InsufficientTrustedSigners).
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
-// TODO DIRAUTH nothing tests that values in here are right, but there are no
-// public entrypoints that return one, so we don't need to cfg it "incomplete".
 pub enum ConsensusVerifiabilityError {
     /// Insufficient trusted signers
     #[error("consensus not signed by enough authorities")]
@@ -2941,7 +2939,7 @@ mod test {
         assert_eq!(ps, ps3);
     }
 
-    // TODO DIRAUTH test parse2 consensus verify functions
+    // consensuses are done in each_flavor.rs: see verify_error_netstatus
     #[test]
     #[cfg(feature = "incomplete")]
     fn verify_error_netstatus_vote() -> Result<(), anyhow::Error> {

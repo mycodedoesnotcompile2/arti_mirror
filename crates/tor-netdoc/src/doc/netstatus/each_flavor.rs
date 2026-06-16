@@ -625,3 +625,106 @@ impl NetworkStatusUnverified {
         )
     }
 }
+
+#[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
+#[test]
+fn verify_error_netstatus() -> Result<(), anyhow::Error> {
+    use assert_matches::assert_matches;
+    use ConsensusVerifiabilityError as CVE;
+
+    let file = ns_expr!(
+        "testdata2/cached-consensus",
+        "testdata2/cached-microdesc-consensus",
+        unreachable(),
+    );
+    let (mut doc, _text, certs, authorities, _now) =
+        super::test::prep_netstatus_verify::<NetworkStatusUnverified>(file)?;
+
+    macro_rules! assert_consensus_verifiability_error { {
+        ( $($verify_args:tt)* ),
+        $($assert_matches_rhs:tt)*
+    } => {
+        assert_matches! {
+            doc.can_verify($($verify_args)*),
+            Err(e)
+                => assert_matches!(e, $($assert_matches_rhs)*)
+        };
+        assert_matches! {
+            doc.clone().verify($($verify_args)*),
+            Err(ConsensusVerifyFailed::CertificationInsufficient(e))
+                => assert_matches!(e, $($assert_matches_rhs)*)
+        };
+    } }
+
+    // missing authcerts
+
+    assert_consensus_verifiability_error! {
+        (&authorities, &certs[..1]),
+        ConsensusVerifiabilityError::MissingAuthCerts { deficit, missing } => {
+            assert_eq!(deficit, authorities.len() / 2); // one short of strict majority
+            itertools::assert_equal(
+                missing.into_iter().sorted(),
+                certs[1..].iter().map(|a| a.key_ids()).sorted(),
+            );
+        }
+    }
+
+    // wrong signers
+
+    let wrong_authorities = authorities
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(i, a)| {
+            if i < 2 {
+                [i as u8; _].into()
+            } else {
+                a
+            }
+        })
+        .collect_vec();
+
+    assert_consensus_verifiability_error! {
+        (&wrong_authorities, &certs),
+        CVE::InsufficientTrustedSigners
+    }
+
+    // one broken signature, but enough others
+
+    for b in &mut doc.sigs.sigs.directory_signature[0].signature {
+        *b = 0xff;
+    }
+
+    assert_matches! {
+        doc.can_verify(&authorities, &certs),
+        Ok(())
+    }
+    assert_matches! {
+        doc.clone().verify(&authorities, &certs),
+        Ok(_)
+    }
+
+    // too few signatories, and one broken signature
+
+    doc.sigs.sigs.directory_signature.truncate(authorities.len() / 2 + 1);
+
+    assert_matches! {
+        doc.can_verify(&authorities, &certs),
+        Ok(())
+    }
+    assert_matches! {
+        doc.clone().verify(&authorities, &certs),
+        Err(ConsensusVerifyFailed::InvalidSignature(VerifyFailed::VerifyFailed))
+    }
+
+    // too few signatures, no broken signatures
+
+    doc.sigs.sigs.directory_signature.remove(0);
+
+    assert_consensus_verifiability_error! {
+        (&authorities, &certs),
+        CVE::InsufficientTrustedSigners
+    }
+
+    Ok(())
+}
