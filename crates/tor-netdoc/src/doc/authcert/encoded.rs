@@ -250,10 +250,11 @@ impl NetdocParseable for EncodedAuthCert {
             }
         }
         seq.finish()?;
+        let end_pos = input.byte_position();
 
         let text = input
             .whole_input()
-            .get(start_pos..)
+            .get(start_pos..end_pos)
             .expect("start_pos wasn't included in the body so far?!");
 
         extra_lexical_checks(text)?;
