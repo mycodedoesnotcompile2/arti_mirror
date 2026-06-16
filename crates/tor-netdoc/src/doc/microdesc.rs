@@ -64,11 +64,7 @@ pub type MdDigest = [u8; DOC_DIGEST_LEN];
 pub struct Microdesc {
     /// The legacy onion key, whose object is optional but whose item serves
     /// as the intro line for these kind of descriptors.
-    ///
-    /// Let's keep this private for now to prevent interfacing applications
-    /// from generating microdesc's with an onion-key; they are not necessary
-    /// anymore and just waste space.
-    onion_key: MicrodescIntroItem,
+    pub onion_key: MicrodescIntroItem,
 
     /// Public key used for the ntor circuit extension protocol.
     #[deftly(netdoc(single_arg))]
@@ -158,9 +154,13 @@ impl Microdesc {
 ///
 /// The object (the onion key) is deprecated and optional, but the item itself
 /// must be present, because it is used to mark the start of the netdoc.
+///
+/// The object is private to prevent interfacing applications
+/// from generating microdesc's with an onion-key; they are not necessary
+/// anymore and just waste space.
 #[derive(Debug, Clone, Default, Deftly, PartialEq, Eq)]
 #[derive_deftly(ItemValueEncodable, ItemValueParseable)]
-struct MicrodescIntroItem(#[deftly(netdoc(object))] Option<rsa::PublicKey>);
+pub struct MicrodescIntroItem(#[deftly(netdoc(object))] Option<rsa::PublicKey>);
 
 /// A microdescriptor annotated with additional data
 ///
