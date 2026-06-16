@@ -486,10 +486,7 @@ mod test {
 
     #[test]
     fn parse2() {
-        use crate::{
-            parse2::{self, ParseInput},
-            types::Ignored,
-        };
+        use crate::parse2::{self, ParseInput};
         use derive_deftly::Deftly;
 
         const RULES: &str = "\
@@ -506,7 +503,7 @@ mod test {
         #[derive_deftly(NetdocParseable)]
         struct Wrapper {
             #[allow(dead_code)]
-            intro: Ignored,
+            intro: (),
             #[deftly(netdoc(flatten))]
             ipv4_policy: AddrPolicy,
         }
