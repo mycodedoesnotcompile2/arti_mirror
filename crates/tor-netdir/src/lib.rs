@@ -1700,20 +1700,14 @@ impl NetDir {
     /// are no relays with nonzero weight where `usable` returned
     /// true.
     #[allow(clippy::cognitive_complexity)] // all due to tracing crate.
-    fn pick_n_filtered_weighted<R, T>(
-        rng: &mut R,
-        n: usize,
-        filtered_weighted_items: &[(T, u64)],
-    ) -> Vec<T>
+    fn pick_n_weighted<R, T>(rng: &mut R, n: usize, weighted_items: &[(T, u64)]) -> Vec<T>
     where
         R: rand::Rng,
         T: Clone,
     {
-        let mut sampled_relays = match filtered_weighted_items[..].sample_weighted(
-            rng,
-            n,
-            |(_r, w)| *w as f64,
-        ) {
+        let mut sampled_relays = match weighted_items[..]
+            .sample_weighted(rng, n, |(_r, w)| *w as f64)
+        {
             Err(e) => {
                 warn_report!(e, "Unexpected error while sampling a set of relays");
                 Vec::new()
@@ -1721,7 +1715,7 @@ impl NetDir {
             Ok(iter) => {
                 if iter.len() < n {
                     // Too few relays had nonzero weights: return all of those that are okay.
-                    let nonzero_weight_relays: Vec<_> = filtered_weighted_items
+                    let nonzero_weight_relays: Vec<_> = weighted_items
                         .iter()
                         .filter_map(|(r, w)| if *w > 0 { Some(r) } else { None })
                         .cloned()
@@ -1729,12 +1723,10 @@ impl NetDir {
                     if nonzero_weight_relays.is_empty() {
                         tracing::debug!(
                             "After filtering, all {} relays had zero weight! Picking some at random. See bug #1907.",
-                            filtered_weighted_items.len()
+                            weighted_items.len()
                         );
-                        let filtered_relays: Vec<_> = filtered_weighted_items
-                            .iter()
-                            .map(|(r, _w)| r.clone())
-                            .collect();
+                        let filtered_relays: Vec<_> =
+                            weighted_items.iter().map(|(r, _w)| r.clone()).collect();
                         if filtered_relays.len() >= n {
                             filtered_relays.sample(rng, n).cloned().collect()
                         } else {
@@ -1744,7 +1736,7 @@ impl NetDir {
                         tracing::debug!(
                             "After filtering, only had {}/{} relays with nonzero weight. Returning them all. See bug #1907.",
                             nonzero_weight_relays.len(),
-                            filtered_weighted_items.len()
+                            weighted_items.len()
                         );
                         nonzero_weight_relays
                     }
@@ -1787,7 +1779,7 @@ impl NetDir {
             .filter(usable)
             .map(|r| (r.clone(), self.weights.weight_rs_for_role(r.rs, role)))
             .collect();
-        let res = NetDir::pick_n_filtered_weighted(rng, n, filtered_weighted_relays.as_slice());
+        let res = NetDir::pick_n_weighted(rng, n, filtered_weighted_relays.as_slice());
         let n_found = res.len();
         if n_found < n {
             warn!(?self.weights, ?role,
@@ -2521,7 +2513,7 @@ mod test {
     #[test]
     fn test_pick_multiple_from_insufficient() {
         // This is intended to test `NetDir::pick_n_relays`, but targets the internal,
-        // easier-to-test `NetDir::pick_n_filtered_weighted` that is used to implement it.
+        // easier-to-test `NetDir::pick_n_weighted` that is used to implement it.
 
         let mut rng = testing_rng();
 
@@ -2529,7 +2521,7 @@ mod test {
         let mostly_zeros = vec![("dud1", 0), ("dud2", 0), ("ok", 1), ("dud3", 0)];
         for n in [1, 2, 10] {
             assert_eq!(
-                NetDir::pick_n_filtered_weighted(&mut rng, n, &mostly_zeros[..]),
+                NetDir::pick_n_weighted(&mut rng, n, &mostly_zeros[..]),
                 vec!["ok"],
                 "where n={n}"
             );
@@ -2540,7 +2532,7 @@ mod test {
         let all_zeros = vec![("dud1", 0), ("dud2", 0), ("dud3", 0)];
         let all_zeros_items = all_zeros.iter().map(|(x, _w)| *x).collect::<Vec<_>>();
         for n in [all_zeros.len(), all_zeros.len() + 10] {
-            let mut res = NetDir::pick_n_filtered_weighted(&mut rng, n, &all_zeros[..]);
+            let mut res = NetDir::pick_n_weighted(&mut rng, n, &all_zeros[..]);
             res.sort();
             assert_eq!(res, all_zeros_items, "where n={n}");
         }
@@ -2548,7 +2540,7 @@ mod test {
         // If *all* items have zero weight, and we ask for fewer than we have,
         // we get back as many as we asked for.
         let n = all_zeros.len() / 2;
-        let res = NetDir::pick_n_filtered_weighted(&mut rng, n, &all_zeros[..]);
+        let res = NetDir::pick_n_weighted(&mut rng, n, &all_zeros[..]);
         assert_eq!(res.len(), n);
     }
 
