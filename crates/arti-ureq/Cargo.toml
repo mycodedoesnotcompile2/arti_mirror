@@ -16,7 +16,7 @@ async-std = { version = "1.7.0", optional = true }
 educe = "0.4.6"
 futures = "0.3.14"
 thiserror = "2"
-tokio = { version = "1.47.1", optional = true }
+tokio = { version = "1.47.5", optional = true }
 tor-error = { path = "../tor-error", version = "0.43.0" }
 tor-proto = { path = "../tor-proto", features = [ "stream-ctrl" ], version = "0.43.0" }
 tor-rtcompat = { path = "../tor-rtcompat", default-features = false, version = "0.43.0" }
