@@ -103,7 +103,9 @@ define_derive_deftly_module! {
               F_NORMAL {
                         $LET_SELECTOR
                         for item in selector.${paste_spanned $fname iter_ordered}(&self.$fname) {
-                            $ENCODE_ITEM_VALUE
+                            {
+                                $ENCODE_ITEM_VALUE
+                            }
                         }
               }
               F_FLATTEN {
@@ -115,8 +117,10 @@ define_derive_deftly_module! {
                         $LET_SELECTOR
                         selector.${paste_spanned $fname check_netdoc_encodable}();
                         for subdoc in selector.iter_ordered(&self.$fname) {
-                            NetdocEncodable::encode_unsigned(subdoc, out)
-                                .$BUG_CONTEXT?;
+                            {
+                                NetdocEncodable::encode_unsigned(subdoc, out)
+                                    .$BUG_CONTEXT?;
+                            }
                         }
               }
               F_SKIP {
