@@ -6,6 +6,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 
 use crate::NormalItemArgument;
+use crate::encode::NetdocEncodableFields;
 use crate::parse2::{
     ErrorProblem as EP, ItemArgumentParseable, ItemStream, KeywordRef, NetdocParseableFields,
     UnparsedItem,
@@ -105,6 +106,40 @@ impl NetdocParseableFields for AddrPolicy {
 
     fn finish(acc: Self::Accumulator, _: &ItemStream) -> Result<Self, EP> {
         Ok(acc)
+    }
+}
+
+impl NetdocEncodableFields for AddrPolicy {
+    fn encode_fields(&self, out: &mut crate::encode::NetdocEncoder) -> Result<(), tor_error::Bug> {
+        // The order of this field is significant, meaning we have to emit the
+        // values as they are.  The spec also strongly recommends a trailing
+        // `accept *:*` or `reject *:*`.  To comply with this, we check for
+        // an existing final rule with an ALL pattern and add a `reject *:*`
+        // if that is not the case.  This is not super nice and ideally we would
+        // do this somewhere in the type construction, but we cannot do some
+        // right now because the legacy parser accumulates it as it is.
+        const ALL: AddrPortPattern = AddrPortPattern::new_all();
+        const DEFAULT_DENY: AddrPolicyRule = AddrPolicyRule {
+            kind: RuleKind::Reject,
+            pattern: ALL,
+        };
+
+        // Add default deny in case of an absent trailing ALL.
+        let mut rules = self.rules.clone();
+        match self.rules.last() {
+            // Do nothing if there already is a trailing ALL.
+            Some(AddrPolicyRule {
+                kind: _,
+                pattern: ALL,
+            }) => {}
+            // Add a default deny to the end.
+            _ => rules.push(DEFAULT_DENY),
+        }
+
+        for rule in rules {
+            out.push_raw_string(&format!("{} {}\n", rule.kind, rule.pattern));
+        }
+        Ok(())
     }
 }
 

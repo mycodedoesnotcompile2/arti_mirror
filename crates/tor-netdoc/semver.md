@@ -1,3 +1,4 @@
+ADDED: `NetdocEncodableFields` for `AddrPolicy`
 ADDED: `encode::ItemArgument` for `SpFingerprint`
 ADDED: `ItemValueEncodable` for `ExtraInfoDigests`
 ADDED: `ItemValueEncodable` for `RouterDescIntroItem`
