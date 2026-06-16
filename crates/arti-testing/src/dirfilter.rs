@@ -6,7 +6,7 @@ use rand::RngExt;
 use std::sync::{Arc, Mutex};
 use tor_dirmgr::filter::DirFilter;
 use tor_netdoc::{
-    doc::{microdesc::MicrodescAndHash as Microdesc, netstatus::UncheckedMdConsensus},
+    doc::{microdesc::MicrodescAndHash, netstatus::UncheckedMdConsensus},
     types::{Curve25519Public, family::RelayFamily, policy::PortPolicy},
 };
 
@@ -50,7 +50,7 @@ pub(crate) fn nil_filter() -> Arc<dyn DirFilter + 'static> {
 struct ReplaceOnionKeysFilter;
 
 impl DirFilter for ReplaceOnionKeysFilter {
-    fn filter_md(&self, mut md: Microdesc) -> tor_dirmgr::Result<Microdesc> {
+    fn filter_md(&self, mut md: MicrodescAndHash) -> tor_dirmgr::Result<MicrodescAndHash> {
         let junk_key: [u8; 32] = rand::rng().random();
         md.ntor_onion_key = Curve25519Public(junk_key.into());
         Ok(md)
@@ -87,7 +87,7 @@ impl DirFilter for OneBigFamilyFilter {
         Ok(consensus)
     }
 
-    fn filter_md(&self, mut md: Microdesc) -> tor_dirmgr::Result<Microdesc> {
+    fn filter_md(&self, mut md: MicrodescAndHash) -> tor_dirmgr::Result<MicrodescAndHash> {
         let big_family = self.new_family.lock().expect("poisoned lock").clone();
         md.family = big_family;
         Ok(md)
@@ -113,7 +113,7 @@ impl Default for NoExitPortsFilter {
 }
 
 impl DirFilter for NoExitPortsFilter {
-    fn filter_md(&self, mut md: Microdesc) -> tor_dirmgr::Result<Microdesc> {
+    fn filter_md(&self, mut md: MicrodescAndHash) -> tor_dirmgr::Result<MicrodescAndHash> {
         md.ipv4_policy = self.reject_all.clone();
         md.ipv6_policy = self.reject_all.clone();
         Ok(md)
