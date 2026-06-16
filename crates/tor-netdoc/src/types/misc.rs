@@ -2114,6 +2114,7 @@ mod fingerprint {
     use crate::parse2::{ArgumentError, ArgumentStream, ItemArgumentParseable};
     use crate::{Error, NetdocErrorKind as EK, Pos, Result};
     use base64ct::{Base64Unpadded, Encoding as _};
+    use itertools::Itertools;
     use tor_llcrypto::pk::rsa::RsaIdentity;
 
     /// A hex-encoded RSA key identity (fingerprint) with spaces in it.
@@ -2193,6 +2194,20 @@ mod fingerprint {
             Ok(Self(
                 RsaIdentity::from_hex(fp.join("").as_str()).ok_or(ArgumentError::Invalid)?,
             ))
+        }
+    }
+
+    impl encode::ItemArgument for SpFingerprint {
+        fn write_arg_onto(&self, out: &mut ItemEncoder<'_>) -> StdResult<(), Bug> {
+            let res = self
+                .0
+                .to_bytes()
+                .chunks(2)
+                .map(|b| format!("{:02X}{:02X}", b[0], b[1]))
+                .join(" ");
+            debug_assert_eq!(res.len(), 4 * 10 + 9);
+            out.args_raw_string(&res);
+            Ok(())
         }
     }
 
