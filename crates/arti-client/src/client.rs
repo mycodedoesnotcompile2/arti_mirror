@@ -72,7 +72,7 @@ use crate::{TorClientBuilder, status, util};
 #[cfg(feature = "geoip")]
 use tor_geoip::CountryCode;
 use tor_rtcompat::scheduler::TaskHandle;
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use tor_persist::FsStateMgr as UsingStateMgr;
@@ -1374,6 +1374,9 @@ impl<R: Runtime> TorClient<R> {
     /// applied, or none will. If you have disabled all-or-nothing changes, then
     /// only fatal errors will be reported in this function's return value.
     ///
+    /// When performing a reconfiguration,
+    /// a returned error may indicate that the client is now in an inconsistent state.
+    ///
     /// This function applies its changes to **all** TorClient instances derived
     /// from the same call to `TorClient::create_*`: even ones whose circuits
     /// are isolated from this handle.
@@ -1392,6 +1395,7 @@ impl<R: Runtime> TorClient<R> {
     /// and circuits, but rather affect only future streams and circuits.  Those
     /// are also explicitly documented.
     #[instrument(skip_all, level = "trace")]
+    #[allow(clippy::cognitive_complexity)]
     pub fn reconfigure(
         &self,
         new_config: &TorClientConfig,
@@ -1404,24 +1408,47 @@ impl<R: Runtime> TorClient<R> {
         // deciding how to change it, then applying the changes.
         let guard = self.client.reconfigure_lock.lock().expect("Poisoned lock");
 
+        use tor_config::Reconfigure::*;
+
         match how {
-            tor_config::Reconfigure::AllOrNothing => {
+            AllOrNothing => {
                 // We have to check before we make any changes.
-                self.client.reconfigure_inner(
-                    new_config,
-                    tor_config::Reconfigure::CheckAllOrNothing,
-                    &guard,
-                )?;
+                self.client
+                    .reconfigure_inner(new_config, CheckAllOrNothing, &guard)?;
+
+                // Hopefully this doesn't fail,
+                // otherwise we may have returned early from the reconfiguration
+                // and its no longer "all-or-nothing".
+                let result = self
+                    .client
+                    .reconfigure_inner(new_config, AllOrNothing, &guard);
+
+                if result.is_err() {
+                    warn!(
+                        "Attempted an \"all-or-nothing\" reconfigure, but unexpectedly failed. \
+                        The client will continue to run in an inconsistent state."
+                    );
+                }
+
+                result
             }
-            tor_config::Reconfigure::CheckAllOrNothing => {}
-            tor_config::Reconfigure::WarnOnFailures => {}
-            _ => {}
+            WarnOnFailures => {
+                let result = self.client.reconfigure_inner(new_config, how, &guard);
+
+                // If there's a fatal error,
+                // we may have reconfigured some components and not others.
+                if result.is_err() {
+                    warn!(
+                        "Attempted a reconfigure, but failed. \
+                        The client will continue to run in an inconsistent state."
+                    );
+                }
+
+                result
+            }
+            CheckAllOrNothing => self.client.reconfigure_inner(new_config, how, &guard),
+            _ => self.client.reconfigure_inner(new_config, how, &guard),
         }
-
-        // Actually reconfigure
-        self.client.reconfigure_inner(new_config, how, &guard)?;
-
-        Ok(())
     }
 
     /// Return a new isolated `TorClient` handle.
