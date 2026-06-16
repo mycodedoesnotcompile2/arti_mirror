@@ -75,19 +75,19 @@ pub struct Microdesc {
     pub ntor_onion_key: Curve25519Public,
 
     /// Declared family for this relay.
-    #[deftly(netdoc(default))]
+    #[deftly(netdoc(default(skip)))]
     pub family: Arc<RelayFamily>,
 
     /// Family identities for this relay.
-    #[deftly(netdoc(default))]
+    #[deftly(netdoc(default(skip)))]
     pub family_ids: RelayFamilyIds,
 
     /// List of IPv4 ports to which this relay will exit
-    #[deftly(netdoc(keyword = "p", default))]
+    #[deftly(netdoc(keyword = "p", default(skip)))]
     pub ipv4_policy: Arc<PortPolicy>,
 
     /// List of IPv6 ports to which this relay will exit
-    #[deftly(netdoc(keyword = "p6", default))]
+    #[deftly(netdoc(keyword = "p6", default(skip)))]
     pub ipv6_policy: Arc<PortPolicy>,
 
     /// Ed25519 identity for this relay
