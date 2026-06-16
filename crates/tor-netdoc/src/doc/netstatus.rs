@@ -3144,22 +3144,22 @@ mod test {
     #[cfg(feature = "incomplete")]
     impl MungeForRoundtrip for plain::NetworkStatusUnverified {
         fn adjust_exp(exp: &mut String) {
-                let mut regsub = |re, repl| regsub(exp, re, repl);
+            let mut regsub = |re, repl| regsub(exp, re, repl);
 
-                // We emit the optional `ns`
-                // https://spec.torproject.org/dir-spec/consensus-formats.html#item:network-status-version
-                regsub(
-                    r#"^network-status-version 3$"#,
-                    "network-status-version 3 ns",
-                );
+            // We emit the optional `ns`
+            // https://spec.torproject.org/dir-spec/consensus-formats.html#item:network-status-version
+            regsub(
+                r#"^network-status-version 3$"#,
+                "network-status-version 3 ns",
+            );
 
-                // C Tor writes nontrivial values for `publication` in rs `r` items,
-                // but we use a fixed string.
-                // https://spec.torproject.org/dir-spec/consensus-formats.html#item:r
-                regsub(
-                    r#"^(r \S+ \S+ \S+) \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#,
-                    "$1 2000-01-01 00:00:01",
-                );
+            // C Tor writes nontrivial values for `publication` in rs `r` items,
+            // but we use a fixed string.
+            // https://spec.torproject.org/dir-spec/consensus-formats.html#item:r
+            regsub(
+                r#"^(r \S+ \S+ \S+) \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#,
+                "$1 2000-01-01 00:00:01",
+            );
         }
     }
 
@@ -3176,17 +3176,17 @@ mod test {
     #[cfg(feature = "incomplete")]
     impl MungeForRoundtrip for md::NetworkStatusUnverified {
         fn adjust_exp(exp: &mut String) {
-                let mut regsub = |re, repl| regsub(exp, re, repl);
+            let mut regsub = |re, repl| regsub(exp, re, repl);
 
-                // C Tor writes nontrivial values for `publication` in rs `r` items,
-                // but we use a fixed string.
-                // https://spec.torproject.org/dir-spec/consensus-formats.html#item:r
-                //
-                // Not the same as in plain consensus: one fewer fields!
-                regsub(
-                    r#"^(r \S+ \S+) \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#,
-                    "$1 2000-01-01 00:00:01",
-                );
+            // C Tor writes nontrivial values for `publication` in rs `r` items,
+            // but we use a fixed string.
+            // https://spec.torproject.org/dir-spec/consensus-formats.html#item:r
+            //
+            // Not the same as in plain consensus: one fewer fields!
+            regsub(
+                r#"^(r \S+ \S+) \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#,
+                "$1 2000-01-01 00:00:01",
+            );
         }
     }
 }
