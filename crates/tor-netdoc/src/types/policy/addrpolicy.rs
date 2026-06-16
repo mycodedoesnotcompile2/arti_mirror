@@ -543,5 +543,33 @@ mod test {
         let mut enc = NetdocEncoder::default();
         wrapper.encode_unsigned(&mut enc).unwrap();
         assert_eq!(RULES, enc.finish().unwrap());
+
+        // Test default deny.
+        let accept_all = {
+            let mut ap = AddrPolicy::new();
+            ap.push(RuleKind::Accept, AddrPortPattern::new_all());
+            ap
+        };
+        let reject_all = {
+            let mut ap = AddrPolicy::new();
+            ap.push(RuleKind::Reject, AddrPortPattern::new_all());
+            ap
+        };
+
+        let tests = [
+            (accept_all.clone(), "accept *:*"), // do not add default deny to existing
+            (reject_all.clone(), "reject *:*"), // do not add default deny to existing
+            (AddrPolicy::new(), "reject *:*"),  // add default deny to empty
+        ];
+        for (input, expected_tail) in tests {
+            let mut enc = NetdocEncoder::default();
+            Wrapper {
+                intro: (),
+                ipv4_policy: input,
+            }
+            .encode_unsigned(&mut enc)
+            .unwrap();
+            assert_eq!(expected_tail, enc.finish().unwrap().lines().last().unwrap());
+        }
     }
 }
