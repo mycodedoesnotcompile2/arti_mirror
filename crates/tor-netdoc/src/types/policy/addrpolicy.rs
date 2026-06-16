@@ -500,7 +500,7 @@ mod test {
         reject *:*\n";
 
         #[derive(Deftly)]
-        #[derive_deftly(NetdocParseable)]
+        #[derive_deftly(NetdocParseable, NetdocEncodable)]
         struct Wrapper {
             #[allow(dead_code)]
             intro: (),
