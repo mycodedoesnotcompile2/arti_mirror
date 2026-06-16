@@ -951,3 +951,43 @@ hU6Qo2fW7+9PXkcrEyiB62ZDne/gwKPHXBo8lMeV8JCOfVBF5vT4BtKRLP+Jw66x
 
     Ok(())
 }
+
+#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+#[derive_deftly(NetdocEncodable, NetdocParseable)]
+struct TopSkips {
+    top_skip_intro: (),
+    #[deftly(netdoc(default(skip)))]
+    item: TestItemRest,
+    #[deftly(netdoc(default(skip), subdoc))]
+    subdoc: Sub3,
+}
+
+#[test]
+fn default_skip() -> TestResult<()> {
+    t_ok(
+        r#"top-skip-intro
+"#,
+        &TopSkips::default(),
+    )?;
+
+    t_ok(
+        r#"top-skip-intro
+item arg rest
+sub3-intro
+sub3-field s3f
+"#,
+        &TopSkips {
+            item: TestItemRest {
+                optional: Some("arg".into()),
+                rest: "rest".into(),
+            },
+            subdoc: Sub3 {
+                sub3_field: Some(("s3f".into(),)),
+                ..default()
+            },
+            ..default()
+        },
+    )?;
+
+    Ok(())
+}

@@ -35,3 +35,4 @@ ADDED: `plain::NetworkStatus` and `md::NetworkStatus` implement `NetdocEncodable
 ADDED: `plain::NetworkStatus` and `md::NetworkStatus` have `verify` methods
 ADDED: `EmbeddedCert` implements `NetdocEncodable` and `NetdocParseable`
 ADDED: `Microdesc`, `RelayFamily`, `RelayFamilyIds` are encodable
+ADDED: `NetdocEncodable` derive, `#[deftly(netdoc(default(skip)))]` option

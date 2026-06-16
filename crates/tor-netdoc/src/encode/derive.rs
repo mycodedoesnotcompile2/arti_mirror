@@ -79,9 +79,18 @@ define_derive_deftly_module! {
             }}
           }}
 
+          // Are we skipping encoding default values?
+          ${defcond WANT_SKIP_DEFAULT fmeta(netdoc(default(skip)))}
+          // If so, provide a function (bound method call) to test defaultness.
+          ${define IS_DEFAULT { selector.${paste_spanned $fname is_default} }}
+
           // Bind `selector` to an appropriate selector ZST.
           ${define LET_SELECTOR {
+              ${if WANT_SKIP_DEFAULT {
+                         let selector = SingletonMultiplicitySelector::<$ftype>::default();
+              } else {
                          let selector = MultiplicitySelector::<$ftype>::default();
+              }}
                          let selector = selector.selector();
           }}
 
@@ -103,6 +112,9 @@ define_derive_deftly_module! {
               F_NORMAL {
                         $LET_SELECTOR
                         for item in selector.${paste_spanned $fname iter_ordered}(&self.$fname) {
+                  ${if WANT_SKIP_DEFAULT {
+                            if !$IS_DEFAULT(item)
+                  }}
                             {
                                 $ENCODE_ITEM_VALUE
                             }
@@ -117,6 +129,9 @@ define_derive_deftly_module! {
                         $LET_SELECTOR
                         selector.${paste_spanned $fname check_netdoc_encodable}();
                         for subdoc in selector.iter_ordered(&self.$fname) {
+                  ${if WANT_SKIP_DEFAULT {
+                            if !$IS_DEFAULT(subdoc)
+                  }}
                             {
                                 NetdocEncodable::encode_unsigned(subdoc, out)
                                     .$BUG_CONTEXT?;
@@ -238,6 +253,13 @@ define_derive_deftly! {
     ///   Ignored.  (The encoder always encodes the field, regardless of the value.)
     ///
     ///   Accepted for alignment with `NetdocParseable`.
+    ///
+    /// # **`#[deftly(netdoc(default(skip)))]`**:
+    ///
+    ///   Omit encoding this item if the value is [`Eq`] to the [`Default`].
+    ///   Forces the multiplicity of the field to be treated as a singleton.
+    ///
+    ///   Can be combined with `single_arg`, `with`, and with `subdoc`.
     ///
     /// # Example
     ///
