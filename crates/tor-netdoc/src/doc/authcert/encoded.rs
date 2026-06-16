@@ -10,9 +10,7 @@ use crate::parse2::{
 
 use ErrorProblem as EP;
 
-use crate::doc::netstatus::vote::{
-    NetworkStatusUnverifiedParsedBody as NetworkStatusVoteUnverifiedParsedBody,
-};
+use crate::doc::netstatus::vote::NetworkStatusUnverifiedParsedBody as NetworkStatusVoteUnverifiedParsedBody;
 
 /// Entire authority key certificate, encoded and signed
 ///
