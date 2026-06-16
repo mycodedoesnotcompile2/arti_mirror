@@ -2314,7 +2314,12 @@ pub(crate) enum VerifyGeneralTrustedAuthorities<'r> {
 ///
 /// Enough is strictly more than half.
 ///
-/// The actual number should be tested against this with `>=`, not `>`.
+/// The returned value is a [`RangeFrom`](std::ops::RangeFrom), ie an inclusive range.
+/// Its `start` value is the minimum acceptable number of authorities
+/// from whom we have good signatures.
+///
+/// Should usually be followed by
+/// [`.contains`](std::ops::RangeFrom::contains)`(&actual_number)`.
 ///
 /// # Example
 ///
@@ -2325,8 +2330,8 @@ pub(crate) enum VerifyGeneralTrustedAuthorities<'r> {
 /// let n_trusted_authorities = 3;
 /// let n_good_signatures_from_different_authorities = 2;
 ///
-/// if n_good_signatures_from_different_authorities
-///     >= consensus_threshold(n_trusted_authorities)
+/// if consensus_threshold(n_trusted_authorities)
+///      .contains(&n_good_signatures_from_different_authorities)
 /// {
 ///     Ok(())
 /// } else {
@@ -2334,8 +2339,9 @@ pub(crate) enum VerifyGeneralTrustedAuthorities<'r> {
 /// }
 /// # }
 /// ```
-pub fn consensus_threshold(n_authorities: usize) -> usize {
+pub fn consensus_threshold(n_authorities: usize) -> std::ops::RangeFrom<usize> {
     (n_authorities / 2) + 1 // strict majority
+        ..
 }
 
 impl SignatureGroup {
@@ -2379,7 +2385,7 @@ impl SignatureGroup {
             }
         }
 
-        signed_by.len() >= consensus_threshold(authorities.len())
+        consensus_threshold(authorities.len()).contains(&signed_by.len())
     }
 
     /// Return true if the signature group defines a valid signature.
@@ -2503,7 +2509,7 @@ impl SignatureGroup {
         };
         let threshold = consensus_threshold(n_authorities);
 
-        if ok.len() >= threshold {
+        if threshold.contains(&ok.len()) {
             Ok(())
         } else {
             // Throw the verification error if any of the verifications failed
@@ -2513,7 +2519,7 @@ impl SignatureGroup {
             Err(if missing.is_empty() {
                 ConsensusVerifiabilityError::InsufficientTrustedSigners
             } else {
-                let deficit = threshold - ok.len();
+                let deficit = threshold.start - ok.len();
                 ConsensusVerifiabilityError::MissingAuthCerts { missing, deficit }
             }
             .into())
