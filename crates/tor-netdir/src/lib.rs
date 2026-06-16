@@ -1697,8 +1697,7 @@ impl NetDir {
     /// than `n` if we happen to have fewer than `n` appropriate relays.
     ///
     /// This function returns an empty vector if (and only if) there
-    /// are no relays with nonzero weight where `usable` returned
-    /// true.
+    /// are no relays with nonzero weight.
     #[allow(clippy::cognitive_complexity)] // all due to tracing crate.
     fn pick_n_weighted<R, T>(rng: &mut R, n: usize, weighted_items: &[(T, u64)]) -> Vec<T>
     where
