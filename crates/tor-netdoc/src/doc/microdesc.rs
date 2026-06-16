@@ -525,6 +525,7 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
+    use crate::encode::{NetdocEncodable, NetdocEncoder};
     use hex_literal::hex;
     const TESTDATA: &str = include_str!("../../testdata/microdesc1.txt");
     const TESTDATA2: &str = include_str!("../../testdata/microdesc2.txt");
@@ -663,7 +664,7 @@ mod test {
     /// replaced by a copy and paste in the case one replaces the testdata2
     /// vector's in the future.
     #[test]
-    fn parse2() {
+    fn parse2() -> anyhow::Result<()> {
         use tor_llcrypto::pk::ed25519::Ed25519Identity;
 
         use crate::parse2;
@@ -709,6 +710,16 @@ Yl0wCKpUZFHs5CHsajLSfXZKHkwfqRXFEJu9aMtmQdQFfqE9JOJHAgMBAAE=
                 family_ids: Default::default(),
             }
         );
+
+        let mut enc = NetdocEncoder::new();
+        for md in &mds {
+            md.encode_unsigned(&mut enc)?;
+        }
+        let enc = enc.finish()?;
+        let exp = md;
+        assert_eq_or_diff!(&enc, &exp);
+
+        Ok(())
     }
 
     /// Manual test for happy families.
