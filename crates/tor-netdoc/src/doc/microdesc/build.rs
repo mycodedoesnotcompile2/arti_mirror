@@ -156,10 +156,7 @@ impl MicrodescBuilder {
             ed25519_id,
             __non_exhaustive: (),
         };
-        Ok(MicrodescAndHash {
-            md,
-            sha256,
-        })
+        Ok(MicrodescAndHash { md, sha256 })
     }
 }
 

@@ -95,7 +95,6 @@ pub struct Microdesc {
 
     // addr is obsolete and doesn't go here any more
     // pr is obsolete and doesn't go here any more.
-
     #[doc(hidden)]
     #[deftly(netdoc(skip))]
     pub __non_exhaustive: (),
@@ -427,10 +426,7 @@ impl MicrodescAndHash {
             family_ids,
             __non_exhaustive: (),
         };
-        let md = MicrodescAndHash {
-            md,
-            sha256,
-        };
+        let md = MicrodescAndHash { md, sha256 };
         Ok((md, location))
     }
 }

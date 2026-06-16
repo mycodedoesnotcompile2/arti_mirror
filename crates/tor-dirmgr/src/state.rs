@@ -1055,7 +1055,9 @@ impl<R: Runtime> DirState for GetMicrodescsState<R> {
         let mut microdescs = Vec::new();
         for (id, text) in docs {
             if let DocId::Microdesc(digest) = id {
-                if let Ok(md) = MicrodescAndHash::parse(text.as_str().map_err(Error::BadUtf8InCache)?) {
+                if let Ok(md) =
+                    MicrodescAndHash::parse(text.as_str().map_err(Error::BadUtf8InCache)?)
+                {
                     if md.digest() == &digest {
                         microdescs.push(md);
                         continue;
