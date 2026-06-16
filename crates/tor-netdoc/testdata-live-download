@@ -4,6 +4,11 @@
 #   testdata-live-download
 #
 # This has to be run inside the git repository!
+#
+#
+# This script can also be used to help test with a *complete* consensus or vote:
+# Run it, and then
+#     TOR_NETDOC_TESTDATA_LIVE_PREFIX=$PWD/crates/tor-netdoc/testdata-live/.entire. cargo test -p tor-netdoc --all-features roundtrip_live
 
 set -euo pipefail
 

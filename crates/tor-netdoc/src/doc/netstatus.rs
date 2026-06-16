@@ -3133,8 +3133,6 @@ mod test {
     /// Test that we can re-encode the consensus we parsed, and that we get the same thing back.
     ///
     /// Well, roughly the same thing.
-    //
-    // TODO DIRAUTH want more comprehensive test; testdata2's netstatus lacks many things
     #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
     #[test]
     fn roundtrip_netstatus_plain() -> anyhow::Result<()> {
@@ -3275,5 +3273,55 @@ $2
                 regsub(&format!(r#"^{missing_field} .*\n"#), "");
             }
         }
+    }
+
+    fn testdata_live(f: &str) -> String {
+        // We implement an overrideable *prefix* rather than suffix, here,
+        // so that we can access the files in a totally different directory.
+        // (This is helpful with nailing-cargo, amongst other things.)
+        let var = "TOR_NETDOC_TESTDATA_LIVE_PREFIX";
+        let prefix = std::env::var_os(var)
+            .map(|s| s.into_string().expect(var))
+            .unwrap_or("testdata-live/".into());
+        format!("{prefix}{f}")
+    }
+
+    #[allow(clippy::unnecessary_wraps)] // signature needs to match for roundtrip_netstatus
+    fn unwrap_unverified_for_test<UV: NetdocParseableUnverified>(
+        uv: UV,
+        _ids: &[RsaIdentity],
+        _certs: &[AuthCert],
+    ) -> Result<TimerangeBound<UV::Body>, std::convert::Infallible> {
+        Ok(TimerangeBound::new(uv.unwrap_unverified().0, ..))
+    }
+
+    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
+    #[test]
+    fn roundtrip_live_plain() -> anyhow::Result<()> {
+        roundtrip_netstatus::<plain::NetworkStatusUnverified, _, _>(
+            &testdata_live("consensus"),
+            unwrap_unverified_for_test,
+            Duration::ZERO,
+        )
+    }
+
+    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
+    #[test]
+    fn roundtrip_live_md() -> anyhow::Result<()> {
+        roundtrip_netstatus::<md::NetworkStatusUnverified, _, _>(
+            &testdata_live("consensus-microdesc"),
+            unwrap_unverified_for_test,
+            Duration::ZERO,
+        )
+    }
+
+    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
+    #[test]
+    fn roundtrip_live_vote() -> anyhow::Result<()> {
+        roundtrip_netstatus::<vote::NetworkStatusUnverified, _, _>(
+            &testdata_live("authority"),
+            unwrap_unverified_for_test,
+            Duration::ZERO,
+        )
     }
 }
