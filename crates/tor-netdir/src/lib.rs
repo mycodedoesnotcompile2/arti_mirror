@@ -1696,8 +1696,8 @@ impl NetDir {
     /// returned twice. Therefore, the resulting vector may be smaller
     /// than `n` if we happen to have fewer than `n` appropriate relays.
     ///
-    /// This function returns an empty vector if (and only if) there
-    /// are no relays with nonzero weight.
+    /// If *all* items have zero-weight, then up to `n` will be chosen randomly
+    /// and returned. Otherwise, never returns items with zero-weight.
     #[allow(clippy::cognitive_complexity)] // all due to tracing crate.
     fn pick_n_weighted<R, T>(rng: &mut R, n: usize, weighted_items: &[(T, u64)]) -> Vec<T>
     where
@@ -1758,9 +1758,11 @@ impl NetDir {
     /// returned twice. Therefore, the resulting vector may be smaller
     /// than `n` if we happen to have fewer than `n` appropriate relays.
     ///
-    /// This function returns an empty vector if (and only if) there
-    /// are no relays with nonzero weight where `usable` returned
-    /// true.
+    /// Relays with zero-weight will be chosen only if there are *no* usable
+    /// relays with nonzero-weight.
+    ///
+    /// This function returns an empty vector if (and only if) there are no
+    /// relays where `usable` returned true.
     #[allow(clippy::cognitive_complexity)] // all due to tracing crate.
     pub fn pick_n_relays<'a, R, P>(
         &'a self,
