@@ -3421,10 +3421,10 @@ mod test {
         fn parse2(s: &str) -> std::result::Result<SpFingerprint, ErrorProblem> {
             use crate::parse2::{self, ParseInput};
 
-            let s = format!("fingerprint {s}\n");
-            parse2::parse_netdoc::<Wrapper>(&ParseInput::new(&s, ""))
-                .map(|x| x.fingerprint)
-                .map_err(|x| x.problem)
+            let input = format!("fingerprint {s}\n");
+            let res = parse2::parse_netdoc::<Wrapper>(&ParseInput::new(&input, ""))
+                .map_err(|x| x.problem)?;
+            Ok(res.fingerprint)
         }
 
         // Test a valid one.
