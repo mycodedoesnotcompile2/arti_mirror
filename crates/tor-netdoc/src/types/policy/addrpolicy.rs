@@ -161,7 +161,7 @@ pub struct AddrPortPattern {
 
 impl AddrPortPattern {
     /// Return an AddrPortPattern matching all targets.
-    pub fn new_all() -> Self {
+    pub const fn new_all() -> Self {
         Self {
             pattern: IpPattern::Star,
             ports: PortRange::new_all(),

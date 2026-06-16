@@ -81,13 +81,13 @@ pub struct PortRange {
 impl PortRange {
     /// Create a new port range spanning from lo to hi, asserting that
     /// the correct invariants hold.
-    fn new_unchecked(lo: u16, hi: u16) -> Self {
+    const fn new_unchecked(lo: u16, hi: u16) -> Self {
         assert!(lo != 0);
         assert!(lo <= hi);
         PortRange { lo, hi }
     }
     /// Create a port range containing all ports.
-    pub fn new_all() -> Self {
+    pub const fn new_all() -> Self {
         PortRange::new_unchecked(1, 65535)
     }
     /// Create a new PortRange.
