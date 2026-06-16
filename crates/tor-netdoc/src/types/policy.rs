@@ -275,7 +275,7 @@ impl PortRanges {
             }
         }
 
-        (!self.is_empty()).then(|| DisplayWrapper(self))
+        (!self.is_empty()).then_some(DisplayWrapper(self))
     }
 }
 
