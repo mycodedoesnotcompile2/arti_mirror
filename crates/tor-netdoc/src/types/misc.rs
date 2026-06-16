@@ -2549,7 +2549,7 @@ pub mod routerdesc {
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:overload-general>
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Deftly)]
-    #[derive_deftly(ItemValueParseable)]
+    #[derive_deftly(ItemValueParseable, ItemValueEncodable)]
     #[non_exhaustive]
     pub struct OverloadGeneral {
         /// The version of the item.
