@@ -3022,6 +3022,35 @@ mod test {
         Ok(())
     }
 
+    #[cfg(feature = "retain-unknown")]
+    #[allow(clippy::type_complexity)]
+    pub(super) fn prep_netstatus_verify<UV: NetdocParseable>(
+        file: &str,
+    ) -> anyhow::Result<(UV, String, Vec<AuthCert>, Vec<RsaIdentity>, SystemTime)> {
+        let text = fs::read_to_string(file).with_context(|| file.to_owned())?;
+        let now = parse_rfc3339("2000-01-01T00:02:25Z")?;
+
+        let mut input = ParseInput::new(&text, file);
+        input.retain_unknown_values();
+
+        let doc: UV = parse_netdoc(&input)?;
+
+        let certs = {
+            let file = "testdata2/cached-certs";
+            let text = fs::read_to_string(file)?;
+            let input = ParseInput::new(&text, file);
+            let certs: Vec<AuthCertUnverified> = parse_netdoc_multiple(&input)?;
+            certs
+                .into_iter()
+                .map(|cert| cert.verify_selfcert(now))
+                .collect::<Result<Vec<AuthCert>, _>>()?
+        };
+
+        let authorities = certs.iter().map(|cert| *cert.fingerprint).collect_vec();
+
+        Ok((doc, text, certs, authorities, now))
+    }
+
     /// Check that a network document can be parsed and regenerated, mostly identically
     ///
     /// The regenerated encoded form doesn't need to be 100% identical:
@@ -3048,30 +3077,15 @@ mod test {
         VE: Debug + std::error::Error + Send + Sync + 'static,
         V: Debug + NetdocEncodable,
     {
-        let text = fs::read_to_string(file).with_context(|| file.to_owned())?;
-        let now = parse_rfc3339("2000-01-01T00:02:25Z")? + adjust_now;
+        let (doc, text, certs, authorities, now) = prep_netstatus_verify::<UV>(file)?;
 
-        let mut input = ParseInput::new(&text, file);
-        input.retain_unknown_values();
-
-        let doc: UV = parse_netdoc(&input)?;
-
-        let certs = {
-            let file = "testdata2/cached-certs";
-            let text = fs::read_to_string(file)?;
-            let input = ParseInput::new(&text, file);
-            let certs: Vec<AuthCertUnverified> = parse_netdoc_multiple(&input)?;
-            certs
-                .into_iter()
-                .map(|cert| cert.verify_selfcert(now))
-                .collect::<Result<Vec<AuthCert>, _>>()?
-        };
+        let now = now + adjust_now;
 
         let sigs = doc.inspect_unverified().1.sigs.clone();
 
         let doc = verify(
             doc,
-            &certs.iter().map(|cert| *cert.fingerprint).collect_vec(),
+            &authorities,
             &certs,
         )?
         .check_valid_at(&now)?;
