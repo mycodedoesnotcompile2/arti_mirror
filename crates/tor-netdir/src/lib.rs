@@ -72,7 +72,7 @@ use tor_linkspec::{
 };
 use tor_llcrypto as ll;
 use tor_llcrypto::pk::{ed25519::Ed25519Identity, rsa::RsaIdentity};
-use tor_netdoc::doc::microdesc::{MdDigest, Microdesc};
+use tor_netdoc::doc::microdesc::{MdDigest, MicrodescAndHash as Microdesc};
 use tor_netdoc::doc::netstatus::{self, MdConsensus, MdRouterStatus};
 #[cfg(feature = "hs-common")]
 use {hsdir_ring::HsDirRing, std::iter};

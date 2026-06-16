@@ -17,7 +17,7 @@ use std::iter;
 use std::net::SocketAddr;
 #[cfg(feature = "geoip")]
 use tor_geoip::GeoipDb;
-use tor_netdoc::doc::microdesc::{Microdesc, MicrodescBuilder};
+use tor_netdoc::doc::microdesc::{MicrodescAndHash as Microdesc, MicrodescBuilder};
 use tor_netdoc::doc::netstatus::{Lifetime, MdRouterStatusBuilder, RelayWeight};
 use tor_netdoc::doc::netstatus::{MdConsensus, MdConsensusBuilder};
 use tor_netdoc::types::relay_flags::RelayFlag;

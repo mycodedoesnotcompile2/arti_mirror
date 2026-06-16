@@ -3,7 +3,7 @@
 //! (These are only for testing right now, since we don't yet
 //! support encoding.)
 
-use super::Microdesc;
+use super::{Microdesc, MicrodescAndHash};
 
 use crate::types::family::{RelayFamily, RelayFamilyId, RelayFamilyIds};
 use crate::types::policy::PortPolicy;
@@ -14,7 +14,7 @@ use rand::RngExt;
 
 /// A builder object used to construct a microdescriptor.
 ///
-/// Create one of these with the [`Microdesc::builder`] method.
+/// Create one of these with the [`MicrodescAndHash::builder`] method.
 ///
 /// This facility is only enabled when the crate is built with
 /// the `build_docs` feature.
@@ -131,7 +131,7 @@ impl MicrodescBuilder {
     ///
     /// In the future, when we have authority support, we'll need an
     /// encoder function instead.
-    pub fn testing_md(&self) -> Result<Microdesc> {
+    pub fn testing_md(&self) -> Result<MicrodescAndHash> {
         let ntor_onion_key = self
             .ntor_onion_key
             .ok_or(Error::CannotBuild("Missing ntor_key"))?
@@ -145,10 +145,9 @@ impl MicrodescBuilder {
         // for testing.
         let sha256 = rand::rng().random();
 
-        Ok(Microdesc {
+        let md = Microdesc {
             // Including an empty onion_key is totally fine and valid.
             onion_key: Default::default(),
-            sha256,
             ntor_onion_key,
             family: self.family.clone().intern(),
             family_ids: self.family_ids.clone(),
@@ -156,6 +155,10 @@ impl MicrodescBuilder {
             ipv6_policy: self.ipv6_policy.clone().intern(),
             ed25519_id,
             __non_exhaustive: (),
+        };
+        Ok(MicrodescAndHash {
+            md,
+            sha256,
         })
     }
 }
@@ -200,7 +203,7 @@ mod test {
         let ed: ed25519::Ed25519Identity = (*b"this is not much of a public key").into();
         let ntor: curve25519::PublicKey = (*b"but fortunately nothing cares...").into();
 
-        let md = Microdesc::builder()
+        let md = MicrodescAndHash::builder()
             .ed25519_id(ed)
             .ntor_key(ntor)
             .parse_ipv4_policy("accept 80,443")?
@@ -229,13 +232,13 @@ mod test {
         let ntor: curve25519::PublicKey = (*b"but fortunately nothing cares...").into();
 
         {
-            let mut builder = Microdesc::builder();
+            let mut builder = MicrodescAndHash::builder();
             builder.ed25519_id(ed);
             assert!(builder.testing_md().is_err()); // no ntor
         }
 
         {
-            let mut builder = Microdesc::builder();
+            let mut builder = MicrodescAndHash::builder();
             builder.ntor_key(ntor);
             assert!(builder.testing_md().is_err()); // no ed id.
         }

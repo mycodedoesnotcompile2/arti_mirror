@@ -11,7 +11,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::Result;
-use tor_netdoc::doc::{microdesc::Microdesc, netstatus::UncheckedMdConsensus};
+use tor_netdoc::doc::{microdesc::MicrodescAndHash as Microdesc, netstatus::UncheckedMdConsensus};
 
 /// Filtering configuration, as provided to the directory code
 pub type FilterConfig = Option<Arc<dyn DirFilter>>;

@@ -6,7 +6,7 @@ use rand::RngExt;
 use std::sync::{Arc, Mutex};
 use tor_dirmgr::filter::DirFilter;
 use tor_netdoc::{
-    doc::{microdesc::Microdesc, netstatus::UncheckedMdConsensus},
+    doc::{microdesc::MicrodescAndHash as Microdesc, netstatus::UncheckedMdConsensus},
     types::{Curve25519Public, family::RelayFamily, policy::PortPolicy},
 };
 

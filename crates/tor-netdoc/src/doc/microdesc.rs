@@ -95,17 +95,33 @@ pub struct Microdesc {
 
     // addr is obsolete and doesn't go here any more
     // pr is obsolete and doesn't go here any more.
-    /// The SHA256 digest of the text of this microdescriptor.  This
-    /// value is used to identify the microdescriptor when downloading
-    /// it, and when listing it in a consensus document.
-    // TODO: maybe this belongs somewhere else. Once it's used to store
-    // correlate the microdesc to a consensus, it's never used again.
-    #[deftly(netdoc(skip))]
-    pub sha256: MdDigest,
 
     #[doc(hidden)]
     #[deftly(netdoc(skip))]
     pub __non_exhaustive: (),
+}
+
+/// A single microdescriptor and also its SHA256 hash
+///
+/// API compatibility type.
+///
+/// This type is only generated when the microdescriptor is parsed
+/// using the old parser ([`MicrodescAndHash::parse`])
+/// rather than the new one
+/// (`Microdesc as `[`NetdocParseable`](crate::parse2::NetdocParseable)).
+#[derive(Clone, Debug, Deftly, PartialEq, Eq, derive_more::Deref, derive_more::DerefMut)]
+#[non_exhaustive]
+pub struct MicrodescAndHash {
+    /// The microdescriptor
+    #[deref]
+    #[deref_mut]
+    pub md: Microdesc,
+
+    /// The SHA256 digest of the text of this microdescriptor.
+    ///
+    /// This value is used to identify the microdescriptor when
+    /// downloading it, and when listing it in a consensus document.
+    pub sha256: MdDigest,
 }
 
 impl Microdesc {
@@ -136,7 +152,7 @@ impl Microdesc {
     }
 }
 
-impl Microdesc {
+impl MicrodescAndHash {
     /// Create a new MicrodescBuilder that can be used to construct
     /// microdescriptors.
     ///
@@ -178,7 +194,7 @@ pub struct MicrodescIntroItem(#[deftly(netdoc(object))] Option<rsa::PublicKey>);
 #[derive(Clone, Debug)]
 pub struct AnnotatedMicrodesc {
     /// The microdescriptor
-    md: Microdesc,
+    md: MicrodescAndHash,
     /// The annotations for the microdescriptor
     ann: MicrodescAnnotation,
     /// Where did we find the microdescriptor with the originally parsed
@@ -188,13 +204,13 @@ pub struct AnnotatedMicrodesc {
 
 impl AnnotatedMicrodesc {
     /// Consume this annotated microdesc and discard its annotations.
-    pub fn into_microdesc(self) -> Microdesc {
+    pub fn into_microdesc(self) -> MicrodescAndHash {
         self.md
     }
 
     /// Return a reference to the microdescriptor within this annotated
     /// microdescriptor.
-    pub fn md(&self) -> &Microdesc {
+    pub fn md(&self) -> &MicrodescAndHash {
         &self.md
     }
 
@@ -267,9 +283,9 @@ impl MicrodescAnnotation {
     }
 }
 
-impl Microdesc {
+impl MicrodescAndHash {
     /// Parse a string into a new microdescriptor.
-    pub fn parse(s: &str) -> Result<Microdesc> {
+    pub fn parse(s: &str) -> Result<MicrodescAndHash> {
         let mut items = crate::parse::tokenize::NetDocReader::new(s)?;
         let (result, _) = Self::parse_from_reader(&mut items).map_err(|e| e.within(s))?;
         items.should_be_exhausted()?;
@@ -280,7 +296,7 @@ impl Microdesc {
     #[allow(clippy::string_slice)] // TODO
     fn parse_from_reader(
         reader: &mut NetDocReader<'_, MicrodescKwd>,
-    ) -> Result<(Microdesc, Option<Extent>)> {
+    ) -> Result<(MicrodescAndHash, Option<Extent>)> {
         use MicrodescKwd::*;
         let s = reader.str();
 
@@ -403,7 +419,6 @@ impl Microdesc {
 
         let md = Microdesc {
             onion_key: Default::default(),
-            sha256,
             ntor_onion_key,
             family,
             ipv4_policy: ipv4_policy.intern(),
@@ -411,6 +426,10 @@ impl Microdesc {
             ed25519_id,
             family_ids,
             __non_exhaustive: (),
+        };
+        let md = MicrodescAndHash {
+            md,
+            sha256,
         };
         Ok((md, location))
     }
@@ -479,7 +498,7 @@ impl<'a> MicrodescReader<'a> {
     /// On error, parsing stops after the first failure.
     fn take_annotated_microdesc_raw(&mut self) -> Result<AnnotatedMicrodesc> {
         let ann = self.take_annotation()?;
-        let (md, location) = Microdesc::parse_from_reader(&mut self.reader)?;
+        let (md, location) = MicrodescAndHash::parse_from_reader(&mut self.reader)?;
         Ok(AnnotatedMicrodesc { md, ann, location })
     }
 
@@ -555,13 +574,13 @@ mod test {
 
     #[test]
     fn parse_single() -> Result<()> {
-        let _md = Microdesc::parse(TESTDATA)?;
+        let _md = MicrodescAndHash::parse(TESTDATA)?;
         Ok(())
     }
 
     #[test]
     fn parse_no_tap_key() -> Result<()> {
-        let _md = Microdesc::parse(TESTDATA3)?;
+        let _md = MicrodescAndHash::parse(TESTDATA3)?;
         Ok(())
     }
 
@@ -626,7 +645,7 @@ mod test {
         use crate::types::policy::PolicyError;
         fn check(fname: &str, e: &Error) {
             let content = read_bad(fname);
-            let res = Microdesc::parse(&content);
+            let res = MicrodescAndHash::parse(&content);
             assert!(res.is_err());
             assert_eq!(&res.err().unwrap(), e);
         }
@@ -703,7 +722,6 @@ Yl0wCKpUZFHs5CHsajLSfXZKHkwfqRXFEJu9aMtmQdQFfqE9JOJHAgMBAAE=
                     .unwrap()
                     .contents()
                 )),
-                sha256: [0; 32],
                 ntor_onion_key: curve25519::PublicKey::from(<[u8; 32]>::from(
                     FixedB64::<32>::from_str("I1S8JfcqPPHWVTxfjq/eGmGiu/OtR+fF0Z86Ge1mq3s")
                         .unwrap()

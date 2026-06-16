@@ -38,7 +38,7 @@ use tor_checkable::{ExternallySigned, SelfSigned, Timebound};
 use tor_geoip::GeoipDb;
 use tor_llcrypto::pk::rsa::RsaIdentity;
 use tor_netdoc::doc::{
-    microdesc::{MdDigest, Microdesc},
+    microdesc::{MdDigest, MicrodescAndHash as Microdesc},
     netstatus::MdConsensus,
 };
 use tor_netdoc::{
