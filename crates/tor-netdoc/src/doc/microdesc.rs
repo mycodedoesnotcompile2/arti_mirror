@@ -59,14 +59,15 @@ pub type MdDigest = [u8; DOC_DIGEST_LEN];
 ///
 /// <https://spec.torproject.org/dir-spec/computing-microdescriptors.html>
 #[derive(Clone, Debug, Deftly, PartialEq, Eq)]
-#[derive_deftly(NetdocEncodable, NetdocParseable)]
-#[non_exhaustive]
+#[derive_deftly(Constructor, NetdocEncodable, NetdocParseable)]
+#[allow(clippy::exhaustive_structs)]
 pub struct Microdesc {
     /// The legacy onion key, whose object is optional but whose item serves
     /// as the intro line for these kind of descriptors.
     pub onion_key: MicrodescIntroItem,
 
     /// Public key used for the ntor circuit extension protocol.
+    #[deftly(constructor)]
     #[deftly(netdoc(single_arg))]
     pub ntor_onion_key: Curve25519Public,
 
@@ -88,6 +89,7 @@ pub struct Microdesc {
 
     /// Ed25519 identity for this relay
     // TODO SPEC: Set this to "exactly once".
+    #[deftly(constructor)]
     #[deftly(netdoc(keyword = "id", with = "Ed25519IdentityLine"))]
     pub ed25519_id: Ed25519IdentityLine,
 
@@ -100,6 +102,10 @@ pub struct Microdesc {
     // correlate the microdesc to a consensus, it's never used again.
     #[deftly(netdoc(skip))]
     pub sha256: MdDigest,
+
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
 }
 
 impl Microdesc {
@@ -401,6 +407,7 @@ impl Microdesc {
             ipv6_policy: ipv6_policy.intern(),
             ed25519_id,
             family_ids,
+            __non_exhaustive: (),
         };
         Ok((md, location))
     }
@@ -708,6 +715,7 @@ Yl0wCKpUZFHs5CHsajLSfXZKHkwfqRXFEJu9aMtmQdQFfqE9JOJHAgMBAAE=
                 ))
                 .into(),
                 family_ids: Default::default(),
+                __non_exhaustive: (),
             }
         );
 
