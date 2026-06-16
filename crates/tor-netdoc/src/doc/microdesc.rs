@@ -59,7 +59,7 @@ pub type MdDigest = [u8; DOC_DIGEST_LEN];
 ///
 /// <https://spec.torproject.org/dir-spec/computing-microdescriptors.html>
 #[derive(Clone, Debug, Deftly, PartialEq, Eq)]
-#[derive_deftly(NetdocParseable)]
+#[derive_deftly(NetdocEncodable, NetdocParseable)]
 #[non_exhaustive]
 pub struct Microdesc {
     /// The legacy onion key, whose object is optional but whose item serves
@@ -159,7 +159,7 @@ impl Microdesc {
 /// The object (the onion key) is deprecated and optional, but the item itself
 /// must be present, because it is used to mark the start of the netdoc.
 #[derive(Debug, Clone, Default, Deftly, PartialEq, Eq)]
-#[derive_deftly(ItemValueParseable)]
+#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 struct OnionKeyIntro(#[deftly(netdoc(object))] Option<rsa::PublicKey>);
 
 /// A microdescriptor annotated with additional data

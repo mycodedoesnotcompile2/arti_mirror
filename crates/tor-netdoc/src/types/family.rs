@@ -26,7 +26,7 @@ use tor_llcrypto::pk::rsa::RsaIdentity;
 ///
 /// TODO: This type probably belongs in a different crate.
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deftly)]
-#[derive_deftly(ItemValueParseable)]
+#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 pub struct RelayFamily(Vec<LongIdent>);
 
 /// Cache of RelayFamily objects, for saving memory.
@@ -163,7 +163,7 @@ impl NormalItemArgument for RelayFamilyId {}
 /// [`RelayFamilyIds::dedup()`] and [`RelayFamilyIds::sort()`], as those calls
 /// are effectively required for a useful use of this type.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deftly, derive_more::AsRef)]
-#[derive_deftly(ItemValueParseable)]
+#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 pub struct RelayFamilyIds(
     // TODO DIRMIRROR: Replace with BTreeSet at one point.
     // TODO could/should this be a type alias instead?
