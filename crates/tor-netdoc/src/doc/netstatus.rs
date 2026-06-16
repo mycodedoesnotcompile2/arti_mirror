@@ -2616,6 +2616,8 @@ mod test {
     use crate::encode::{NetdocEncodable, NetdocEncodableFields};
     use crate::parse2::{ParseInput, parse_netdoc, parse_netdoc_multiple};
     use crate::util::regsub;
+    use anyhow::Context as _;
+    use assert_matches::assert_matches;
     use hex_literal::hex;
     use humantime::parse_rfc3339;
     use std::fmt::Debug;
@@ -2959,6 +2961,87 @@ mod test {
         )
         .unwrap();
         assert_eq!(ps, ps3);
+    }
+
+    // TODO DIRAUTH test parse2 consensus verify functions
+    #[test]
+    #[cfg(feature = "incomplete")]
+    fn verify_error_netstatus_vote() -> Result<(), anyhow::Error> {
+        use VerifyFailed as VF;
+        use VoteVerifyFailed as VVF;
+        use vote::NetworkStatusUnverified as UV;
+
+        let file = "testdata2/v3-status-votes--1";
+        let text = fs::read_to_string(file).with_context(|| file.to_owned())?;
+        let input = ParseInput::new(&text, file);
+        let doc: UV = parse_netdoc(&input)?;
+        let trusted = [doc.peek_alleged_authority()];
+
+        let edit_body = |f: &dyn Fn(&mut _)| {
+            let (mut body, sigs) = doc.clone().unwrap_unverified();
+            f(&mut body);
+            UV::from_parts(body, sigs)
+        };
+
+        // sabotage the overall signature
+        {
+            let mut doc = doc.clone();
+            for b in &mut doc.sigs.sigs.directory_signature.signature {
+                *b = 0xff;
+            }
+            assert_matches! {
+                doc.verify(&trusted),
+                Err(VVF::InvalidSignature(VF::VerifyFailed))
+            }
+        }
+
+        // wrong authority
+        {
+            let doc = doc.clone();
+            assert_matches! {
+                doc.verify(&[[0x55; _].into()]),
+                Err(VVF::InvalidSignature(VF::InsufficientTrustedSigners))
+            }
+        }
+
+        // authcert is for a different authority
+        {
+            let doc = edit_body(&|body| {
+                body.authority.authority.dir_source.identity.0 = [0x55; _].into();
+            });
+            assert_matches! {
+                doc.verify(&trusted),
+                Err(VVF::AuthCertWrongAuthority)
+            }
+        }
+
+        // authcert is from a different time
+        let with_mutated_lifetime = |f: &dyn Fn(&mut Lifetime)| {
+            let doc = edit_body(&|body| f(&mut body.preamble.lifetime));
+            assert_matches! {
+                doc.verify(&trusted),
+                Err(VVF::AuthCertWrongValidity(_))
+            }
+        };
+        let t_past = parse_rfc3339("1990-01-01T00:02:25Z")?;
+        let t_future = parse_rfc3339("2010-01-01T00:02:25Z")?;
+        with_mutated_lifetime(&|lifetime| lifetime.valid_after.0 = t_future);
+        with_mutated_lifetime(&|lifetime| lifetime.fresh_until.0 = t_past);
+        with_mutated_lifetime(&|lifetime| lifetime.valid_until.0 = t_past);
+
+        // syntactically invalid authcert
+        {
+            let mut text = text.clone();
+            regsub(&mut text, "^dir-key-expires ", "dir-key-expires-SABOTAGED ");
+            let input = ParseInput::new(&text, file);
+            let doc: UV = parse_netdoc(&input)?;
+            assert_matches! {
+                doc.verify(&trusted),
+                Err(VVF::AuthCertParseError(..))
+            }
+        }
+
+        Ok(())
     }
 
     #[cfg(feature = "incomplete")]

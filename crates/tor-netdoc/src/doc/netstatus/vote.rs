@@ -30,7 +30,7 @@ impl NetworkStatusUnverified {
     /// the document is wrapped in [`TimerangeBound`],
     /// ensuring that the caller does that check.
     //
-    // XXXX test this
+    // TODO DIRAUTH test this
     pub fn verify(
         self,
         trusted: &[RsaIdentity],
