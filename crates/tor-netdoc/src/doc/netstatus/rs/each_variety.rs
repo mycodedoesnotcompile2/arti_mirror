@@ -169,9 +169,6 @@ pub struct RouterStatus {
     /// `id` --- Relay’s (ed25519) identity
     ///
     /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:id>
-    //
-    // TODO DIRAUTH: this is only right if torspec!499 is approved.
-    // otherwise, we are missing handling of `id none`.
     #[deftly(netdoc(keyword = "id"))] 
     pub ed25519_id: ns_type!(NotPresent, NotPresent, Ed25519IdentityLine),
 
