@@ -68,7 +68,7 @@ pub struct Microdesc {
     /// Let's keep this private for now to prevent interfacing applications
     /// from generating microdesc's with an onion-key; they are not necessary
     /// anymore and just waste space.
-    onion_key: OnionKeyIntro,
+    onion_key: MicrodescIntroItem,
 
     /// Public key used for the ntor circuit extension protocol.
     #[deftly(netdoc(single_arg))]
@@ -160,7 +160,7 @@ impl Microdesc {
 /// must be present, because it is used to mark the start of the netdoc.
 #[derive(Debug, Clone, Default, Deftly, PartialEq, Eq)]
 #[derive_deftly(ItemValueEncodable, ItemValueParseable)]
-struct OnionKeyIntro(#[deftly(netdoc(object))] Option<rsa::PublicKey>);
+struct MicrodescIntroItem(#[deftly(netdoc(object))] Option<rsa::PublicKey>);
 
 /// A microdescriptor annotated with additional data
 ///
@@ -680,7 +680,7 @@ mod test {
         assert_eq!(
             mds[0],
             Microdesc {
-                onion_key: OnionKeyIntro(rsa::PublicKey::from_der(
+                onion_key: MicrodescIntroItem(rsa::PublicKey::from_der(
                     pem::parse(
                         "
 -----BEGIN RSA PUBLIC KEY-----
