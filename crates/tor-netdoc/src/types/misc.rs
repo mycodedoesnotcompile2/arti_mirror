@@ -3411,19 +3411,30 @@ mod test {
         use crate::parse2::ErrorProblem;
 
         #[derive(Deftly)]
-        #[derive_deftly(NetdocParseable)]
+        #[derive_deftly(NetdocParseable, NetdocEncodable)]
         struct Wrapper {
             #[deftly(netdoc(single_arg))]
             fingerprint: SpFingerprint,
         }
 
         /// Small helper to parse an [`SpFingerprint`].
+        ///
+        /// In the case the parsing went successful, it also performs a
+        /// round-trip encoding test.
         fn parse2(s: &str) -> std::result::Result<SpFingerprint, ErrorProblem> {
             use crate::parse2::{self, ParseInput};
 
             let input = format!("fingerprint {s}\n");
             let res = parse2::parse_netdoc::<Wrapper>(&ParseInput::new(&input, ""))
                 .map_err(|x| x.problem)?;
+
+            // Round-trip encoding; we only do .starts_with() because input
+            // may contain trailing parameters which will obviously not be
+            // encoded; trimming to remove the trailing "\n" afterwards.
+            let mut enc = NetdocEncoder::default();
+            res.encode_unsigned(&mut enc).unwrap();
+            assert!(input.starts_with(enc.finish().unwrap().trim_end()));
+
             Ok(res.fingerprint)
         }
 
