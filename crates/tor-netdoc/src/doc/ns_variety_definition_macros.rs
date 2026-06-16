@@ -300,7 +300,6 @@ use ns_do_variety_md;
 /// Include variety-agnostic items, for a vote, from `each_variety.rs`.
 ///
 /// Use within `vote.rs`.
-#[allow(unused)] // TODO DIRAUTH
 macro_rules! ns_do_variety_vote { {} => { ns_do_one_variety! { vote : plain md vote $ } } }
 #[cfg(doc)]
 use ns_do_variety_vote;
