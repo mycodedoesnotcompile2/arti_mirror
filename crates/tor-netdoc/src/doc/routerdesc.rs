@@ -32,6 +32,7 @@
 //!
 //! Most of this module is only available when this crate is built with the
 //! `routerdesc` feature enabled.
+use crate::encode::{ItemEncoder, ItemValueEncodable};
 use crate::parse::keyword::Keyword;
 use crate::parse::parser::{Section, SectionRules};
 use crate::parse::tokenize::{ItemResult, NetDocReader};
@@ -342,6 +343,18 @@ impl ItemValueParseable for RelayPlatform {
         args.into_remaining()
             .parse()
             .map_err(|_| args.handle_error("platform", ArgumentError::Invalid))
+    }
+}
+
+impl ItemValueEncodable for RelayPlatform {
+    fn write_item_value_onto(
+        &self,
+        mut out: ItemEncoder,
+    ) -> std::result::Result<(), tor_error::Bug> {
+        // Adding a raw string is fine because this is effectively a free form
+        // field.
+        out.args_raw_string(&self);
+        Ok(())
     }
 }
 
