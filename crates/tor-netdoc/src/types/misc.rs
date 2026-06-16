@@ -2562,7 +2562,7 @@ pub mod routerdesc {
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:router>
     #[derive(Clone, Debug, PartialEq, Eq, Deftly)]
-    #[derive_deftly(ItemValueParseable)]
+    #[derive_deftly(ItemValueParseable, ItemValueEncodable)]
     #[non_exhaustive]
     pub struct RouterDescIntroItem {
         /// A valid router [`Nickname`].
