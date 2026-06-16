@@ -3882,35 +3882,17 @@ mod test {
         }
     }
 
-    // TODO: Merge all those generic functions.
-
     #[test]
-    fn ed25519_identity_cert_rng() {
+    fn ed25519_cert_rng_test() {
         ed25519_cert_rng::<Ed25519IdentityCert>();
-    }
-
-    #[test]
-    fn ed25519_identity_cert_invalid() {
-        ed25519_cert_invalid::<Ed25519IdentityCert>(true);
-    }
-
-    #[test]
-    fn ed25519_family_cert_rng() {
         ed25519_cert_rng::<Ed25519FamilyCert>();
-    }
-
-    #[test]
-    fn ed25519_family_cert_invalid() {
-        ed25519_cert_invalid::<Ed25519FamilyCert>(true);
-    }
-
-    #[test]
-    fn ed25519_ntor_crosscert_rng() {
         ed25519_cert_rng::<Ed25519NtorCrossCert>();
     }
 
     #[test]
-    fn ed25519_ntor_crosscert_invalid() {
+    fn ed25519_cert_invalid_test() {
+        ed25519_cert_invalid::<Ed25519IdentityCert>(true);
+        ed25519_cert_invalid::<Ed25519FamilyCert>(true);
         ed25519_cert_invalid::<Ed25519NtorCrossCert>(false);
     }
 }
