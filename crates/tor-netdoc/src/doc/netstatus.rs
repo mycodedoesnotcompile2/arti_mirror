@@ -3105,6 +3105,19 @@ mod test {
         let enc = enc.finish()?;
 
         let mut exp: String = text.clone();
+
+        // TODO DIRAUTH torspec!507 C Tor emits padded base64 in shared-rand-* items.
+        regsub(
+            //
+            &mut exp,
+            r#"^(shared-rand-.*)$"#,
+            |c: &regex::Captures| {
+                let mut s = c[1].to_owned();
+                regsub(&mut s, r#"="#, "");
+                s
+            },
+        );
+
         let mut regsub = |re, repl| regsub(&mut exp, re, repl);
 
         // C Tor writes empty versions lines with trailing space
