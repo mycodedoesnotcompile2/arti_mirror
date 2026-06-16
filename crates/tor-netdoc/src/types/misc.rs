@@ -1590,8 +1590,7 @@ mod edcert {
         /// 3. MUST be valid at `now`.
         /// 4. MUST be of [`CertType::IDENTITY_V_SIGNING`].
         /// 5. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
-        /// 6. Both keys MUST be different.
-        /// 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+        /// 6. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
         pub fn verify(
             cert: KeyUnknownCert,
             post_tolerance: Duration,
@@ -1620,12 +1619,7 @@ mod edcert {
                 .as_ed25519()
                 .ok_or(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData))?;
 
-            // 6. Both keys MUST be different.
-            if id_ed25519 == sign_ed25519 {
-                return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
-            }
-
-            // 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+            // 6. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
             // Unsure if this check is required or implied by (2) but defensive
             // programming does not hurt.
             if ed25519::PublicKey::try_from(id_ed25519).is_err()
@@ -1703,8 +1697,7 @@ mod edcert {
         /// 4. MUST be of of [`CertType::FAMILY_V_IDENTITY`].
         /// 5. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
         /// 6. `id_ed25519` MUST be the certified key.
-        /// 7. Both keys MUST be different.
-        /// 8. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+        /// 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
         pub fn verify(
             id_ed25519: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
@@ -1738,12 +1731,7 @@ mod edcert {
                 return Err(VerifyFailed::VerifyFailed);
             }
 
-            // 7. Both keys MUST be different.
-            if id_ed25519 == family_ed25519 {
-                return Err(ErrorProblem::ObjectInvalidData.into());
-            }
-
-            // 8. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+            // 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
             if ed25519::PublicKey::try_from(family_ed25519).is_err()
                 || ed25519::PublicKey::try_from(id_ed25519).is_err()
             {
@@ -3882,35 +3870,17 @@ mod test {
         }
     }
 
-    // TODO: Merge all those generic functions.
-
     #[test]
-    fn ed25519_identity_cert_rng() {
+    fn ed25519_cert_rng_test() {
         ed25519_cert_rng::<Ed25519IdentityCert>();
-    }
-
-    #[test]
-    fn ed25519_identity_cert_invalid() {
-        ed25519_cert_invalid::<Ed25519IdentityCert>(true);
-    }
-
-    #[test]
-    fn ed25519_family_cert_rng() {
         ed25519_cert_rng::<Ed25519FamilyCert>();
-    }
-
-    #[test]
-    fn ed25519_family_cert_invalid() {
-        ed25519_cert_invalid::<Ed25519FamilyCert>(true);
-    }
-
-    #[test]
-    fn ed25519_ntor_crosscert_rng() {
         ed25519_cert_rng::<Ed25519NtorCrossCert>();
     }
 
     #[test]
-    fn ed25519_ntor_crosscert_invalid() {
+    fn ed25519_cert_invalid_test() {
+        ed25519_cert_invalid::<Ed25519IdentityCert>(true);
+        ed25519_cert_invalid::<Ed25519FamilyCert>(true);
         ed25519_cert_invalid::<Ed25519NtorCrossCert>(false);
     }
 }
