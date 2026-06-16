@@ -35,7 +35,7 @@
 use crate::parse::keyword::Keyword;
 use crate::parse::parser::{Section, SectionRules};
 use crate::parse::tokenize::{ItemResult, NetDocReader};
-use crate::parse2::{ArgumentError, ArgumentStream, ItemArgumentParseable};
+use crate::parse2::{ArgumentError, ErrorProblem, ItemValueParseable, UnparsedItem};
 use crate::types::family::{RelayFamily, RelayFamilyIds};
 use crate::types::policy::*;
 use crate::types::routerdesc::*;
@@ -335,11 +335,13 @@ impl Display for RelayPlatform {
     }
 }
 
-impl ItemArgumentParseable for RelayPlatform {
-    fn from_args<'s>(args: &mut ArgumentStream<'s>) -> std::result::Result<Self, ArgumentError> {
+impl ItemValueParseable for RelayPlatform {
+    fn from_unparsed(item: UnparsedItem<'_>) -> std::result::Result<Self, ErrorProblem> {
+        let mut args = item.args_copy();
+        item.check_no_object()?;
         args.into_remaining()
             .parse()
-            .map_err(|_| ArgumentError::Invalid)
+            .map_err(|_| args.handle_error("platform", ArgumentError::Invalid))
     }
 }
 

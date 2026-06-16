@@ -1,3 +1,4 @@
+BREAKING: Replaced `ItemArgumentParseable` with `ItemValueParseable` for `RelayPlatform`
 ADDED: `NtorOnionKeyCrossCert` type
 ADDED: `HiddenServiceDirToken`
 ADDED: `RouterDesc::hidden_service_dir`
