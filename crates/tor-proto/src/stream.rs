@@ -27,7 +27,6 @@ use flow_ctrl::state::StreamRateLimit;
 
 use crate::memquota::StreamAccount;
 use crate::stream::flow_ctrl::xon_xoff::reader::XonXoffReaderCtrl;
-use crate::stream::raw::StreamReceiver;
 use crate::{ClientTunnel, Error, HopLocation, Result};
 
 #[cfg(any(feature = "hs-service", feature = "relay"))]
@@ -35,6 +34,8 @@ pub use incoming::{
     IncomingStream, IncomingStreamRequest, IncomingStreamRequestContext,
     IncomingStreamRequestDisposition, IncomingStreamRequestFilter,
 };
+
+pub use raw::StreamReceiver;
 
 use std::pin::Pin;
 use std::sync::Arc;
