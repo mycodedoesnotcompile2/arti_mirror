@@ -37,6 +37,10 @@ pub use incoming::{
 
 pub use raw::StreamReceiver;
 
+#[cfg_attr(docsrs, doc(cfg(any(feature = "hs-service", feature = "relay"))))]
+#[cfg(any(feature = "hs-service", feature = "relay"))]
+pub(crate) use incoming::{InboundDataCmdChecker, IncomingCmdChecker, StreamReqInfo};
+
 use std::pin::Pin;
 use std::sync::Arc;
 
