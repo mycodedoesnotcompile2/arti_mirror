@@ -1689,63 +1689,63 @@ impl NetDir {
     /// Choose `n` items (relays) at random, using the provided weights.
     ///
     /// This is intended as an internal, easier-to-test, implementation of
-    /// `pick_n_relays`. `T` is generic for testing, but intended to be `Relay`;
-    /// we call the items relays below.
+    /// `pick_n_relays`. `T` is generic for testing, but intended to be `Relay`.
     ///
-    /// Relays are chosen without replacement: no relay will be
-    /// returned twice. Therefore, the resulting vector may be smaller
-    /// than `n` if we happen to have fewer than `n` appropriate relays.
+    /// Items are chosen without replacement: no item will be returned twice.
     ///
     /// If *all* items have zero-weight, then up to `n` will be chosen randomly
     /// and returned. Otherwise, never returns items with zero-weight.
+    ///
+    /// May return fewer than `n` items if there are fewer than `n` with non-zero weight
+    /// (or all have zero-weight but there are fewer than `n` total).
     #[allow(clippy::cognitive_complexity)] // all due to tracing crate.
     fn pick_n_weighted<R, T>(rng: &mut R, n: usize, weighted_items: &[(T, u64)]) -> Vec<T>
     where
         R: rand::Rng,
         T: Clone,
     {
-        let mut sampled_relays = match weighted_items[..]
+        let mut sampled_items = match weighted_items[..]
             .sample_weighted(rng, n, |(_r, w)| *w as f64)
         {
             Err(e) => {
-                warn_report!(e, "Unexpected error while sampling a set of relays");
+                warn_report!(e, "Unexpected error while sampling a set of items");
                 Vec::new()
             }
-            Ok(iter) => {
-                if iter.len() < n {
-                    // Too few relays had nonzero weights: return all of those that are okay.
-                    let nonzero_weight_relays: Vec<_> = weighted_items
+            Ok(sampled_items) => {
+                if sampled_items.len() < n {
+                    // Too few items had nonzero weights: return all of those that are okay.
+                    let nonzero_weight_items: Vec<_> = weighted_items
                         .iter()
-                        .filter_map(|(r, w)| if *w > 0 { Some(r) } else { None })
+                        .filter_map(|(i, w)| if *w > 0 { Some(i) } else { None })
                         .cloned()
                         .collect();
-                    if nonzero_weight_relays.is_empty() {
+                    if nonzero_weight_items.is_empty() {
                         tracing::debug!(
-                            "After filtering, all {} relays had zero weight! Picking some at random. See bug #1907.",
+                            "All {} items had zero weight! Picking some at random. See bug #1907.",
                             weighted_items.len()
                         );
-                        let filtered_relays: Vec<_> =
-                            weighted_items.iter().map(|(r, _w)| r.clone()).collect();
-                        if filtered_relays.len() >= n {
-                            filtered_relays.sample(rng, n).cloned().collect()
+                        let items: Vec<_> =
+                            weighted_items.iter().map(|(i, _w)| i.clone()).collect();
+                        if items.len() >= n {
+                            items.sample(rng, n).cloned().collect()
                         } else {
-                            filtered_relays
+                            items
                         }
                     } else {
                         tracing::debug!(
-                            "After filtering, only had {}/{} relays with nonzero weight. Returning them all. See bug #1907.",
-                            nonzero_weight_relays.len(),
+                            "After filtering, only had {}/{} items with nonzero weight. Returning them all. See bug #1907.",
+                            nonzero_weight_items.len(),
                             weighted_items.len()
                         );
-                        nonzero_weight_relays
+                        nonzero_weight_items
                     }
                 } else {
-                    iter.map(|(r, _w)| r.clone()).collect()
+                    sampled_items.map(|(i, _w)| i.clone()).collect()
                 }
             }
         };
-        sampled_relays.shuffle(rng);
-        sampled_relays
+        sampled_items.shuffle(rng);
+        sampled_items
     }
 
     /// Choose `n` relay at random.
