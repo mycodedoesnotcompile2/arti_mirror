@@ -16,7 +16,8 @@ use tor_cell::relaycell::msg as relaymsg;
 use tor_error::{ErrorKind, HasKind, debug_report};
 use tor_hsservice::{HsNickname, RendRequest, StreamRequest};
 use tor_log_ratelim::log_ratelim;
-use tor_proto::client::stream::{DataStream, IncomingStreamRequest};
+use tor_proto::client::stream::DataStream;
+use tor_proto::stream::IncomingStreamRequest;
 use tor_rtcompat::{Runtime, SpawnExt as _};
 
 use crate::config::{

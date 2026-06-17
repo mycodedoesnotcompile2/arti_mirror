@@ -601,7 +601,7 @@ pub(crate) mod test {
     use chanmsg::AnyChanMsg;
 
     #[cfg(feature = "hs-service")]
-    use crate::client::stream::IncomingStreamRequestFilter;
+    use crate::stream::IncomingStreamRequestFilter;
 
     pub(crate) fn rmsg_to_ccmsg(
         id: Option<StreamId>,
@@ -629,10 +629,10 @@ pub(crate) mod test {
     impl IncomingStreamRequestFilter for AllowAllStreamsFilter {
         fn disposition(
             &mut self,
-            _ctx: &crate::client::stream::IncomingStreamRequestContext<'_>,
+            _ctx: &crate::stream::IncomingStreamRequestContext<'_>,
             _circ: &crate::circuit::CircHopSyncView<'_>,
-        ) -> crate::Result<crate::client::stream::IncomingStreamRequestDisposition> {
-            Ok(crate::client::stream::IncomingStreamRequestDisposition::Accept)
+        ) -> crate::Result<crate::stream::IncomingStreamRequestDisposition> {
+            Ok(crate::stream::IncomingStreamRequestDisposition::Accept)
         }
     }
 }

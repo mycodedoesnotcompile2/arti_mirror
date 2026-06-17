@@ -66,7 +66,7 @@ mod congestion;
 mod crypto;
 pub mod memquota;
 pub mod peer;
-mod stream;
+pub mod stream;
 pub(crate) mod streammap;
 pub(crate) mod tunnel;
 mod util;
