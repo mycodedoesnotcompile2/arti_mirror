@@ -71,7 +71,7 @@ pub(crate) struct ListArgs {
 struct OutputFormat {
     /// Compact format.
     ///
-    /// Displays every valid entry on a single line when enabled.
+    /// Displays every entry on a single line when enabled.
     #[arg(long, default_value_t = false)]
     compact: bool,
 }

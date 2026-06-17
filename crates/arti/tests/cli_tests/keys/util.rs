@@ -11,7 +11,7 @@ const CFG_PATH: &str = "./tests/testcases/keys/keys.in/keys.toml";
 const CFG_PATH_WITH_CTOR: &str = "./tests/testcases/keys/conf/keys.toml";
 
 /// A client of an `ArtiNativeKeystore`.
-// IDEA: Consider using the
+// TODO: Consider using the
 // [const_format](https://docs.rs/const_format/latest/const_format/index.html) crate to reduce duplication.
 const CLIENT_KEY: &str = "Keystore ID: arti
 Role: ks_hsc_desc_enc

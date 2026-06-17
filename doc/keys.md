@@ -34,14 +34,19 @@ By default the command displays the content of all the keystores. If the
 flag `--keystore-id` is provided, only the content of the specified
 keystore will be displayed.
 
-This command provides a way of listing both valid and broken entries.
+This command provides a way of listing both valid and broken
+(i.e. unrecognized by Arti, or otherwise corrupt) entries.
 
 Some of the information displayed by `keys list` can be used as input for other
 commands. For instance: "Location", is the raw identifier of the entry; and
 "Keystore ID", the identifier, of the keystore. These can be used together
 with `arti keys-raw remove-by-id`.
 
-`keys list` will supports alternative output formats. Currently, only `compact` is available, with more formats coming soon.
+By default, `keys list` pretty-prints human-readable output.
+You can use the `--compact` option to get it to display
+a more compact representation.
+
+> NOTE: in the future, we plan to support machine-readable output too
 
 Example usage:
 

@@ -16,7 +16,7 @@ Options:
       --compact
           Compact format.
           
-          Displays every valid entry on a single line when enabled.
+          Displays every entry on a single line when enabled.
 
   -o <KEY=VALUE>
           Override config file parameters, using TOML-like syntax.
