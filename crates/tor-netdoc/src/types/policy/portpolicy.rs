@@ -48,17 +48,19 @@ pub struct PortPolicy {
 
 impl Display for PortPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.allowed.is_empty() {
-            write!(f, "reject 1-65535")?;
-        } else {
-            write!(f, "accept ")?;
-            let mut comma = "";
-            for range in self.allowed.iter() {
-                write!(f, "{}{}", comma, range)?;
-                comma = ",";
-            }
-        }
-        Ok(())
+        // Format the list as an `accept`, and as a `reject`, and take the shortest.
+        let shortest = [
+            ("accept", &self.allowed),
+            ("reject", &self.allowed.inverted()),
+        ]
+        .into_iter()
+        .filter_map(|(keyword, allowed)| Some(format!("{keyword} {}", allowed.display()?)))
+        // min_by_key takes the *last* if they're equal but we would prefer to take `accept`
+        .rev()
+        .min_by_key(|s| s.len())
+        .expect("can't both be empty");
+
+        write!(f, "{shortest}")
     }
 }
 
@@ -222,20 +224,32 @@ mod test {
             &[1, 10, 35, 600],
             &[0, 11, 55, 599, 601],
         );
-        check("accept 1-10,11-20", "accept 1-20", &[], &[]);
         check(
-            "reject 1-30",
+            //
+            "accept 1-10,11-20",
+            "accept 1-20",
+            &[],
+            &[],
+        );
+        check(
             "accept 31-65535",
+            "reject 1-30",
             &[31, 10001, 65535],
             &[0, 1, 30],
         );
         check(
-            "reject 300-500",
             "accept 1-299,501-65535",
+            "reject 300-500",
             &[31, 10001, 65535],
             &[300, 301, 500],
         );
-        check("reject 10,11,12,13,15", "accept 1-9,14,16-65535", &[], &[]);
+        check(
+            //
+            "reject 10,11,12,13,15",
+            "reject 10-13,15",
+            &[],
+            &[],
+        );
         check(
             "reject 1-65535",
             "reject 1-65535",

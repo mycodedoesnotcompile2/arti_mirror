@@ -19,9 +19,11 @@
 mod addrpolicy;
 mod portpolicy;
 
+use std::fmt;
 use std::str::FromStr;
 use std::{collections::BTreeSet, fmt::Display};
 use thiserror::Error;
+use tor_basic_utils::iter_join;
 
 pub use addrpolicy::{AddrPolicy, AddrPortPattern};
 pub use portpolicy::PortPolicy;
@@ -218,10 +220,10 @@ impl PortRanges {
             .is_ok()
     }
 
-    /// Inverts a [`PortRanges`].
+    /// Returns an inverted [`PortRanges`].
     ///
     /// For example, a [`PortRanges`] of `80-443` would become `1-79,444-65535`.
-    fn invert(&mut self) {
+    fn inverted(&self) -> PortRanges {
         let mut prev_hi = 0;
         let mut new_allowed = Vec::new();
         for entry in &self.0 {
@@ -235,12 +237,38 @@ impl PortRanges {
         if prev_hi < 65535 {
             new_allowed.push(PortRange::new_unchecked(prev_hi + 1, 65535));
         }
-        self.0 = new_allowed;
+        PortRanges(new_allowed)
+    }
+
+    /// Inverts a [`PortRanges`] in place
+    ///
+    /// For example, a [`PortRanges`] of `80-443` would become `1-79,444-65535`.
+    fn invert(&mut self) {
+        *self = self.inverted();
     }
 
     /// Returns an iterator for [`PortRanges`].
-    fn iter(&self) -> impl Iterator<Item = &PortRange> {
+    fn iter(&self) -> impl Iterator<Item = &PortRange> + Clone {
         self.0.iter()
+    }
+
+    /// If set of ranges is non-empty, returns a string representation
+    ///
+    /// We don't provide a normal `Display` impl, because it would have to
+    /// emit the empty string for an empty range, which would be quite odd.
+    ///
+    /// When displaying accept/reject ranges, the caller needs to
+    /// choose between prepending `accept` and prepending `reject`.
+    fn display(&self) -> Option<impl Display + '_> {
+        struct DisplayWrapper<'r>(&'r PortRanges);
+
+        impl Display for DisplayWrapper<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "{}", iter_join(",", self.0.iter()))
+            }
+        }
+
+        (!self.is_empty()).then_some(DisplayWrapper(self))
     }
 }
 
@@ -279,11 +307,6 @@ impl FromIterator<u16> for PortRanges {
         out
     }
 }
-
-// There is deliberately no Display implementation for PortRanges because this
-// highly depends on the semantic wrapper around it.  For example, an empty
-// PortRanges may either be represented as `reject 1-65535` or `accept 1-65535`
-// depending on the context.
 
 impl FromStr for PortRanges {
     type Err = PolicyError;
