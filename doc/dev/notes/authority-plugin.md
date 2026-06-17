@@ -14,6 +14,7 @@ It exits with the following exit codes:
  - 32: Internal error.
 
 C Tor must treat any other exit status as a total failure of the plugin.
+See "Handling Failure" below.
 
 Because of file encoding issues,
 the plugin DOES NOT have to build or run on Windows.
@@ -235,3 +236,14 @@ When computing a consensus:
  - If the exit code is 10 ("Fall back to C tor Consensus"):
    - Fall back to our current consensus logic.
 
+## Handling Failure
+
+If the plugin deviates from this spec,
+or fails in some way where we do not explicitly specify recovery behavior,
+the C tor authority should log a detailed error,
+and not use the plugin or its outputs again
+for the lifetime of the current process.
+
+> This can result in a single failed consensus,
+> if the authorities have voted to use a consensus method
+> which they can no longer provide when voting.
