@@ -33,8 +33,8 @@ use std::sync::{Mutex, Weak};
 use educe::Educe;
 
 use crate::client::ClientTunnel;
-use crate::client::stream::StreamReceiver;
 use crate::memquota::StreamAccount;
+use crate::stream::StreamReceiver;
 use crate::stream::StreamTarget;
 use crate::stream::cmdcheck::{AnyCmdChecker, CmdChecker, StreamStatus};
 use crate::stream::flow_ctrl::state::StreamRateLimit;
