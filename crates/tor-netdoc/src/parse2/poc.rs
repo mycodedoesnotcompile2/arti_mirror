@@ -18,6 +18,3 @@
 use super::*;
 
 pub mod netstatus;
-
-#[cfg(test)]
-mod test;

@@ -7899,6 +7899,7 @@ dependencies = [
  "pem",
  "phf",
  "rand 0.10.1",
+ "regex",
  "saturating-time",
  "serde",
  "serde_json",

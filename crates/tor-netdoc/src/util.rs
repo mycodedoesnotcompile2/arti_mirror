@@ -115,6 +115,14 @@ fn test_as_mut_compiles() {
 }
 
 #[cfg(test)]
+pub(crate) fn regsub(update: &mut String, re: &str, repl: &str) {
+    *update = regex::Regex::new(&format!("(?m){re}"))
+        .expect(re)
+        .replace_all(update, repl)
+        .to_string();
+}
+
+#[cfg(test)]
 pub(crate) fn assert_eq_or_diff(
     a: &str,
     a_what: &str,

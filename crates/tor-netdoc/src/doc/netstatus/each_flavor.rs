@@ -527,7 +527,7 @@ impl ExternallySigned<Consensus> for UnvalidatedConsensus {
     fn key_is_correct(&self, k: &Self::Key) -> result::Result<(), Self::KeyHint> {
         let (n_ok, missing) = self.siggroup.list_missing(k);
         match self.n_authorities {
-            Some(n) if n_ok > (n / 2) => Ok(()),
+            Some(n) if consensus_threshold(n).contains(&n_ok) => Ok(()),
             _ => Err(missing.iter().map(|cert| cert.key_ids).collect()),
         }
     }
@@ -551,3 +551,78 @@ impl ExternallySigned<Consensus> for UnvalidatedConsensus {
 /// signatures and timeliness.
 pub type UncheckedConsensus = TimerangeBound<UnvalidatedConsensus>;
 
+#[cfg(feature = "incomplete")] // untested
+impl NetworkStatusUnverified {
+    /// Could we verify this consensus or do we need more authcerts?
+    ///
+    /// `Ok` means that we have enough authcerts to verify the signature.
+    ///
+    /// `Err` means that we have not enough authcerts,
+    /// or the consensus has not enough signatures.
+    /// The [`ConsensusVerifiabilityError`] error gives the details.
+    pub fn can_verify(
+        &self,
+        trusted_authorities: &[RsaIdentity],
+        certs_already: &[AuthCert],
+    ) -> Result<(), ConsensusVerifiabilityError> {
+        let sigs = self.inspect_unverified().1;
+        Self::verify_general(
+            sigs,
+            trusted_authorities,
+            certs_already,
+            |_signature| {
+                // indeed, we don't actuaally verify, so this is a no-op
+                Ok(SignatureVerifiedIfIntended {})
+            },
+        )?;
+        Ok(())
+    }
+
+    /// Verify the signatures
+    ///
+    /// Doesn't check the validity period:
+    /// the document is wrapped in [`TimerangeBound`],
+    /// ensuring that the caller does that check.
+    pub fn verify(
+        self,
+        trusted_authorities: &[RsaIdentity],
+        certs: &[AuthCert],
+    ) -> Result<TimerangeBound<NetworkStatus>, ConsensusVerifyFailed> {
+        let (body, sigs) = self.unwrap_unverified();
+
+        Self::verify_general(
+            &sigs,
+            trusted_authorities,
+            certs,
+            |tv| tv.verify().map_err(ConsensusVerifyFailed::InvalidSignature),
+        )?;
+
+        let time_range = body.preamble.validity_time_range();
+        Ok(TimerangeBound::new(
+            body,
+            time_range,
+        ))
+    }
+
+    /// Glue to call `SignatureGroup::verify_general` given our `SignaturesData`
+    ///
+    /// [`SignatureGroup::verify_general`] contains the actual verification code,
+    /// shared between the old parser and the new.
+    fn verify_general<E>(
+        sigs: &parse2::SignaturesData<Self>,
+        trusted: &[RsaIdentity],
+        certs: &[AuthCert],
+        do_verify: impl Fn(ConsensusSignatureToVerify) -> Result<SignatureVerifiedIfIntended, E>,
+    ) -> Result<(), E>
+    where ConsensusVerifiabilityError: Into<E>,
+    {
+        SignatureGroup {
+            hashes: sigs.hashes,
+            signatures: sigs.sigs.directory_signature.clone(),
+        }.verify_general(
+            VerifyGeneralTrustedAuthorities::TrustThese { trusted },
+            certs,
+            do_verify,
+        )
+    }
+}

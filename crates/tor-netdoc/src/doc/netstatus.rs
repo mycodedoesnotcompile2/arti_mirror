@@ -73,8 +73,8 @@ use crate::parse::parser::{Section, SectionRules, SectionRulesBuilder};
 use crate::parse::tokenize::{Item, ItemResult, NetDocReader};
 use crate::parse2::{
     self, ArgumentError, ArgumentStream, ErrorProblem, IsStructural, ItemArgumentParseable,
-    ItemStream, ItemValueParseable, KeywordRef, NetdocParseable, SignatureHashInputs,
-    SignatureItemParseable, StopAt, UnparsedItem, VerifyFailed,
+    ItemStream, ItemValueParseable, KeywordRef, NetdocParseable, NetdocParseableUnverified,
+    SignatureHashInputs, SignatureItemParseable, StopAt, UnparsedItem, VerifyFailed,
 };
 use crate::types::relay_flags::{self, DocRelayFlags};
 use crate::types::{self, *};
@@ -886,7 +886,7 @@ pub struct SignatureGroup {
 /// or we are lacking authcerts.
 ///
 /// Does not represent actual verification errors.
-/// Those show up as `VerifyFailed`, typically [`VerifyFailed::VerifyFailed`].
+/// Those show up as `VerifyFailed`, typically [`ConsensusVerifyFailed::InvalidSignature`].
 ///
 /// Can be converted to a `VerifyFailed`,
 /// giving [`InsufficientTrustedSigners`](VerifyFailed::InsufficientTrustedSigners).
@@ -907,6 +907,33 @@ pub enum ConsensusVerifiabilityError {
         /// All the authcerts that would be useful
         missing: HashSet<AuthCertKeyIds>,
     },
+}
+
+/// Error encountered while verifying a consensus
+///
+/// Thrown by
+/// [`plain::NetworkStatusUnverified::verify`]
+/// and
+/// [`md::NetworkStatusUnverified::verify`].
+///
+/// Not used for problems with the validity period:
+/// that's handled by `tor-checkable` and shows up as [`tor_checkable::TimeValidityError`].
+///
+/// Can be converted to a `VerifyFailed` (which, in effect, summarises the error).
+#[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ConsensusVerifyFailed {
+    /// Certificates or signatures insufficient
+    #[error("certs/sigs insufficient")]
+    CertificationInsufficient(#[from] ConsensusVerifiabilityError),
+
+    /// One or more signatures failed to verify
+    #[error("invalid signature")]
+    //
+    // Not `#[from]` because we don't want to accidentally convert
+    // ConsensusVerifiabilityError -> VerifyFailed -> ConsensusVerifyFailed
+    // since that would give the wrong variant.
+    InvalidSignature(#[source] VerifyFailed),
 }
 
 /// A shared random value produced by the directory authorities.
@@ -2283,6 +2310,40 @@ pub(crate) enum VerifyGeneralTrustedAuthorities<'r> {
     },
 }
 
+/// Return the minimum number of authorities that we need signatures from
+///
+/// Enough is strictly more than half.
+///
+/// The returned value is a [`RangeFrom`](std::ops::RangeFrom), ie an inclusive range.
+/// Its `start` value is the minimum acceptable number of authorities
+/// from whom we have good signatures.
+///
+/// Should usually be followed by
+/// [`.contains`](std::ops::RangeFrom::contains)`(&actual_number)`.
+///
+/// # Example
+///
+/// ```
+/// use tor_netdoc::{doc::netstatus::consensus_threshold, parse2::VerifyFailed};
+/// # fn main() -> Result<(), VerifyFailed> {
+///
+/// let n_trusted_authorities = 3;
+/// let n_good_signatures_from_different_authorities = 2;
+///
+/// if consensus_threshold(n_trusted_authorities)
+///      .contains(&n_good_signatures_from_different_authorities)
+/// {
+///     Ok(())
+/// } else {
+///     Err(VerifyFailed::InsufficientTrustedSigners)
+/// }
+/// # }
+/// ```
+pub fn consensus_threshold(n_authorities: usize) -> std::ops::RangeFrom<usize> {
+    (n_authorities / 2) + 1 // strict majority
+        ..
+}
+
 impl SignatureGroup {
     // TODO: these functions are pretty similar and could probably stand to be
     // refactored a lot.
@@ -2324,7 +2385,7 @@ impl SignatureGroup {
             }
         }
 
-        signed_by.len() > (authorities.len() / 2)
+        consensus_threshold(authorities.len()).contains(&signed_by.len())
     }
 
     /// Return true if the signature group defines a valid signature.
@@ -2446,9 +2507,9 @@ impl SignatureGroup {
             TA::TrustThese { trusted } => trusted.len(),
             TA::HazardouslyAssumeAllAuthCertsAreReal { n_authorities: n } => n,
         };
-        let threshold = (n_authorities / 2) + 1; // strict majority
+        let threshold = consensus_threshold(n_authorities);
 
-        if ok.len() >= threshold {
+        if threshold.contains(&ok.len()) {
             Ok(())
         } else {
             // Throw the verification error if any of the verifications failed
@@ -2458,7 +2519,7 @@ impl SignatureGroup {
             Err(if missing.is_empty() {
                 ConsensusVerifiabilityError::InsufficientTrustedSigners
             } else {
-                let deficit = threshold - ok.len();
+                let deficit = threshold.start - ok.len();
                 ConsensusVerifiabilityError::MissingAuthCerts { missing, deficit }
             }
             .into())
@@ -2473,6 +2534,17 @@ impl From<ConsensusVerifiabilityError> for VerifyFailed {
         match cve {
             CVE::InsufficientTrustedSigners => VF::InsufficientTrustedSigners,
             CVE::MissingAuthCerts { .. } => VF::InsufficientTrustedSigners,
+        }
+    }
+}
+
+impl From<ConsensusVerifyFailed> for VerifyFailed {
+    fn from(cvf: ConsensusVerifyFailed) -> VerifyFailed {
+        use ConsensusVerifyFailed as CVF;
+        use VerifyFailed as VF;
+        match cvf {
+            CVF::CertificationInsufficient { .. } => VF::InsufficientTrustedSigners,
+            CVF::InvalidSignature { .. } => VF::VerifyFailed,
         }
     }
 }
@@ -2494,12 +2566,15 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
+    use crate::doc::authcert::AuthCertUnverified;
+    use crate::encode::{NetdocEncodable, NetdocEncodableFields};
+    use crate::parse2::{ParseInput, parse_netdoc, parse_netdoc_multiple};
+    use crate::util::regsub;
     use hex_literal::hex;
-    #[cfg(feature = "incomplete")]
-    use {
-        crate::parse2::{NetdocParseableUnverified as _, ParseInput, parse_netdoc},
-        std::fs,
-    };
+    use humantime::parse_rfc3339;
+    use std::fmt::Debug;
+    use std::fs;
+    use tor_checkable::Timebound;
 
     const CERTS: &str = include_str!("../../testdata/authcerts2.txt");
     const CONSENSUS: &str = include_str!("../../testdata/mdconsensus1.txt");
@@ -2838,5 +2913,123 @@ mod test {
         )
         .unwrap();
         assert_eq!(ps, ps3);
+    }
+
+    #[cfg(feature = "incomplete")]
+    fn roundtrip_netstatus<UV, V, VE>(
+        file: &str,
+        verify: impl FnOnce(UV, &[RsaIdentity], &[AuthCert]) -> Result<TimerangeBound<V>, VE>,
+        adjust_exp: impl FnOnce(&mut String),
+    ) -> anyhow::Result<()>
+    where
+        UV: NetdocParseable + NetdocParseableUnverified,
+        UV::Signatures: Clone + NetdocEncodableFields,
+        VE: Debug + std::error::Error + Send + Sync + 'static,
+        V: Debug + NetdocEncodable,
+    {
+        let text = fs::read_to_string(file)?;
+        let now = parse_rfc3339("2000-01-01T00:02:25Z")?;
+
+        let mut input = ParseInput::new(&text, file);
+        input.retain_unknown_values();
+
+        let doc: UV = parse_netdoc(&input)?;
+
+        let certs = {
+            let file = "testdata2/cached-certs";
+            let text = fs::read_to_string(file)?;
+            let input = ParseInput::new(&text, file);
+            let certs: Vec<AuthCertUnverified> = parse_netdoc_multiple(&input)?;
+            certs
+                .into_iter()
+                .map(|cert| cert.verify_selfcert(now))
+                .collect::<Result<Vec<AuthCert>, _>>()?
+        };
+
+        let sigs = doc.inspect_unverified().1.sigs.clone();
+
+        let doc = verify(
+            doc,
+            &certs.iter().map(|cert| *cert.fingerprint).collect_vec(),
+            &certs,
+        )?
+        .check_valid_at(&now)?;
+
+        println!("{doc:?}");
+
+        let mut enc = NetdocEncoder::new();
+        doc.encode_unsigned(&mut enc)?;
+        sigs.encode_fields(&mut enc)?;
+        let enc = enc.finish()?;
+
+        let mut exp: String = text.clone();
+        let mut regsub = |re, repl| regsub(&mut exp, re, repl);
+
+        // C Tor writes empty versions lines with trailing space
+        regsub(
+            //
+            r#"^((?:client|server)-versions) $"#,
+            "$1",
+        );
+
+        adjust_exp(&mut exp);
+
+        assert_eq_or_diff!(&exp, &enc);
+
+        Ok(())
+    }
+
+    /// Test that we can re-encode the consensus we parsed, and that we get the same thing back.
+    ///
+    /// Well, roughly the same thing.
+    //
+    // TODO DIRAUTH want more comprehensive test; testdata2's netstatus lacks many things
+    #[cfg(feature = "incomplete")]
+    #[test]
+    fn roundtrip_netstatus_plain() -> anyhow::Result<()> {
+        roundtrip_netstatus::<plain::NetworkStatusUnverified, _, _>(
+            "testdata2/cached-consensus",
+            plain::NetworkStatusUnverified::verify,
+            |exp| {
+                let mut regsub = |re, repl| regsub(exp, re, repl);
+
+                // We emit the optional `ns`
+                // https://spec.torproject.org/dir-spec/consensus-formats.html#item:network-status-version
+                regsub(
+                    r#"^network-status-version 3$"#,
+                    "network-status-version 3 ns",
+                );
+
+                // C Tor writes nontrivial values for `publication` in rs `r` items,
+                // but we use a fixed string.
+                // https://spec.torproject.org/dir-spec/consensus-formats.html#item:r
+                regsub(
+                    r#"^(r \S+ \S+ \S+) \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#,
+                    "$1 2000-01-01 00:00:01",
+                );
+            },
+        )
+    }
+
+    #[cfg(feature = "incomplete")]
+    #[test]
+    fn roundtrip_netstatus_md() -> anyhow::Result<()> {
+        roundtrip_netstatus::<md::NetworkStatusUnverified, _, _>(
+            "testdata2/cached-microdesc-consensus",
+            md::NetworkStatusUnverified::verify,
+            |exp| {
+                let mut regsub = |re, repl| regsub(exp, re, repl);
+
+                // C Tor writes nontrivial values for `publication` in rs `r` items,
+                // but we use a fixed string.
+                // https://spec.torproject.org/dir-spec/consensus-formats.html#item:r
+                //
+                // Not the same as in plain consensus: one fewer fields!
+                regsub(
+                    r#"^(r \S+ \S+) \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#,
+                    "$1 2000-01-01 00:00:01",
+                );
+            },
+        )
     }
 }
