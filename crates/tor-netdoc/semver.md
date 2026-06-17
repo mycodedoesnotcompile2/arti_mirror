@@ -1,3 +1,6 @@
+ADDED: `ItemValueEncodable` for `ExtraInfoDigests`
+ADDED: `ItemValueEncodable` for `RouterDescIntroItem`
+ADDED: `ItemValueEncodable` for `OverloadGeneral`
 ADDED: `ItemValueEncodable` for `RelayPlatform`
 BREAKING: Replaced `ItemArgumentParseable` with `ItemValueParseable` for `RelayPlatform`
 ADDED: `NtorOnionKeyCrossCert` type
