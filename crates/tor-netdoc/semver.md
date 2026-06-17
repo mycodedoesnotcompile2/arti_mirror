@@ -1,3 +1,4 @@
+ADDED: `encode::ItemArgument` for `SpFingerprint`
 ADDED: `ItemValueEncodable` for `ExtraInfoDigests`
 ADDED: `ItemValueEncodable` for `RouterDescIntroItem`
 ADDED: `ItemValueEncodable` for `OverloadGeneral`

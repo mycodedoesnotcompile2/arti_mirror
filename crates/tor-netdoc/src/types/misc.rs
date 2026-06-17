@@ -2116,6 +2116,7 @@ mod fingerprint {
     use crate::parse2::{ArgumentError, ArgumentStream, ItemArgumentParseable};
     use crate::{Error, NetdocErrorKind as EK, Pos, Result};
     use base64ct::{Base64Unpadded, Encoding as _};
+    use itertools::Itertools;
     use tor_llcrypto::pk::rsa::RsaIdentity;
 
     /// A hex-encoded RSA key identity (fingerprint) with spaces in it.
@@ -2195,6 +2196,20 @@ mod fingerprint {
             Ok(Self(
                 RsaIdentity::from_hex(fp.join("").as_str()).ok_or(ArgumentError::Invalid)?,
             ))
+        }
+    }
+
+    impl encode::ItemArgument for SpFingerprint {
+        fn write_arg_onto(&self, out: &mut ItemEncoder<'_>) -> StdResult<(), Bug> {
+            let res = self
+                .0
+                .to_bytes()
+                .chunks(2)
+                .map(|b| format!("{:02X}{:02X}", b[0], b[1]))
+                .join(" ");
+            debug_assert_eq!(res.len(), 4 * 10 + 9);
+            out.args_raw_string(&res);
+            Ok(())
         }
     }
 
@@ -3398,20 +3413,31 @@ mod test {
         use crate::parse2::ErrorProblem;
 
         #[derive(Deftly)]
-        #[derive_deftly(NetdocParseable)]
+        #[derive_deftly(NetdocParseable, NetdocEncodable)]
         struct Wrapper {
             #[deftly(netdoc(single_arg))]
             fingerprint: SpFingerprint,
         }
 
         /// Small helper to parse an [`SpFingerprint`].
+        ///
+        /// In the case the parsing went successful, it also performs a
+        /// round-trip encoding test.
         fn parse2(s: &str) -> std::result::Result<SpFingerprint, ErrorProblem> {
             use crate::parse2::{self, ParseInput};
 
-            let s = format!("fingerprint {s}\n");
-            parse2::parse_netdoc::<Wrapper>(&ParseInput::new(&s, ""))
-                .map(|x| x.fingerprint)
-                .map_err(|x| x.problem)
+            let input = format!("fingerprint {s}\n");
+            let res = parse2::parse_netdoc::<Wrapper>(&ParseInput::new(&input, ""))
+                .map_err(|x| x.problem)?;
+
+            // Round-trip encoding; we only do .starts_with() because input
+            // may contain trailing parameters which will obviously not be
+            // encoded; trimming to remove the trailing "\n" afterwards.
+            let mut enc = NetdocEncoder::default();
+            res.encode_unsigned(&mut enc).unwrap();
+            assert!(input.starts_with(enc.finish().unwrap().trim_end()));
+
+            Ok(res.fingerprint)
         }
 
         // Test a valid one.
