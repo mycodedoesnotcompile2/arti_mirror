@@ -68,6 +68,9 @@ pub use byte_qty::ByteQty;
 
 pub use paste::paste;
 
+#[doc(hidden)]
+pub use derive_deftly;
+
 use rand::Rng;
 
 /// Sealed
