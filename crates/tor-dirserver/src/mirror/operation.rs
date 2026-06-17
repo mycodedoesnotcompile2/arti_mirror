@@ -34,7 +34,7 @@ use tor_error::{internal, into_internal};
 use tor_netdoc::{
     doc::{
         authcert::{AuthCertKeyIds, AuthCertUnverified},
-        netstatus::{md, plain as cons, ConsensusFlavor},
+        netstatus::{md, plain, ConsensusFlavor},
     },
     parse2::{self, NetdocParseable, NetdocParseableUnverified, ParseInput},
 };
@@ -238,7 +238,7 @@ enum ConsensusBoundData {
 #[derive(Debug, Clone)]
 enum FlavoredConsensus {
     /// For plain consensuses.
-    Ns(cons::NetworkStatus),
+    Plain(plain::NetworkStatus),
 
     /// For microdescriptor consensuses.
     Md(md::NetworkStatus),
@@ -250,7 +250,7 @@ enum FlavoredConsensus {
 #[derive(Debug, Clone)]
 enum FlavoredConsensusSigned {
     /// For plain consensuses.
-    Ns(cons::NetworkStatusUnverified),
+    Plain(plain::NetworkStatusUnverified),
 
     /// For microdescriptor consensus.
     Md(md::NetworkStatusUnverified),
@@ -445,8 +445,8 @@ impl StaticEngine {
         // See also the relevant MR discussion:
         // <https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/3664#note_3352723>
         let consensus = match self.flavor {
-            ConsensusFlavor::Plain => FlavoredConsensus::Ns(
-                parse2::parse_netdoc::<cons::NetworkStatusUnverified>(&ParseInput::new(
+            ConsensusFlavor::Plain => FlavoredConsensus::Plain(
+                parse2::parse_netdoc::<plain::NetworkStatusUnverified>(&ParseInput::new(
                     &consensus, "",
                 ))
                 .map_err(into_internal!("invalid netdoc in database?"))?
@@ -491,7 +491,7 @@ impl StaticEngine {
                 .map(|(raw, doc)| {
                     doc.into_iter()
                         .map(|(doc, start, end)| {
-                            (raw[start..end].to_owned(), FlavoredConsensusSigned::Ns(doc))
+                            (raw[start..end].to_owned(), FlavoredConsensusSigned::Plain(doc))
                         })
                         .collect()
                 }),
@@ -716,7 +716,7 @@ impl FlavoredConsensusSigned {
     /// Wrapper to obtain the signatories of a flavored consensus.
     fn signatories(&self) -> Vec<AuthCertKeyIds> {
         let sigs = match &self {
-            Self::Ns(ns) => &ns.sigs.sigs.directory_signature,
+            Self::Plain(plain) => &plain.sigs.sigs.directory_signature,
             Self::Md(md) => &md.sigs.sigs.directory_signature,
         };
         sigs.iter().map(|sig| sig.key_ids).collect()
@@ -885,7 +885,7 @@ mod test {
                 micro_queue,
             } => {
                 match consensus {
-                    FlavoredConsensus::Ns(_) => {}
+                    FlavoredConsensus::Plain(_) => {}
                     _ => panic!("consensus not ns"),
                 }
                 assert_eq!(
@@ -939,9 +939,9 @@ mod test {
         engine.fetch_consensus(&mut data, &[saddr]).await.unwrap();
         match data {
             ConsensusBoundData::Unverified { consensus, raw } => match consensus {
-                FlavoredConsensusSigned::Ns(ns) => {
+                FlavoredConsensusSigned::Plain(plain) => {
                     // El-cheapo verification, this is not a parser unit test.
-                    assert_eq!(ns.unwrap_unverified().0.routers.len(), 2);
+                    assert_eq!(plain.unwrap_unverified().0.routers.len(), 2);
                     assert_eq!(raw, include_str!("../../testdata/consensus-ns"));
                 }
                 _ => panic!("data is not unverified ns consensus"),
@@ -954,7 +954,7 @@ mod test {
     async fn state_auth_certs() {
         let pool = create_dummy_db();
         let mut data = ConsensusBoundData::Unverified {
-            consensus: FlavoredConsensusSigned::Ns(
+            consensus: FlavoredConsensusSigned::Plain(
                 parse2::parse_netdoc(&ParseInput::new(
                     include_str!("../../testdata/consensus-ns"),
                     "",
@@ -1021,7 +1021,7 @@ mod test {
         let recent_authcerts = db::read_tx(&pool, |tx| {
             AuthCertMeta::query_recent(
                 tx,
-                &FlavoredConsensusSigned::Ns(
+                &FlavoredConsensusSigned::Plain(
                     parse2::parse_netdoc(&ParseInput::new(
                         include_str!("../../testdata/consensus-ns"),
                         "",
