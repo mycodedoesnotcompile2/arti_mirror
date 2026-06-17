@@ -48,7 +48,8 @@
 // See issue #2334
 
 use crate::keys::util::{
-    KeysListCmdBuilder, KeysListKeystoreCmdBuilder, LIST_OUTPUT_ARTI, LIST_OUTPUT_CTOR,
+    KeysListCmdBuilder, KeysListKeystoreCmdBuilder, LIST_OUTPUT_ARTI, LIST_OUTPUT_ARTI_COMPACT,
+    LIST_OUTPUT_ARTI_NO_ID, LIST_OUTPUT_CTOR, LIST_OUTPUT_CTOR_COMPACT, LIST_OUTPUT_CTOR_NO_ID,
 };
 use crate::util::assert_log_message;
 mod util;
@@ -74,6 +75,27 @@ fn list_all_keystore_entries() {
 }
 
 #[test]
+fn list_all_keystore_entries_compact() {
+    let output = KeysListCmdBuilder::default()
+        .with_arti(true)
+        .with_ctor(true)
+        .compact(true)
+        .build()
+        .unwrap()
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout.clone()).unwrap();
+    for entry in LIST_OUTPUT_ARTI_COMPACT {
+        assert!(stdout.contains(entry))
+    }
+    for entry in LIST_OUTPUT_CTOR_COMPACT {
+        assert!(stdout.contains(entry))
+    }
+    assert_log_message(output);
+}
+
+#[test]
 fn list_arti_keystore_entries() {
     let output = KeysListCmdBuilder::default()
         .with_arti(true)
@@ -85,10 +107,32 @@ fn list_arti_keystore_entries() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout.clone()).unwrap();
-    for entry in LIST_OUTPUT_ARTI {
+    for entry in LIST_OUTPUT_ARTI_NO_ID {
         assert!(stdout.contains(entry))
     }
-    for entry in LIST_OUTPUT_CTOR {
+    for entry in LIST_OUTPUT_CTOR_NO_ID {
+        assert!(!stdout.contains(entry))
+    }
+    assert_log_message(output);
+}
+
+#[test]
+fn list_arti_keystore_entries_compact() {
+    let output = KeysListCmdBuilder::default()
+        .with_arti(true)
+        .with_ctor(true)
+        .compact(true)
+        .keystore(Some("arti".to_string()))
+        .build()
+        .unwrap()
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout.clone()).unwrap();
+    for entry in LIST_OUTPUT_ARTI_COMPACT {
+        assert!(stdout.contains(entry))
+    }
+    for entry in LIST_OUTPUT_CTOR_COMPACT {
         assert!(!stdout.contains(entry))
     }
     assert_log_message(output);
@@ -106,10 +150,32 @@ fn list_ctor_keystore_entries() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout.clone()).unwrap();
-    for entry in LIST_OUTPUT_ARTI {
+    for entry in LIST_OUTPUT_ARTI_NO_ID {
         assert!(!stdout.contains(entry))
     }
-    for entry in LIST_OUTPUT_CTOR {
+    for entry in LIST_OUTPUT_CTOR_NO_ID {
+        assert!(stdout.contains(entry))
+    }
+    assert_log_message(output);
+}
+
+#[test]
+fn list_ctor_keystore_entries_compact() {
+    let output = KeysListCmdBuilder::default()
+        .with_arti(true)
+        .with_ctor(true)
+        .compact(true)
+        .keystore(Some("ctor".to_string()))
+        .build()
+        .unwrap()
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout.clone()).unwrap();
+    for entry in LIST_OUTPUT_ARTI_COMPACT {
+        assert!(!stdout.contains(entry))
+    }
+    for entry in LIST_OUTPUT_CTOR_COMPACT {
         assert!(stdout.contains(entry))
     }
     assert_log_message(output);
@@ -141,13 +207,7 @@ fn list_arti_with_empty_state_dir_and_full_ctor() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout.clone()).unwrap();
-    assert!(stdout.contains("Currently there are no entries in the keystore arti."));
-    for entry in LIST_OUTPUT_ARTI {
-        assert!(!stdout.contains(entry))
-    }
-    for entry in LIST_OUTPUT_CTOR {
-        assert!(!stdout.contains(entry))
-    }
+    assert!(stdout.is_empty());
     assert_log_message(output);
 }
 
@@ -171,6 +231,26 @@ fn list_with_empty_state_dir_and_full_ctor() {
 }
 
 #[test]
+fn list_with_empty_state_dir_and_full_ctor_compact() {
+    let output = KeysListCmdBuilder::default()
+        .with_ctor(true)
+        .compact(true)
+        .build()
+        .unwrap()
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout.clone()).unwrap();
+    for entry in LIST_OUTPUT_ARTI_COMPACT {
+        assert!(!stdout.contains(entry))
+    }
+    for entry in LIST_OUTPUT_CTOR_COMPACT {
+        assert!(stdout.contains(entry))
+    }
+    assert_log_message(output);
+}
+
+#[test]
 fn list_with_empty_state_dir_and_no_registered_ctor() {
     let output = KeysListCmdBuilder::default()
         .build()
@@ -179,13 +259,7 @@ fn list_with_empty_state_dir_and_no_registered_ctor() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Currently there are no entries in any of the keystores."));
-    for entry in LIST_OUTPUT_ARTI {
-        assert!(!stdout.contains(entry))
-    }
-    for entry in LIST_OUTPUT_CTOR {
-        assert!(!stdout.contains(entry))
-    }
+    assert!(stdout.is_empty());
     assert!(output.stderr.is_empty())
 }
 
