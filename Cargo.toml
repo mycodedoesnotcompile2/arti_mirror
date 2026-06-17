@@ -76,6 +76,7 @@ members = [
     "crates/arti-config",
     "crates/arti",
     "crates/arti-bench",
+    "crates/arti-dirauth",
     "crates/arti-testing",
     "crates/arti-ureq",
 
