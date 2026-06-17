@@ -5,6 +5,8 @@ use std::fmt::Display;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 
+use itertools::chain;
+
 use crate::NormalItemArgument;
 use crate::encode::NetdocEncodableFields;
 use crate::parse2::{
@@ -125,18 +127,17 @@ impl NetdocEncodableFields for AddrPolicy {
         };
 
         // Add default deny in case of an absent trailing ALL.
-        let mut rules = self.rules.clone();
-        match self.rules.last() {
+        let default_deny = match self.rules.last() {
             // Do nothing if there already is a trailing ALL.
             Some(AddrPolicyRule {
                 kind: _,
                 pattern: ALL,
-            }) => {}
+            }) => None,
             // Add a default deny to the end.
-            _ => rules.push(DEFAULT_DENY),
-        }
+            _ => Some(&DEFAULT_DENY),
+        };
 
-        for rule in rules {
+        for rule in chain!(&self.rules, default_deny) {
             out.push_raw_string(&format!("{} {}\n", rule.kind, rule.pattern));
         }
         Ok(())
