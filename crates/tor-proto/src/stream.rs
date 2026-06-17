@@ -30,6 +30,12 @@ use crate::stream::flow_ctrl::xon_xoff::reader::XonXoffReaderCtrl;
 use crate::stream::raw::StreamReceiver;
 use crate::{ClientTunnel, Error, HopLocation, Result};
 
+#[cfg(any(feature = "hs-service", feature = "relay"))]
+pub use incoming::{
+    IncomingStream, IncomingStreamRequest, IncomingStreamRequestContext,
+    IncomingStreamRequestDisposition, IncomingStreamRequestFilter,
+};
+
 use std::pin::Pin;
 use std::sync::Arc;
 
