@@ -5,6 +5,7 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 
+use derive_deftly::define_derive_deftly;
 use derive_more::Display;
 
 /// Alias to force use of RandomState, regardless of features enabled in `weak_tables`.
@@ -72,6 +73,21 @@ impl<'a, T: ?Sized> From<&'a Intern<T>> for &'a Arc<T> {
 pub trait GloballyInternable: Sized {
     /// Returns a reference to the global cache instance of this type.
     fn intern_cache() -> &'static InternCache<Self>;
+}
+
+define_derive_deftly! {
+    /// Implement the [`GloballyInternable`] trait for a specific type.
+    ///
+    /// The implementation in itself is trivial and straightforward with this
+    /// macro primarily serving as a convenience method.
+    export GloballyInternable for struct:
+
+    impl $crate::intern::GloballyInternable for $ttype {
+        fn intern_cache() -> &'static $crate::intern::InternCache<Self> {
+            static S: $crate::intern::InternCache::<$ttype> = $crate::intern::InternCache::new();
+            &S
+        }
+    }
 }
 
 /// An InternCache is a lazily-constructed weak set of objects.
