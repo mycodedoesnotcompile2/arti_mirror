@@ -34,7 +34,8 @@ By default the command displays the content of all the keystores. If the
 flag `--keystore-id` is provided, only the content of the specified
 keystore will be displayed.
 
-This command provides a way of listing both valid and broken entries.
+This command provides a way of listing both valid and broken
+(i.e. unrecognized by Arti, or otherwise corrupt) entries.
 
 Some of the information displayed by `keys list` can be used as input for other
 commands. For instance: "Location", is the raw identifier of the entry; and
