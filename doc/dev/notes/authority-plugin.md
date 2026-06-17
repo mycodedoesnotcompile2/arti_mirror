@@ -164,7 +164,8 @@ authority when producing error messages.
 Each entry represents a single valid voting authority.  The number of
 authorities is equal to the lines in the file.
 
-Implementations SHOULD ignore extraneous space and extra lines in this file.
+This should be parsed in accordance with the regular
+[netdoc metaformat](https://spec.torproject.org/dir-spec/netdoc.html).
 
 > This format is chosen to consist entirely of elements present in C tor's
 > DirServer configuration line.
