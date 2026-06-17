@@ -3083,12 +3083,7 @@ mod test {
 
         let sigs = doc.inspect_unverified().1.sigs.clone();
 
-        let doc = verify(
-            doc,
-            &authorities,
-            &certs,
-        )?
-        .check_valid_at(&now)?;
+        let doc = verify(doc, &authorities, &certs)?.check_valid_at(&now)?;
 
         println!("{doc:?}");
 
