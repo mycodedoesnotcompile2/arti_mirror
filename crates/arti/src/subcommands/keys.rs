@@ -231,6 +231,11 @@ fn run_list_keys(args: ListArgs, client: &InertTorClient) -> Result<()> {
         }
     }
 
+    // Sort the entries to make the output deterministic
+    valid_entries.sort_by_key(|(e, _info)| (e.keystore_id(), e.key_path().to_string()));
+    unrecognized_entries.sort_by_key(|e| e.entry().raw_id().to_string());
+    unrecognized_paths.sort_by_key(|e| e.key_path().to_string());
+
     for entry in valid_entries {
         if args.output_format.compact {
             println!("{}", entry.0.raw_id());
