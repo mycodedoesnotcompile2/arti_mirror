@@ -53,8 +53,8 @@ Example usage:
 <details>
 <summary>With `--keystore-id`:</summary>
 
-```ignore
-$ arti -c keys.toml keys list --keystore-id arti
+```
+$ arti -c with-ctor.toml keys list --keystore-id arti
 Role: ks_hsc_desc_enc
 Summary: Descriptor decryption key
 KeystoreItemType: X25519StaticKeypair
@@ -73,18 +73,20 @@ Extra info:
 Broken entries
 
 Location: hss/allium-cepa/unrecognized-entry
-Error: Malformed path, no extension: hss/allium-cepa/unrecognized-entry
+Error: Key has invalid path: hss/allium-cepa/unrecognized-entry
 
 Location: unrecognized-path-dir/ks_hs_id.ed25519_expanded_private
 Error: Unrecognized
+
+
 ```
 </details>
 
 <details>
 <summary>Default behavior</summary>
 
-```ignore
-$ arti -c keys.toml keys list
+```
+$ arti -c with-ctor.toml keys list
 Keystore ID: arti
 Role: ks_hsc_desc_enc
 Summary: Descriptor decryption key
@@ -98,14 +100,6 @@ Role: ks_hs_id
 Summary: Long-term identity keypair
 KeystoreItemType: Ed25519ExpandedKeypair
 Location: hss/allium-cepa/ks_hs_id.ed25519_expanded_private
-Extra info:
-- nickname: allium-cepa
-
-Keystore ID: ctor
-Role: ks_hs_id
-Summary: Long-term identity keypair
-KeystoreItemType: Ed25519ExpandedKeypair
-Location: hs_ed25519_secret_key
 Extra info:
 - nickname: allium-cepa
 
@@ -117,43 +111,57 @@ Location: hs_ed25519_public_key
 Extra info:
 - nickname: allium-cepa
 
+Keystore ID: ctor
+Role: ks_hs_id
+Summary: Long-term identity keypair
+KeystoreItemType: Ed25519ExpandedKeypair
+Location: hs_ed25519_secret_key
+Extra info:
+- nickname: allium-cepa
+
 
 Broken entries
-
-Keystore ID: arti
-Location: hss/allium-cepa/unrecognized-entry
-Error: Malformed path, no extension: hss/allium-cepa/unrecognized-entry
-
-Keystore ID: ctor
-Location: hs_unrecognized_entry
-Error: Key hs_unrecognized_entry is malformed
 
 Keystore ID: ctor
 Location: hostname
 Error: Key hostname is malformed
 
+Keystore ID: ctor
+Location: hs_unrecognized_entry
+Error: Key hs_unrecognized_entry is malformed
+
+Keystore ID: arti
+Location: hss/allium-cepa/unrecognized-entry
+Error: Key has invalid path: hss/allium-cepa/unrecognized-entry
+
 Keystore ID: *not available*
 Location: unrecognized-path-dir/ks_hs_id.ed25519_expanded_private
 Error: Unrecognized
+
+
 ```
 </details>
 
 <details>
 <summary>Compact output</summary>
 
-```ignore
-$ arti -c keys.toml keys list --compact
+```
+$ arti -c with-ctor.toml keys list --compact
 client/mnyizjj7m3hpcr7i5afph3zt7maa65johyu2ruis6z7cmnjmaj3h6tad/ks_hsc_desc_enc.x25519_private
 hss/allium-cepa/ks_hs_id.ed25519_expanded_private
-hs_ed25519_secret_key
 hs_ed25519_public_key
+hs_ed25519_secret_key
 
 Broken entries
 
-hss/allium-cepa/unrecognized-entry
-hs_unrecognized_entry
 hostname
+
+hs_unrecognized_entry
+
+hss/allium-cepa/unrecognized-entry
+
 unrecognized-path-dir/ks_hs_id.ed25519_expanded_private
+
 ```
 </details>
 
