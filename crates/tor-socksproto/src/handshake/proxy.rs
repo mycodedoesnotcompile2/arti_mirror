@@ -255,22 +255,16 @@ impl SocksRequest {
             w.write(a)?;
             w.write_u16(self.port());
         } else {
-            // used #[allow(unreachable_patterns)] because we needed _ pattern for prevent new type
-            #[allow(unreachable_patterns)]
+            // When no address is given in the reply, we send back an UNSPECIFIED address.
+            // We try to match the _requested_ address family, if it's an IP family.
+            //
+            // (Tor doesn't need to support SOCKS BIND; if we wanted to support that,
+            // we'd provide the address in the `addr` argument.)
             match self.addr() {
-                // SocksAddr = { Hostname(SocksHostname), Ip(IpAddr) }
-                // IpAddr::{v4, v6}
-                // struct SocksHostname(String)
                 SocksAddr::Ip(IpAddr::V6(_)) => {
-                    // Tor don't use Bind! So we can just insert UNSPECIFIED into there
                     w.write(&SocksAddr::Ip(Ipv6Addr::UNSPECIFIED.into()))?;
                 }
-                SocksAddr::Ip(IpAddr::V4(_)) => {
-                    w.write(&SocksAddr::Ip(Ipv4Addr::UNSPECIFIED.into()))?;
-                }
-                SocksAddr::Hostname(_) => {
-                    // User connected us by using Hostname e,g: example.com
-                    // In this situation we can just use the IpV4
+                SocksAddr::Ip(IpAddr::V4(_)) | SocksAddr::Hostname(_) => {
                     w.write(&SocksAddr::Ip(Ipv4Addr::UNSPECIFIED.into()))?;
                 }
             }
