@@ -34,11 +34,10 @@ use tor_error::{internal, into_internal};
 use tor_netdoc::{
     doc::{
         authcert::{AuthCertKeyIds, AuthCertUnverified},
-        netstatus::ConsensusFlavor,
+        netstatus::{md, plain as cons, ConsensusFlavor},
     },
     parse2::{
         self,
-        poc::netstatus::{cons, md},
         NetdocParseable, NetdocParseableUnverified, ParseInput,
     },
 };
@@ -945,7 +944,7 @@ mod test {
             ConsensusBoundData::Unverified { consensus, raw } => match consensus {
                 FlavoredConsensusSigned::Ns(ns) => {
                     // El-cheapo verification, this is not a parser unit test.
-                    assert_eq!(ns.unwrap_unverified().0.r.len(), 2);
+                    assert_eq!(ns.unwrap_unverified().0.routers.len(), 2);
                     assert_eq!(raw, include_str!("../../testdata/consensus-ns"));
                 }
                 _ => panic!("data is not unverified ns consensus"),
