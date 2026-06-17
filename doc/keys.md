@@ -41,8 +41,11 @@ commands. For instance: "Location", is the raw identifier of the entry; and
 "Keystore ID", the identifier, of the keystore. These can be used together
 with `arti keys-raw remove-by-id`.
 
-`keys list` will supports alternative output formats.
-Currently, only `compact` is available, with more formats coming soon.
+By default, `keys list` pretty-prints human-readable output.
+You can use the `--compact` option to get it to display
+a more compact representation.
+
+> NOTE: in the future, we plan to support machine-readable output too
 
 Example usage:
 
