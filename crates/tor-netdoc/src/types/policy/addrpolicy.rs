@@ -138,7 +138,7 @@ impl NetdocEncodableFields for AddrPolicy {
         };
 
         for rule in chain!(&self.rules, default_deny) {
-            out.push_raw_string(&format!("{} {}\n", rule.kind, rule.pattern));
+            out.push_raw_string(&format_args!("{} {}\n", rule.kind, rule.pattern));
         }
         Ok(())
     }
