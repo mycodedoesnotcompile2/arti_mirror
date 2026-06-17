@@ -7167,6 +7167,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tor-dirauth"
+version = "0.43.0"
+dependencies = [
+ "tor-netdoc",
+]
+
+[[package]]
 name = "tor-dirclient"
 version = "0.43.0"
 dependencies = [
