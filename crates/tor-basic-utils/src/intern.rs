@@ -66,6 +66,14 @@ impl<'a, T: ?Sized> From<&'a Intern<T>> for &'a Arc<T> {
     }
 }
 
+/// Offers access to globally available cache for [`InternCache`].
+///
+/// Typically derived using `derive_deftly_template_GloballyInternable`.
+pub trait GloballyInternable: Sized {
+    /// Returns a reference to the global cache instance of this type.
+    fn intern_cache() -> &'static InternCache<Self>;
+}
+
 /// An InternCache is a lazily-constructed weak set of objects.
 ///
 /// Let's break that down!  It's "lazily constructed" because it
