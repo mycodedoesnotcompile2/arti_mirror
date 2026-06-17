@@ -36,10 +36,7 @@ use tor_netdoc::{
         authcert::{AuthCertKeyIds, AuthCertUnverified},
         netstatus::{md, plain as cons, ConsensusFlavor},
     },
-    parse2::{
-        self,
-        NetdocParseable, NetdocParseableUnverified, ParseInput,
-    },
+    parse2::{self, NetdocParseable, NetdocParseableUnverified, ParseInput},
 };
 use tor_rtcompat::PreferredRuntime;
 use tracing::{debug, warn};
