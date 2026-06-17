@@ -779,7 +779,7 @@ impl RouterDesc {
         // ntor key
         let ntor_onion_key: Curve25519Public = body.required(NTOR_ONION_KEY)?.parse_arg(0)?;
         // ntor crosscert
-        let (cc_sig, cc_expiry, cc_bit, cc_cert) = {
+        let (cc_sig, cc_expiry, cc_cert) = {
             let cc = body.required(NTOR_ONION_KEY_CROSSCERT)?;
             let sign: u8 = cc.parse_arg(0)?;
             if sign != 0 && sign != 1 {
@@ -803,7 +803,13 @@ impl RouterDesc {
             )
             .map_err(|_| EK::BadSignature.err())?;
 
-            (sig, expiry, NumericBoolean(sign != 0), cert)
+            let cert = NtorOnionKeyCrossCert {
+                bit: NumericBoolean(sign != 0),
+                // Okay to call because we added the signature to the batch.
+                cert: EmbeddedCert::new(Ed25519NtorCrossCert::dangerous_new_unverified(), cert),
+            };
+
+            (sig, expiry, cert)
         };
 
         // TAP key
@@ -1029,13 +1035,7 @@ impl RouterDesc {
             uptime,
             onion_key: tap_onion_key,
             ntor_onion_key,
-            ntor_onion_key_crosscert: NtorOnionKeyCrossCert {
-                bit: cc_bit,
-                // Calling .dangerous_new_unverified() is not super nice but
-                // okay because the legacy parser checks the signature anyways.
-                // I don't want to do EmbeddedCert::new_unverified_hazardous().
-                cert: EmbeddedCert::new(Ed25519NtorCrossCert::dangerous_new_unverified(), cc_cert),
-            },
+            ntor_onion_key_crosscert: cc_cert,
             signing_key: rsa_identity_key,
             ipv4_policy,
             ipv6_policy: ipv6_policy.intern(),
