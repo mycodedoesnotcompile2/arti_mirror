@@ -3034,7 +3034,7 @@ mod test {
     ///    in all kinds of network document.
     ///
     ///  * Document-specific, [`MungeForRoundtrip::adjust_exp`]
-    #[cfg(feature = "incomplete")]
+    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
     fn roundtrip_netstatus<UV, V, VE>(
         // TODO DIRAUTH use include_str!, so, at call sites
         // https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4121#note_3428675
@@ -3135,7 +3135,7 @@ mod test {
     /// Well, roughly the same thing.
     //
     // TODO DIRAUTH want more comprehensive test; testdata2's netstatus lacks many things
-    #[cfg(feature = "incomplete")]
+    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
     #[test]
     fn roundtrip_netstatus_plain() -> anyhow::Result<()> {
         roundtrip_netstatus::<plain::NetworkStatusUnverified, _, _>(
@@ -3167,7 +3167,7 @@ mod test {
         }
     }
 
-    #[cfg(feature = "incomplete")]
+    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
     #[test]
     fn roundtrip_netstatus_md() -> anyhow::Result<()> {
         roundtrip_netstatus::<md::NetworkStatusUnverified, _, _>(
@@ -3194,7 +3194,7 @@ mod test {
         }
     }
 
-    #[cfg(feature = "incomplete")]
+    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
     #[test]
     fn roundtrip_netstatus_vote() -> anyhow::Result<()> {
         roundtrip_netstatus::<vote::NetworkStatusUnverified, _, _>(
