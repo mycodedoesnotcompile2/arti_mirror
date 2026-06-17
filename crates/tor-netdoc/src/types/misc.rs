@@ -1949,8 +1949,10 @@ mod edcert {
             ))
         }
 
-        /// Test only function for creating an unverified instance.
-        #[cfg(test)]
+        /// Internal function for creating an unverified instance.
+        ///
+        /// This is only intended for testing and legacy parser compatibility
+        /// purposes.
         pub(crate) fn dangerous_new_unverified() -> Self {
             Self {
                 _promise_we_verified: (),

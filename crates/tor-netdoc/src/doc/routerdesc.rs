@@ -176,6 +176,11 @@ pub struct RouterDesc {
     /// * Exactly once.
     pub ntor_onion_key: Curve25519Public,
 
+    /// `ntor-onion-key-crosscert` --- Reverse cert by K_ntor on KP_relayid_ed
+    ///
+    /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:ntor-onion-key-crosscert>
+    pub ntor_onion_key_crosscert: NtorOnionKeyCrossCert,
+
     /// `signing-key` --- Obsolete RSA identity key.
     ///
     /// * `signing-key\n<rsa public key>`
@@ -789,7 +794,7 @@ impl RouterDesc {
         // ntor key
         let ntor_onion_key: Curve25519Public = body.required(NTOR_ONION_KEY)?.parse_arg(0)?;
         // ntor crosscert
-        let (cc_sig, cc_expiry) = {
+        let (cc_sig, cc_expiry, cc_cert) = {
             let cc = body.required(NTOR_ONION_KEY_CROSSCERT)?;
             let sign: u8 = cc.parse_arg(0)?;
             if sign != 0 && sign != 1 {
@@ -806,11 +811,20 @@ impl RouterDesc {
             let cert = cc
                 .parse_obj::<UnvalidatedEdCert>("ED25519 CERT")?
                 .into_unchecked();
-            let (_, sig, expiry) =
-                Ed25519NtorCrossCert::verify_inner(ntor_as_ed.into(), ed25519_identity_key, cert)
-                    .map_err(|_| EK::BadSignature.err())?;
+            let (_, sig, expiry) = Ed25519NtorCrossCert::verify_inner(
+                ntor_as_ed.into(),
+                ed25519_identity_key,
+                cert.clone(),
+            )
+            .map_err(|_| EK::BadSignature.err())?;
 
-            (sig, expiry)
+            let cert = NtorOnionKeyCrossCert {
+                bit: NumericBoolean(sign != 0),
+                // Okay to call because we added the signature to the batch.
+                cert: EmbeddedCert::new(Ed25519NtorCrossCert::dangerous_new_unverified(), cert),
+            };
+
+            (sig, expiry, cert)
         };
 
         // TAP key
@@ -1036,6 +1050,7 @@ impl RouterDesc {
             uptime,
             onion_key: tap_onion_key,
             ntor_onion_key,
+            ntor_onion_key_crosscert: cc_cert,
             signing_key: rsa_identity_key,
             ipv4_policy,
             ipv6_policy: ipv6_policy.intern(),

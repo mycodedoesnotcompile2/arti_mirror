@@ -4,6 +4,7 @@ ADDED: `ItemValueEncodable` for `OverloadGeneral`
 ADDED: `ItemValueEncodable` for `RelayPlatform`
 BREAKING: Replaced `ItemArgumentParseable` with `ItemValueParseable` for `RelayPlatform`
 ADDED: `NtorOnionKeyCrossCert` type
+ADDED: `RouterDesc::ntor_onion_key_crosscert`
 ADDED: `HiddenServiceDirToken`
 ADDED: `RouterDesc::hidden_service_dir`
 ADDED: `CachesExtraInfoToken`
