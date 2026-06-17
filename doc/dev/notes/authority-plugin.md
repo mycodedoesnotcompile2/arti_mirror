@@ -156,7 +156,7 @@ The `KEYFILE` file will contain zero or more lines, of the form:
 `auth NICKNAME DIGEST`.
 
 * `NICKNAME` is an arbitrary ASCII string without spaces to identify an
-authority.
+authority when producing error messages.
 
 * `DIGEST` is a hex-encoded SHA256 digest of an authority's `KP_auth_id_rsa`
   identity key.
