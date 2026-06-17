@@ -18,7 +18,8 @@ pub(crate) enum ArtiNativeKeystoreError {
     Filesystem(#[from] FilesystemError),
 
     /// Found a key with an invalid path.
-    // IDEA: Should we expose the underlying MalformedPathError? The current
+    //
+    // TODO: Should we expose the underlying MalformedPathError? The current
     // message "Key has invalid path" is too vague.
     #[error("Key has invalid path: {path}")]
     MalformedPath {
