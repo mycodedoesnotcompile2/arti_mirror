@@ -312,8 +312,7 @@ impl<R: Runtime> ChanMgr<R> {
     /// need to pass them so they can be sent in the NETINFO cell.
     ///
     /// The channel may or may not be authenticated. This method will wait until the channel is
-    /// usable, and may return an error if we already have an existing channel to this peer, or if
-    /// there are already too many open connections with this peer or subnet (as a dos defence).
+    /// usable, and may return an error if we already have an existing channel to this peer.
     #[cfg(feature = "relay")]
     pub async fn handle_incoming(
         &self,
