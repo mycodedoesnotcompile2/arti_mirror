@@ -2,7 +2,7 @@
 //! rules.
 
 use std::fmt::Display;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 
 use crate::NormalItemArgument;
@@ -10,6 +10,8 @@ use crate::parse2::{
     ErrorProblem as EP, ItemArgumentParseable, ItemStream, KeywordRef, NetdocParseableFields,
     UnparsedItem,
 };
+
+use ipnet::IpNet;
 
 use super::{PolicyError, PortRange, RuleKind};
 
@@ -210,41 +212,23 @@ impl NormalItemArgument for AddrPortPattern {}
 enum IpPattern {
     /// Match all addresses.
     Star,
-    /// Match all IPv4 addresses beginning with a given prefix.
-    V4(Ipv4Addr, u8),
-    /// Match all IPv6 addresses beginning with a given prefix.
-    V6(Ipv6Addr, u8),
+    /// Match addresses of a particular IP version, beginning with a given prefix.
+    Net(IpNet),
 }
 
 impl IpPattern {
     /// Construct an IpPattern that matches the first `prefix_len` bits of `addr`.
     fn from_addr_and_prefix_len(addr: IpAddr, prefix_len: u8) -> Result<Self, PolicyError> {
-        match (addr, prefix_len) {
-            (IpAddr::V4(a), m) if m <= 32 => Ok(IpPattern::V4(a, m)),
-            (IpAddr::V6(a), m) if m <= 128 => Ok(IpPattern::V6(a, m)),
-            (_, _) => Err(PolicyError::InvalidMask),
-        }
+        IpNet::new(addr, prefix_len)
+            .map(IpPattern::Net)
+            .map_err(|_: ipnet::PrefixLenError| PolicyError::InvalidMask)
     }
 
     /// Return true iff `addr` is matched by this pattern.
     fn matches(&self, addr: &IpAddr) -> bool {
-        match (self, addr) {
-            (IpPattern::Star, _) => true,
-            (IpPattern::V4(_, 0), IpAddr::V4(_)) => true,
-            (IpPattern::V4(pat, prefix_len), IpAddr::V4(addr)) => {
-                let p1 = u32::from_be_bytes(pat.octets());
-                let p2 = u32::from_be_bytes(addr.octets());
-                let shift = 32 - prefix_len;
-                (p1 >> shift) == (p2 >> shift)
-            }
-            (IpPattern::V6(_, 0), IpAddr::V6(_)) => true,
-            (IpPattern::V6(pat, prefix_len), IpAddr::V6(addr)) => {
-                let p1 = u128::from_be_bytes(pat.octets());
-                let p2 = u128::from_be_bytes(addr.octets());
-                let shift = 128 - prefix_len;
-                (p1 >> shift) == (p2 >> shift)
-            }
-            (_, _) => false,
+        match self {
+            IpPattern::Star => true,
+            IpPattern::Net(n) => n.contains(addr),
         }
     }
 }
@@ -254,10 +238,12 @@ impl Display for IpPattern {
         use IpPattern::*;
         match self {
             Star => write!(f, "*"),
-            V4(a, 32) => write!(f, "{}", a),
-            V4(a, m) => write!(f, "{}/{}", a, m),
-            V6(a, 128) => write!(f, "[{}]", a),
-            V6(a, m) => write!(f, "[{}]/{}", a, m),
+            // We want to omit the /prefix_len if it's the maximum, for brevity
+            Net(IpNet::V4(n)) if n.prefix_len() == 32 => write!(f, "{}", n.addr()),
+            Net(IpNet::V4(n)) => write!(f, "{}", n),
+            // We want to include the [ ] around IPv6 addresses, which ipnet omits
+            Net(IpNet::V6(n)) if n.prefix_len() == 128 => write!(f, "[{}]", n.addr()),
+            Net(IpNet::V6(n)) => write!(f, "[{}]/{}", n.addr(), n.prefix_len()),
         }
     }
 }
