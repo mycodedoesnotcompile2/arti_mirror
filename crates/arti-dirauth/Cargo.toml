@@ -1,7 +1,11 @@
 [package]
 name = "arti-dirauth"
 version = "0.43.0"
-authors = ["The Tor Project, Inc.", "Ian Jackson <iwj@torproject.org>", "Clara Engler <cve@torproject.org>"]
+authors = [
+    "The Tor Project, Inc.",
+    "Ian Jackson <iwj@torproject.org>",
+    "Clara Engler <cve@torproject.org>",
+]
 edition = "2024"
 rust-version = "1.91"
 license = "MIT OR Apache-2.0"
