@@ -245,7 +245,10 @@ impl NormalItemArgument for AddrPortPattern {}
 
 /// A pattern that matches one or more IP addresses.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, derive_more::From)]
-enum IpPattern {
+// We don't expect to extend this, and users (eg, tor-dirauth)
+// will need to match it exhaustively to make sense of a policy.
+#[allow(clippy::exhaustive_enums)]
+pub enum IpPattern {
     /// Match all addresses.
     ///
     /// String representation: `*`
@@ -259,14 +262,14 @@ enum IpPattern {
 
 impl IpPattern {
     /// Construct an IpPattern that matches the first `prefix_len` bits of `addr`.
-    fn from_addr_and_prefix_len(addr: IpAddr, prefix_len: u8) -> Result<Self, PolicyError> {
+    pub fn from_addr_and_prefix_len(addr: IpAddr, prefix_len: u8) -> Result<Self, PolicyError> {
         IpNet::new(addr, prefix_len)
             .map(IpPattern::Net)
             .map_err(|_: ipnet::PrefixLenError| PolicyError::InvalidMask)
     }
 
     /// Return true iff `addr` is matched by this pattern.
-    fn matches(&self, addr: &IpAddr) -> bool {
+    pub fn matches(&self, addr: &IpAddr) -> bool {
         match self {
             IpPattern::All => true,
             IpPattern::Net(n) => n.contains(addr),
