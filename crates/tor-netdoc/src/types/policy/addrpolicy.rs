@@ -247,8 +247,13 @@ impl NormalItemArgument for AddrPortPattern {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum IpPattern {
     /// Match all addresses.
+    ///
+    /// String representation: `*`
     All,
     /// Match addresses of a particular IP version, beginning with a given prefix.
+    ///
+    /// String representation: `n.n.n.n/prefix` or `[IPv6]/prefix`.
+    /// If the prefix is maximum it is optional, and omitted by `Display`.
     Net(IpNet),
 }
 
