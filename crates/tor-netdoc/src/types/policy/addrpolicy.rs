@@ -187,9 +187,8 @@ impl Display for AddrPolicyRule {
 /// assert!(pat.matches(&localhost, 22));
 /// assert!(! pat.matches(&not_localhost, 22));
 /// ```
-#[derive(
-    Clone, Debug, Eq, PartialEq, serde_with::SerializeDisplay, serde_with::DeserializeFromStr,
-)]
+#[derive(Clone, Debug, Eq, PartialEq)] //
+#[derive(serde_with::SerializeDisplay, serde_with::DeserializeFromStr)]
 pub struct AddrPortPattern {
     /// A pattern to match somewhere between zero and all IP addresses.
     pattern: IpPattern,
