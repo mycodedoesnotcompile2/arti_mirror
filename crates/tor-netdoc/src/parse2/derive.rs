@@ -272,6 +272,8 @@ define_derive_deftly_module! {
             let $fpatname = Option::unwrap_or_default($fpatname);
           }}
         )
+
+        #[allow(deprecated)]
         Ok($vpat)
     }}
 }
@@ -926,6 +928,7 @@ define_derive_deftly! {
             }
 
             #[allow(unreachable_code)] // If there are no fields!
+            #[allow(deprecated)]
             Ok(())
         }
 
@@ -1394,6 +1397,7 @@ define_derive_deftly! {
             args.reject_extra_args()?;
           }}
             dtrace!("item complete Ok");
+            #[allow(deprecated)]
             Ok($tname { $( $fname: $fpatname, ) })
         }
     }
