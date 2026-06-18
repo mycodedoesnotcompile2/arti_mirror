@@ -4,6 +4,7 @@
 
 pub use std::collections::{BTreeSet, HashSet};
 pub use std::fmt::{self, Debug, Display, Write as _};
+pub use std::hash::Hash;
 pub use std::marker::PhantomData;
 pub use std::mem;
 pub use std::ops::RangeInclusive;
@@ -21,7 +22,7 @@ pub use paste::paste;
 pub use thiserror::Error;
 pub use void::Void;
 
-pub use tor_basic_utils::assert_not_impl;
+pub use tor_basic_utils::{assert_not_impl, intern::*};
 pub use tor_llcrypto::pk;
 
 pub const PEM_HEADER_START: &str = crate::parse::tokenize::object::BEGIN_STR;
