@@ -112,14 +112,14 @@ impl<T: Eq + Hash> InternCache<T> {
     /// If `value` is already stored in this cache, we return a
     /// reference to the stored value.  Otherwise, we insert `value`
     /// into the cache, and return that.
-    pub fn intern(&self, value: T) -> Arc<T> {
+    pub fn intern(&self, value: T) -> Intern<T> {
         let mut cache = self.cache();
         if let Some(pp) = cache.get(&value) {
-            pp
+            Intern(pp)
         } else {
             let arc = Arc::new(value);
             cache.insert(Arc::clone(&arc));
-            arc
+            Intern(arc)
         }
     }
 }
@@ -129,7 +129,7 @@ impl<T: Hash + Eq + ?Sized> InternCache<T> {
     ///
     /// Works with unsized types, but requires that the reference implements
     /// `Into<Arc<T>>`.
-    pub fn intern_ref<'a, V>(&self, value: &'a V) -> Arc<T>
+    pub fn intern_ref<'a, V>(&self, value: &'a V) -> Intern<T>
     where
         V: Hash + Eq + ?Sized,
         &'a V: Into<Arc<T>>,
@@ -137,11 +137,11 @@ impl<T: Hash + Eq + ?Sized> InternCache<T> {
     {
         let mut cache = self.cache();
         if let Some(arc) = cache.get(value) {
-            arc
+            Intern(arc)
         } else {
             let arc = value.into();
             cache.insert(Arc::clone(&arc));
-            arc
+            Intern(arc)
         }
     }
 }
@@ -169,9 +169,9 @@ mod test {
         // "intern" case.
         let c: InternCache<String> = InternCache::new();
 
-        let s1 = c.intern("abc".to_string());
-        let s2 = c.intern("def".to_string());
-        let s3 = c.intern("abc".to_string());
+        let s1: Arc<String> = c.intern("abc".to_string()).into();
+        let s2 = c.intern("def".to_string()).into();
+        let s3 = c.intern("abc".to_string()).into();
         assert!(Arc::ptr_eq(&s1, &s3));
         assert!(!Arc::ptr_eq(&s1, &s2));
         assert_eq!(s2.as_ref(), "def");
@@ -183,9 +183,9 @@ mod test {
         // "intern" case.
         let c: InternCache<str> = InternCache::new();
 
-        let s1 = c.intern_ref("abc");
-        let s2 = c.intern_ref("def");
-        let s3 = c.intern_ref("abc");
+        let s1: Arc<str> = c.intern_ref("abc").into();
+        let s2 = c.intern_ref("def").into();
+        let s3 = c.intern_ref("abc").into();
         assert!(Arc::ptr_eq(&s1, &s3));
         assert!(!Arc::ptr_eq(&s1, &s2));
         assert_eq!(&*s2, "def");

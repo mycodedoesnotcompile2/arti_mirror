@@ -280,7 +280,8 @@ static PROTOCOLS: InternCache<ProtocolsInner> = InternCache::new();
 
 impl From<ProtocolsInner> for Protocols {
     fn from(value: ProtocolsInner) -> Self {
-        Protocols(PROTOCOLS.intern(value))
+        // XXX: Use Intern more natively.
+        Protocols(PROTOCOLS.intern(value).into())
     }
 }
 

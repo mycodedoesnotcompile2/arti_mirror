@@ -63,7 +63,8 @@ impl RelayFamily {
     /// of the family.
     pub fn intern(mut self) -> Arc<Self> {
         self.normalize();
-        FAMILY_CACHE.intern(self)
+        // XXX: Use Intern more natively.
+        FAMILY_CACHE.intern(self).into()
     }
 
     /// Does this family include the given relay?

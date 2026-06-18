@@ -85,7 +85,8 @@ impl PortPolicy {
 
     /// Replace this PortPolicy with an interned copy, to save memory.
     pub fn intern(self) -> Arc<Self> {
-        POLICY_CACHE.intern(self)
+        // XXX: Use Intern more natively.
+        POLICY_CACHE.intern(self).into()
     }
 
     /// Return true if this policy allows any ports at all.
