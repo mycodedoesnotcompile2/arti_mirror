@@ -1,3 +1,5 @@
+ADDED: Various `parse2` and `encode` traits for `Intern<T>` wrapped types
+BREAKING: `SoftwareVersion::Other` now stores a `String`
 BREAKING: `Microdesc::ipv4_policy` now stored in `Intern`
 BREAKING: `Microdesc::ipv6_policy` now stored in `Intern`
 BREAKING: `RouterDesc::ipv6_policy` now stored in `Intern`
