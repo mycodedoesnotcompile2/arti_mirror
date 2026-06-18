@@ -4,6 +4,7 @@
 use anyhow::{Result, anyhow};
 use rand::RngExt;
 use std::sync::{Arc, Mutex};
+use tor_basic_utils::intern::{GloballyInternable, Intern};
 use tor_dirmgr::filter::DirFilter;
 use tor_netdoc::{
     doc::{microdesc::Microdesc, netstatus::UncheckedMdConsensus},
@@ -69,7 +70,7 @@ struct OneBigFamilyFilter {
     /// (This filter won't do a very good job of ensuring consistency between
     /// this family and the MDs we attach it to, but that's okay for the kind of
     /// testing we want to do.)
-    new_family: Mutex<Arc<RelayFamily>>,
+    new_family: Mutex<Intern<RelayFamily>>,
 }
 
 impl DirFilter for OneBigFamilyFilter {
@@ -82,7 +83,8 @@ impl DirFilter for OneBigFamilyFilter {
             new_family.push(*r.rsa_identity());
         }
 
-        *self.new_family.lock().expect("poisoned lock") = Arc::new(new_family);
+        *self.new_family.lock().expect("poisoned lock") =
+            RelayFamily::intern_cache().intern(new_family);
 
         Ok(consensus)
     }

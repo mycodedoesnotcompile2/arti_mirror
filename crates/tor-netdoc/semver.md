@@ -1,3 +1,6 @@
+BREAKING: `Microdesc::family` now stored in `Intern`
+BREAKING: `RouterDesc::family` now stored in `Intern`
+BREAKING: `RelayFamily::intern()` now returning an `Intern`
 BREAKING: Ed25519 certificate verify methods now wrap around `TimerangeBound`
 ADDED: `NetdocParseableUnverified` for `RouterDesc`
 ADDED: `NetdocEncodableFields` for `AddrPolicy`

@@ -52,6 +52,7 @@ use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::{iter, net, time};
+use tor_basic_utils::intern::Intern;
 use tor_cert::{CertType, KeyUnknownCert};
 use tor_checkable::{Timebound, signed, timed};
 use tor_error::{internal, into_internal};
@@ -228,7 +229,7 @@ pub struct RouterDesc {
     /// * One or more `LongIdent` arguments.
     /// * At most once.
     #[deftly(netdoc(default))]
-    pub family: Arc<RelayFamily>,
+    pub family: Intern<RelayFamily>,
 
     /// `family-cert` --- Prove membership in a relay family.
     ///
@@ -579,8 +580,8 @@ impl RouterDesc {
     }
 
     /// Return the declared family of this descriptor.
-    pub fn family(&self) -> Arc<RelayFamily> {
-        Arc::clone(&self.family)
+    pub fn family(&self) -> Intern<RelayFamily> {
+        Intern::clone(&self.family)
     }
 
     /// Return the authenticated family IDs of this descriptor.

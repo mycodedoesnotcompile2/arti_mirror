@@ -3,14 +3,12 @@
 //! Families are opt-in lists of relays with the same operators,
 //! used to avoid building insecure circuits.
 
-use std::sync::Arc;
-
 use crate::types::misc::LongIdent;
 use crate::{Error, NetdocErrorKind, NormalItemArgument, Pos, Result};
 use base64ct::Encoding;
 use derive_deftly::Deftly;
 use tor_basic_utils::derive_deftly_template_GloballyInternable;
-use tor_basic_utils::intern::GloballyInternable;
+use tor_basic_utils::intern::{GloballyInternable, Intern};
 use tor_llcrypto::pk::ed25519::{ED25519_ID_LEN, Ed25519Identity};
 use tor_llcrypto::pk::rsa::RsaIdentity;
 
@@ -56,10 +54,9 @@ impl RelayFamily {
 
     /// Consume this family, and return a new canonical interned representation
     /// of the family.
-    // XXX: Return Intern.
-    pub fn intern(mut self) -> Arc<Self> {
+    pub fn intern(mut self) -> Intern<Self> {
         self.normalize();
-        Self::intern_cache().intern(self).into()
+        Self::intern_cache().intern(self)
     }
 
     /// Does this family include the given relay?

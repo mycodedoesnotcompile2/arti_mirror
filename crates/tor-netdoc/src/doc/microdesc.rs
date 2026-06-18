@@ -22,6 +22,7 @@ use crate::util;
 use crate::util::PeekableIterator;
 use crate::util::str::Extent;
 use crate::{AllowAnnotations, Error, NetdocErrorKind as EK, Result};
+use tor_basic_utils::intern::Intern;
 use tor_error::internal;
 use tor_llcrypto::d;
 use tor_llcrypto::pk::{curve25519, ed25519, rsa};
@@ -73,7 +74,7 @@ pub struct Microdesc {
 
     /// Declared family for this relay.
     #[deftly(netdoc(default(skip)))]
-    pub family: Arc<RelayFamily>,
+    pub family: Intern<RelayFamily>,
 
     /// Family identities for this relay.
     #[deftly(netdoc(default(skip)))]
