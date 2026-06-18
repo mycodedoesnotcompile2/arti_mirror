@@ -10,7 +10,8 @@ use crate::encode::{ItemEncoder, ItemValueEncodable};
 use crate::parse2::{ErrorProblem as EP, ItemValueParseable, UnparsedItem};
 
 use super::{PolicyError, PortRanges, RuleKind};
-use tor_basic_utils::intern::InternCache;
+use tor_basic_utils::derive_deftly_template_GloballyInternable;
+use tor_basic_utils::intern::GloballyInternable;
 use tor_error::Bug;
 
 use derive_deftly::Deftly;
@@ -37,7 +38,8 @@ use derive_deftly::Deftly;
 /// assert!(! policy.allows_port(1024));
 /// assert!(! policy.allows_port(9000));
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, Deftly)]
+#[derive_deftly(GloballyInternable)]
 pub struct PortPolicy {
     /// A list of port ranges that this policy allows.
     ///
@@ -84,9 +86,9 @@ impl PortPolicy {
     }
 
     /// Replace this PortPolicy with an interned copy, to save memory.
+    // XXX: Return Intern.
     pub fn intern(self) -> Arc<Self> {
-        // XXX: Use Intern more natively.
-        POLICY_CACHE.intern(self).into()
+        Self::intern_cache().intern(self).into()
     }
 
     /// Return true if this policy allows any ports at all.
@@ -163,12 +165,6 @@ impl ItemValueEncodable for PortPolicy {
         Ok(())
     }
 }
-
-/// Cache of PortPolicy objects, for saving memory.
-//
-/// This only holds weak references to the policy objects, so we don't
-/// need to worry about running out of space because of stale entries.
-static POLICY_CACHE: InternCache<PortPolicy> = InternCache::new();
 
 #[cfg(test)]
 mod test {
