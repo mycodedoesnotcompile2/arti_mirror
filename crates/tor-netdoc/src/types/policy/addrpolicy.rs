@@ -165,7 +165,7 @@ impl AddrPortPattern {
     /// Return an AddrPortPattern matching all targets.
     pub fn new_all() -> Self {
         Self {
-            pattern: IpPattern::Star,
+            pattern: IpPattern::All,
             ports: PortRange::new_all(),
         }
     }
@@ -211,7 +211,7 @@ impl NormalItemArgument for AddrPortPattern {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum IpPattern {
     /// Match all addresses.
-    Star,
+    All,
     /// Match addresses of a particular IP version, beginning with a given prefix.
     Net(IpNet),
 }
@@ -227,7 +227,7 @@ impl IpPattern {
     /// Return true iff `addr` is matched by this pattern.
     fn matches(&self, addr: &IpAddr) -> bool {
         match self {
-            IpPattern::Star => true,
+            IpPattern::All => true,
             IpPattern::Net(n) => n.contains(addr),
         }
     }
@@ -237,7 +237,7 @@ impl Display for IpPattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use IpPattern::*;
         match self {
-            Star => write!(f, "*"),
+            All => write!(f, "*"),
             // We want to omit the /prefix_len if it's the maximum, for brevity
             Net(IpNet::V4(n)) if n.prefix_len() == 32 => write!(f, "{}", n.addr()),
             Net(IpNet::V4(n)) => write!(f, "{}", n),
@@ -271,7 +271,7 @@ impl FromStr for IpPattern {
         };
         match (ip_s, plen_s) {
             ("*", Some(_)) => Err(PolicyError::MaskWithStar),
-            ("*", None) => Ok(IpPattern::Star),
+            ("*", None) => Ok(IpPattern::All),
             (s, Some(m)) => {
                 let a: IpAddr = parse_addr(s)?;
                 let m: u8 = m.parse().map_err(|_| PolicyError::InvalidMask)?;
