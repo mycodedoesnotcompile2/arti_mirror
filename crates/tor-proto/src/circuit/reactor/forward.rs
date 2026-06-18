@@ -13,8 +13,11 @@ use crate::util::err::ReactorError;
 use crate::{Error, HopNum, Result};
 
 #[cfg(any(feature = "hs-service", feature = "relay"))]
-use crate::stream::incoming::{
+use {crate::stream::incoming::{
     IncomingStreamRequestFilter, IncomingStreamRequestHandler, StreamReqSender,
+},
+    crate::stream::CloseStreamBehavior,
+    tor_cell::relaycell::StreamId,
 };
 
 // TODO(circpad): once padding is stabilized, the padding module will be moved out of client.
@@ -119,6 +122,31 @@ pub(crate) enum CtrlCmd<C> {
         hop: Option<HopNum>,
         /// A filter used to check requests before passing them on.
         filter: Box<dyn IncomingStreamRequestFilter>,
+    },
+
+    /// Close the specified pending incoming stream, sending the provided END message.
+    ///
+    /// A stream is said to be pending if the message for initiating the stream was received but
+    /// not has not been responded to yet.
+    ///
+    /// This should be used by responders for closing pending incoming streams initiated by the
+    /// other party on the circuit.
+    ///
+    /// TODO(dedup): this is almost identical to the ClosePendingStream control message
+    /// from the client-side. We can get rid of the duplication by rewriting
+    /// the client circuit reactor to use the new multi-reactor architecture
+    #[cfg(any(feature = "hs-service", feature = "relay"))]
+    ClosePendingStream {
+        /// The hop number the stream is on.
+        ///
+        /// Set to None if we are a relay.
+        hop: Option<HopNum>,
+        /// The stream ID to send the END for.
+        stream_id: StreamId,
+        /// The END message to send, if any.
+        message: CloseStreamBehavior,
+        /// Oneshot channel to notify on completion.
+        done: ReactorResultChannel<()>,
     },
     /// An implementation-dependent control command.
     #[allow(unused)] // TODO(relay)
@@ -307,6 +335,17 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
                 // Update the HopMgr with the
                 let ret = self.hop_mgr.set_incoming_handler(handler);
                 let _ = done.send(ret); // don't care if the corresponding receiver goes away.
+                Ok(())
+            }
+            #[cfg(any(feature = "hs-service", feature = "relay"))]
+            CtrlCmd::ClosePendingStream {
+                hop,
+                stream_id,
+                message,
+                done,
+            } => {
+                todo!();
+
                 Ok(())
             }
             CtrlCmd::Custom(c) => self.inner.handle_cmd(c),

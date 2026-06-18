@@ -160,6 +160,7 @@ impl RelayCirc {
         _stream_id: StreamId,
         _message: crate::stream::CloseStreamBehavior,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
+        // XXX implement
         todo!()
     }
 
