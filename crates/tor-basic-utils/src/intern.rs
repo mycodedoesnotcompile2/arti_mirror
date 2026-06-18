@@ -1,12 +1,70 @@
 //! Declare types for interning various objects.
 
+use std::fmt::Debug;
 use std::hash::Hash;
+use std::ops::Deref;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
+
+use derive_more::Display;
 
 /// Alias to force use of RandomState, regardless of features enabled in `weak_tables`.
 ///
 /// See <https://github.com/tov/weak-table-rs/issues/23> for discussion.
 type WeakHashSet<T> = weak_table::WeakHashSet<T, std::hash::RandomState>;
+
+/// A wrapper around [`Arc`] representing owned [`InternCache`] entries.
+///
+/// The wrapper type serves the purpose of semantic meaning only, implying that
+/// this value is cached in some way or another by this module.
+///
+/// We only allow obtaining the underlying [`Arc`] with a [`From`] but not the
+/// other way around.  This means that interfacing code can make the type to
+/// "forget" it originated from an [`InternCache`] but not the other way around,
+/// i.e. cannot create fake entries that look like they came from an
+/// [`InternCache`].
+//
+// Right now, this is the bare minimum of derives; it may need more in the
+// future.  If so, just add them.
+#[derive(Debug, Default, PartialEq, Eq, Hash, Display)]
+pub struct Intern<T: ?Sized>(Arc<T>);
+
+// We cannot derive the following Intern implementations because we want to
+// call the implementation in Arc<T>, not in T.
+
+impl<T: ?Sized> Deref for Intern<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<T: ?Sized> AsRef<T> for Intern<T> {
+    fn as_ref(&self) -> &T {
+        self.0.as_ref()
+    }
+}
+
+impl<T: ?Sized> Clone for Intern<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+// We do not derive this because derive_more actually derives more, i.e.
+// breaks the contract we defined in the type documentation of not being able
+// to "spoof" this type.
+impl<T: ?Sized> From<Intern<T>> for Arc<T> {
+    fn from(value: Intern<T>) -> Self {
+        value.0
+    }
+}
+
+// Some Arti code is pretty keen on using &Arc<T> which is not so nice ...
+impl<'a, T: ?Sized> From<&'a Intern<T>> for &'a Arc<T> {
+    fn from(value: &'a Intern<T>) -> Self {
+        &value.0
+    }
+}
 
 /// An InternCache is a lazily-constructed weak set of objects.
 ///
