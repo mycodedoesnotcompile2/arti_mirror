@@ -157,11 +157,24 @@ impl RelayCirc {
     // TODO(relay): this duplicates the ClientTunnel API and docs. Do we care?
     pub(crate) fn close_pending(
         &self,
-        _stream_id: StreamId,
-        _message: crate::stream::CloseStreamBehavior,
+        stream_id: StreamId,
+        message: crate::stream::CloseStreamBehavior,
     ) -> crate::Result<oneshot::Receiver<crate::Result<()>>> {
-        // XXX implement
-        todo!()
+        let (tx, rx) = oneshot::channel();
+
+        let cmd = forward::CtrlCmd::ClosePendingStream {
+            stream_id,
+            hop: None,
+            message,
+            done: tx,
+        };
+
+        self.0
+            .command
+            .unbounded_send(CtrlCmd::Forward(cmd))
+            .map_err(|_| Error::CircuitClosed)?;
+
+        Ok(rx)
     }
 
     /// Tell this reactor to begin allowing incoming stream requests,
