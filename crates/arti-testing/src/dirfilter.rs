@@ -103,13 +103,13 @@ impl DirFilter for OneBigFamilyFilter {
 #[derive(Debug)]
 struct NoExitPortsFilter {
     /// A "reject all ports" policy.
-    reject_all: Arc<PortPolicy>,
+    reject_all: Intern<PortPolicy>,
 }
 
 impl Default for NoExitPortsFilter {
     fn default() -> Self {
         Self {
-            reject_all: Arc::new(PortPolicy::new_reject_all()),
+            reject_all: PortPolicy::intern_cache().intern(PortPolicy::new_reject_all()),
         }
     }
 }

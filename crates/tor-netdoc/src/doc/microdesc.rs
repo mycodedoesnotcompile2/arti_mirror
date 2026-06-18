@@ -30,7 +30,6 @@ use tor_llcrypto::pk::{curve25519, ed25519, rsa};
 use derive_deftly::Deftly;
 use digest::Digest;
 use std::str::FromStr as _;
-use std::sync::Arc;
 use std::sync::LazyLock;
 use std::time;
 
@@ -82,11 +81,11 @@ pub struct Microdesc {
 
     /// List of IPv4 ports to which this relay will exit
     #[deftly(netdoc(keyword = "p", default(skip)))]
-    pub ipv4_policy: Arc<PortPolicy>,
+    pub ipv4_policy: Intern<PortPolicy>,
 
     /// List of IPv6 ports to which this relay will exit
     #[deftly(netdoc(keyword = "p6", default(skip)))]
-    pub ipv6_policy: Arc<PortPolicy>,
+    pub ipv6_policy: Intern<PortPolicy>,
 
     /// Ed25519 identity for this relay
     // TODO SPEC: Set this to "exactly once".
@@ -135,11 +134,11 @@ impl Microdesc {
         &self.ntor_onion_key.0
     }
     /// Return the ipv4 exit policy for this microdesc
-    pub fn ipv4_policy(&self) -> &Arc<PortPolicy> {
+    pub fn ipv4_policy(&self) -> &Intern<PortPolicy> {
         &self.ipv4_policy
     }
     /// Return the ipv6 exit policy for this microdesc
-    pub fn ipv6_policy(&self) -> &Arc<PortPolicy> {
+    pub fn ipv6_policy(&self) -> &Intern<PortPolicy> {
         &self.ipv6_policy
     }
     /// Return the relay family for this microdesc

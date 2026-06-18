@@ -4,14 +4,13 @@
 
 use std::fmt::Display;
 use std::str::FromStr;
-use std::sync::Arc;
 
 use crate::encode::{ItemEncoder, ItemValueEncodable};
 use crate::parse2::{ErrorProblem as EP, ItemValueParseable, UnparsedItem};
 
 use super::{PolicyError, PortRanges, RuleKind};
 use tor_basic_utils::derive_deftly_template_GloballyInternable;
-use tor_basic_utils::intern::GloballyInternable;
+use tor_basic_utils::intern::{GloballyInternable, Intern};
 use tor_error::Bug;
 
 use derive_deftly::Deftly;
@@ -86,9 +85,8 @@ impl PortPolicy {
     }
 
     /// Replace this PortPolicy with an interned copy, to save memory.
-    // XXX: Return Intern.
-    pub fn intern(self) -> Arc<Self> {
-        Self::intern_cache().intern(self).into()
+    pub fn intern(self) -> Intern<Self> {
+        Self::intern_cache().intern(self)
     }
 
     /// Return true if this policy allows any ports at all.

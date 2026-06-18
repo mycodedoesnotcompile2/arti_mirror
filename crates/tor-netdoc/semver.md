@@ -1,3 +1,7 @@
+BREAKING: `Microdesc::ipv4_policy` now stored in `Intern`
+BREAKING: `Microdesc::ipv6_policy` now stored in `Intern`
+BREAKING: `RouterDesc::ipv6_policy` now stored in `Intern`
+BREAKING: `PortPolicy::intern()` now returns an `Intern`
 BREAKING: `Microdesc::family` now stored in `Intern`
 BREAKING: `RouterDesc::family` now stored in `Intern`
 BREAKING: `RelayFamily::intern()` now returning an `Intern`

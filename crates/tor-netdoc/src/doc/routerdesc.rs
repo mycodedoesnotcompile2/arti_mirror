@@ -49,7 +49,6 @@ use derive_deftly::Deftly;
 use ll::pk::ed25519::Ed25519Identity;
 use saturating_time::SaturatingTime;
 use std::fmt::Display;
-use std::sync::Arc;
 use std::sync::LazyLock;
 use std::{iter, net, time};
 use tor_basic_utils::intern::Intern;
@@ -209,7 +208,7 @@ pub struct RouterDesc {
     /// * `ipv6-policy <accept/reject> PortList`
     /// * At most once.
     #[deftly(netdoc(default))]
-    pub ipv6_policy: Arc<PortPolicy>,
+    pub ipv6_policy: Intern<PortPolicy>,
 
     /// `overload-general` --- Relay is overloaded.
     ///
