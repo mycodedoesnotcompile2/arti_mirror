@@ -87,6 +87,13 @@ impl AddrPolicy {
     pub fn push(&mut self, kind: RuleKind, pattern: AddrPortPattern) {
         self.rules.push(AddrPolicyRule { kind, pattern });
     }
+
+    /// List the rules in this pattern
+    pub fn rules(&self) -> impl Iterator<Item = (RuleKind, AddrPortPattern)> + '_ {
+        self.rules
+            .iter()
+            .map(|rule| (rule.kind, rule.pattern.clone()))
+    }
 }
 
 impl NetdocParseableFields for AddrPolicy {
