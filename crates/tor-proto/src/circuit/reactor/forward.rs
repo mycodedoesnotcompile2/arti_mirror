@@ -13,10 +13,11 @@ use crate::util::err::ReactorError;
 use crate::{Error, HopNum, Result};
 
 #[cfg(any(feature = "hs-service", feature = "relay"))]
-use {crate::stream::incoming::{
-    IncomingStreamRequestFilter, IncomingStreamRequestHandler, StreamReqSender,
-},
+use {
     crate::stream::CloseStreamBehavior,
+    crate::stream::incoming::{
+        IncomingStreamRequestFilter, IncomingStreamRequestHandler, StreamReqSender,
+    },
     tor_cell::relaycell::StreamId,
 };
 
