@@ -9,3 +9,7 @@ dangerously_trust_everyone = true
 
 [logging]
 console = "warn"
+
+[storage.keystore.ctor.services."allium-cepa"]
+path = "./local/ctor-keystore"
+id = "ctor"
