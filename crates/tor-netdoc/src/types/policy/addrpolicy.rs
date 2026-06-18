@@ -206,19 +206,10 @@ impl FromStr for AddrPortPattern {
 impl NormalItemArgument for AddrPortPattern {}
 
 /// A pattern that matches one or more IP addresses.
-//
-// TODO(nickm): At present there is no way for Display or FromStr to distinguish
-// V4Star, V6Star, and Star.  If we decide it's important to have a syntax for
-// "all IPv4 addresses" that isn't "0.0.0.0/0", we'll need to revisit that.
-// At present, C tor allows '*', '*4', and '*6'.
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum IpPattern {
     /// Match all addresses.
     Star,
-    /// Match all IPv4 addresses.
-    V4Star,
-    /// Match all IPv6 addresses.
-    V6Star,
     /// Match all IPv4 addresses beginning with a given prefix.
     V4(Ipv4Addr, u8),
     /// Match all IPv6 addresses beginning with a given prefix.
@@ -229,8 +220,6 @@ impl IpPattern {
     /// Construct an IpPattern that matches the first `prefix_len` bits of `addr`.
     fn from_addr_and_prefix_len(addr: IpAddr, prefix_len: u8) -> Result<Self, PolicyError> {
         match (addr, prefix_len) {
-            (IpAddr::V4(_), 0) => Ok(IpPattern::V4Star),
-            (IpAddr::V6(_), 0) => Ok(IpPattern::V6Star),
             (IpAddr::V4(a), m) if m <= 32 => Ok(IpPattern::V4(a, m)),
             (IpAddr::V6(a), m) if m <= 128 => Ok(IpPattern::V6(a, m)),
             (_, _) => Err(PolicyError::InvalidMask),
@@ -241,14 +230,14 @@ impl IpPattern {
     fn matches(&self, addr: &IpAddr) -> bool {
         match (self, addr) {
             (IpPattern::Star, _) => true,
-            (IpPattern::V4Star, IpAddr::V4(_)) => true,
-            (IpPattern::V6Star, IpAddr::V6(_)) => true,
+            (IpPattern::V4(_, 0), IpAddr::V4(_)) => true,
             (IpPattern::V4(pat, prefix_len), IpAddr::V4(addr)) => {
                 let p1 = u32::from_be_bytes(pat.octets());
                 let p2 = u32::from_be_bytes(addr.octets());
                 let shift = 32 - prefix_len;
                 (p1 >> shift) == (p2 >> shift)
             }
+            (IpPattern::V6(_, 0), IpAddr::V6(_)) => true,
             (IpPattern::V6(pat, prefix_len), IpAddr::V6(addr)) => {
                 let p1 = u128::from_be_bytes(pat.octets());
                 let p2 = u128::from_be_bytes(addr.octets());
@@ -264,7 +253,7 @@ impl Display for IpPattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use IpPattern::*;
         match self {
-            Star | V4Star | V6Star => write!(f, "*"),
+            Star => write!(f, "*"),
             V4(a, 32) => write!(f, "{}", a),
             V4(a, m) => write!(f, "{}/{}", a, m),
             V6(a, 128) => write!(f, "[{}]", a),
@@ -340,12 +329,12 @@ mod test {
         check2("127.0.0.2/32:77-10000", "127.0.0.2:77-10000");
         check2("127.0.0.2/32:*", "127.0.0.2:*");
         check("127.0.0.0/16:9-100");
-        check2("127.0.0.0/0:443", "*:443"); // XXXX bug!
+        check("127.0.0.0/0:443");
         check("*:443");
         check("[::1]:443");
         check("[ffaa::]/16:80");
         check2("[ffaa::77]/128:80", "[ffaa::77]:80");
-        check2("[::]/0:443", "*:443"); // XXXX bug!
+        check("[::]/0:443");
     }
 
     #[test]
