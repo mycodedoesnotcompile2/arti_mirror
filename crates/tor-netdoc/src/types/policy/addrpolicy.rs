@@ -191,7 +191,7 @@ impl Display for AddrPolicyRule {
 #[derive(serde_with::SerializeDisplay, serde_with::DeserializeFromStr)]
 pub struct AddrPortPattern {
     /// A pattern to match somewhere between zero and all IP addresses.
-    pattern: IpPattern,
+    addrs: IpPattern,
     /// A pattern to match a range of ports.
     ports: PortRange,
 }
@@ -200,14 +200,14 @@ impl AddrPortPattern {
     /// Return an AddrPortPattern matching all targets.
     pub const fn new_all() -> Self {
         Self {
-            pattern: IpPattern::All,
+            addrs: IpPattern::All,
             ports: PortRange::new_all(),
         }
     }
 
     /// Return true iff this pattern matches a given address and port.
     pub fn matches(&self, addr: &IpAddr, port: u16) -> bool {
-        self.pattern.matches(addr) && self.ports.contains(port)
+        self.addrs.matches(addr) && self.ports.contains(port)
     }
     /// As matches, but accept a SocketAddr.
     pub fn matches_sockaddr(&self, addr: &SocketAddr) -> bool {
@@ -218,9 +218,9 @@ impl AddrPortPattern {
 impl Display for AddrPortPattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.ports.is_all() {
-            write!(f, "{}:*", self.pattern)
+            write!(f, "{}:*", self.addrs)
         } else {
-            write!(f, "{}:{}", self.pattern, self.ports)
+            write!(f, "{}:{}", self.addrs, self.ports)
         }
     }
 }
@@ -228,15 +228,15 @@ impl Display for AddrPortPattern {
 impl FromStr for AddrPortPattern {
     type Err = PolicyError;
     fn from_str(s: &str) -> Result<Self, PolicyError> {
-        let (pattern, ports_s) = s.rsplit_once(':').ok_or(PolicyError::InvalidPolicy)?;
-        let pattern: IpPattern = pattern.parse()?;
+        let (addrs, ports_s) = s.rsplit_once(':').ok_or(PolicyError::InvalidPolicy)?;
+        let addrs: IpPattern = addrs.parse()?;
         let ports: PortRange = if ports_s == "*" {
             PortRange::new_all()
         } else {
             ports_s.parse()?
         };
 
-        Ok(AddrPortPattern { pattern, ports })
+        Ok(AddrPortPattern { addrs, ports })
     }
 }
 
