@@ -226,9 +226,9 @@ enum IpPattern {
 }
 
 impl IpPattern {
-    /// Construct an IpPattern that matches the first `mask` bits of `addr`.
-    fn from_addr_and_mask(addr: IpAddr, mask: u8) -> Result<Self, PolicyError> {
-        match (addr, mask) {
+    /// Construct an IpPattern that matches the first `prefix_len` bits of `addr`.
+    fn from_addr_and_prefix_len(addr: IpAddr, prefix_len: u8) -> Result<Self, PolicyError> {
+        match (addr, prefix_len) {
             (IpAddr::V4(_), 0) => Ok(IpPattern::V4Star),
             (IpAddr::V6(_), 0) => Ok(IpPattern::V6Star),
             (IpAddr::V4(a), m) if m <= 32 => Ok(IpPattern::V4(a, m)),
@@ -236,22 +236,23 @@ impl IpPattern {
             (_, _) => Err(PolicyError::InvalidMask),
         }
     }
+
     /// Return true iff `addr` is matched by this pattern.
     fn matches(&self, addr: &IpAddr) -> bool {
         match (self, addr) {
             (IpPattern::Star, _) => true,
             (IpPattern::V4Star, IpAddr::V4(_)) => true,
             (IpPattern::V6Star, IpAddr::V6(_)) => true,
-            (IpPattern::V4(pat, mask), IpAddr::V4(addr)) => {
+            (IpPattern::V4(pat, prefix_len), IpAddr::V4(addr)) => {
                 let p1 = u32::from_be_bytes(pat.octets());
                 let p2 = u32::from_be_bytes(addr.octets());
-                let shift = 32 - mask;
+                let shift = 32 - prefix_len;
                 (p1 >> shift) == (p2 >> shift)
             }
-            (IpPattern::V6(pat, mask), IpAddr::V6(addr)) => {
+            (IpPattern::V6(pat, prefix_len), IpAddr::V6(addr)) => {
                 let p1 = u128::from_be_bytes(pat.octets());
                 let p2 = u128::from_be_bytes(addr.octets());
-                let shift = 128 - mask;
+                let shift = 128 - prefix_len;
                 (p1 >> shift) == (p2 >> shift)
             }
             (_, _) => false,
@@ -289,22 +290,22 @@ fn parse_addr(mut s: &str) -> Result<IpAddr, PolicyError> {
 impl FromStr for IpPattern {
     type Err = PolicyError;
     fn from_str(s: &str) -> Result<Self, PolicyError> {
-        let (ip_s, mask_s) = match s.split_once('/') {
-            Some((ip_s, mask_s)) => (ip_s, Some(mask_s)),
+        let (ip_s, plen_s) = match s.split_once('/') {
+            Some((ip_s, plen_s)) => (ip_s, Some(plen_s)),
             None => (s, None),
         };
-        match (ip_s, mask_s) {
+        match (ip_s, plen_s) {
             ("*", Some(_)) => Err(PolicyError::MaskWithStar),
             ("*", None) => Ok(IpPattern::Star),
             (s, Some(m)) => {
                 let a: IpAddr = parse_addr(s)?;
                 let m: u8 = m.parse().map_err(|_| PolicyError::InvalidMask)?;
-                IpPattern::from_addr_and_mask(a, m)
+                IpPattern::from_addr_and_prefix_len(a, m)
             }
             (s, None) => {
                 let a: IpAddr = parse_addr(s)?;
                 let m = if a.is_ipv4() { 32 } else { 128 };
-                IpPattern::from_addr_and_mask(a, m)
+                IpPattern::from_addr_and_prefix_len(a, m)
             }
         }
     }
