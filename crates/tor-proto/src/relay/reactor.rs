@@ -821,4 +821,44 @@ pub(crate) mod test {
             assert_eq!(recv_buf, TO_SEND);
         });
     }
+
+    #[traced_test]
+    #[test]
+    fn reject_stream() {
+        tor_rtmock::MockRuntime::test_with_various(|rt| async move {
+            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            rt.advance_until_stalled().await;
+
+            let mut incoming_streams = ctrl
+                .allow_stream_requests(&[RelayCmd::BEGIN], AllowAllStreamsFilter)
+                .await;
+
+            let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
+            ctrl.send_fwd(StreamId::new(1), begin, Recognized::Yes, false)
+                .await;
+            rt.advance_until_stalled().await;
+
+            // We should have a pending incoming stream
+            let pending = incoming_streams.next().await.unwrap();
+
+            // Reject the stream, and wait for the reactor to finish sending the END
+            let end = relaymsg::End::new_misc();
+            pending.reject(end.clone()).await.unwrap();
+            rt.advance_until_stalled().await;
+
+            // TODO: add check to ensure the stream reactor actually did write the END cell to the Tor channel
+
+            // Sending another message on this stream results is flagged
+            // as a proto violation
+            let data = relaymsg::Data::new(b"no dice").unwrap().into();
+            ctrl.send_fwd(StreamId::new(1), data, Recognized::Yes, false)
+                .await;
+            rt.advance_until_stalled().await;
+
+            assert!(logs_contain("Stream protocol violation"));
+            assert!(logs_contain(
+                "Unexpected RelayCmd(DATA) message on unknown stream 1"
+            ));
+        });
+    }
 }
