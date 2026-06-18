@@ -335,14 +335,15 @@ mod test {
             let policy = inp.parse::<AddrPortPattern>().expect(inp);
             assert_eq!(format!("{}", policy), outp);
         }
+        let check1 = |inp| check(inp, inp);
 
         check("127.0.0.2/32:77-10000", "127.0.0.2:77-10000");
         check("127.0.0.2/32:*", "127.0.0.2:*");
-        check("127.0.0.0/16:9-100", "127.0.0.0/16:9-100");
-        check("127.0.0.0/0:443", "*:443");
-        check("*:443", "*:443");
-        check("[::1]:443", "[::1]:443");
-        check("[ffaa::]/16:80", "[ffaa::]/16:80");
+        check1("127.0.0.0/16:9-100");
+        check("127.0.0.0/0:443", "*:443"); // XXXX bug!
+        check1("*:443");
+        check1("[::1]:443");
+        check1("[ffaa::]/16:80");
         check("[ffaa::77]/128:80", "[ffaa::77]:80");
     }
 
