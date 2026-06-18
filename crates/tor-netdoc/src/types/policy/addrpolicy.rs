@@ -321,6 +321,11 @@ mod test {
         check("[ffaa::]/16:80");
         check2("[ffaa::77]/128:80", "[ffaa::77]:80");
         check("[::]/0:443");
+
+        // Patterns with excessive prefix length for the address.
+        // It's not clear that it's correct to accept these.
+        check("127.0.0.1/8:443");
+        check("[::1]/8:443");
     }
 
     #[test]
