@@ -244,7 +244,7 @@ impl FromStr for AddrPortPattern {
 impl NormalItemArgument for AddrPortPattern {}
 
 /// A pattern that matches one or more IP addresses.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, derive_more::From)]
 enum IpPattern {
     /// Match all addresses.
     ///
@@ -254,7 +254,7 @@ enum IpPattern {
     ///
     /// String representation: `n.n.n.n/prefix` or `[IPv6]/prefix`.
     /// If the prefix is maximum it is optional, and omitted by `Display`.
-    Net(IpNet),
+    Net(#[from] IpNet),
 }
 
 impl IpPattern {
