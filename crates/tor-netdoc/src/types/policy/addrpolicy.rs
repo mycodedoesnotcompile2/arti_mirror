@@ -5,7 +5,10 @@ use std::fmt::Display;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 
+use itertools::chain;
+
 use crate::NormalItemArgument;
+use crate::encode::NetdocEncodableFields;
 use crate::parse2::{
     ErrorProblem as EP, ItemArgumentParseable, ItemStream, KeywordRef, NetdocParseableFields,
     UnparsedItem,
@@ -108,6 +111,39 @@ impl NetdocParseableFields for AddrPolicy {
     }
 }
 
+impl NetdocEncodableFields for AddrPolicy {
+    fn encode_fields(&self, out: &mut crate::encode::NetdocEncoder) -> Result<(), tor_error::Bug> {
+        // The order of this field is significant, meaning we have to emit the
+        // values as they are.  The spec also strongly recommends a trailing
+        // `accept *:*` or `reject *:*`.  To comply with this, we check for
+        // an existing final rule with an ALL pattern and add a `reject *:*`
+        // if that is not the case.  This is not super nice and ideally we would
+        // do this somewhere in the type construction, but we cannot do some
+        // right now because the legacy parser accumulates it as it is.
+        const ALL: AddrPortPattern = AddrPortPattern::new_all();
+        const DEFAULT_DENY: AddrPolicyRule = AddrPolicyRule {
+            kind: RuleKind::Reject,
+            pattern: ALL,
+        };
+
+        // Add default deny in case of an absent trailing ALL.
+        let default_deny = match self.rules.last() {
+            // Do nothing if there already is a trailing ALL.
+            Some(AddrPolicyRule {
+                kind: _,
+                pattern: ALL,
+            }) => None,
+            // Add a default deny to the end.
+            _ => Some(&DEFAULT_DENY),
+        };
+
+        for rule in chain!(&self.rules, default_deny) {
+            out.push_raw_string(&format_args!("{} {}\n", rule.kind, rule.pattern));
+        }
+        Ok(())
+    }
+}
+
 /// A single rule in an address policy.
 ///
 /// Contains a pattern and what to do with things that match it.
@@ -161,7 +197,7 @@ pub struct AddrPortPattern {
 
 impl AddrPortPattern {
     /// Return an AddrPortPattern matching all targets.
-    pub fn new_all() -> Self {
+    pub const fn new_all() -> Self {
         Self {
             pattern: IpPattern::Star,
             ports: PortRange::new_all(),
@@ -326,6 +362,8 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use crate::encode::{NetdocEncodable, NetdocEncoder};
+
     use super::*;
 
     #[test]
@@ -451,10 +489,7 @@ mod test {
 
     #[test]
     fn parse2() {
-        use crate::{
-            parse2::{self, ParseInput},
-            types::Ignored,
-        };
+        use crate::parse2::{self, ParseInput};
         use derive_deftly::Deftly;
 
         const RULES: &str = "\
@@ -468,16 +503,16 @@ mod test {
         reject *:*\n";
 
         #[derive(Deftly)]
-        #[derive_deftly(NetdocParseable)]
+        #[derive_deftly(NetdocParseable, NetdocEncodable)]
         struct Wrapper {
             #[allow(dead_code)]
-            intro: Ignored,
+            intro: (),
             #[deftly(netdoc(flatten))]
             ipv4_policy: AddrPolicy,
         }
 
         let wrapper = parse2::parse_netdoc::<Wrapper>(&ParseInput::new(RULES, "")).unwrap();
-        let ap = wrapper.ipv4_policy;
+        let ap = wrapper.ipv4_policy.clone();
 
         assert_eq!(
             ap.allows_sockaddr(&"1.1.1.1:80".parse().unwrap()),
@@ -504,5 +539,38 @@ mod test {
             ap.allows_sockaddr(&"1.1.1.1:70".parse().unwrap()),
             Some(RuleKind::Reject)
         );
+
+        // Do round-trip encoding.
+        let mut enc = NetdocEncoder::default();
+        wrapper.encode_unsigned(&mut enc).unwrap();
+        assert_eq!(RULES, enc.finish().unwrap());
+
+        // Test default deny.
+        let accept_all = {
+            let mut ap = AddrPolicy::new();
+            ap.push(RuleKind::Accept, AddrPortPattern::new_all());
+            ap
+        };
+        let reject_all = {
+            let mut ap = AddrPolicy::new();
+            ap.push(RuleKind::Reject, AddrPortPattern::new_all());
+            ap
+        };
+
+        let tests = [
+            (accept_all.clone(), "accept *:*"), // do not add default deny to existing
+            (reject_all.clone(), "reject *:*"), // do not add default deny to existing
+            (AddrPolicy::new(), "reject *:*"),  // add default deny to empty
+        ];
+        for (input, expected_tail) in tests {
+            let mut enc = NetdocEncoder::default();
+            Wrapper {
+                intro: (),
+                ipv4_policy: input,
+            }
+            .encode_unsigned(&mut enc)
+            .unwrap();
+            assert_eq!(expected_tail, enc.finish().unwrap().lines().last().unwrap());
+        }
     }
 }
