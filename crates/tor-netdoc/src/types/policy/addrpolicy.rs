@@ -332,7 +332,7 @@ mod test {
     #[test]
     fn test_roundtrip_rules() {
         fn check(inp: &str, outp: &str) {
-            let policy = inp.parse::<AddrPortPattern>().unwrap();
+            let policy = inp.parse::<AddrPortPattern>().expect(inp);
             assert_eq!(format!("{}", policy), outp);
         }
 
@@ -349,7 +349,7 @@ mod test {
     #[test]
     fn test_bad_rules() {
         fn check(s: &str) {
-            assert!(s.parse::<AddrPortPattern>().is_err());
+            let _: PolicyError = s.parse::<AddrPortPattern>().expect_err(s);
         }
 
         check("marzipan:80");
