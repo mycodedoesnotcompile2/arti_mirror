@@ -175,6 +175,10 @@ impl Display for AddrPolicyRule {
 /// addresses by prefix, and a port pattern, which matches a range of
 /// ports.
 ///
+/// When trying to process a policy, rather than merely construct one,
+/// match the struct with an exhaustive pattern,
+/// so that any new fields break the build rather than being silently ignored.
+///
 /// # Example
 ///
 /// ```
@@ -189,11 +193,12 @@ impl Display for AddrPolicyRule {
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)] //
 #[derive(serde_with::SerializeDisplay, serde_with::DeserializeFromStr)]
+#[allow(clippy::exhaustive_structs)]
 pub struct AddrPortPattern {
     /// A pattern to match somewhere between zero and all IP addresses.
-    addrs: IpPattern,
+    pub addrs: IpPattern,
     /// A pattern to match a range of ports.
-    ports: PortRange,
+    pub ports: PortRange,
 }
 
 impl AddrPortPattern {
