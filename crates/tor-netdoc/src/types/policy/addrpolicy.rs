@@ -345,6 +345,7 @@ mod test {
         check("[::1]:443");
         check("[ffaa::]/16:80");
         check2("[ffaa::77]/128:80", "[ffaa::77]:80");
+        check2("[::]/0:443", "*:443"); // XXXX bug!
     }
 
     #[test]
