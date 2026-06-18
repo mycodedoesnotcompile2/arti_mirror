@@ -13,6 +13,7 @@ use std::str::FromStr;
 
 use itertools::Either;
 use safelog::Redactable;
+use safelog::util::write_start_redacted;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -423,11 +424,13 @@ impl Display for PtTargetAddr {
 impl<SA: Debug + Redactable, HN: Debug + Display + AsRef<str>> Redactable
     for BridgeAddrInner<SA, HN>
 {
-    #[allow(clippy::string_slice)] // TODO
     fn display_redacted(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BridgeAddrInner::IpPort(a) => a.display_redacted(f),
-            BridgeAddrInner::HostPort(host, port) => write!(f, "{}…:{}", &host.as_ref()[..2], port),
+            BridgeAddrInner::HostPort(host, port) => {
+                write_start_redacted(f, host.as_ref(), 2, "…")?;
+                write!(f, ":{port}")
+            }
         }
     }
 }

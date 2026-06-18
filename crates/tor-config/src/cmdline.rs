@@ -41,7 +41,6 @@ impl CmdLine {
 
     /// Try to adjust the contents of a toml deserialization error so
     /// that instead it refers to a single command-line argument.
-    #[allow(clippy::string_slice)] // TODO
     fn convert_toml_error(
         &self,
         toml_str: &str,
@@ -62,14 +61,15 @@ impl CmdLine {
             })
             .and_then(|pos| self.contents.get(pos));
 
-        match (source_line, span.as_ref()) {
+        let within = span.as_ref().and_then(|r| toml_str.get(r.clone()));
+
+        match (source_line, within) {
             (Some(source), _) => {
                 format!("Couldn't parse command line: {error_message} in {source:?}")
             }
-            (None, Some(range)) if toml_str.get(range.clone()).is_some() => format!(
-                "Couldn't parse command line: {error_message} within {:?}",
-                &toml_str[range.clone()]
-            ),
+            (None, Some(within)) => {
+                format!("Couldn't parse command line: {error_message} within {within:?}",)
+            }
             _ => format!("Couldn't parse command line: {error_message}"),
         }
     }

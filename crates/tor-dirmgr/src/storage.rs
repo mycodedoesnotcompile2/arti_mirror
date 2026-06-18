@@ -100,14 +100,13 @@ impl InputString {
     }
 
     /// Helper for [`Self::as_str()`], with unwrapped error type.
-    #[allow(clippy::string_slice)] // TODO
     fn as_str_impl(&self) -> std::result::Result<&str, Utf8Error> {
         // It is not necessary to re-check the UTF8 every time
         // this function is called so remember the result
         // we got with `validated`
 
         match self {
-            InputString::Utf8(s) => Ok(&s[..]),
+            InputString::Utf8(s) => Ok(s.as_ref()),
             InputString::UncheckedBytes { bytes, validated } => {
                 if *validated.borrow() {
                     unsafe { Ok(std::str::from_utf8_unchecked(&bytes[..])) }

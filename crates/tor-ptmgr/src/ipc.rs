@@ -114,7 +114,6 @@ pub enum PtMessage {
 
 /// Parse a value (something on the RHS of an =), which could be a CString as defined by
 /// control-spec.txt §2. Returns (value, unparsed rest of string).
-#[allow(clippy::string_slice)] // TODO
 fn parse_one_value(from: &str) -> Result<(String, &str), &'static str> {
     let first_char = from.chars().next();
     Ok(if first_char.is_none() {
@@ -146,8 +145,11 @@ fn parse_one_value(from: &str) -> Result<(String, &str), &'static str> {
         (ret, chars.as_str())
     } else {
         // Simple: just find the space
-        let space = from.find(' ').unwrap_or(from.len());
-        (from[0..space].into(), &from[space..])
+        if let Some((start, rest)) = from.split_once(' ') {
+            (start.to_string(), rest)
+        } else {
+            (from.to_string(), "")
+        }
     })
 }
 
@@ -194,7 +196,6 @@ impl FromStr for PtMessage {
     // NOTE(eta): This, of course, implies that the PT IPC communications are valid UTF-8.
     //            This assumption might turn out to be false.
     #[allow(clippy::cognitive_complexity)]
-    #[allow(clippy::string_slice)] // TODO
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // TODO(eta): Maybe tolerate additional whitespace (using `split_whitespace`)?.
         //            This requires modified words.join() logic, though.
@@ -333,14 +334,13 @@ impl FromStr for PtMessage {
                 let message = words.join(" ");
                 let mut message = &message as &str;
                 while !message.is_empty() {
-                    let equals = message
-                        .find('=')
+                    let (k, rest) = message
+                        .split_once('=')
                         .ok_or_else(|| Cow::from(format!("failed to find = in '{}'", message)))?;
-                    let k = &message[..equals];
-                    if equals + 1 == message.len() {
+                    if rest.is_empty() {
                         return Err(Cow::from("key with no value"));
                     }
-                    let (v, rest) = parse_one_value(&message[(equals + 1)..]).map_err(Cow::from)?;
+                    let (v, rest) = parse_one_value(rest).map_err(Cow::from)?;
                     if ret.contains_key(k) {
                         // At least check our assumption that this is actually k/v
                         // and not Vec<(String, String)>.
@@ -348,8 +348,8 @@ impl FromStr for PtMessage {
                     }
                     ret.insert(k.to_owned(), v);
                     message = rest;
-                    if message.starts_with(' ') {
-                        message = &message[1..];
+                    if let Some(remainder) = message.strip_prefix(" ") {
+                        message = remainder;
                     }
                 }
                 Self::Status(PtStatus { data: ret })

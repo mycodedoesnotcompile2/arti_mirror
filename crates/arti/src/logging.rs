@@ -539,7 +539,6 @@ where
 
 /// Configure a panic handler to send everything to tracing, in addition to our
 /// default panic behavior.
-#[allow(clippy::string_slice)] // TODO
 fn install_panic_handler() {
     // TODO library support: There's a library called `tracing-panic` that
     // provides a hook we could use instead, but that doesn't have backtrace
@@ -556,7 +555,7 @@ fn install_panic_handler() {
         let msg = match panic_info.payload().downcast_ref::<&'static str>() {
             Some(s) => *s,
             None => match panic_info.payload().downcast_ref::<String>() {
-                Some(s) => &s[..],
+                Some(s) => s.as_str(),
                 None => "Box<dyn Any>",
             },
         };
