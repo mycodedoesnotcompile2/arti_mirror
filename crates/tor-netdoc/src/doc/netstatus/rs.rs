@@ -92,7 +92,9 @@ impl std::str::FromStr for SoftwareVersion {
         }
 
         // XXX: Use Intern more natively.
-        Ok(SoftwareVersion::Other(OTHER_VERSION_CACHE.intern_ref(s).into()))
+        Ok(SoftwareVersion::Other(
+            OTHER_VERSION_CACHE.intern_ref(s).into(),
+        ))
     }
 }
 
