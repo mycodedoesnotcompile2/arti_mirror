@@ -4,8 +4,7 @@
 //! `DnsProxy::run_dns_proxy` then listens for
 //! DNS requests, and sends back replies in response.
 
-use futures::lock::Mutex;
-use futures::stream::StreamExt;
+use futures::{lock::Mutex, stream::StreamExt, future::join_all};
 use hickory_proto::op::{Message, OpCode, Query, ResponseCode};
 use hickory_proto::rr::{DNSClass, Name, RData, Record, RecordType, rdata};
 use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
@@ -68,6 +67,92 @@ struct DnsResponseTarget<U> {
     socket: Arc<U>,
 }
 
+/// Error Handling function for do_query
+fn err_conv(error: &Error) -> ResponseCode {
+    if tor_error::ErrorKind::RemoteHostNotFound == error.kind() {
+        ResponseCode::NoError
+    } else {
+        ResponseCode::ServFail
+    }
+}
+
+/// Do single query
+async fn do_single_query<R>(
+    tor_client: &TorClient<R>,
+    query: &Query,
+    prefs: &StreamPrefs,
+) -> Result<Vec<Record>, ResponseCode>
+where
+    R: Runtime,
+{
+    let mut answers = Vec::new();
+
+match query.query_class() {
+    DNSClass::IN => {
+        match query.query_type() {
+            typ @ RecordType::A | typ @ RecordType::AAAA => {
+                let mut name = query.name().clone();
+                // name would be "torproject.org." without this
+                name.set_fqdn(false);
+                let res = tor_client
+                    .resolve_with_prefs(&name.to_utf8(), prefs)
+                    .await
+                    .map_err(|e| err_conv(&e))?;
+                for ip in res {
+                    match typ {
+                        RecordType::A => {
+                            if let std::net::IpAddr::V4(v4) = ip {
+                                answers.push(Record::from_rdata(
+                                    query.name().clone(),
+                                    3600,
+                                    RData::A(rdata::A(v4))
+                                ));
+                            }
+                        }
+                        RecordType::AAAA => {
+                            if let std::net::IpAddr::V6(v6) = ip {
+                                answers.push(Record::from_rdata(
+                                    query.name().clone(),
+                                    3600,
+                                    RData::AAAA(rdata::AAAA(v6))
+                                ));
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            RecordType::PTR => {
+                let addr = query
+                    .name()
+                    .parse_arpa_name()
+                    .map_err(|_| ResponseCode::FormErr)?
+                    .addr();
+                let res = tor_client
+                    .resolve_ptr_with_prefs(addr, prefs)
+                    .await
+                    .map_err(|e| err_conv(&e))?;
+                for domain in res {
+                    let domain_name =
+                        Name::from_utf8(domain).map_err(|_| ResponseCode::ServFail)?;
+                    answers.push(Record::from_rdata(
+                        query.name().clone(),
+                        3600,
+                        RData::PTR(rdata::PTR(domain_name))
+                    ));
+                }
+            }
+            _ => {
+                return Err(ResponseCode::NotImp);
+            }
+        }
+    }
+    _ => {
+        return Err(ResponseCode::NotImp);
+    }
+}
+    Ok(answers)
+}
 /// Run a DNS query over tor, returning either a list of answers, or a DNS error code.
 async fn do_query<R>(
     tor_client: &TorClient<R>,
@@ -77,79 +162,24 @@ async fn do_query<R>(
 where
     R: Runtime,
 {
-    let mut answers = Vec::new();
 
-    let err_conv = |error: Error| {
-        if tor_error::ErrorKind::RemoteHostNotFound == error.kind() {
-            // NoError without any body is considered to be NODATA as per rfc2308 section-2.2
-            ResponseCode::NoError
-        } else {
-            ResponseCode::ServFail
-        }
-    };
-    for query in queries {
-        let mut a = Vec::new();
-        let mut ptr = Vec::new();
-
-        // TODO if there are N questions, this would take N rtt to answer. By joining all futures it
-        // could take only 1 rtt, but having more than 1 question is actually very rare.
-        match query.query_class() {
-            DNSClass::IN => {
-                match query.query_type() {
-                    typ @ RecordType::A | typ @ RecordType::AAAA => {
-                        let mut name = query.name().clone();
-                        // name would be "torproject.org." without this
-                        name.set_fqdn(false);
-                        let res = tor_client
-                            .resolve_with_prefs(&name.to_utf8(), prefs)
-                            .await
-                            .map_err(err_conv)?;
-                        for ip in res {
-                            a.push((query.name().clone(), ip, typ));
-                        }
-                    }
-                    RecordType::PTR => {
-                        let addr = query
-                            .name()
-                            .parse_arpa_name()
-                            .map_err(|_| ResponseCode::FormErr)?
-                            .addr();
-                        let res = tor_client
-                            .resolve_ptr_with_prefs(addr, prefs)
-                            .await
-                            .map_err(err_conv)?;
-                        for domain in res {
-                            let domain =
-                                Name::from_utf8(domain).map_err(|_| ResponseCode::ServFail)?;
-                            ptr.push((query.name().clone(), domain));
-                        }
-                    }
-                    _ => {
-                        return Err(ResponseCode::NotImp);
-                    }
-                }
-            }
-            _ => {
-                return Err(ResponseCode::NotImp);
-            }
-        }
-        for (name, ip, typ) in a {
-            match (ip, typ) {
-                (IpAddr::V4(v4), RecordType::A) => {
-                    answers.push(Record::from_rdata(name, 3600, RData::A(rdata::A(v4))));
-                }
-                (IpAddr::V6(v6), RecordType::AAAA) => {
-                    answers.push(Record::from_rdata(name, 3600, RData::AAAA(rdata::AAAA(v6))));
-                }
-                _ => (),
-            }
-        }
-        for (ptr, name) in ptr {
-            answers.push(Record::from_rdata(ptr, 3600, RData::PTR(rdata::PTR(name))));
+    let futures: Vec<_> = queries
+        .iter()
+        .map(|query| do_single_query(tor_client, query, prefs))
+        .collect();
+    
+    let results: Vec<Result<Vec<Record>, ResponseCode>> = join_all(futures).await;
+    
+    let mut answers: Vec<Record> = Vec::new();
+    for result in results {
+        match result {
+            Ok(records) => answers.extend(records),
+            Err(ResponseCode::NoError) => continue,
+            Err(e) => return Err(e),
         }
     }
-
     Ok(answers)
+    
 }
 
 /// Given a datagram containing a DNS query, resolve the query over
