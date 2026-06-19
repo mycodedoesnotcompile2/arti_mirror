@@ -163,21 +163,25 @@ where
     R: Runtime,
 {
 
-    let futures: Vec<_> = queries
-        .iter()
-        .map(|query| do_single_query(tor_client, query, prefs))
-        .collect();
-    
-    let results: Vec<Result<Vec<Record>, ResponseCode>> = join_all(futures).await;
-    
     let mut answers: Vec<Record> = Vec::new();
-    for result in results {
-        match result {
-            Ok(records) => answers.extend(records),
-            Err(ResponseCode::NoError) => continue,
-            Err(e) => return Err(e),
+    let limit_size = 5;
+    for chunk in queries.chunks(limit_size as usize) {
+        let futures: Vec<_> = chunk
+            .iter()
+            .map(|query| do_single_query(tor_client, query, prefs))
+            .collect();
+        
+        let results = join_all(futures).await;
+        
+        for result in results {
+            match result {
+                Ok(records) => answers.extend(records),
+                Err(ResponseCode::NoError) => continue,
+                Err(e) => return Err(e),
+            }
         }
     }
+
     Ok(answers)
     
 }
