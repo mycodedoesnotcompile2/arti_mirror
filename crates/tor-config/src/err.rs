@@ -30,7 +30,7 @@ pub enum ConfigBuildError {
         /// A description of the problem.
         problem: String,
     },
-    /// At least one of a set of fields must be present, 
+    /// At least one of a set of fields must be present,
     /// but none were.
     #[error("At least {min_required} of these fields must be provided: {fields:?}")]
     MissingOneOf {
@@ -91,7 +91,10 @@ impl ConfigBuildError {
             MissingField { field } => MissingField {
                 field: addprefix(field),
             },
-            MissingOneOf { min_required, fields } => MissingOneOf {
+            MissingOneOf {
+                min_required,
+                fields,
+            } => MissingOneOf {
                 min_required: *min_required,
                 fields: fields.iter().map(|f| addprefix(f)).collect(),
             },
