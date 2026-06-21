@@ -46,7 +46,7 @@
 #![deny(clippy::unused_async)]
 #![deny(clippy::string_slice)] // See arti#2571
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
-
+// TODO: FWIW, but maybe some tests would be nice?
 pub mod config;
 pub mod err;
 
@@ -59,7 +59,7 @@ mod managed;
 use crate::config::{TransportConfig, TransportOptions};
 use crate::err::PtError;
 use oneshot_fused_workaround as oneshot;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -122,12 +122,16 @@ impl<R: Runtime> PtMgr<R> {
         binaries: Vec<TransportConfig>,
     ) -> Result<HashMap<PtTransportName, TransportOptions>, tor_error::Bug> {
         let mut ret = HashMap::new();
-        // FIXME(eta): You can currently specify overlapping protocols, and it'll
-        //             just use the last transport specified.
-        //             I attempted to fix this, but decided I didn't want to stare into the list
-        //             builder macro void after trying it for 15 minutes.
+        // mh means MethodAlreadyHad
+        // used for check if there is multiple transports configured for the same protocol
+        let mut mh = HashSet::new();
         for thing in binaries {
             for tn in thing.protocols.iter() {
+                if !mh.insert(tn.clone()) {
+                    return Err(tor_error::internal!(
+                        "Multiple transports configured for protocol {tn}. This is not currently supported."
+                    ));
+                }
                 ret.insert(tn.clone(), thing.clone().try_into()?);
             }
         }
