@@ -185,6 +185,7 @@ fn display_unrecognized_entry(
                 }
                 println!("Location: {path}");
                 println!("Error: {}", entry.error());
+                println!();
             }
         }
         // NOTE: For the time being Arti only supports
@@ -250,7 +251,6 @@ fn run_list_keys(args: ListArgs, client: &InertTorClient) -> Result<()> {
         println!("Broken entries\n");
         for entry in unrecognized_entries {
             display_unrecognized_entry(&entry, display_keystore_id, args.output_format.compact);
-            println!();
         }
         for entry in unrecognized_paths {
             let raw_id = entry.raw_id();
