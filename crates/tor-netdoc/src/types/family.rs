@@ -23,8 +23,8 @@ use tor_llcrypto::pk::rsa::RsaIdentity;
 ///
 /// NOTE: when parsing, this type always discards incorrectly-formatted
 /// entries, including entries that are only nicknames.
-///
-/// TODO: This type probably belongs in a different crate.
+//
+// TODO: This type probably belongs in a different crate.
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deftly)]
 #[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 pub struct RelayFamily(Vec<LongIdent>);
