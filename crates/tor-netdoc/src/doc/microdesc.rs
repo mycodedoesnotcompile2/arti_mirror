@@ -59,39 +59,37 @@ pub type MdDigest = [u8; DOC_DIGEST_LEN];
 ///
 /// <https://spec.torproject.org/dir-spec/computing-microdescriptors.html>
 #[derive(Clone, Debug, Deftly, PartialEq, Eq)]
-#[derive_deftly(NetdocParseable)]
-#[non_exhaustive]
+#[derive_deftly(Constructor, NetdocEncodable, NetdocParseable)]
+#[allow(clippy::exhaustive_structs)]
 pub struct Microdesc {
     /// The legacy onion key, whose object is optional but whose item serves
     /// as the intro line for these kind of descriptors.
-    ///
-    /// Let's keep this private for now to prevent interfacing applications
-    /// from generating microdesc's with an onion-key; they are not necessary
-    /// anymore and just waste space.
-    onion_key: OnionKeyIntro,
+    pub onion_key: MicrodescIntroItem,
 
     /// Public key used for the ntor circuit extension protocol.
+    #[deftly(constructor)]
     #[deftly(netdoc(single_arg))]
     pub ntor_onion_key: Curve25519Public,
 
     /// Declared family for this relay.
-    #[deftly(netdoc(default))]
+    #[deftly(netdoc(default(skip)))]
     pub family: Arc<RelayFamily>,
 
     /// Family identities for this relay.
-    #[deftly(netdoc(default))]
+    #[deftly(netdoc(default(skip)))]
     pub family_ids: RelayFamilyIds,
 
     /// List of IPv4 ports to which this relay will exit
-    #[deftly(netdoc(keyword = "p", default))]
+    #[deftly(netdoc(keyword = "p", default(skip)))]
     pub ipv4_policy: Arc<PortPolicy>,
 
     /// List of IPv6 ports to which this relay will exit
-    #[deftly(netdoc(keyword = "p6", default))]
+    #[deftly(netdoc(keyword = "p6", default(skip)))]
     pub ipv6_policy: Arc<PortPolicy>,
 
     /// Ed25519 identity for this relay
     // TODO SPEC: Set this to "exactly once".
+    #[deftly(constructor)]
     #[deftly(netdoc(keyword = "id", with = "Ed25519IdentityLine"))]
     pub ed25519_id: Ed25519IdentityLine,
 
@@ -104,6 +102,10 @@ pub struct Microdesc {
     // correlate the microdesc to a consensus, it's never used again.
     #[deftly(netdoc(skip))]
     pub sha256: MdDigest,
+
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
 }
 
 impl Microdesc {
@@ -158,9 +160,13 @@ impl Microdesc {
 ///
 /// The object (the onion key) is deprecated and optional, but the item itself
 /// must be present, because it is used to mark the start of the netdoc.
+///
+/// The object is private to prevent interfacing applications
+/// from generating microdesc's with an onion-key; they are not necessary
+/// anymore and just waste space.
 #[derive(Debug, Clone, Default, Deftly, PartialEq, Eq)]
-#[derive_deftly(ItemValueParseable)]
-struct OnionKeyIntro(#[deftly(netdoc(object))] Option<rsa::PublicKey>);
+#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
+pub struct MicrodescIntroItem(#[deftly(netdoc(object))] Option<rsa::PublicKey>);
 
 /// A microdescriptor annotated with additional data
 ///
@@ -401,6 +407,7 @@ impl Microdesc {
             ipv6_policy: ipv6_policy.intern(),
             ed25519_id,
             family_ids,
+            __non_exhaustive: (),
         };
         Ok((md, location))
     }
@@ -525,6 +532,7 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
+    use crate::encode::{NetdocEncodable, NetdocEncoder};
     use hex_literal::hex;
     const TESTDATA: &str = include_str!("../../testdata/microdesc1.txt");
     const TESTDATA2: &str = include_str!("../../testdata/microdesc2.txt");
@@ -663,7 +671,7 @@ mod test {
     /// replaced by a copy and paste in the case one replaces the testdata2
     /// vector's in the future.
     #[test]
-    fn parse2() {
+    fn parse2() -> anyhow::Result<()> {
         use tor_llcrypto::pk::ed25519::Ed25519Identity;
 
         use crate::parse2;
@@ -679,7 +687,7 @@ mod test {
         assert_eq!(
             mds[0],
             Microdesc {
-                onion_key: OnionKeyIntro(rsa::PublicKey::from_der(
+                onion_key: MicrodescIntroItem(rsa::PublicKey::from_der(
                     pem::parse(
                         "
 -----BEGIN RSA PUBLIC KEY-----
@@ -707,8 +715,19 @@ Yl0wCKpUZFHs5CHsajLSfXZKHkwfqRXFEJu9aMtmQdQFfqE9JOJHAgMBAAE=
                 ))
                 .into(),
                 family_ids: Default::default(),
+                __non_exhaustive: (),
             }
         );
+
+        let mut enc = NetdocEncoder::new();
+        for md in &mds {
+            md.encode_unsigned(&mut enc)?;
+        }
+        let enc = enc.finish()?;
+        let exp = md;
+        assert_eq_or_diff!(&enc, &exp);
+
+        Ok(())
     }
 
     /// Manual test for happy families.

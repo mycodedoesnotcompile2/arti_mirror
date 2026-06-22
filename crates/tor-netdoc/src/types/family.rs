@@ -23,10 +23,17 @@ use tor_llcrypto::pk::rsa::RsaIdentity;
 ///
 /// NOTE: when parsing, this type always discards incorrectly-formatted
 /// entries, including entries that are only nicknames.
-///
-/// TODO: This type probably belongs in a different crate.
+//
+// TODO: This type probably belongs in a different crate.
+//
+// TODO (cve, Diziet): Overhaul or remove RelayFamily, RelayFamilyId, RelayFamilyIds:
+//   - Possibly, these don't all warrant newtype wrappers
+//   - Where they do warrant newtype wrappers the API should be appropriate for that
+//   - The names are fairly confusing
+//     (especially that RelayFamilyId is not the id of a RelayFamily)
+// See <https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4117#note_3428678>
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deftly)]
-#[derive_deftly(ItemValueParseable)]
+#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 pub struct RelayFamily(Vec<LongIdent>);
 
 /// Cache of RelayFamily objects, for saving memory.
@@ -163,7 +170,7 @@ impl NormalItemArgument for RelayFamilyId {}
 /// [`RelayFamilyIds::dedup()`] and [`RelayFamilyIds::sort()`], as those calls
 /// are effectively required for a useful use of this type.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deftly, derive_more::AsRef)]
-#[derive_deftly(ItemValueParseable)]
+#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 pub struct RelayFamilyIds(
     // TODO DIRMIRROR: Replace with BTreeSet at one point.
     // TODO could/should this be a type alias instead?
