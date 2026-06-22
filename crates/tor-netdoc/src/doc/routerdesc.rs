@@ -1210,6 +1210,8 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use crate::parse2::{self, ParseInput};
+
     use super::*;
     const TESTDATA: &str = include_str!("../../testdata/routerdesc1.txt");
     const TESTDATA2: &str = include_str!("../../testdata/routerdesc2.txt");
@@ -1449,5 +1451,38 @@ mod test {
         );
 
         Ok(())
+    }
+
+    // TODO: For now, this only tests if decoding works with a few field checks.
+    // It should be extended to a full roundtrip test with failed verification
+    // at one point eventually ...
+    #[test]
+    fn test_parse2() {
+        let input = ParseInput::new(
+            include_str!("../../testdata2/cached-descriptors.new"),
+            "cached-descriptors.new",
+        );
+        let rd = parse2::parse_netdoc_multiple::<RouterDescUnverified>(&input)
+            .unwrap()
+            .into_iter()
+            .map(|rd| rd.assume_wellsigned())
+            .collect::<Vec<RouterDesc>>();
+        assert_eq!(rd.len(), 20);
+        assert_eq!(
+            rd[0].router,
+            RouterDescIntroItem {
+                nickname: "test002a".parse().unwrap(),
+                address: net::Ipv4Addr::LOCALHOST,
+                orport: 5102,
+                socksport: 0,
+                dirport: 7102
+            }
+        );
+        assert_eq!(
+            rd[0].fingerprint.unwrap(),
+            "257D 06F0 360B B224 6388 724F 109E C089 5A1D 41FB"
+                .parse()
+                .unwrap()
+        );
     }
 }
