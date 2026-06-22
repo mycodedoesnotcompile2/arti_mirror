@@ -79,7 +79,8 @@ pub(crate) struct StreamReactor {
     unique_id: UniqId,
     /// Receiver for Tor stream data that need to be delivered to a Tor stream.
     ///
-    /// The sender is in [`ForwardReactor`](super::ForwardReactor), which will forward all cells
+    /// The sender is in the [`HopMgr`](super::hop_mgr::HopMgr) of the
+    /// [`ForwardReactor`](super::ForwardReactor), which will forward all cells
     /// carrying Tor stream data to us.
     ///
     /// This serves a dual purpose:
