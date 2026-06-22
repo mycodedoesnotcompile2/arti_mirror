@@ -9,7 +9,7 @@ homepage = "https://gitlab.torproject.org/tpo/core/arti/-/wikis/home"
 description = "Implements dirserver functionality"
 keywords = ["tor", "arti"]
 # We must put *something* here and this will do
-categories = ["rust-patterns"]
+categories = ["network-programming"]
 repository = "https://gitlab.torproject.org/tpo/core/arti.git/"
 
 [features]
