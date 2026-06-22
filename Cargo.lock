@@ -7880,6 +7880,7 @@ version = "0.43.0"
 dependencies = [
  "amplify",
  "anyhow",
+ "assert_matches",
  "base64ct",
  "cipher",
  "derive-deftly",
