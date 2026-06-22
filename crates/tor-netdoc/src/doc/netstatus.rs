@@ -3041,6 +3041,8 @@ mod test {
     ///  * Document-specific, [`MungeForRoundtrip::adjust_exp`]
     #[cfg(feature = "incomplete")]
     fn roundtrip_netstatus<UV, V, VE>(
+        // TODO DIRAUTH use include_str!, so, at call sites
+        // https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4121#note_3428675
         file: &str,
         verify: impl FnOnce(UV, &[RsaIdentity], &[AuthCert]) -> Result<TimerangeBound<V>, VE>,
         adjust_now: Duration,
