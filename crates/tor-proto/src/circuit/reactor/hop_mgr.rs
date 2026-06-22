@@ -10,7 +10,10 @@ use crate::util::err::ReactorError;
 use crate::{Error, HopNum, Result};
 
 #[cfg(any(feature = "hs-service", feature = "relay"))]
-use crate::stream::incoming::IncomingStreamRequestHandler;
+use {
+    crate::stream::CloseStreamBehavior, crate::stream::incoming::IncomingStreamRequestHandler,
+    tor_cell::relaycell::StreamId,
+};
 
 use tor_error::internal;
 use tor_rtcompat::Runtime;
@@ -162,6 +165,33 @@ impl<R: Runtime> HopMgr<R> {
         tx.send(msg).await.map_err(|_| {
             // The stream reactor has shut down
             ReactorError::Shutdown
+        })
+    }
+
+    /// Tell the stream reactor of the specified `hop`
+    /// to close the stream with the specified `stream_id`.
+    #[cfg(any(feature = "hs-service", feature = "relay"))]
+    pub(crate) async fn close_pending(
+        &mut self,
+        hopnum: Option<HopNum>,
+        stream_id: StreamId,
+        behav: CloseStreamBehavior,
+    ) -> StdResult<(), Error> {
+        let mut tx = self
+            .get_or_spawn_stream_reactor(hopnum)
+            // XXX: this error is not right
+            //
+            // We need to return the real Error here,
+            // but we can't, because it's ReactorError instead of Error,
+            // because spawn_stream_reactor() is (incorrectly) mapping SpawnError
+            // to ReactorError::Shutdown.
+            .map_err(|_| Error::NotConnected)?;
+
+        let msg = CtrlMsg::ClosePendingStream { stream_id, behav };
+
+        tx.send(msg).await.map_err(|_| {
+            // The stream reactor has shut down
+            Error::NotConnected
         })
     }
 

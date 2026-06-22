@@ -251,7 +251,10 @@ impl StreamReactor {
                     .await
             }
             #[cfg(any(feature = "hs-service", feature = "relay"))]
-            CtrlMsg::ClosePendingStream { stream_id, behav } => todo!(),
+            CtrlMsg::ClosePendingStream { stream_id, behav } => {
+                self.close_stream(stream_id, behav, streammap::TerminateReason::ExplicitEnd)
+                    .await
+            }
         }
     }
 

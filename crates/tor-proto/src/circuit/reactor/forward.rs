@@ -276,7 +276,7 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
         select_biased! {
             res = self.command_rx.next().fuse() => {
                 let cmd = res.ok_or_else(|| ReactorError::Shutdown)?;
-                self.handle_cmd(cmd)
+                self.handle_cmd(cmd).await
             }
             res = self.control_rx.next().fuse() => {
                 let msg = res.ok_or_else(|| ReactorError::Shutdown)?;
@@ -316,7 +316,8 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
     }
 
     /// Handle a control command.
-    fn handle_cmd(&mut self, cmd: CtrlCmd<F::CtrlCmd>) -> StdResult<(), ReactorError> {
+    #[allow(clippy::unused_async)] // used if any(feature = "hs-service", feature = "relay")
+    async fn handle_cmd(&mut self, cmd: CtrlCmd<F::CtrlCmd>) -> StdResult<(), ReactorError> {
         match cmd {
             #[cfg(any(feature = "hs-service", feature = "relay"))]
             CtrlCmd::AwaitStreamRequests {
@@ -345,7 +346,8 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
                 message,
                 done,
             } => {
-                todo!();
+                let ret = self.hop_mgr.close_pending(hop, stream_id, message).await;
+                let _ = done.send(ret); // don't care if the corresponding receiver goes away.
 
                 Ok(())
             }
