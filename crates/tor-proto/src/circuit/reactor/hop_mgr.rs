@@ -177,15 +177,7 @@ impl<R: Runtime> HopMgr<R> {
         stream_id: StreamId,
         behav: CloseStreamBehavior,
     ) -> StdResult<(), Error> {
-        let mut tx = self
-            .get_or_spawn_stream_reactor(hopnum)
-            // XXX: this error is not right
-            //
-            // We need to return the real Error here,
-            // but we can't, because it's ReactorError instead of Error,
-            // because spawn_stream_reactor() is (incorrectly) mapping SpawnError
-            // to ReactorError::Shutdown.
-            .map_err(|_| Error::NotConnected)?;
+        let mut tx = self.get_or_spawn_stream_reactor(hopnum)?;
 
         let msg = CtrlMsg::ClosePendingStream { stream_id, behav };
 
@@ -199,7 +191,7 @@ impl<R: Runtime> HopMgr<R> {
     fn get_or_spawn_stream_reactor(
         &self,
         hopnum: Option<HopNum>,
-    ) -> StdResult<mpsc::Sender<CtrlMsg>, ReactorError> {
+    ) -> StdResult<mpsc::Sender<CtrlMsg>, Error> {
         let mut hops = self.hops.write().expect("poisoned lock");
         let hop = hops
             .get_mut(hopnum)
@@ -231,7 +223,7 @@ impl<R: Runtime> HopMgr<R> {
         hopnum: Option<HopNum>,
         settings: &HopSettings,
         ccontrol: Arc<Mutex<CongestionControl>>,
-    ) -> StdResult<mpsc::Sender<CtrlMsg>, ReactorError> {
+    ) -> StdResult<mpsc::Sender<CtrlMsg>, Error> {
         use tor_rtcompat::SpawnExt as _;
 
         // NOTE: not registering this channel with the memquota subsystem is okay,
@@ -266,7 +258,10 @@ impl<R: Runtime> HopMgr<R> {
             .spawn(async {
                 let _ = stream_reactor.run().await;
             })
-            .map_err(|_| ReactorError::Shutdown)?;
+            .map_err(|e| Error::Spawn {
+                spawning: "stream reactor",
+                cause: e.into(),
+            })?;
 
         Ok(fwd_stream_tx)
     }
