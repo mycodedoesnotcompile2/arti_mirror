@@ -541,17 +541,17 @@ impl StreamReactor {
         behav: CloseStreamBehavior,
         reason: streammap::TerminateReason,
     ) -> StdResult<(), ReactorError> {
-                let timeout = self.inner.halfstream_expiry(&self.hop);
-                let expire_at = self.time_provider.now() + timeout;
-                let res =
-                    self.hop
-                        .close_stream(self.unique_id, sid, None, behav, reason, expire_at)?;
-                let Some(msg) = res else {
-                    // We may not need to send anything at all...
-                    return Ok(());
-                };
+        let timeout = self.inner.halfstream_expiry(&self.hop);
+        let expire_at = self.time_provider.now() + timeout;
+        let res = self
+            .hop
+            .close_stream(self.unique_id, sid, None, behav, reason, expire_at)?;
+        let Some(msg) = res else {
+            // We may not need to send anything at all...
+            return Ok(());
+        };
 
-                self.send_msg_to_bwd(msg.cell).await
+        self.send_msg_to_bwd(msg.cell).await
     }
 
     /// Wrap `msg` in [`ReadyStreamMsg`], and send it to the backward reactor.
