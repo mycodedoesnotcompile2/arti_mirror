@@ -241,14 +241,27 @@ impl StreamReactor {
     ///
     /// Delivers the message to its corresponding application stream.
     async fn handle_reactor_cmd(&mut self, msg: CtrlMsg) -> StdResult<(), ReactorError> {
-        let (sid, msg, cell_counts_toward_windows) = match msg {
+        match msg {
             CtrlMsg::DeliverStreamMsg {
                 sid,
                 msg,
                 cell_counts_toward_windows,
-            } => (sid, msg, cell_counts_toward_windows),
-        };
+            } => {
+                self.deliver_message_to_stream(sid, msg, cell_counts_toward_windows)
+                    .await
+            }
+            #[cfg(any(feature = "hs-service", feature = "relay"))]
+            CtrlMsg::ClosePendingStream { stream_id, behav } => todo!(),
+        }
+    }
 
+    /// Deliver `msg` to the specified stream
+    async fn deliver_message_to_stream(
+        &mut self,
+        sid: StreamId,
+        msg: UnparsedRelayMsg,
+        cell_counts_toward_windows: bool,
+    ) -> StdResult<(), ReactorError> {
         // We need to apply stream-level flow control *before* encoding the message.
         // May optionally return a message that needs to be sent back to the client.
         let bwd_msg = self.handle_msg(sid, msg, cell_counts_toward_windows)?;
@@ -602,5 +615,14 @@ pub(crate) enum CtrlMsg {
         msg: UnparsedRelayMsg,
         /// Whether the cell this message came from counts towards flow-control windows.
         cell_counts_toward_windows: bool,
+    },
+
+    /// Close the specified pending incoming stream, sending the provided END message.
+    #[cfg(any(feature = "hs-service", feature = "relay"))]
+    ClosePendingStream {
+        /// The stream ID to send the END for.
+        stream_id: StreamId,
+        /// The END message to send, if any.
+        behav: CloseStreamBehavior,
     },
 }
