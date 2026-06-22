@@ -4,7 +4,7 @@ use crate::circuit::UniqId;
 use crate::circuit::reactor::backward::BackwardReactorCmd;
 use crate::circuit::reactor::hop_mgr::HopMgr;
 use crate::circuit::reactor::macros::derive_deftly_template_CircuitReactor;
-use crate::circuit::reactor::stream::StreamMsg;
+use crate::circuit::reactor::stream;
 use crate::circuit::reactor::{ControlHandler, ReactorResultChannel};
 use crate::congestion::sendme;
 use crate::stream::cmdcheck::AnyCmdChecker;
@@ -450,7 +450,7 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
                 .await;
         };
 
-        let msg = StreamMsg {
+        let msg = stream::CtrlMsg::DeliverStreamMsg {
             sid,
             msg,
             cell_counts_toward_windows,

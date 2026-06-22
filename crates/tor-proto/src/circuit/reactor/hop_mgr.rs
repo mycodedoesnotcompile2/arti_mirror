@@ -3,7 +3,7 @@
 use crate::circuit::UniqId;
 use crate::circuit::circhop::{CircHopOutbound, HopSettings};
 use crate::circuit::reactor::circhop::CircHopList;
-use crate::circuit::reactor::stream::{ReadyStreamMsg, StreamHandler, StreamMsg, StreamReactor};
+use crate::circuit::reactor::stream::{CtrlMsg, ReadyStreamMsg, StreamHandler, StreamReactor};
 use crate::congestion::CongestionControl;
 use crate::memquota::CircuitAccount;
 use crate::util::err::ReactorError;
@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex, RwLock};
 /// and a handle to the stream reactor of the hop.
 ///
 /// The stream reactor of the hop is launched lazily,
-/// when the first [`StreamMsg`] is sent via [`HopMgr::send`].
+/// when the first [`CtrlMsg`] is sent via [`HopMgr::send`].
 pub(crate) struct HopMgr<R: Runtime> {
     /// A handle to the runtime.
     runtime: R,
@@ -155,7 +155,7 @@ impl<R: Runtime> HopMgr<R> {
     pub(crate) async fn send(
         &mut self,
         hopnum: Option<HopNum>,
-        msg: StreamMsg,
+        msg: CtrlMsg,
     ) -> StdResult<(), ReactorError> {
         let mut tx = self.get_or_spawn_stream_reactor(hopnum)?;
 
@@ -169,7 +169,7 @@ impl<R: Runtime> HopMgr<R> {
     fn get_or_spawn_stream_reactor(
         &self,
         hopnum: Option<HopNum>,
-    ) -> StdResult<mpsc::Sender<StreamMsg>, ReactorError> {
+    ) -> StdResult<mpsc::Sender<CtrlMsg>, ReactorError> {
         let mut hops = self.hops.write().expect("poisoned lock");
         let hop = hops
             .get_mut(hopnum)
@@ -201,7 +201,7 @@ impl<R: Runtime> HopMgr<R> {
         hopnum: Option<HopNum>,
         settings: &HopSettings,
         ccontrol: Arc<Mutex<CongestionControl>>,
-    ) -> StdResult<mpsc::Sender<StreamMsg>, ReactorError> {
+    ) -> StdResult<mpsc::Sender<CtrlMsg>, ReactorError> {
         use tor_rtcompat::SpawnExt as _;
 
         // NOTE: not registering this channel with the memquota subsystem is okay,

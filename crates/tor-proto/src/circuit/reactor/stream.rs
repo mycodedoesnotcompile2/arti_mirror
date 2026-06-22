@@ -53,7 +53,7 @@ pub(crate) trait StreamHandler: Send + Sync + 'static {
 ///
 /// Drives the application streams.
 ///
-/// This reactor accepts [`StreamMsg`]s from the forward reactor over its [`Self::cell_rx`]
+/// This reactor accepts [`CtrlMsg`]s from the forward reactor over its [`Self::cell_rx`]
 /// MPSC channel, and delivers them to the corresponding stream entries in the stream map.
 ///
 /// The local streams are polled from the main loop, and any ready messages are sent
@@ -88,7 +88,7 @@ pub(crate) struct StreamReactor {
     ///   * it lets the `StreamReactor` know if the `ForwardReactor` has shut down:
     ///     we select! on this MPSC channel in the main loop, so if the `ForwardReactor`
     ///     shuts down, we will get EOS upon calling `.next()`)
-    cell_rx: mpsc::Receiver<StreamMsg>,
+    cell_rx: mpsc::Receiver<CtrlMsg>,
     /// Sender for sending Tor stream data to [`BackwardReactor`](super::BackwardReactor).
     bwd_tx: mpsc::Sender<ReadyStreamMsg>,
     /// A handler for incoming streams.
@@ -117,7 +117,7 @@ impl StreamReactor {
         hopnum: Option<HopNum>,
         hop: CircHopOutbound,
         unique_id: UniqId,
-        cell_rx: mpsc::Receiver<StreamMsg>,
+        cell_rx: mpsc::Receiver<CtrlMsg>,
         bwd_tx: mpsc::Sender<ReadyStreamMsg>,
         inner: Arc<dyn StreamHandler>,
         #[cfg(any(feature = "hs-service", feature = "relay"))] //
@@ -239,12 +239,14 @@ impl StreamReactor {
     /// Handle a stream message sent to us by the forward reactor.
     ///
     /// Delivers the message to its corresponding application stream.
-    async fn handle_reactor_cmd(&mut self, msg: StreamMsg) -> StdResult<(), ReactorError> {
-        let StreamMsg {
-            sid,
-            msg,
-            cell_counts_toward_windows,
-        } = msg;
+    async fn handle_reactor_cmd(&mut self, msg: CtrlMsg) -> StdResult<(), ReactorError> {
+        let (sid, msg, cell_counts_toward_windows) = match msg {
+            CtrlMsg::DeliverStreamMsg {
+                sid,
+                msg,
+                cell_counts_toward_windows,
+            } => (sid, msg, cell_counts_toward_windows),
+        };
 
         // We need to apply stream-level flow control *before* encoding the message.
         // May optionally return a message that needs to be sent back to the client.
@@ -587,13 +589,17 @@ pub(crate) struct ReadyStreamMsg {
     pub(crate) ccontrol: Arc<Mutex<CongestionControl>>,
 }
 
-/// Stream data received from the other endpoint
+/// A control message
 /// that needs to be handled by [`StreamReactor`].
-pub(crate) struct StreamMsg {
-    /// The ID of the stream this message is for.
-    pub(crate) sid: StreamId,
-    /// The message.
-    pub(crate) msg: UnparsedRelayMsg,
-    /// Whether the cell this message came from counts towards flow-control windows.
-    pub(crate) cell_counts_toward_windows: bool,
+pub(crate) enum CtrlMsg {
+    /// Stream data received from the other endpoint
+    /// that needs to be delivered to a Tor stream
+    DeliverStreamMsg {
+        /// The ID of the stream this message is for.
+        sid: StreamId,
+        /// The message.
+        msg: UnparsedRelayMsg,
+        /// Whether the cell this message came from counts towards flow-control windows.
+        cell_counts_toward_windows: bool,
+    },
 }
