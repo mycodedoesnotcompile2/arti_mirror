@@ -518,7 +518,12 @@ impl StreamReactor {
     async fn handle_stream_event(&mut self, event: StreamEvent) -> StdResult<(), ReactorError> {
         match event {
             StreamEvent::LocalStreamClosed(sid) => {
-                self.close_stream(sid, CloseStreamBehavior::default(), streammap::TerminateReason::StreamTargetClosed).await
+                self.close_stream(
+                    sid,
+                    CloseStreamBehavior::default(),
+                    streammap::TerminateReason::StreamTargetClosed,
+                )
+                .await
             }
             StreamEvent::ReadyMsg { sid, msg } => {
                 self.send_msg_to_bwd(AnyRelayMsgOuter::new(Some(sid), msg))
