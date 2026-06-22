@@ -296,7 +296,14 @@ pub struct RouterDescSignatures {
 }
 
 // TODO: Implement a .verify() method.
-impl RouterDescUnverified {}
+impl RouterDescUnverified {
+    /// A method only available in testing that just returns the [`RouterDesc`].
+    // TODO: Remove once we have proper verify()
+    #[cfg(test)]
+    fn assume_wellsigned(self) -> RouterDesc {
+        self.body
+    }
+}
 
 /// Description of the software a relay is running.
 ///
