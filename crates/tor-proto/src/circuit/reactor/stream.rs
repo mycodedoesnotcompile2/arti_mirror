@@ -208,11 +208,7 @@ impl StreamReactor {
                 // and to remove the stream from the stream map.
                 //
                 // TODO(relay): the local sender part is not implemented yet
-                return Poll::Ready(StreamEvent::LocalStreamClosed {
-                    sid,
-                    behav: CloseStreamBehavior::default(),
-                    reason: streammap::TerminateReason::StreamTargetClosed,
-                });
+                return Poll::Ready(StreamEvent::LocalStreamClosed(sid));
             };
 
             let msg = streams.take_ready_msg(sid).expect("msg disappeared");
@@ -521,8 +517,8 @@ impl StreamReactor {
     /// Handle a [`StreamEvent`].
     async fn handle_stream_event(&mut self, event: StreamEvent) -> StdResult<(), ReactorError> {
         match event {
-            StreamEvent::LocalStreamClosed { sid, behav, reason } => {
-                self.close_stream(sid, behav, reason).await
+            StreamEvent::LocalStreamClosed(sid) => {
+                self.close_stream(sid, CloseStreamBehavior::default(), streammap::TerminateReason::StreamTargetClosed).await
             }
             StreamEvent::ReadyMsg { sid, msg } => {
                 self.send_msg_to_bwd(AnyRelayMsgOuter::new(Some(sid), msg))
@@ -580,14 +576,7 @@ enum StreamEvent {
     /// A local application stream was closed.
     ///
     /// The corresponding entry needs to be removed from the reactor's stream map.
-    LocalStreamClosed {
-        /// The ID of the stream to close.
-        sid: StreamId,
-        /// The stream-closing behavior.
-        behav: CloseStreamBehavior,
-        /// The reason for closing the stream.
-        reason: streammap::TerminateReason,
-    },
+    LocalStreamClosed(StreamId),
     /// A stream has a ready message.
     ReadyMsg {
         /// The ID of the stream to close.
