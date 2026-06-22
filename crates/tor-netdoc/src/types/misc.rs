@@ -1590,9 +1590,7 @@ mod edcert {
         /// 4. MUST be of [`CertType::IDENTITY_V_SIGNING`].
         /// 5. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
         /// 6. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
-        pub fn verify(
-            cert: KeyUnknownCert,
-        ) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
+        pub fn verify(cert: KeyUnknownCert) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
             let cert = cert
                 // 1. MUST have the identity key in the `signed-with-ed25519-key` extension.
                 .should_have_signing_key()
@@ -1624,10 +1622,13 @@ mod edcert {
                 return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
             }
 
-            Ok(TimerangeBound::new(Self {
-                id_ed25519,
-                sign_ed25519,
-            }, ..cert.expiry()))
+            Ok(TimerangeBound::new(
+                Self {
+                    id_ed25519,
+                    sign_ed25519,
+                },
+                ..cert.expiry(),
+            ))
         }
 
         /// Creates a new signed [`Ed25519IdentityCert`].
@@ -1731,7 +1732,10 @@ mod edcert {
                 return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
             }
 
-            Ok(TimerangeBound::new(Self { family_ed25519 }, ..cert.expiry()))
+            Ok(TimerangeBound::new(
+                Self { family_ed25519 },
+                ..cert.expiry(),
+            ))
         }
 
         /// Creates a new signed [`Ed25519FamilyCert`].
@@ -1822,7 +1826,7 @@ mod edcert {
                 Self::verify_inner(ntor_ed25519, id_ed25519, cert)?
                     .0
                     // 4. MUST have a valid signature.
-                    .check_signature()?
+                    .check_signature()?,
             )
         }
 
@@ -3728,11 +3732,7 @@ mod test {
             certified_key: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
         ) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
-            Self::verify(
-                signing_key.unwrap(),
-                certified_key,
-                cert,
-            )
+            Self::verify(signing_key.unwrap(), certified_key, cert)
         }
     }
 
