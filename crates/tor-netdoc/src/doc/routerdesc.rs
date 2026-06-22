@@ -107,7 +107,8 @@ pub struct RouterAnnotation {
 /// # Specification
 ///
 /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html>
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deftly)]
+#[derive_deftly(NetdocParseableUnverified)]
 #[non_exhaustive]
 pub struct RouterDesc {
     /// `router` --- Introduce a router descriptor.
@@ -125,6 +126,7 @@ pub struct RouterDesc {
     /// * `master-key-ed25519 <master key>`
     /// * Exactly once.
     // TODO DIRAUTH when implementing verification, don't forget to check this!
+    #[deftly(netdoc(single_arg))]
     pub master_key_ed25519: Ed25519Public,
 
     /// `bandwidth` --- Report router's network bandwidth.
@@ -143,24 +145,28 @@ pub struct RouterDesc {
     ///
     /// * `published <date> <time>`
     /// * Exactly once.
+    #[deftly(netdoc(single_arg))]
     pub published: Iso8601TimeSp,
 
     /// `fingerprint` --- Redundant hash of ASN-1 encoding of router identity key.
     ///
     /// * `fingerprint <spaced fingerprint>`
     /// * At most once.
+    #[deftly(netdoc(single_arg))]
     pub fingerprint: Option<SpFingerprint>,
 
     /// `hibernating` --- Whether the relay is hibernating.
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:hibernating>
     // TODO: Mark this as `netdoc(default)` and skip during encoding if false.
+    #[deftly(netdoc(single_arg, default))]
     pub hibernating: NumericBoolean,
 
     /// `uptime` --- How long this relay has been continously running
     ///
     /// * `uptime <number>`
     /// * At most once.
+    #[deftly(netdoc(single_arg))]
     pub uptime: Option<u64>,
 
     /// `onion-key` --- Relay's obsolete RSA tap key.
@@ -174,6 +180,7 @@ pub struct RouterDesc {
     ///
     /// * `ntor-onion-key <base64 padded key>`
     /// * Exactly once.
+    #[deftly(netdoc(single_arg))]
     pub ntor_onion_key: Curve25519Public,
 
     /// `ntor-onion-key-crosscert` --- Reverse cert by K_ntor on KP_relayid_ed
@@ -193,12 +200,14 @@ pub struct RouterDesc {
     /// * Any number of times.
     // TODO: these polices can get bulky too. Perhaps we should
     // de-duplicate them too.
+    #[deftly(netdoc(flatten))]
     pub ipv4_policy: AddrPolicy,
 
     /// `ipv6-policy` --- Exit plicy summary for IPv6
     ///
     /// * `ipv6-policy <accept/reject> PortList`
     /// * At most once.
+    #[deftly(netdoc(default))]
     pub ipv6_policy: Arc<PortPolicy>,
 
     /// `overload-general` --- Relay is overloaded.
@@ -218,6 +227,7 @@ pub struct RouterDesc {
     /// * `family <LongIdent> ...`
     /// * One or more `LongIdent` arguments.
     /// * At most once.
+    #[deftly(netdoc(default))]
     pub family: Arc<RelayFamily>,
 
     /// `family-cert` --- Prove membership in a relay family.
@@ -246,6 +256,7 @@ pub struct RouterDesc {
     /// `or-address` --- Alternative ORport address and port
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:or-address>
+    #[deftly(netdoc(single_arg))]
     pub or_address: Vec<net::SocketAddr>,
 
     /// `tunnelled-dir-server` --- Accepts a `BEGIN_DIR` relay message.
@@ -283,6 +294,9 @@ pub struct RouterDescSignatures {
     /// * RSA signature of the document, including `router-sig-ed25519`.
     pub router_signature: RouterSignature,
 }
+
+// TODO: Implement a .verify() method.
+impl RouterDescUnverified {}
 
 /// Description of the software a relay is running.
 ///
