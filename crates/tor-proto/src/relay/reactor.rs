@@ -847,7 +847,11 @@ pub(crate) mod test {
             pending.reject(end.clone()).await.unwrap();
             rt.advance_until_stalled().await;
 
-            // TODO: add check to ensure the stream reactor actually did write the END cell to the Tor channel
+            // The END cell written to the Tor channel should be the same as
+            // the one we sent above, in reject().
+            let cell = ctrl.read_inbound();
+            let actual_end = expect_cell!(cell, Relay, End);
+            assert_eq!(end.reason(), actual_end.reason());
 
             // Sending another message on this stream results is flagged
             // as a proto violation
