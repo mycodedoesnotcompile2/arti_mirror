@@ -533,6 +533,23 @@ pub(crate) mod test {
         }
     }
 
+    macro_rules! expect_cell {
+        ($cell:expr, $chanmsg:tt, $relaymsg:tt) => {{
+            let msg = match $cell.msg() {
+                chanmsg::AnyChanMsg::$chanmsg(m) => {
+                    let body = m.clone().into_relay_body();
+                    AnyRelayMsgOuter::decode_singleton(RelayCellFormat::V0, body).unwrap()
+                }
+                _ => panic!("unexpected forwarded {:?}", $cell),
+            };
+
+            match msg.msg() {
+                relaymsg::AnyRelayMsg::$relaymsg(m) => m.clone(),
+                _ => panic!("unexpected cell {msg:?}"),
+            }
+        }};
+    }
+
     #[traced_test]
     #[test]
     fn reject_extend2_relay() {
@@ -626,23 +643,6 @@ pub(crate) mod test {
             ctrl.send_fwd(None, begin.clone().into(), Recognized::No, early)
                 .await;
             rt.advance_until_stalled().await;
-
-            macro_rules! expect_cell {
-                ($cell:expr, $chanmsg:tt, $relaymsg:tt) => {{
-                    let msg = match $cell.msg() {
-                        chanmsg::AnyChanMsg::$chanmsg(m) => {
-                            let body = m.clone().into_relay_body();
-                            AnyRelayMsgOuter::decode_singleton(RelayCellFormat::V0, body).unwrap()
-                        }
-                        _ => panic!("unexpected forwarded {:?}", $cell),
-                    };
-
-                    match msg.msg() {
-                        relaymsg::AnyRelayMsg::$relaymsg(m) => m.clone(),
-                        _ => panic!("unexpected cell {msg:?}"),
-                    }
-                }};
-            }
 
             // Ensure the other end received the BEGIN cell
             let cell = ctrl.read_outbound();
