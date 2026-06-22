@@ -519,6 +519,28 @@ impl StreamReactor {
     async fn handle_stream_event(&mut self, event: StreamEvent) -> StdResult<(), ReactorError> {
         match event {
             StreamEvent::Closed { sid, behav, reason } => {
+                self.close_stream(sid, behav, reason).await
+            }
+            StreamEvent::ReadyMsg { sid, msg } => {
+                self.send_msg_to_bwd(AnyRelayMsgOuter::new(Some(sid), msg))
+                    .await
+            }
+        }
+    }
+
+    /// Close the stream that has the specified `sid`.
+    ///
+    /// The `behav` controls whether an `END` will be sent or not.
+    ///
+    /// This calls [`CircHopOutbound::close_stream`] under the hood,
+    /// which removes the stream from the stream map,
+    /// and returns an optional `END` cell to send back to the other party.
+    async fn close_stream(
+        &mut self,
+        sid: StreamId,
+        behav: CloseStreamBehavior,
+        reason: streammap::TerminateReason,
+    ) -> StdResult<(), ReactorError> {
                 let timeout = self.inner.halfstream_expiry(&self.hop);
                 let expire_at = self.time_provider.now() + timeout;
                 let res =
@@ -530,12 +552,6 @@ impl StreamReactor {
                 };
 
                 self.send_msg_to_bwd(msg.cell).await
-            }
-            StreamEvent::ReadyMsg { sid, msg } => {
-                self.send_msg_to_bwd(AnyRelayMsgOuter::new(Some(sid), msg))
-                    .await
-            }
-        }
     }
 
     /// Wrap `msg` in [`ReadyStreamMsg`], and send it to the backward reactor.
