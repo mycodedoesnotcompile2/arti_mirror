@@ -628,14 +628,13 @@ pub(crate) mod test {
             rt.advance_until_stalled().await;
 
             macro_rules! expect_cell {
-                ($chanmsg:tt, $relaymsg:tt) => {{
-                    let cell = ctrl.read_outbound();
-                    let msg = match cell.msg() {
+                ($cell:expr, $chanmsg:tt, $relaymsg:tt) => {{
+                    let msg = match $cell.msg() {
                         chanmsg::AnyChanMsg::$chanmsg(m) => {
                             let body = m.clone().into_relay_body();
                             AnyRelayMsgOuter::decode_singleton(RelayCellFormat::V0, body).unwrap()
                         }
-                        _ => panic!("unexpected forwarded {cell:?}"),
+                        _ => panic!("unexpected forwarded {:?}", $cell),
                     };
 
                     match msg.msg() {
@@ -646,7 +645,8 @@ pub(crate) mod test {
             }
 
             // Ensure the other end received the BEGIN cell
-            let recvd_begin = expect_cell!(Relay, Begin);
+            let cell = ctrl.read_outbound();
+            let recvd_begin = expect_cell!(cell, Relay, Begin);
             assert_eq!(begin, recvd_begin);
 
             // Now send the same message again, but this time in a RELAY_EARLY
@@ -655,7 +655,8 @@ pub(crate) mod test {
             ctrl.send_fwd(None, begin.clone().into(), Recognized::No, early)
                 .await;
             rt.advance_until_stalled().await;
-            let recvd_begin = expect_cell!(RelayEarly, Begin);
+            let cell = ctrl.read_outbound();
+            let recvd_begin = expect_cell!(cell, RelayEarly, Begin);
             assert_eq!(begin, recvd_begin);
         });
     }
