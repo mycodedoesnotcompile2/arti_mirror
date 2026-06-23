@@ -43,15 +43,6 @@ impl<T: ?Sized> Intern<T> {
     }
 }
 
-// We cannot derive the following Intern implementations because we want to
-// call the implementation in Arc<T>, not in T.
-
-impl<T: ?Sized> AsRef<T> for Intern<T> {
-    fn as_ref(&self) -> &T {
-        self.0.as_ref()
-    }
-}
-
 // Some Arti code is pretty keen on using &Arc<T> which is not so nice ...
 impl<'a, T: ?Sized> From<&'a Intern<T>> for &'a Arc<T> {
     fn from(value: &'a Intern<T>) -> Self {
