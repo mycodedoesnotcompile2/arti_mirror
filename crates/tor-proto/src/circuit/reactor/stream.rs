@@ -208,7 +208,7 @@ impl StreamReactor {
                 // and to remove the stream from the stream map.
                 //
                 // TODO(relay): the local sender part is not implemented yet
-                return Poll::Ready(StreamEvent::LocalStreamClosed(sid));
+                return Poll::Ready(StreamEvent::ApplicationStreamClosed(sid));
             };
 
             let msg = streams.take_ready_msg(sid).expect("msg disappeared");
@@ -517,7 +517,7 @@ impl StreamReactor {
     /// Handle a [`StreamEvent`].
     async fn handle_stream_event(&mut self, event: StreamEvent) -> StdResult<(), ReactorError> {
         match event {
-            StreamEvent::LocalStreamClosed(sid) => {
+            StreamEvent::ApplicationStreamClosed(sid) => {
                 self.close_stream(
                     sid,
                     CloseStreamBehavior::default(),
@@ -578,10 +578,10 @@ impl StreamReactor {
 
 /// A Tor stream-related event.
 enum StreamEvent {
-    /// A local application stream was closed.
+    /// An application stream was closed.
     ///
     /// The corresponding entry needs to be removed from the reactor's stream map.
-    LocalStreamClosed(StreamId),
+    ApplicationStreamClosed(StreamId),
     /// A stream has a ready message.
     ReadyMsg {
         /// The ID of the stream to close.
