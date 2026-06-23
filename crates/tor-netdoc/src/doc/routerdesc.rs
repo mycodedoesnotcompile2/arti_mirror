@@ -296,14 +296,7 @@ pub struct RouterDescSignatures {
 }
 
 // TODO: Implement a .verify() method.
-impl RouterDescUnverified {
-    /// A method only available in testing that just returns the [`RouterDesc`].
-    // TODO: Remove once we have proper verify()
-    #[cfg(test)]
-    fn assume_wellsigned(self) -> RouterDesc {
-        self.body
-    }
-}
+impl RouterDescUnverified {}
 
 /// Description of the software a relay is running.
 ///
@@ -1210,7 +1203,7 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
-    use crate::parse2::{self, ParseInput};
+    use crate::parse2::{self, NetdocParseableUnverified, ParseInput};
 
     use super::*;
     const TESTDATA: &str = include_str!("../../testdata/routerdesc1.txt");
@@ -1465,7 +1458,7 @@ mod test {
         let rd = parse2::parse_netdoc_multiple::<RouterDescUnverified>(&input)
             .unwrap()
             .into_iter()
-            .map(|rd| rd.assume_wellsigned())
+            .map(|rd| rd.unwrap_unverified().0)
             .collect::<Vec<RouterDesc>>();
         assert_eq!(rd.len(), 20);
         assert_eq!(
