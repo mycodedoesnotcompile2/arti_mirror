@@ -83,8 +83,7 @@ impl DirFilter for OneBigFamilyFilter {
             new_family.push(*r.rsa_identity());
         }
 
-        *self.new_family.lock().expect("poisoned lock") =
-            RelayFamily::into_intern(new_family);
+        *self.new_family.lock().expect("poisoned lock") = RelayFamily::into_intern(new_family);
 
         Ok(consensus)
     }
