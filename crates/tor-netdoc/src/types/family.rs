@@ -56,7 +56,7 @@ impl RelayFamily {
     /// of the family.
     pub fn intern(mut self) -> Intern<Self> {
         self.normalize();
-        Self::intern_cache().intern(self)
+        Self::into_intern(self)
     }
 
     /// Does this family include the given relay?

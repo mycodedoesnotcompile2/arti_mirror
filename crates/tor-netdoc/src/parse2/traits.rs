@@ -156,7 +156,7 @@ impl<T: ItemArgumentParseable + GloballyInternable + Eq + Hash + 'static> ItemAr
     for Intern<T>
 {
     fn from_args<'s>(args: &mut ArgumentStream<'s>) -> Result<Self, ArgumentError> {
-        T::from_args(args).map(|x| T::intern_cache().intern(x))
+        T::from_args(args).map(|x| T::into_intern(x))
     }
 }
 
@@ -181,7 +181,7 @@ impl<T: ItemValueParseable + GloballyInternable + Eq + Hash + 'static> ItemValue
     for Intern<T>
 {
     fn from_unparsed(item: UnparsedItem<'_>) -> Result<Self, ErrorProblem> {
-        T::from_unparsed(item).map(|x| T::intern_cache().intern(x))
+        T::from_unparsed(item).map(|x| T::into_intern(x))
     }
 }
 

@@ -84,7 +84,7 @@ impl DirFilter for OneBigFamilyFilter {
         }
 
         *self.new_family.lock().expect("poisoned lock") =
-            RelayFamily::intern_cache().intern(new_family);
+            RelayFamily::into_intern(new_family);
 
         Ok(consensus)
     }
@@ -109,7 +109,7 @@ struct NoExitPortsFilter {
 impl Default for NoExitPortsFilter {
     fn default() -> Self {
         Self {
-            reject_all: PortPolicy::intern_cache().intern(PortPolicy::new_reject_all()),
+            reject_all: PortPolicy::into_intern(PortPolicy::new_reject_all()),
         }
     }
 }

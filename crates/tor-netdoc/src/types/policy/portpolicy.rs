@@ -86,7 +86,7 @@ impl PortPolicy {
 
     /// Replace this PortPolicy with an interned copy, to save memory.
     pub fn intern(self) -> Intern<Self> {
-        Self::intern_cache().intern(self)
+        Self::into_intern(self)
     }
 
     /// Return true if this policy allows any ports at all.

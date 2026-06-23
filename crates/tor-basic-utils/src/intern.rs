@@ -67,6 +67,16 @@ impl<'a, T: ?Sized> From<&'a Intern<T>> for &'a Arc<T> {
 pub trait GloballyInternable: Sized {
     /// Returns a reference to the global cache instance of this type.
     fn intern_cache() -> &'static InternCache<Self>;
+
+    /// Places `self` into the global cache.
+    ///
+    /// Please use this instead of `T::intern_cache().intern(value)`.
+    fn into_intern(self) -> Intern<Self>
+    where
+        Self: Eq + Hash + 'static,
+    {
+        Self::intern_cache().intern(self)
+    }
 }
 
 define_derive_deftly! {
