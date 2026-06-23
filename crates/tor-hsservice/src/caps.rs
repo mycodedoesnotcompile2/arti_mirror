@@ -1,5 +1,8 @@
 //! Helpers for capability declaration and negotiation.
 
+// TODO #2598: Remove duplicate code between tor_hsclient::caps,
+// tor_hsservice::caps, and tor_proto::circuit (to the extent possible).
+
 use cfg_if::cfg_if;
 use tor_cell::relaycell::hs::intro_payload::IntroduceHandshakePayload;
 use tor_protover::Protocols;
