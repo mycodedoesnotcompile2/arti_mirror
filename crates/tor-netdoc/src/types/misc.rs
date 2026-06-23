@@ -1596,6 +1596,7 @@ mod edcert {
                 .map_err(|_| VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData))?
                 // 2. MUST have a valid signature by the identity key.
                 .check_signature()?
+                // Okay to call because we create TimerangeBound later.
                 .dangerously_assume_timely();
 
             // 3. MUST be of [`CertType::IDENTITY_V_SIGNING`].
@@ -1702,6 +1703,7 @@ mod edcert {
                 .should_have_signing_key()?
                 // 2. MUST have a valid signature by the family key.
                 .check_signature()?
+                // Okay to call because we create TimerangeBound later.
                 .dangerously_assume_timely();
 
             // 3. MUST be of of [`CertType::FAMILY_V_IDENTITY`].
