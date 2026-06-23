@@ -158,7 +158,7 @@ pub struct RouterDesc {
     /// `hibernating` --- Whether the relay is hibernating.
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:hibernating>
-    // TODO: Mark this as `netdoc(default)` and skip during encoding if false.
+    // TODO DIRAUTH: Mark this as `netdoc(default)` and skip during encoding if false.
     #[deftly(netdoc(single_arg, default))]
     pub hibernating: NumericBoolean,
 
