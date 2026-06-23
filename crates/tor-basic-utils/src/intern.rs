@@ -55,6 +55,9 @@ impl<'a, T: ?Sized> From<&'a Intern<T>> for &'a Arc<T> {
 /// Typically derived using [`crate::derive_deftly_template_GloballyInternable`].
 pub trait GloballyInternable: Sized {
     /// Returns a reference to the global cache instance of this type.
+    ///
+    /// Implemented by implementors of this trait.
+    /// Users of the trait should usually use [`GloballyInternable::into_intern()`].
     fn intern_cache() -> &'static InternCache<Self>;
 
     /// Places `self` into the global cache.
