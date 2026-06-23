@@ -43,7 +43,7 @@ impl<T: ?Sized> Intern<T> {
     }
 }
 
-// Some Arti code is pretty keen on using &Arc<T> which is not so nice ...
+// Some Arti code is pretty keen on using &Arc<T>.
 impl<'a, T: ?Sized> From<&'a Intern<T>> for &'a Arc<T> {
     fn from(value: &'a Intern<T>) -> Self {
         &value.0
