@@ -80,6 +80,10 @@ pub enum TimeValidityError {
 /// bounds when performing a verification.  Mathematically speaking, this means
 /// that implementations must check whether `x ∊ [start; end]` but *not*
 /// `x ∊ (start; end)`.
+//
+// TODO: We should really provide a method or something to obtain a
+// TimeboundRange from a Timebound, as Timebound itself is not a nice type to
+// work with.
 pub trait Timebound<T>: Sized {
     /// An error type that's returned when the object is _not_ timely.
     type Error;

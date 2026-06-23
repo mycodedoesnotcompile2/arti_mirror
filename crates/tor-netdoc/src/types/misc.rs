@@ -1498,7 +1498,7 @@ mod rsa {
 /// Types for decoding Ed25519 certificates
 mod edcert {
     use std::result::Result as StdResult;
-    use std::time::{Duration, SystemTime};
+    use std::time::SystemTime;
 
     use crate::types::EmbeddedCert;
     use crate::{
@@ -1506,7 +1506,6 @@ mod edcert {
         parse2::{ErrorProblem, VerifyFailed},
         types::EmbeddableCertObject,
     };
-    use saturating_time::SaturatingTime;
     use tor_cert::{CertType, CertifiedKey, Ed25519Cert, KeyUnknownCert};
     use tor_checkable::signed::SignatureGated;
     use tor_checkable::timed::TimerangeBound;
@@ -1587,25 +1586,21 @@ mod edcert {
         ///
         /// 1. MUST have the identity key in the `signed-with-ed25519-key` extension.
         /// 2. MUST have a valid signature by the identity key.
-        /// 3. MUST be valid at `now`.
-        /// 4. MUST be of [`CertType::IDENTITY_V_SIGNING`].
-        /// 5. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
-        /// 6. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
-        pub fn verify(
-            cert: KeyUnknownCert,
-            post_tolerance: Duration,
-            now: SystemTime,
-        ) -> StdResult<Self, VerifyFailed> {
+        /// 3. MUST be of [`CertType::IDENTITY_V_SIGNING`].
+        /// 4. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
+        /// 5. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+        pub fn verify(cert: KeyUnknownCert) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
             let cert = cert
                 // 1. MUST have the identity key in the `signed-with-ed25519-key` extension.
                 .should_have_signing_key()
                 .map_err(|_| VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData))?
                 // 2. MUST have a valid signature by the identity key.
                 .check_signature()?
-                // 3. MUST be valid at `now`.
-                .check_valid_at(&now.saturating_sub(post_tolerance))?;
+                // Okay to call because we create TimerangeBound later.
+                // TODO DIRAUTH: Use TimerangeBound instead.
+                .dangerously_assume_timely();
 
-            // 4. MUST be of [`CertType::IDENTITY_V_SIGNING`].
+            // 3. MUST be of [`CertType::IDENTITY_V_SIGNING`].
             if cert.cert_type() != CertType::IDENTITY_V_SIGNING {
                 return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
             }
@@ -1613,13 +1608,13 @@ mod edcert {
             // Bug is alright because .should_have_signing_key() assured us.
             let id_ed25519 = *cert.signing_key().ok_or(VerifyFailed::Bug)?;
 
-            // 5. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
+            // 4. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
             let sign_ed25519 = *cert
                 .subject_key()
                 .as_ed25519()
                 .ok_or(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData))?;
 
-            // 6. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+            // 5. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
             // Unsure if this check is required or implied by (2) but defensive
             // programming does not hurt.
             if ed25519::PublicKey::try_from(id_ed25519).is_err()
@@ -1628,10 +1623,13 @@ mod edcert {
                 return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
             }
 
-            Ok(Self {
-                id_ed25519,
-                sign_ed25519,
-            })
+            Ok(TimerangeBound::new(
+                Self {
+                    id_ed25519,
+                    sign_ed25519,
+                },
+                ..cert.expiry(),
+            ))
         }
 
         /// Creates a new signed [`Ed25519IdentityCert`].
@@ -1693,26 +1691,24 @@ mod edcert {
         ///
         /// 1. MUST have the `signed-with-ed25519-key` extension containing the family key.
         /// 2. MUST have a valid signature by the family key.
-        /// 3. MUST be valid at `now`.
-        /// 4. MUST be of of [`CertType::FAMILY_V_IDENTITY`].
-        /// 5. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
-        /// 6. `id_ed25519` MUST be the certified key.
-        /// 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+        /// 3. MUST be of of [`CertType::FAMILY_V_IDENTITY`].
+        /// 4. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
+        /// 5. `id_ed25519` MUST be the certified key.
+        /// 6. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
         pub fn verify(
             id_ed25519: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
-            post_tolerance: Duration,
-            now: SystemTime,
-        ) -> StdResult<Self, VerifyFailed> {
+        ) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
             let cert = cert
                 // 1. MUST have the `signed-with-ed25519-key` extension containing the family key.
                 .should_have_signing_key()?
                 // 2. MUST have a valid signature by the family key.
                 .check_signature()?
-                // 3. MUST be valid at `now`.
-                .check_valid_at(&now.saturating_sub(post_tolerance))?;
+                // Okay to call because we create TimerangeBound later.
+                // TODO DIRAUTH: Use TimerangeBound instead.
+                .dangerously_assume_timely();
 
-            // 4. MUST be of of [`CertType::FAMILY_V_IDENTITY`].
+            // 3. MUST be of of [`CertType::FAMILY_V_IDENTITY`].
             if cert.cert_type() != CertType::FAMILY_V_IDENTITY {
                 return Err(ErrorProblem::ObjectInvalidData.into());
             }
@@ -1720,25 +1716,28 @@ mod edcert {
             // Bug is alright because .should_have_signing_key() assured us.
             let family_ed25519 = *cert.signing_key().ok_or(VerifyFailed::Bug)?;
 
-            // 5. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
+            // 4. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
             let certified_key = *cert
                 .subject_key()
                 .as_ed25519()
                 .ok_or(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData))?;
 
-            // 6. `id_ed25519` MUST be the certified key.
+            // 5. `id_ed25519` MUST be the certified key.
             if certified_key != id_ed25519 {
                 return Err(VerifyFailed::VerifyFailed);
             }
 
-            // 7. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
+            // 6. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
             if ed25519::PublicKey::try_from(family_ed25519).is_err()
                 || ed25519::PublicKey::try_from(id_ed25519).is_err()
             {
                 return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
             }
 
-            Ok(Self { family_ed25519 })
+            Ok(TimerangeBound::new(
+                Self { family_ed25519 },
+                ..cert.expiry(),
+            ))
         }
 
         /// Creates a new signed [`Ed25519FamilyCert`].
@@ -1819,23 +1818,17 @@ mod edcert {
         /// 2. Certified key MUST be of [`CertifiedKey::Ed25519`].
         /// 3. Certified key MUST be equal to `id_ed25519`.
         /// 4. MUST have a valid signature.
-        /// 5. MUST be valid at `now`.
         pub fn verify(
             ntor_ed25519: ed25519::Ed25519Identity,
             id_ed25519: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
-            post_tolerance: Duration,
-            now: SystemTime,
-        ) -> StdResult<Self, VerifyFailed> {
+        ) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
             Ok(
                 // .verify_inner() ensures 1-3.
                 Self::verify_inner(ntor_ed25519, id_ed25519, cert)?
                     .0
                     // 4. MUST have a valid signature.
-                    .check_signature()?
-                    .extend_tolerance(post_tolerance)
-                    // 5. MUST be valid at `now`.
-                    .check_valid_at(&now)?,
+                    .check_signature()?,
             )
         }
 
@@ -2844,6 +2837,7 @@ mod test {
     use base64ct::Encoding;
     use tor_basic_utils::test_rng::testing_rng;
     use tor_cert::{CertType, CertifiedKey, Ed25519Cert, KeyUnknownCert};
+    use tor_checkable::{Timebound, timed::TimerangeBound};
     use tor_llcrypto::pk::ed25519::{self, Ed25519Identity, Ed25519PublicKey};
 
     use super::*;
@@ -3590,9 +3584,9 @@ mod test {
                     .into(),
                     self.master_key_ed25519.0,
                     self.ntor_onion_key_crosscert.cert.raw_unverified().clone(),
-                    Duration::ZERO,
-                    now,
                 )
+                .unwrap()
+                .is_valid_at(&now)
                 .unwrap();
             }
         }
@@ -3649,9 +3643,7 @@ mod test {
             signing_key: Option<ed25519::Ed25519Identity>,
             certified_key: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
-            post_tolerance: Duration,
-            now: SystemTime,
-        ) -> StdResult<Self, VerifyFailed>;
+        ) -> StdResult<TimerangeBound<Self>, VerifyFailed>;
     }
 
     impl Ed25519CertTest for Ed25519IdentityCert {
@@ -3681,10 +3673,8 @@ mod test {
             _signing_key: Option<ed25519::Ed25519Identity>,
             _certified_key: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
-            post_tolerance: Duration,
-            now: SystemTime,
-        ) -> StdResult<Self, VerifyFailed> {
-            Self::verify(cert, post_tolerance, now)
+        ) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
+            Self::verify(cert)
         }
     }
 
@@ -3714,10 +3704,8 @@ mod test {
             _signing_key: Option<ed25519::Ed25519Identity>,
             certified_key: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
-            post_tolerance: Duration,
-            now: SystemTime,
-        ) -> StdResult<Self, VerifyFailed> {
-            Self::verify(certified_key, cert, post_tolerance, now)
+        ) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
+            Self::verify(certified_key, cert)
         }
     }
 
@@ -3745,16 +3733,8 @@ mod test {
             signing_key: Option<ed25519::Ed25519Identity>,
             certified_key: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
-            post_tolerance: Duration,
-            now: SystemTime,
-        ) -> StdResult<Self, VerifyFailed> {
-            Self::verify(
-                signing_key.unwrap(),
-                certified_key,
-                cert,
-                post_tolerance,
-                now,
-            )
+        ) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
+            Self::verify(signing_key.unwrap(), certified_key, cert)
         }
     }
 
@@ -3798,9 +3778,9 @@ mod test {
             Some(signing_key.public_key().into()),
             certified_key.public_key().into(),
             unverified.clone(),
-            Duration::ZERO,
-            now,
         )
+        .unwrap()
+        .is_valid_at(&now)
         .unwrap();
 
         // See if .verify() also agrees when expired but with toleration.
@@ -3808,9 +3788,10 @@ mod test {
             Some(signing_key.public_key().into()),
             certified_key.public_key().into(),
             unverified,
-            Duration::from_secs(60 * 60),
-            expiry,
         )
+        .unwrap()
+        .extend_tolerance(Duration::from_secs(60 * 60))
+        .is_valid_at(&now)
         .unwrap();
     }
 
@@ -3891,9 +3872,8 @@ mod test {
                 signing_key.copied(),
                 Ed25519Identity::from_bytes(certified_key.as_bytes()).unwrap(),
                 cert,
-                Duration::ZERO,
-                now,
             )
+            .and_then(|expired| expired.is_valid_at(&now).map_err(|e| e.into()))
             .unwrap_err();
         }
     }
