@@ -22,7 +22,8 @@ type WeakHashSet<T> = weak_table::WeakHashSet<T, std::hash::RandomState>;
 /// other way around.  This means that interfacing code can make the type to
 /// "forget" it originated from an [`InternCache`] but not the other way around,
 /// i.e. cannot accidentally create fake entries that look like they came from an
-/// [`InternCache`].
+/// [`InternCache`].  If one really has to circumvent this, then the
+/// [`Intern::new_uncached_uninterned()`] method exists.
 ///
 /// This ensures that interning is done everywhere that it's expected,
 /// avoiding excess memory usage.
@@ -31,6 +32,17 @@ type WeakHashSet<T> = weak_table::WeakHashSet<T, std::hash::RandomState>;
 // future.  If so, just add them.
 #[derive(Debug, Default, PartialEq, Eq, Hash, Display, Into)]
 pub struct Intern<T: ?Sized>(Arc<T>);
+
+impl<T: ?Sized> Intern<T> {
+    /// Creates an [`Intern`] from an arbitrary [`Arc`].
+    ///
+    /// The use of this is generally discouraged, as it effectively destroys
+    /// the boundary of implying that certain cache entries come from the
+    /// [`InternCache`].
+    pub fn new_uncached_uninterned(value: Arc<T>) -> Intern<T> {
+        Intern(value)
+    }
+}
 
 // We cannot derive the following Intern implementations because we want to
 // call the implementation in Arc<T>, not in T.
