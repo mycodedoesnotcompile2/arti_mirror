@@ -6,7 +6,7 @@ use std::ops::Deref;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 
 use derive_deftly::define_derive_deftly;
-use derive_more::Display;
+use derive_more::{Display, Into};
 
 /// Alias to force use of RandomState, regardless of features enabled in `weak_tables`.
 ///
@@ -29,7 +29,7 @@ type WeakHashSet<T> = weak_table::WeakHashSet<T, std::hash::RandomState>;
 //
 // Right now, this is the bare minimum of derives; it may need more in the
 // future.  If so, just add them.
-#[derive(Debug, Default, PartialEq, Eq, Hash, Display)]
+#[derive(Debug, Default, PartialEq, Eq, Hash, Display, Into)]
 pub struct Intern<T: ?Sized>(Arc<T>);
 
 // We cannot derive the following Intern implementations because we want to
@@ -51,15 +51,6 @@ impl<T: ?Sized> AsRef<T> for Intern<T> {
 impl<T: ?Sized> Clone for Intern<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
-    }
-}
-
-// We do not derive this because derive_more actually derives more, i.e.
-// breaks the contract we defined in the type documentation of not being able
-// to "spoof" this type.
-impl<T: ?Sized> From<Intern<T>> for Arc<T> {
-    fn from(value: Intern<T>) -> Self {
-        value.0
     }
 }
 
