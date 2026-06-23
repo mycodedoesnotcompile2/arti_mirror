@@ -107,7 +107,8 @@ pub struct RouterAnnotation {
 /// # Specification
 ///
 /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html>
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deftly)]
+#[derive_deftly(NetdocParseableUnverified)]
 #[non_exhaustive]
 pub struct RouterDesc {
     /// `router` --- Introduce a router descriptor.
@@ -125,6 +126,7 @@ pub struct RouterDesc {
     /// * `master-key-ed25519 <master key>`
     /// * Exactly once.
     // TODO DIRAUTH when implementing verification, don't forget to check this!
+    #[deftly(netdoc(single_arg))]
     pub master_key_ed25519: Ed25519Public,
 
     /// `bandwidth` --- Report router's network bandwidth.
@@ -143,24 +145,28 @@ pub struct RouterDesc {
     ///
     /// * `published <date> <time>`
     /// * Exactly once.
+    #[deftly(netdoc(single_arg))]
     pub published: Iso8601TimeSp,
 
     /// `fingerprint` --- Redundant hash of ASN-1 encoding of router identity key.
     ///
     /// * `fingerprint <spaced fingerprint>`
     /// * At most once.
+    #[deftly(netdoc(single_arg))]
     pub fingerprint: Option<SpFingerprint>,
 
     /// `hibernating` --- Whether the relay is hibernating.
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:hibernating>
-    // TODO: Mark this as `netdoc(default)` and skip during encoding if false.
+    // TODO DIRAUTH: Mark this as `netdoc(default)` and skip during encoding if false.
+    #[deftly(netdoc(single_arg, default))]
     pub hibernating: NumericBoolean,
 
     /// `uptime` --- How long this relay has been continously running
     ///
     /// * `uptime <number>`
     /// * At most once.
+    #[deftly(netdoc(single_arg))]
     pub uptime: Option<u64>,
 
     /// `onion-key` --- Relay's obsolete RSA tap key.
@@ -174,6 +180,7 @@ pub struct RouterDesc {
     ///
     /// * `ntor-onion-key <base64 padded key>`
     /// * Exactly once.
+    #[deftly(netdoc(single_arg))]
     pub ntor_onion_key: Curve25519Public,
 
     /// `ntor-onion-key-crosscert` --- Reverse cert by K_ntor on KP_relayid_ed
@@ -193,12 +200,14 @@ pub struct RouterDesc {
     /// * Any number of times.
     // TODO: these polices can get bulky too. Perhaps we should
     // de-duplicate them too.
+    #[deftly(netdoc(flatten))]
     pub ipv4_policy: AddrPolicy,
 
     /// `ipv6-policy` --- Exit plicy summary for IPv6
     ///
     /// * `ipv6-policy <accept/reject> PortList`
     /// * At most once.
+    #[deftly(netdoc(default))]
     pub ipv6_policy: Arc<PortPolicy>,
 
     /// `overload-general` --- Relay is overloaded.
@@ -218,6 +227,7 @@ pub struct RouterDesc {
     /// * `family <LongIdent> ...`
     /// * One or more `LongIdent` arguments.
     /// * At most once.
+    #[deftly(netdoc(default))]
     pub family: Arc<RelayFamily>,
 
     /// `family-cert` --- Prove membership in a relay family.
@@ -246,6 +256,7 @@ pub struct RouterDesc {
     /// `or-address` --- Alternative ORport address and port
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:or-address>
+    #[deftly(netdoc(single_arg))]
     pub or_address: Vec<net::SocketAddr>,
 
     /// `tunnelled-dir-server` --- Accepts a `BEGIN_DIR` relay message.
@@ -283,6 +294,9 @@ pub struct RouterDescSignatures {
     /// * RSA signature of the document, including `router-sig-ed25519`.
     pub router_signature: RouterSignature,
 }
+
+// TODO: Implement a .verify() method.
+impl RouterDescUnverified {}
 
 /// Description of the software a relay is running.
 ///
@@ -1189,6 +1203,8 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use crate::parse2::{self, NetdocParseableUnverified, ParseInput};
+
     use super::*;
     const TESTDATA: &str = include_str!("../../testdata/routerdesc1.txt");
     const TESTDATA2: &str = include_str!("../../testdata/routerdesc2.txt");
@@ -1428,5 +1444,38 @@ mod test {
         );
 
         Ok(())
+    }
+
+    // TODO: For now, this only tests if decoding works with a few field checks.
+    // It should be extended to a full roundtrip test with failed verification
+    // at one point eventually ...
+    #[test]
+    fn test_parse2() {
+        let input = ParseInput::new(
+            include_str!("../../testdata2/cached-descriptors.new"),
+            "cached-descriptors.new",
+        );
+        let rd = parse2::parse_netdoc_multiple::<RouterDescUnverified>(&input)
+            .unwrap()
+            .into_iter()
+            .map(|rd| rd.unwrap_unverified().0)
+            .collect::<Vec<RouterDesc>>();
+        assert_eq!(rd.len(), 20);
+        assert_eq!(
+            rd[0].router,
+            RouterDescIntroItem {
+                nickname: "test002a".parse().unwrap(),
+                address: net::Ipv4Addr::LOCALHOST,
+                orport: 5102,
+                socksport: 0,
+                dirport: 7102
+            }
+        );
+        assert_eq!(
+            rd[0].fingerprint.unwrap(),
+            "257D 06F0 360B B224 6388 724F 109E C089 5A1D 41FB"
+                .parse()
+                .unwrap()
+        );
     }
 }

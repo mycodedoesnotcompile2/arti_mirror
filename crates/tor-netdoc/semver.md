@@ -1,3 +1,4 @@
+ADDED: `NetdocParseableUnverified` for `RouterDesc`
 ADDED: `NetdocEncodableFields` for `AddrPolicy`
 ADDED: `encode::ItemArgument` for `SpFingerprint`
 ADDED: `ItemValueEncodable` for `ExtraInfoDigests`
