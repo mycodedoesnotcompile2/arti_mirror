@@ -14,7 +14,7 @@ cfg_if! {
         /// request extension.
         ///
         /// Note that we don't necessarily support all of these ourselves!
-        static REQUESTABLE_LIST: &[NamedSubver] = &[RELAY_NEGOTIATE_SUBPROTO, RELAY_CRYPT_CGO];
+        static REQUESTABLE_LIST: &[NamedSubver] = &[RELAY_CRYPT_CGO];
     }
 }
 
@@ -62,7 +62,6 @@ impl PeerCaps {
             && mutual_protos.supports_named_subver(RELAY_NEGOTIATE_SUBPROTO)
             && fc_protos.supports_named_subver(FLOWCTRL_CC)
         {
-            subproto_request.push(RELAY_NEGOTIATE_SUBPROTO);
             subproto_request.push(RELAY_CRYPT_CGO);
         }
 

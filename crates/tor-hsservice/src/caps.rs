@@ -11,12 +11,17 @@ cfg_if! {
         use std::sync::LazyLock;
         use tor_protover::{NamedSubver, named::*};
 
+        /// A set of protocols that we can advertise in our HS descriptor,
+        /// if we support them.
+        static ADVERTIZABLE_PROTOCOLS: LazyLock<Protocols> = LazyLock::new(
+           || [RELAY_CRYPT_CGO, RELAY_NEGOTIATE_SUBPROTO].into_iter().collect()
+        );
+
         /// An array of protocols that can be requested via a subprotocol
         /// request extension.
         ///
         /// Note that we don't necessarily support all of these ourselves!
         static REQUESTABLE_LIST: &[NamedSubver] = &[
-             RELAY_NEGOTIATE_SUBPROTO,
              RELAY_CRYPT_CGO
         ];
 
@@ -37,7 +42,7 @@ cfg_if! {
 pub(crate) fn declared_protocols() -> Protocols {
     cfg_if! {
         if #[cfg(feature = "negotiate-extensions")] {
-            tor_proto::supported_client_protocols().intersection(&REQUESTABLE)
+            tor_proto::supported_client_protocols().intersection(&ADVERTIZABLE_PROTOCOLS)
         } else {
             Protocols::new()
         }
