@@ -32,7 +32,7 @@ clap = { version = "4.3.24", features = ["wrap_help"] }
 futures = "0.3.14"
 pin-project = "1"
 rand = "0.10.1"
-tokio = { version = "1.47.1", features = ["signal", "macros"] }
+tokio = { version = "1.47.5", features = ["signal", "macros"] }
 tor-basic-utils = { path = "../tor-basic-utils", version = "0.43.0" }
 tor-config = { path = "../tor-config", version = "0.43.0" }
 tor-dirmgr = { package = "tor-dirmgr", path = "../tor-dirmgr", version = "0.43.0", features = ["dirfilter"] }
