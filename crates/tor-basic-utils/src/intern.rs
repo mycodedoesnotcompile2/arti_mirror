@@ -18,11 +18,14 @@ type WeakHashSet<T> = weak_table::WeakHashSet<T, std::hash::RandomState>;
 /// The wrapper type serves the purpose of semantic meaning only, implying that
 /// this value is cached in some way or another by this module.
 ///
-/// We only allow obtaining the underlying [`Arc`] with a [`From`] but not the
+/// We only conveniently allow obtaining the underlying [`Arc`] with a [`From`] but not the
 /// other way around.  This means that interfacing code can make the type to
 /// "forget" it originated from an [`InternCache`] but not the other way around,
-/// i.e. cannot create fake entries that look like they came from an
+/// i.e. cannot accidentally create fake entries that look like they came from an
 /// [`InternCache`].
+///
+/// This ensures that interning is done everywhere that it's expected,
+/// avoiding excess memory usage.
 //
 // Right now, this is the bare minimum of derives; it may need more in the
 // future.  If so, just add them.
