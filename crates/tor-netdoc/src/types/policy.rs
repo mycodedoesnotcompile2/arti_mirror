@@ -44,11 +44,13 @@ pub enum PolicyError {
     /// An address could not be interpreted.
     #[error("Invalid address")]
     InvalidAddress,
-    /// Tried to use a bitmask with the address "*".
-    #[error("mask with star")]
+    /// Tried to use a bitmask or prefix len with the address "*".
+    // TODO maybe rename this, we never use masks, only prefix lengths
+    #[error("mask or prefix length with star")]
     MaskWithStar,
     /// A bit mask was out of range.
-    #[error("invalid mask")]
+    // TODO maybe rename this, we never use masks, only prefix lengths
+    #[error("invalid prefix length or mask")]
     InvalidMask,
     /// A policy could not be parsed for some other reason.
     #[error("Invalid policy")]

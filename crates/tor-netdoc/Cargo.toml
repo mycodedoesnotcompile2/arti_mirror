@@ -82,6 +82,7 @@ hex = "0.4"
 hex-literal = { version = "1.0", optional = true }
 hostname-validator = "1.1.1"
 humantime = "2"
+ipnet = "2"
 itertools = "0.14.0"
 memchr = "2.5"
 paste = "1.0.3"

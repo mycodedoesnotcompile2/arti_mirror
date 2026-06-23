@@ -7909,6 +7909,7 @@ dependencies = [
  "hostname-validator",
  "humantime",
  "imara-diff",
+ "ipnet",
  "itertools 0.14.0",
  "memchr",
  "paste",

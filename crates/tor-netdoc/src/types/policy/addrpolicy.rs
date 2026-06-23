@@ -2,7 +2,7 @@
 //! rules.
 
 use std::fmt::Display;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 
 use itertools::chain;
@@ -13,6 +13,8 @@ use crate::parse2::{
     ErrorProblem as EP, ItemArgumentParseable, ItemStream, KeywordRef, NetdocParseableFields,
     UnparsedItem,
 };
+
+use ipnet::IpNet;
 
 use super::{PolicyError, PortRange, RuleKind};
 
@@ -199,7 +201,7 @@ impl AddrPortPattern {
     /// Return an AddrPortPattern matching all targets.
     pub const fn new_all() -> Self {
         Self {
-            pattern: IpPattern::Star,
+            pattern: IpPattern::All,
             ports: PortRange::new_all(),
         }
     }
@@ -242,55 +244,27 @@ impl FromStr for AddrPortPattern {
 impl NormalItemArgument for AddrPortPattern {}
 
 /// A pattern that matches one or more IP addresses.
-//
-// TODO(nickm): At present there is no way for Display or FromStr to distinguish
-// V4Star, V6Star, and Star.  If we decide it's important to have a syntax for
-// "all IPv4 addresses" that isn't "0.0.0.0/0", we'll need to revisit that.
-// At present, C tor allows '*', '*4', and '*6'.
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum IpPattern {
     /// Match all addresses.
-    Star,
-    /// Match all IPv4 addresses.
-    V4Star,
-    /// Match all IPv6 addresses.
-    V6Star,
-    /// Match all IPv4 addresses beginning with a given prefix.
-    V4(Ipv4Addr, u8),
-    /// Match all IPv6 addresses beginning with a given prefix.
-    V6(Ipv6Addr, u8),
+    All,
+    /// Match addresses of a particular IP version, beginning with a given prefix.
+    Net(IpNet),
 }
 
 impl IpPattern {
-    /// Construct an IpPattern that matches the first `mask` bits of `addr`.
-    fn from_addr_and_mask(addr: IpAddr, mask: u8) -> Result<Self, PolicyError> {
-        match (addr, mask) {
-            (IpAddr::V4(_), 0) => Ok(IpPattern::V4Star),
-            (IpAddr::V6(_), 0) => Ok(IpPattern::V6Star),
-            (IpAddr::V4(a), m) if m <= 32 => Ok(IpPattern::V4(a, m)),
-            (IpAddr::V6(a), m) if m <= 128 => Ok(IpPattern::V6(a, m)),
-            (_, _) => Err(PolicyError::InvalidMask),
-        }
+    /// Construct an IpPattern that matches the first `prefix_len` bits of `addr`.
+    fn from_addr_and_prefix_len(addr: IpAddr, prefix_len: u8) -> Result<Self, PolicyError> {
+        IpNet::new(addr, prefix_len)
+            .map(IpPattern::Net)
+            .map_err(|_: ipnet::PrefixLenError| PolicyError::InvalidMask)
     }
+
     /// Return true iff `addr` is matched by this pattern.
     fn matches(&self, addr: &IpAddr) -> bool {
-        match (self, addr) {
-            (IpPattern::Star, _) => true,
-            (IpPattern::V4Star, IpAddr::V4(_)) => true,
-            (IpPattern::V6Star, IpAddr::V6(_)) => true,
-            (IpPattern::V4(pat, mask), IpAddr::V4(addr)) => {
-                let p1 = u32::from_be_bytes(pat.octets());
-                let p2 = u32::from_be_bytes(addr.octets());
-                let shift = 32 - mask;
-                (p1 >> shift) == (p2 >> shift)
-            }
-            (IpPattern::V6(pat, mask), IpAddr::V6(addr)) => {
-                let p1 = u128::from_be_bytes(pat.octets());
-                let p2 = u128::from_be_bytes(addr.octets());
-                let shift = 128 - mask;
-                (p1 >> shift) == (p2 >> shift)
-            }
-            (_, _) => false,
+        match self {
+            IpPattern::All => true,
+            IpPattern::Net(n) => n.contains(addr),
         }
     }
 }
@@ -299,11 +273,13 @@ impl Display for IpPattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use IpPattern::*;
         match self {
-            Star | V4Star | V6Star => write!(f, "*"),
-            V4(a, 32) => write!(f, "{}", a),
-            V4(a, m) => write!(f, "{}/{}", a, m),
-            V6(a, 128) => write!(f, "[{}]", a),
-            V6(a, m) => write!(f, "[{}]/{}", a, m),
+            All => write!(f, "*"),
+            // We want to omit the /prefix_len if it's the maximum, for brevity
+            Net(IpNet::V4(n)) if n.prefix_len() == 32 => write!(f, "{}", n.addr()),
+            Net(IpNet::V4(n)) => write!(f, "{}", n),
+            // We want to include the [ ] around IPv6 addresses, which ipnet omits
+            Net(IpNet::V6(n)) if n.prefix_len() == 128 => write!(f, "[{}]", n.addr()),
+            Net(IpNet::V6(n)) => write!(f, "[{}]/{}", n.addr(), n.prefix_len()),
         }
     }
 }
@@ -325,22 +301,22 @@ fn parse_addr(mut s: &str) -> Result<IpAddr, PolicyError> {
 impl FromStr for IpPattern {
     type Err = PolicyError;
     fn from_str(s: &str) -> Result<Self, PolicyError> {
-        let (ip_s, mask_s) = match s.split_once('/') {
-            Some((ip_s, mask_s)) => (ip_s, Some(mask_s)),
+        let (ip_s, plen_s) = match s.split_once('/') {
+            Some((ip_s, plen_s)) => (ip_s, Some(plen_s)),
             None => (s, None),
         };
-        match (ip_s, mask_s) {
+        match (ip_s, plen_s) {
             ("*", Some(_)) => Err(PolicyError::MaskWithStar),
-            ("*", None) => Ok(IpPattern::Star),
+            ("*", None) => Ok(IpPattern::All),
             (s, Some(m)) => {
                 let a: IpAddr = parse_addr(s)?;
                 let m: u8 = m.parse().map_err(|_| PolicyError::InvalidMask)?;
-                IpPattern::from_addr_and_mask(a, m)
+                IpPattern::from_addr_and_prefix_len(a, m)
             }
             (s, None) => {
                 let a: IpAddr = parse_addr(s)?;
                 let m = if a.is_ipv4() { 32 } else { 128 };
-                IpPattern::from_addr_and_mask(a, m)
+                IpPattern::from_addr_and_prefix_len(a, m)
             }
         }
     }
@@ -368,25 +344,32 @@ mod test {
 
     #[test]
     fn test_roundtrip_rules() {
-        fn check(inp: &str, outp: &str) {
-            let policy = inp.parse::<AddrPortPattern>().unwrap();
+        fn check2(inp: &str, outp: &str) {
+            let policy = inp.parse::<AddrPortPattern>().expect(inp);
             assert_eq!(format!("{}", policy), outp);
         }
+        let check = |inp| check2(inp, inp);
 
-        check("127.0.0.2/32:77-10000", "127.0.0.2:77-10000");
-        check("127.0.0.2/32:*", "127.0.0.2:*");
-        check("127.0.0.0/16:9-100", "127.0.0.0/16:9-100");
-        check("127.0.0.0/0:443", "*:443");
-        check("*:443", "*:443");
-        check("[::1]:443", "[::1]:443");
-        check("[ffaa::]/16:80", "[ffaa::]/16:80");
-        check("[ffaa::77]/128:80", "[ffaa::77]:80");
+        check2("127.0.0.2/32:77-10000", "127.0.0.2:77-10000");
+        check2("127.0.0.2/32:*", "127.0.0.2:*");
+        check("127.0.0.0/16:9-100");
+        check("127.0.0.0/0:443");
+        check("*:443");
+        check("[::1]:443");
+        check("[ffaa::]/16:80");
+        check2("[ffaa::77]/128:80", "[ffaa::77]:80");
+        check("[::]/0:443");
+
+        // Patterns with excessive prefix length for the address.
+        // It's not clear that it's correct to accept these.
+        check("127.0.0.1/8:443");
+        check("[::1]/8:443");
     }
 
     #[test]
     fn test_bad_rules() {
         fn check(s: &str) {
-            assert!(s.parse::<AddrPortPattern>().is_err());
+            let _: PolicyError = s.parse::<AddrPortPattern>().expect_err(s);
         }
 
         check("marzipan:80");
