@@ -29,7 +29,7 @@ type WeakHashSet<T> = weak_table::WeakHashSet<T, std::hash::RandomState>;
 //
 // Right now, this is the bare minimum of derives; it may need more in the
 // future.  If so, just add them.
-#[derive(Debug, Default, PartialEq, Eq, Hash, Display, Into, Deref)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Display, Into, Deref)]
 pub struct Intern<T: ?Sized>(Arc<T>);
 
 impl<T: ?Sized> Intern<T> {
@@ -49,12 +49,6 @@ impl<T: ?Sized> Intern<T> {
 impl<T: ?Sized> AsRef<T> for Intern<T> {
     fn as_ref(&self) -> &T {
         self.0.as_ref()
-    }
-}
-
-impl<T: ?Sized> Clone for Intern<T> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
     }
 }
 
