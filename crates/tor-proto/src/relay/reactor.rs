@@ -346,9 +346,7 @@ pub(crate) mod test {
     use tracing_test::traced_test;
 
     use tor_cell::chancell::{ChanCell, ChanCmd, msg as chanmsg};
-    use tor_cell::relaycell::{
-        AnyRelayMsgOuter, RelayCellFormat, StreamId, msg as relaymsg,
-    };
+    use tor_cell::relaycell::{AnyRelayMsgOuter, RelayCellFormat, StreamId, msg as relaymsg};
     use tor_linkspec::{EncodedLinkSpec, HasRelayIds, LinkSpec};
     use tor_protover::{Protocols, named};
     use tor_rtcompat::SpawnExt;
@@ -429,7 +427,9 @@ pub(crate) mod test {
     impl ReactorTestCtrl {
         /// Spawn a relay circuit reactor, returning a `ReactorTestCtrl` for
         /// controlling it.
-        fn spawn_reactor<R: Runtime>(rt: &R) -> (Self, impl futures::Stream<Item = IncomingStream>) {
+        fn spawn_reactor<R: Runtime>(
+            rt: &R,
+        ) -> (Self, impl futures::Stream<Item = IncomingStream>) {
             let inbound_chan = working_dummy_channel(rt);
             let circid = CircId::new(1337).unwrap();
             let unique_id = UniqId::new(8, 17);
