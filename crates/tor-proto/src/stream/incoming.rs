@@ -141,7 +141,7 @@ impl IncomingStream {
     pub async fn reject(mut self, message: msg::End) -> Result<()> {
         let rx = self.reject_inner(CloseStreamBehavior::SendEnd(message))?;
 
-        rx.await.map_err(|_| Error::CircuitClosed)?.map(|_| ())
+        rx.await.map_err(|_| Error::CircuitClosed)?
     }
 
     /// Reject this request and possibly send an error message to the client.

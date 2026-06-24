@@ -533,6 +533,23 @@ pub(crate) mod test {
         }
     }
 
+    macro_rules! expect_cell {
+        ($cell:expr, $chanmsg:tt, $relaymsg:tt) => {{
+            let msg = match $cell.msg() {
+                chanmsg::AnyChanMsg::$chanmsg(m) => {
+                    let body = m.clone().into_relay_body();
+                    AnyRelayMsgOuter::decode_singleton(RelayCellFormat::V0, body).unwrap()
+                }
+                _ => panic!("unexpected forwarded {:?}", $cell),
+            };
+
+            match msg.msg() {
+                relaymsg::AnyRelayMsg::$relaymsg(m) => m.clone(),
+                _ => panic!("unexpected cell {msg:?}"),
+            }
+        }};
+    }
+
     #[traced_test]
     #[test]
     fn reject_extend2_relay() {
@@ -627,26 +644,9 @@ pub(crate) mod test {
                 .await;
             rt.advance_until_stalled().await;
 
-            macro_rules! expect_cell {
-                ($chanmsg:tt, $relaymsg:tt) => {{
-                    let cell = ctrl.read_outbound();
-                    let msg = match cell.msg() {
-                        chanmsg::AnyChanMsg::$chanmsg(m) => {
-                            let body = m.clone().into_relay_body();
-                            AnyRelayMsgOuter::decode_singleton(RelayCellFormat::V0, body).unwrap()
-                        }
-                        _ => panic!("unexpected forwarded {cell:?}"),
-                    };
-
-                    match msg.msg() {
-                        relaymsg::AnyRelayMsg::$relaymsg(m) => m.clone(),
-                        _ => panic!("unexpected cell {msg:?}"),
-                    }
-                }};
-            }
-
             // Ensure the other end received the BEGIN cell
-            let recvd_begin = expect_cell!(Relay, Begin);
+            let cell = ctrl.read_outbound();
+            let recvd_begin = expect_cell!(cell, Relay, Begin);
             assert_eq!(begin, recvd_begin);
 
             // Now send the same message again, but this time in a RELAY_EARLY
@@ -655,7 +655,8 @@ pub(crate) mod test {
             ctrl.send_fwd(None, begin.clone().into(), Recognized::No, early)
                 .await;
             rt.advance_until_stalled().await;
-            let recvd_begin = expect_cell!(RelayEarly, Begin);
+            let cell = ctrl.read_outbound();
+            let recvd_begin = expect_cell!(cell, RelayEarly, Begin);
             assert_eq!(begin, recvd_begin);
         });
     }
@@ -819,6 +820,50 @@ pub(crate) mod test {
             let mut recv_buf = [0_u8; TO_SEND.len()];
             stream.read_exact(&mut recv_buf).await.unwrap();
             assert_eq!(recv_buf, TO_SEND);
+        });
+    }
+
+    #[traced_test]
+    #[test]
+    fn reject_stream() {
+        tor_rtmock::MockRuntime::test_with_various(|rt| async move {
+            let mut ctrl = ReactorTestCtrl::spawn_reactor(&rt);
+            rt.advance_until_stalled().await;
+
+            let mut incoming_streams = ctrl
+                .allow_stream_requests(&[RelayCmd::BEGIN], AllowAllStreamsFilter)
+                .await;
+
+            let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
+            ctrl.send_fwd(StreamId::new(1), begin, Recognized::Yes, false)
+                .await;
+            rt.advance_until_stalled().await;
+
+            // We should have a pending incoming stream
+            let pending = incoming_streams.next().await.unwrap();
+
+            // Reject the stream, and wait for the reactor to finish sending the END
+            let end = relaymsg::End::new_misc();
+            pending.reject(end.clone()).await.unwrap();
+            rt.advance_until_stalled().await;
+
+            // The END cell written to the Tor channel should be the same as
+            // the one we sent above, in reject().
+            let cell = ctrl.read_inbound();
+            let actual_end = expect_cell!(cell, Relay, End);
+            assert_eq!(end.reason(), actual_end.reason());
+
+            // Sending another message on this stream results is flagged
+            // as a proto violation
+            let data = relaymsg::Data::new(b"no dice").unwrap().into();
+            ctrl.send_fwd(StreamId::new(1), data, Recognized::Yes, false)
+                .await;
+            rt.advance_until_stalled().await;
+
+            assert!(logs_contain("Stream protocol violation"));
+            assert!(logs_contain(
+                "Unexpected RelayCmd(DATA) message on unknown stream 1"
+            ));
         });
     }
 }
