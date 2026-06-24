@@ -483,7 +483,10 @@ impl ProtocolsInner {
     ///
     /// Uses `foundmask`, a bit mask saying which recognized protocols
     /// we've already found entries for.  Returns an error if `ent` is
-    /// for a protocol we've already added.
+    /// for a recognized protocol we've already added.
+    ///
+    /// WARNING: This method DOES NOT enforce uniqueness for unrecognized protocols.
+    /// The caller is responsible for doing that.
     ///
     /// Does not preserve sorting order; the caller must call `self.unrecognized.sort()` before returning.
     fn add(&mut self, foundmask: &mut u64, ent: SubprotocolEntry) -> Result<(), ParseError> {
@@ -498,14 +501,7 @@ impl ProtocolsInner {
                 *foundmask |= bit;
                 self.recognized[idx] = ent.supported;
             }
-            Protocol::Unrecognized(ref s) => {
-                if self
-                    .unrecognized
-                    .iter()
-                    .any(|ent| ent.proto.is_unrecognized(s))
-                {
-                    return Err(ParseError::Duplicate);
-                }
+            Protocol::Unrecognized(_) => {
                 if ent.supported != 0 {
                     self.unrecognized.push(ent);
                 }
@@ -644,6 +640,14 @@ impl std::str::FromStr for Protocols {
             result.add(&mut foundmask, s)?;
         }
         result.unrecognized.sort();
+        if result
+            .unrecognized
+            .windows(2)
+            .any(|w| w[0].proto == w[1].proto)
+        {
+            return Err(ParseError::Duplicate);
+        }
+
         Ok(result.into())
     }
 }
