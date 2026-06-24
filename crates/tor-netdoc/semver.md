@@ -1,3 +1,4 @@
+ADDED: `NetdocEncodable` for `RouterDescSignatures`
 ADDED: `ItemValueEncodable` for `RouterSignature`
 ADDED: `types::policy::IpPattern`
 ADDED: `types::policy::AddrPortPattern`: `addrs` and `ports` fields exposed
