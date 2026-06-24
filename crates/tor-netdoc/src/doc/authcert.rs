@@ -26,7 +26,7 @@ use tor_checkable::{
     Timebound, signed,
     timed::{self, TimerangeBound},
 };
-use tor_error::into_internal;
+use tor_error::{internal, into_internal};
 use tor_llcrypto::pk::rsa;
 use tor_llcrypto::{d, pk, pk::rsa::RsaIdentity};
 
@@ -283,7 +283,6 @@ impl AuthCert {
     }
 
     /// Parse an authority certificate from a reader.
-    #[allow(clippy::string_slice)] // TODO
     fn from_body(body: &Section<'_, AuthCertKwd>, s: &str) -> Result<UncheckedAuthCert> {
         use AuthCertKwd::*;
 
@@ -402,7 +401,10 @@ impl AuthCert {
             #[allow(clippy::unwrap_used)]
             let end_offset = body.last_item().unwrap().offset_in(s).unwrap();
             let end_offset = end_offset + "dir-key-certification\n".len();
-            sha1.update(&s[start_offset..end_offset]);
+            sha1.update(
+                s.get(start_offset..end_offset)
+                    .ok_or(internal!("chopped utf8"))?,
+            );
             let sha1 = sha1.finalize();
             // TODO: we need to accept prefixes here. COMPAT BLOCKER.
 
@@ -415,7 +417,9 @@ impl AuthCert {
             let start_idx = start_pos.offset_within(s);
             let end_idx = end_pos.offset_within(s);
             match (start_idx, end_idx) {
-                (Some(a), Some(b)) => Extent::new(s, &s[a..b + 1]),
+                (Some(a), Some(b)) => {
+                    Extent::new(s, s.get(a..b + 1).ok_or(internal!("chopped utf8"))?)
+                }
                 _ => None,
             }
         };

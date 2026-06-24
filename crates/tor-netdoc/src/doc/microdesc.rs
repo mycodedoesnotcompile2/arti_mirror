@@ -274,7 +274,6 @@ impl Microdesc {
     }
 
     /// Extract a single microdescriptor from a NetDocReader.
-    #[allow(clippy::string_slice)] // TODO
     fn parse_from_reader(
         reader: &mut NetDocReader<'_, MicrodescKwd>,
     ) -> Result<(Microdesc, Option<Extent>)> {
@@ -393,7 +392,7 @@ impl Microdesc {
             })?
         };
 
-        let text = &s[start_pos..end_pos];
+        let text = s.get(start_pos..end_pos).ok_or(internal!("chopped utf8"))?;
         let sha256 = d::Sha256::digest(text.as_bytes()).into();
 
         let location = Extent::new(s, text);
