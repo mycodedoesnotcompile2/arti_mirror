@@ -1,3 +1,12 @@
+ADDED: Various `parse2` and `encode` traits for `Intern<T>` wrapped types
+BREAKING: `SoftwareVersion::Other` now stores a `String`
+BREAKING: `Microdesc::ipv4_policy` now stored in `Intern`
+BREAKING: `Microdesc::ipv6_policy` now stored in `Intern`
+BREAKING: `RouterDesc::ipv6_policy` now stored in `Intern`
+BREAKING: `PortPolicy::intern()` now returns an `Intern`
+BREAKING: `Microdesc::family` now stored in `Intern`
+BREAKING: `RouterDesc::family` now stored in `Intern`
+BREAKING: `RelayFamily::intern()` now returning an `Intern`
 BREAKING: Ed25519 certificate verify methods now wrap around `TimerangeBound`
 ADDED: `NetdocParseableUnverified` for `RouterDesc`
 ADDED: `NetdocEncodableFields` for `AddrPolicy`

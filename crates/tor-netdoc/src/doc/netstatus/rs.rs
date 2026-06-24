@@ -50,6 +50,7 @@ pub enum SoftwareVersion {
 ///
 /// We use this because we expect there not to be very many distinct versions of
 /// relay software in existence.
+// TODO DIRAUTH: Improve the caching here.
 static OTHER_VERSION_CACHE: InternCache<str> = InternCache::new();
 
 /// `m` item in votes
@@ -91,7 +92,9 @@ impl std::str::FromStr for SoftwareVersion {
             }
         }
 
-        Ok(SoftwareVersion::Other(OTHER_VERSION_CACHE.intern_ref(s)))
+        Ok(SoftwareVersion::Other(
+            OTHER_VERSION_CACHE.intern_ref(s).into(),
+        ))
     }
 }
 

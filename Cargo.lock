@@ -6879,6 +6879,7 @@ dependencies = [
 name = "tor-basic-utils"
 version = "0.43.0"
 dependencies = [
+ "derive-deftly",
  "derive_more",
  "educe",
  "getrandom 0.4.2",

@@ -3,13 +3,12 @@
 //! Families are opt-in lists of relays with the same operators,
 //! used to avoid building insecure circuits.
 
-use std::sync::Arc;
-
 use crate::types::misc::LongIdent;
 use crate::{Error, NetdocErrorKind, NormalItemArgument, Pos, Result};
 use base64ct::Encoding;
 use derive_deftly::Deftly;
-use tor_basic_utils::intern::InternCache;
+use tor_basic_utils::derive_deftly_template_GloballyInternable;
+use tor_basic_utils::intern::{GloballyInternable, Intern};
 use tor_llcrypto::pk::ed25519::{ED25519_ID_LEN, Ed25519Identity};
 use tor_llcrypto::pk::rsa::RsaIdentity;
 
@@ -33,14 +32,8 @@ use tor_llcrypto::pk::rsa::RsaIdentity;
 //     (especially that RelayFamilyId is not the id of a RelayFamily)
 // See <https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4117#note_3428678>
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deftly)]
-#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
+#[derive_deftly(ItemValueEncodable, ItemValueParseable, GloballyInternable)]
 pub struct RelayFamily(Vec<LongIdent>);
-
-/// Cache of RelayFamily objects, for saving memory.
-//
-/// This only holds weak references to the policy objects, so we don't
-/// need to worry about running out of space because of stale entries.
-static FAMILY_CACHE: InternCache<RelayFamily> = InternCache::new();
 
 impl RelayFamily {
     /// Return a new empty RelayFamily.
@@ -61,9 +54,9 @@ impl RelayFamily {
 
     /// Consume this family, and return a new canonical interned representation
     /// of the family.
-    pub fn intern(mut self) -> Arc<Self> {
+    pub fn intern(mut self) -> Intern<Self> {
         self.normalize();
-        FAMILY_CACHE.intern(self)
+        Self::into_intern(self)
     }
 
     /// Does this family include the given relay?
