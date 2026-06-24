@@ -50,6 +50,10 @@ default:
     name: containers.torproject.org/tpo/tpa/base-images/debian:trixie
     docker:
       platform: linux/amd64
+  # TODO: Remove this runner restriction once the following is resolved:
+  # https://gitlab.torproject.org/tpo/tpa/team/-/work_items/42705
+  tags:
+    - tpa
   before_script:
     # get section_start and section_end bash functions
     - source maint/ci-log-span-fns.sh
