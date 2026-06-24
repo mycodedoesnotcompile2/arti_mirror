@@ -1,3 +1,4 @@
+ADDED: `NetdocEncodable` for `RouterDesc`
 ADDED: `NetdocEncodable` for `RouterDescSignatures`
 ADDED: `ItemValueEncodable` for `RouterSignature`
 ADDED: Derive `PartialEq` and `Eq` on `RouterDescSignatures`
