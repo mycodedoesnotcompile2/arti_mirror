@@ -2757,6 +2757,13 @@ pub mod routerdesc {
         }
     }
 
+    impl ItemValueEncodable for RouterSignature {
+        fn write_item_value_onto(&self, out: ItemEncoder) -> StdResult<(), Bug> {
+            out.object_bytes("SIGNATURE", &self.0);
+            Ok(())
+        }
+    }
+
     /// Estimated bandwidth for a router.
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:bandwidth>
