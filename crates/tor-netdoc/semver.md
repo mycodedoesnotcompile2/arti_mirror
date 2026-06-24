@@ -1,3 +1,4 @@
+ADDED: `Copy` for `Ed25519Public`
 ADDED: `NetdocEncodable` for `RouterDesc`
 ADDED: `NetdocEncodable` for `RouterDescSignatures`
 ADDED: `ItemValueEncodable` for `RouterSignature`
