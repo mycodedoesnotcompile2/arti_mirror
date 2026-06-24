@@ -108,7 +108,7 @@ pub struct RouterAnnotation {
 ///
 /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html>
 #[derive(Clone, Debug, Deftly, PartialEq, Eq)]
-#[derive_deftly(NetdocParseableUnverified)]
+#[derive_deftly(NetdocParseableUnverified, NetdocEncodable)]
 #[non_exhaustive]
 pub struct RouterDesc {
     /// `router` --- Introduce a router descriptor.
@@ -158,8 +158,7 @@ pub struct RouterDesc {
     /// `hibernating` --- Whether the relay is hibernating.
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:hibernating>
-    // TODO DIRAUTH: Mark this as `netdoc(default)` and skip during encoding if false.
-    #[deftly(netdoc(single_arg, default))]
+    #[deftly(netdoc(single_arg, default(skip)))]
     pub hibernating: NumericBoolean,
 
     /// `uptime` --- How long this relay has been continously running
@@ -200,6 +199,9 @@ pub struct RouterDesc {
     /// * Any number of times.
     // TODO: these polices can get bulky too. Perhaps we should
     // de-duplicate them too.
+    // Not skipping the default here is probably desirable, as this field should
+    // generally always be ended with a default policy (i.e. default accept,
+    // default deny).
     #[deftly(netdoc(flatten))]
     pub ipv4_policy: AddrPolicy,
 
@@ -207,7 +209,7 @@ pub struct RouterDesc {
     ///
     /// * `ipv6-policy <accept/reject> PortList`
     /// * At most once.
-    #[deftly(netdoc(default))]
+    #[deftly(netdoc(default(skip)))]
     pub ipv6_policy: Intern<PortPolicy>,
 
     /// `overload-general` --- Relay is overloaded.
@@ -227,7 +229,7 @@ pub struct RouterDesc {
     /// * `family <LongIdent> ...`
     /// * One or more `LongIdent` arguments.
     /// * At most once.
-    #[deftly(netdoc(default))]
+    #[deftly(netdoc(default(skip)))]
     pub family: Intern<RelayFamily>,
 
     /// `family-cert` --- Prove membership in a relay family.
