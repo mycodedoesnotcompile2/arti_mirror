@@ -195,7 +195,6 @@ impl Consensus {
     ///
     /// Returns the signed portion of the string, the remainder of the
     /// string, and an UncheckedConsensus.
-    #[allow(clippy::string_slice)] // TODO
     fn parse_from_reader<'a>(
         r: &mut NetDocReader<'a, NetstatusKwd>,
     ) -> crate::Result<(&'a str, &'a str, UncheckedConsensus)> {
@@ -270,8 +269,8 @@ impl Consensus {
         };
 
         // Find the appropriate digest.
-        let signed_str = &r.str()[start_pos..end_pos];
-        let remainder = &r.str()[end_pos..];
+        let signed_str = r.str().get(start_pos..end_pos).ok_or(internal!("chopped utf8"))?;
+        let remainder = r.str().get(end_pos..).ok_or(internal!("chopped utf8"))?;
         let (sha256, sha1) = match RouterStatus::flavor() {
             ConsensusFlavor::Plain => (
                 None,

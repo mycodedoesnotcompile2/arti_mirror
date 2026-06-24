@@ -654,7 +654,6 @@ impl RouterDesc {
     /// This function does the same as parse(), but returns errors based on
     /// byte-wise positions.  The parse() function converts such errors
     /// into line-and-byte positions.
-    #[allow(clippy::string_slice)] // TODO
     fn parse_internal(r: &mut NetDocReader<'_, RouterKwd>) -> Result<UncheckedRouterDesc> {
         // TODO: This function is too long!  The little "paragraphs" here
         // that parse one item at a time should be made into sub-functions.
@@ -758,7 +757,7 @@ impl RouterDesc {
             let mut d = ll::d::Sha256::new();
             d.update(&b"Tor router descriptor signature v1"[..]);
             let signed_end = ed_sig_pos + b"router-sig-ed25519 ".len();
-            d.update(&s[start_offset..signed_end]);
+            d.update(s.get(start_offset..signed_end).ok_or(internal!("chopped utf8"))?);
             let d = d.finalize();
             let sig: [u8; 64] = ed_sig
                 .parse_arg::<B64>(0)?
@@ -772,7 +771,7 @@ impl RouterDesc {
         let rsa_signature: ll::pk::rsa::ValidatableRsaSignature = {
             let mut d = ll::d::Sha1::new();
             let signed_end = rsa_sig_pos + b"router-signature\n".len();
-            d.update(&s[start_offset..signed_end]);
+            d.update(s.get(start_offset..signed_end).ok_or(internal!("chopped utf8"))?);
             let d = d.finalize();
             let sig = rsa_sig.obj("SIGNATURE")?;
             // TODO: we need to accept prefixes here. COMPAT BLOCKER.
