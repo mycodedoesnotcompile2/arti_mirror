@@ -1,3 +1,4 @@
+ADDED: `ItemValueEncodable` for `RouterSignature`
 ADDED: Derive `PartialEq` and `Eq` on `RouterDescSignatures`
 ADDED: Derive `PartialEq` and `Eq` on `RouterDesc`
 ADDED: Derive `PartialEq` and `Eq` on (embedded) certificate types
