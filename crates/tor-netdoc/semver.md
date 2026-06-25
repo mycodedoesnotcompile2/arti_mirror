@@ -1,3 +1,4 @@
+ADDED: Derive `PartialEq` and `Eq` on `RouterDescSignatures`
 ADDED: Derive `PartialEq` and `Eq` on `RouterDesc`
 ADDED: Derive `PartialEq` and `Eq` on (embedded) certificate types
 BREAKING: `Ed25519NtorCrossCert::new_signed()` now accepts an `&ExpandedKeypair`
