@@ -1456,11 +1456,11 @@ mod test {
         Ok(())
     }
 
-    // TODO: For now, this only tests if decoding works with a few field checks.
-    // It should be extended to a full roundtrip test with failed verification
-    // at one point eventually ...
+    /// Simple decoding and round-trip encoding for "normal" router descriptors.
+    ///
+    /// In other words: No edge cases and such.
     #[test]
-    fn test_parse2() {
+    fn test_parse2_simple() {
         let input = ParseInput::new(
             include_str!("../../testdata2/cached-descriptors.new"),
             "cached-descriptors.new",
