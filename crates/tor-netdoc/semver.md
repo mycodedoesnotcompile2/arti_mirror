@@ -49,3 +49,4 @@ ADDED: `Microdesc`, `RelayFamily`, `RelayFamilyIds` are encodable
 ADDED: `MicrodescConstructor`
 ADDED: `NetdocEncodable` derive, `#[deftly(netdoc(default(skip)))]` option
 ADDED: `MicrodescIntroItem`
+BREAKING: `Microdesc` split into `Microdesc` and `MicrodescAndHash`

@@ -72,7 +72,7 @@ use tor_linkspec::{
 };
 use tor_llcrypto as ll;
 use tor_llcrypto::pk::{ed25519::Ed25519Identity, rsa::RsaIdentity};
-use tor_netdoc::doc::microdesc::{MdDigest, Microdesc};
+use tor_netdoc::doc::microdesc::{MdDigest, MicrodescAndHash};
 use tor_netdoc::doc::netstatus::{self, MdConsensus, MdRouterStatus};
 #[cfg(feature = "hs-common")]
 use {hsdir_ring::HsDirRing, std::iter};
@@ -415,7 +415,7 @@ pub struct NetDir {
     /// and clamped to certain defaults.
     params: NetParameters,
     /// Map from routerstatus index, to that routerstatus's microdescriptor (if we have one.)
-    mds: TiVec<RouterStatusIdx, Option<Arc<Microdesc>>>,
+    mds: TiVec<RouterStatusIdx, Option<Arc<MicrodescAndHash>>>,
     /// Map from SHA256 of _missing_ microdescriptors to the index of their
     /// corresponding routerstatus.
     rsidx_by_missing: HashMap<MdDigest, RouterStatusIdx>,
@@ -806,7 +806,7 @@ pub struct Relay<'a> {
     /// A router descriptor for this relay.
     rs: &'a netstatus::MdRouterStatus,
     /// A microdescriptor for this relay.
-    md: &'a Microdesc,
+    md: &'a MicrodescAndHash,
     /// The country code this relay is in, if we know one.
     #[cfg(feature = "geoip")]
     cc: Option<CountryCode>,
@@ -819,7 +819,7 @@ pub struct UncheckedRelay<'a> {
     /// A router descriptor for this relay.
     rs: &'a netstatus::MdRouterStatus,
     /// A microdescriptor for this relay, if there is one.
-    md: Option<&'a Microdesc>,
+    md: Option<&'a MicrodescAndHash>,
     /// The country code this relay is in, if we know one.
     #[cfg(feature = "geoip")]
     cc: Option<CountryCode>,
@@ -834,7 +834,7 @@ pub trait MdReceiver {
     /// Add a microdescriptor to this netdir, if it was wanted.
     ///
     /// Return true if it was indeed wanted.
-    fn add_microdesc(&mut self, md: Microdesc) -> bool;
+    fn add_microdesc(&mut self, md: MicrodescAndHash) -> bool;
     /// Return the number of missing microdescriptors.
     fn n_missing(&self) -> usize;
 }
@@ -1016,7 +1016,7 @@ impl MdReceiver for PartialNetDir {
     fn missing_microdescs(&self) -> Box<dyn Iterator<Item = &MdDigest> + '_> {
         self.netdir.missing_microdescs()
     }
-    fn add_microdesc(&mut self, md: Microdesc) -> bool {
+    fn add_microdesc(&mut self, md: MicrodescAndHash) -> bool {
         self.netdir.add_microdesc(md)
     }
     fn n_missing(&self) -> usize {
@@ -1033,7 +1033,7 @@ impl NetDir {
     /// Add `md` to this NetDir.
     ///
     /// Return true if we wanted it, and false otherwise.
-    fn add_arc_microdesc(&mut self, md: Arc<Microdesc>) -> bool {
+    fn add_arc_microdesc(&mut self, md: Arc<MicrodescAndHash>) -> bool {
         if let Some(rsidx) = self.rsidx_by_missing.remove(md.digest()) {
             assert_eq!(self.c_relays()[rsidx].md_digest(), md.digest());
 
@@ -1177,9 +1177,9 @@ impl NetDir {
         self.all_relays().filter_map(UncheckedRelay::into_relay)
     }
 
-    /// Look up a relay's [`Microdesc`] by its [`RouterStatusIdx`]
+    /// Look up a relay's [`MicrodescAndHash`] by its [`RouterStatusIdx`]
     #[cfg_attr(not(feature = "hs-common"), allow(dead_code))]
-    pub(crate) fn md_by_rsidx(&self, rsidx: RouterStatusIdx) -> Option<&Microdesc> {
+    pub(crate) fn md_by_rsidx(&self, rsidx: RouterStatusIdx) -> Option<&MicrodescAndHash> {
         self.mds.get(rsidx)?.as_deref()
     }
 
@@ -2091,7 +2091,7 @@ impl MdReceiver for NetDir {
     fn missing_microdescs(&self) -> Box<dyn Iterator<Item = &MdDigest> + '_> {
         Box::new(self.rsidx_by_missing.keys())
     }
-    fn add_microdesc(&mut self, md: Microdesc) -> bool {
+    fn add_microdesc(&mut self, md: MicrodescAndHash) -> bool {
         self.add_arc_microdesc(Arc::new(md))
     }
     fn n_missing(&self) -> usize {
@@ -2187,7 +2187,7 @@ impl<'a> Relay<'a> {
     /// This function is only available if the crate was built with
     /// its `experimental-api` feature.
     #[cfg(feature = "experimental-api")]
-    pub fn md(&self) -> &Microdesc {
+    pub fn md(&self) -> &MicrodescAndHash {
         self.md
     }
 }
