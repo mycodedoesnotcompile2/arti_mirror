@@ -114,7 +114,7 @@ pub struct NamedSubver {
     kind: ProtoKind,
     /// The version of the protocol
     ///
-    /// Must be in 0..=MAX_VER
+    /// Must be in 1..=MAX_VER
     version: u8,
 }
 
@@ -519,7 +519,7 @@ impl ProtocolsInner {
 #[derive(Error, Debug, PartialEq, Eq, Clone)]
 #[non_exhaustive]
 pub enum ParseError {
-    /// A protocol version was not in the range 0..=63.
+    /// A protocol version was not in the range 1..=63.
     #[error("Protocol version out of range")]
     OutOfRange,
     /// Some subprotocol or protocol version appeared more than once.
