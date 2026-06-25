@@ -12,9 +12,9 @@ use crate::circuit::celltypes::{CreateRequest, CreateResponse};
 use crate::circuit::circhop::{HopNegotiationType, HopSettings};
 use crate::client::circuit::CircParameters;
 use crate::client::circuit::padding::PaddingController;
+use crate::crypto::binding::CircuitBinding;
 use crate::crypto::cell::CryptInit as _;
-use crate::crypto::cell::RelayLayer as _;
-use crate::crypto::cell::{InboundRelayLayer, OutboundRelayLayer, tor1};
+use crate::crypto::cell::{InboundRelayLayer, OutboundRelayLayer, RelayLayer, tor1};
 use crate::crypto::handshake::RelayHandshakeError;
 use crate::crypto::handshake::ServerHandshake as _;
 use crate::crypto::handshake::fast::CreateFastServer;
@@ -241,8 +241,7 @@ impl CreateRequestHandler {
         let response = CreatedFast::new(handshake_msg);
         let response = CreateResponse::CreatedFast(response);
 
-        let (crypto_out, crypto_in, _binding) = crypt.split_relay_layer();
-        let (crypto_out, crypto_in) = (Box::new(crypto_out), Box::new(crypto_in));
+        let (crypto_out, crypto_in, _binding) = split_relay_layer(crypt);
 
         Ok(CompletedHandshakeComponents {
             response,
@@ -271,6 +270,24 @@ impl CreateRequestHandler {
             HandshakeType::NTOR_V3,
         ))
     }
+}
+
+/// Helper function to split a `RelayLayer` into forward and backward type-erased trait objects.
+fn split_relay_layer<F, B>(
+    crypt: impl RelayLayer<F, B>,
+) -> (
+    Box<dyn OutboundRelayLayer + Send>,
+    Box<dyn InboundRelayLayer + Send>,
+    CircuitBinding,
+)
+where
+    F: OutboundRelayLayer + Send + 'static,
+    B: InboundRelayLayer + Send + 'static,
+{
+    let (crypto_out, crypto_in, binding) = crypt.split_relay_layer();
+    let (crypto_out, crypto_in) = (Box::new(crypto_out), Box::new(crypto_in));
+
+    (crypto_out, crypto_in, binding)
 }
 
 /// An error that occurred while handling a CREATE* request.
