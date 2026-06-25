@@ -107,7 +107,7 @@ pub struct RouterAnnotation {
 /// # Specification
 ///
 /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html>
-#[derive(Clone, Debug, Deftly)]
+#[derive(Clone, Debug, Deftly, PartialEq, Eq)]
 #[derive_deftly(NetdocParseableUnverified)]
 #[non_exhaustive]
 pub struct RouterDesc {
