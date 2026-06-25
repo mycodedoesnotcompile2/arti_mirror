@@ -1465,11 +1465,12 @@ mod test {
         let rd = parse2::parse_netdoc_multiple::<RouterDescUnverified>(&input)
             .unwrap()
             .into_iter()
-            .map(|rd| rd.unwrap_unverified().0)
-            .collect::<Vec<RouterDesc>>();
+            .map(|rd| rd.unwrap_unverified())
+            .map(|(body, sig)| (body, sig.sigs))
+            .collect::<Vec<(RouterDesc, RouterDescSignatures)>>();
         assert_eq!(rd.len(), 20);
         assert_eq!(
-            rd[0].router,
+            rd[0].0.router,
             RouterDescIntroItem {
                 nickname: "test002a".parse().unwrap(),
                 address: net::Ipv4Addr::LOCALHOST,
@@ -1479,7 +1480,7 @@ mod test {
             }
         );
         assert_eq!(
-            rd[0].fingerprint.unwrap(),
+            rd[0].0.fingerprint.unwrap(),
             "257D 06F0 360B B224 6388 724F 109E C089 5A1D 41FB"
                 .parse()
                 .unwrap()
