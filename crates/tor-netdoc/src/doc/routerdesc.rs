@@ -298,6 +298,7 @@ pub struct RouterDescSignatures {
 }
 
 // TODO: Implement a .verify() method.
+// TODO: Implement a .encode_sign() method.
 impl RouterDescUnverified {}
 
 /// Description of the software a relay is running.
