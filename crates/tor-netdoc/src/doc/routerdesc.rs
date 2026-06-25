@@ -1210,7 +1210,10 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
-    use crate::parse2::{self, NetdocParseableUnverified, ParseInput};
+    use crate::{
+        encode::{NetdocEncodable, NetdocEncoder},
+        parse2::{self, NetdocParseableUnverified, ParseInput},
+    };
 
     use super::*;
     const TESTDATA: &str = include_str!("../../testdata/routerdesc1.txt");
@@ -1485,5 +1488,24 @@ mod test {
                 .parse()
                 .unwrap()
         );
+
+        // Round-trip encoding by verifying that decoding it equals the original.
+        // This is the best we can get as the current encoder is not bug for
+        // bug compatible with the CTor one (i.e. absence of TAP and different
+        // order), so this is the closest we can get.
+        let mut out = NetdocEncoder::new();
+        for (body, sig) in &rd {
+            body.encode_unsigned(&mut out).unwrap();
+            sig.encode_unsigned(&mut out).unwrap();
+        }
+        let out = out.finish().unwrap();
+        let input2 = ParseInput::new(out.as_str(), "<router descriptor encoding>");
+        let rd2 = parse2::parse_netdoc_multiple::<RouterDescUnverified>(&input2)
+            .unwrap()
+            .into_iter()
+            .map(|rd| rd.unwrap_unverified())
+            .map(|(body, sig)| (body, sig.sigs))
+            .collect::<Vec<(RouterDesc, _)>>();
+        assert_eq!(rd, rd2);
     }
 }
