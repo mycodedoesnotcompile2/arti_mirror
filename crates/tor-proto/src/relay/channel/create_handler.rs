@@ -218,7 +218,10 @@ impl CreateRequestHandler {
         // TODO(relay): We might want to offload this to a CPU worker in the future.
         let (keygen, handshake_msg) = CreateFastServer::server(
             &mut rand::rng(),
+            // The CREATE_FAST handshake doesn't accept or return extensions,
+            // so this `AuxDataReply` is a no-op.
             &mut |_: &()| Some(()),
+            // The CREATE_FAST handshake doesn't use any keys.
             &[()],
             msg.handshake(),
         )?;
@@ -266,6 +269,8 @@ impl CreateRequestHandler {
         // TODO(relay): We might want to offload this to a CPU worker in the future.
         let (keygen, handshake_msg) = NtorServer::server(
             &mut rand::rng(),
+            // The ntor (non-v3) handshake doesn't accept or return extensions,
+            // so this `AuxDataReply` is a no-op.
             &mut |_: &()| Some(()),
             ntor_keys.as_ref(),
             msg_body,
