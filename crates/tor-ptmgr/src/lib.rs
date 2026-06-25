@@ -93,9 +93,7 @@ use {
 #[derive(Default, Debug)]
 struct PtSharedState {
     /// Connection information for pluggable transports from currently running binaries.
-    ///
-    /// Unmanaged pluggable transports are not included in this map.
-    #[allow(dead_code)]
+    #[cfg(feature = "managed-pts")]
     managed_cmethods: HashMap<PtTransportName, PtClientMethod>,
     /// Current configured set of pluggable transports.
     configured: HashMap<PtTransportName, TransportOptions>,
@@ -153,6 +151,7 @@ impl<R: Runtime> PtMgr<R> {
         rt: R,
     ) -> Result<Self, PtError> {
         let state = PtSharedState {
+            #[cfg(feature = "managed-pts")]
             managed_cmethods: Default::default(),
             configured: Self::transform_config(transports)?,
             outbound_proxy,
