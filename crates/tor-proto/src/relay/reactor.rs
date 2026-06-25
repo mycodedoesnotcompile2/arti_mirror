@@ -127,7 +127,11 @@ impl<R: Runtime> Reactor<R> {
     /// An incoming stream is automatically rejected by the reactor
     /// if the provided `IncomingStreamRequestFilter` rejects it.
     /// You can also explicitly reject a stream by calling [`IncomingStream::reject`].
-    /// If the `Stream` is dropped, the next request on this reactor will cause it to close.
+    /// If the `Stream` is dropped, the next incoming stream request
+    /// (`BEGIN`, `BEGIN_DIR`, or RESOLVE`)
+    /// on this circuit will cause the stream reactor to shut down,
+    /// which will trigger a shutdown of all the circuit reactors (FWD, BWD),
+    /// which causing the circuit to close.
     ///
     /// The streams not rejected by the `IncomingStreamRequestFilter` will
     /// get an entry in the circuit's stream map.
