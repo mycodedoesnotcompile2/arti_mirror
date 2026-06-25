@@ -229,11 +229,9 @@ impl CreateRequestHandler {
             // CREATE_FAST always uses fixed-window flow control.
             .as_circ_parameters(AlgorithmDiscriminants::FixedWindow)?;
 
-        // TODO(relay): I think we might want to get these from the consensus instead?
-        let protos = tor_protover::Protocols::default();
-
-        // TODO(relay): I'm not sure if this is the right way to do this. It works for
+        // TODO(relay): I don't think that this is the right way to do this. It works for
         // CREATE_FAST, but we might want to rethink it for CREATE2.
+        let protos = tor_protover::Protocols::default();
         let hop_settings =
             HopSettings::from_params_and_caps(HopNegotiationType::None, &circ_params, &protos)
                 .map_err(into_internal!("Unable to build `HopSettings`"))?;
