@@ -181,6 +181,11 @@ impl<R: Runtime> Reactor<R> {
         /// The size of the channel receiving IncomingStreamRequestContexts.
         ///
         // TODO(relay-tuning): buffer size
+        //
+        // This is currently set to 2x the initial receive window,
+        // the same as the buffer size we use for onion services.
+        // This value was picked arbitrarily,
+        // and is not necessarily tuned for relay needs.
         const INCOMING_BUFFER: usize = crate::stream::STREAM_READER_BUFFER;
 
         let time_provider = DynTimeProvider::new(runtime.clone());
