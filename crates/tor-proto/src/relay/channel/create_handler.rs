@@ -26,7 +26,7 @@ use crate::relay::reactor::Reactor;
 use std::sync::{Arc, RwLock, Weak};
 use tor_cell::chancell::ChanMsg as _;
 use tor_cell::chancell::CircId;
-use tor_cell::chancell::msg::{CreateFast, CreatedFast, Destroy, DestroyReason};
+use tor_cell::chancell::msg::{CreateFast, CreatedFast, Destroy, DestroyReason, HandshakeType};
 use tor_error::{Bug, ErrorKind, HasKind, debug_report, internal, into_internal};
 use tor_linkspec::OwnedChanTarget;
 use tor_llcrypto::cipher::aes::Aes128Ctr;
@@ -129,9 +129,8 @@ impl CreateRequestHandler {
         &self,
         runtime: &R,
         channel: &Arc<Channel>,
-        // TODO(relay): Use these for ntor handshakes.
-        _our_ed25519_id: &Ed25519Identity,
-        _our_rsa_id: &RsaIdentity,
+        our_ed25519_id: &Ed25519Identity,
+        our_rsa_id: &RsaIdentity,
         circ_id: CircId,
         msg: &CreateRequest,
         memquota: &ChannelAccount,
@@ -140,11 +139,13 @@ impl CreateRequestHandler {
         // Perform the handshake crypto and build the response.
         let handshake_components = match msg {
             CreateRequest::CreateFast(msg) => self.handle_create_fast(msg)?,
-            CreateRequest::Create2(_) => {
-                // TODO(relay): We might want to offload this to a CPU worker in the future.
-                // TODO(relay): Implement this.
-                return Err(internal!("Not implemented").into());
-            }
+            CreateRequest::Create2(msg) => match msg.handshake_type() {
+                HandshakeType::NTOR_V3 => self.handle_create2_ntorv3(msg.body(), our_ed25519_id)?,
+                HandshakeType::NTOR => self.handle_create2_ntor(msg.body(), our_rsa_id)?,
+                x @ HandshakeType::TAP | x => {
+                    return Err(HandleCreateError::Create2HandshakeType(x));
+                }
+            },
         };
 
         let memquota = CircuitAccount::new(memquota)?;
@@ -250,6 +251,26 @@ impl CreateRequestHandler {
             crypto_in,
         })
     }
+
+    /// The handshake code for a CREATE2 ntor (non-v3) request.
+    fn handle_create2_ntor(
+        &self,
+        _msg_body: &[u8],
+        _our_rsa_id: &RsaIdentity,
+    ) -> Result<CompletedHandshakeComponents, HandleCreateError> {
+        Err(HandleCreateError::Create2HandshakeType(HandshakeType::NTOR))
+    }
+
+    /// The handshake code for a CREATE2 ntor-v3 request.
+    fn handle_create2_ntorv3(
+        &self,
+        _msg_body: &[u8],
+        _our_ed25519_id: &Ed25519Identity,
+    ) -> Result<CompletedHandshakeComponents, HandleCreateError> {
+        Err(HandleCreateError::Create2HandshakeType(
+            HandshakeType::NTOR_V3,
+        ))
+    }
 }
 
 /// An error that occurred while handling a CREATE* request.
@@ -258,6 +279,9 @@ enum HandleCreateError {
     /// Circuit relay handshake failed.
     #[error("Circuit relay handshake failed")]
     Handshake(#[from] RelayHandshakeError),
+    /// The requested handshake type is unsupported.
+    #[error("Unsupported handshake type {0}")]
+    Create2HandshakeType(HandshakeType),
     /// A memquota error.
     #[error("Memquota error")]
     Memquota(#[from] tor_memquota::Error),
@@ -276,6 +300,7 @@ impl HasKind for HandleCreateError {
     fn kind(&self) -> ErrorKind {
         match self {
             Self::Handshake(e) => e.kind(),
+            Self::Create2HandshakeType(_) => ErrorKind::NotImplemented,
             Self::Memquota(e) => e.kind(),
             Self::Spawn(e) => e.kind(),
             Self::Internal(_) => ErrorKind::Internal,
