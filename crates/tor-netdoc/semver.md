@@ -1,3 +1,4 @@
+ADDED: Derive `PartialEq` and `Eq` on (embedded) certificate types
 ADDED: Various `parse2` and `encode` traits for `Intern<T>` wrapped types
 BREAKING: `SoftwareVersion::Other` now stores a `String`
 BREAKING: `Microdesc::ipv4_policy` now stored in `Intern`
