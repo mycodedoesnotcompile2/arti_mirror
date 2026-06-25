@@ -18,15 +18,19 @@ use crate::crypto::cell::{InboundRelayLayer, OutboundRelayLayer, RelayLayer, tor
 use crate::crypto::handshake::RelayHandshakeError;
 use crate::crypto::handshake::ServerHandshake as _;
 use crate::crypto::handshake::fast::CreateFastServer;
+use crate::crypto::handshake::ntor::{NtorSecretKey, NtorServer};
 use crate::memquota::SpecificAccount as _;
 use crate::memquota::{ChannelAccount, CircuitAccount};
 use crate::relay::RelayCirc;
 use crate::relay::channel_provider::ChannelProvider;
 use crate::relay::reactor::Reactor;
+use smallvec::SmallVec;
 use std::sync::{Arc, RwLock, Weak};
 use tor_cell::chancell::ChanMsg as _;
 use tor_cell::chancell::CircId;
-use tor_cell::chancell::msg::{CreateFast, CreatedFast, Destroy, DestroyReason, HandshakeType};
+use tor_cell::chancell::msg::{
+    CreateFast, Created2, CreatedFast, Destroy, DestroyReason, HandshakeType,
+};
 use tor_error::{Bug, ErrorKind, HasKind, debug_report, internal, into_internal};
 use tor_linkspec::OwnedChanTarget;
 use tor_llcrypto::cipher::aes::Aes128Ctr;
@@ -35,7 +39,7 @@ use tor_llcrypto::pk::ed25519::Ed25519Identity;
 use tor_llcrypto::pk::rsa::RsaIdentity;
 use tor_memquota::mq_queue::ChannelSpec as _;
 use tor_memquota::mq_queue::MpscSpec;
-use tor_relay_crypto::pk::RelayNtorKeys;
+use tor_relay_crypto::pk::{RelayNtorKeypair, RelayNtorKeys};
 use tor_rtcompat::SpawnExt as _;
 use tor_rtcompat::{DynTimeProvider, Runtime};
 use tracing::warn;
@@ -252,10 +256,49 @@ impl CreateRequestHandler {
     /// The handshake code for a CREATE2 ntor (non-v3) request.
     fn handle_create2_ntor(
         &self,
-        _msg_body: &[u8],
-        _our_rsa_id: &RsaIdentity,
+        msg_body: &[u8],
+        our_rsa_id: &RsaIdentity,
     ) -> Result<CompletedHandshakeComponents, HandleCreateError> {
-        Err(HandleCreateError::Create2HandshakeType(HandshakeType::NTOR))
+        let ntor_keys = self.ntor_keys(|k| {
+            NtorSecretKey::new(k.secret().clone(), *k.public().inner(), *our_rsa_id)
+        });
+
+        // TODO(relay): We might want to offload this to a CPU worker in the future.
+        let (keygen, handshake_msg) = NtorServer::server(
+            &mut rand::rng(),
+            &mut |_: &()| Some(()),
+            ntor_keys.as_ref(),
+            msg_body,
+        )?;
+
+        let crypt = tor1::CryptStatePair::<Aes128Ctr, Sha1>::construct(keygen)
+            .map_err(into_internal!("Circuit crypt state construction failed"))?;
+
+        let (crypto_out, crypto_in, _binding) = split_relay_layer(crypt);
+
+        let circ_params = self
+            .circ_net_params
+            .read()
+            .expect("rwlock poisoned")
+            // CREATE2 with ntor (non-v3) always uses fixed-window flow control.
+            .as_circ_parameters(AlgorithmDiscriminants::FixedWindow)?;
+
+        // TODO(relay): I don't think that this is the right way to do this. It works for
+        // ntor, but won't work well for ntor-v3.
+        let protos = tor_protover::Protocols::default();
+        let hop_settings =
+            HopSettings::from_params_and_caps(HopNegotiationType::None, &circ_params, &protos)
+                .map_err(into_internal!("Unable to build `HopSettings`"))?;
+
+        let response = Created2::new(handshake_msg);
+        let response = CreateResponse::Created2(response);
+
+        Ok(CompletedHandshakeComponents {
+            response,
+            hop_settings,
+            crypto_out,
+            crypto_in,
+        })
     }
 
     /// The handshake code for a CREATE2 ntor-v3 request.
@@ -267,6 +310,23 @@ impl CreateRequestHandler {
         Err(HandleCreateError::Create2HandshakeType(
             HandshakeType::NTOR_V3,
         ))
+    }
+
+    /// Helper to get the ntor keypairs after some transformation `map`.
+    ///
+    /// The `map` transformation must be fast since it blocks a read lock.
+    /// The returned keys are sorted with the most recent key first.
+    ///
+    /// It would be nice if this just returned an iterator,
+    /// but the read lock prevents this.
+    fn ntor_keys<T>(&self, map: impl FnMut(&RelayNtorKeypair) -> T) -> impl AsRef<[T]> {
+        let ntor_keys = self.ntor_keys.read().expect("rwlock poisoned");
+        let ntor_keys = [Some(ntor_keys.latest()), ntor_keys.previous()];
+        ntor_keys
+            .into_iter()
+            .flatten()
+            .map(map)
+            .collect::<SmallVec<[T; 2]>>()
     }
 }
 
