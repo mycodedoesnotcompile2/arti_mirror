@@ -5,7 +5,8 @@ use tor_proto::stream::{
     IncomingStreamRequestContext, IncomingStreamRequestDisposition, IncomingStreamRequestFilter,
 };
 
-/// Filter callback used to enforce early requirements on streams.
+/// Filter callback used to enforce early requirements on streams,
+/// acting as an [`IncomingStreamRequestFilter`].
 #[derive(Clone, Debug, Default)]
 pub(crate) struct RequestFilter {
     // TODO(relay): implement
