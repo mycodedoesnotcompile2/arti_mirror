@@ -142,10 +142,12 @@ impl<R: Runtime> Reactor<R> {
     /// More expensive, or blocking checks, should be handled outside of the circuit reactor,
     /// when processing new `IncomingStream`s from the returned Rust stream.
     ///
-    /// The user of the reactor **must** handle this stream
-    /// (either by accepting it and opening and proxying the corresponding
-    /// streams as appropriate, or by [.reject()](IncomingStream::reject)ing it).
+    /// Data and directory streams can be accepted by calling [`IncomingStream::accept_data`].
+    /// The caller is responsible for proxying data between the resulting `DataStream`
+    /// and the local application stream.
     ///
+    // TODO(relay): say how RESOLVE streams should be handled
+    //
     // TODO: declare a type-alias for the impl futures::Stream return type
     // when support for impl in type aliases gets stabilized.
     //
