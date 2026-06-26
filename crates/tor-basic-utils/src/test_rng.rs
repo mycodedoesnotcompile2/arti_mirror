@@ -64,7 +64,7 @@
 use rand::{Rng, SeedableRng};
 // We'll use the same PRNG as the (current) standard.  We specify it here rather
 // than using StdRng, since we want determinism in the future.
-pub use rand_chacha::ChaCha12Rng as TestingRng;
+pub use rand::rngs::ChaCha12Rng as TestingRng;
 
 /// The seed type for the RNG we're returning.
 type Seed = <TestingRng as SeedableRng>::Seed;

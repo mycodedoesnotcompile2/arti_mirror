@@ -823,7 +823,7 @@ mod test {
         for th_idx in 0..n_threads {
             let conn = Arc::clone(&conn);
             let n_completed = Arc::clone(&n_completed);
-            let mut rng = rand_chacha::ChaCha12Rng::from_seed(rng.random());
+            let mut rng = rand::rngs::ChaCha12Rng::from_seed(rng.random());
             let th = thread::spawn(move || {
                 for cmd_idx in 0..n_commands_per_thread {
                     // We are spawning a bunch of worker threads,
@@ -887,7 +887,7 @@ mod test {
 
         // -----
         // Worker thread: handles user requests.
-        let worker_rng = rand_chacha::ChaCha12Rng::from_seed(rng.random());
+        let worker_rng = rand::rngs::ChaCha12Rng::from_seed(rng.random());
         let worker_thread = thread::spawn(move || {
             let mut rng = worker_rng;
             let mut sock = BufReader::new(sock);
