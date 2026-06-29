@@ -163,13 +163,19 @@ impl NumberedSubver {
     pub fn into_parts(self) -> (ProtoKind, u8) {
         (self.kind, self.version)
     }
+    /// Construct a new [`NumberedSubver`] from an existing [`NamedSubver`].
+    ///
+    /// This is a `const` version of `From<NamedSubver> for NumberedSubver`.
+    pub const fn from_named(subver: NamedSubver) -> Self {
+        Self {
+            kind: subver.kind,
+            version: subver.version,
+        }
+    }
 }
 impl From<NamedSubver> for NumberedSubver {
     fn from(value: NamedSubver) -> Self {
-        Self {
-            kind: value.kind,
-            version: value.version,
-        }
+        Self::from_named(value)
     }
 }
 
