@@ -1,3 +1,6 @@
+ADDED: `NetdocEncodable` for `RouterDesc`
+ADDED: `NetdocEncodable` for `RouterDescSignatures`
+ADDED: `ItemValueEncodable` for `RouterSignature`
 ADDED: Derive `PartialEq` and `Eq` on `RouterDescSignatures`
 ADDED: Derive `PartialEq` and `Eq` on `RouterDesc`
 ADDED: Derive `PartialEq` and `Eq` on (embedded) certificate types
