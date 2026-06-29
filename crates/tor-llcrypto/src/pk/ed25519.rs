@@ -543,6 +543,12 @@ impl Ed25519PublicKey for Keypair {
     }
 }
 
+impl Ed25519PublicKey for ExpandedKeypair {
+    fn public_key(&self) -> PublicKey {
+        self.public
+    }
+}
+
 /// An object that can generate Ed25519 signatures.
 pub trait Ed25519SigningKey {
     /// Sign a message with this key.
