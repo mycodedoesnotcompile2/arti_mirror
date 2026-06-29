@@ -220,6 +220,7 @@ impl CreateRequestHandler {
             padding_ctrl.clone(),
             padding_stream,
             incoming_filter,
+            &self.allowed_stream_cmds,
             &memquota,
         )
         .map_err(into_internal!("Failed to start circuit reactor"))?;

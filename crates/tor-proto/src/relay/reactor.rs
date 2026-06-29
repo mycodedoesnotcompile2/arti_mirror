@@ -171,6 +171,7 @@ impl<R: Runtime> Reactor<R> {
         padding_ctrl: PaddingController,
         padding_event_stream: PaddingEventStream,
         incoming_filter: Box<dyn IncomingStreamRequestFilter>,
+        allowed_stream_cmds: &[RelayCmd],
         memquota: &CircuitAccount,
     ) -> crate::Result<(
         Self,
@@ -204,7 +205,7 @@ impl<R: Runtime> Reactor<R> {
         // by the IncomingStreamRequestFilter, or directly by the consumer of the
         // futures::Stream<Item = IncomingStream> (by calling IncomingStream::reject()).
         let cmd_checker =
-            IncomingCmdChecker::new_any(&[RelayCmd::BEGIN, RelayCmd::BEGIN_DIR, RelayCmd::RESOLVE]);
+            IncomingCmdChecker::new_any(allowed_stream_cmds);
         let incoming_handler = IncomingStreamRequestHandler {
             incoming_sender,
             hop_num: None,
