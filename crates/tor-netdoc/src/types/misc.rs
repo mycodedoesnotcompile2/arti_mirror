@@ -1914,18 +1914,11 @@ mod edcert {
 
             // Fish out the expiration date from the certificate.
             //
-            // TimerangeBound also requires a lower-bound, for which we will use
-            // SystemTime::UNIX_EPOCH, because this is the minimum possible
-            // value allowed in the expiration date of Tor certificates.
-            // Besides, Tor certificates do not contain a valid-after anyways,
-            // meaning we cannot really put something more meaningful here.
-            // It differs from the legacy parser in that regard, because that
-            // parser uses the `published` field found in router descriptors
-            // minus a tolerance.  However, we cannot make use of this field
-            // here because we do not have access to the full router descriptor
-            // in this function.  This should be okay though.
+            // Important: We must not set SystemTime::UNIX_EPOCH as the lower
+            // bound, because with TimerangeBound, a lower-bound of zero is not
+            // equal to an absent lower bound!
             let cert = cert.dangerously_assume_timely();
-            let expiration = SystemTime::UNIX_EPOCH..cert.expiry();
+            let expiration = ..cert.expiry();
 
             Ok((
                 SignatureGated::new(
