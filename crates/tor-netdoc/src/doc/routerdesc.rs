@@ -322,6 +322,7 @@ impl RouterDescUnverified {
     // We deny the use of unused variables as a hint to use all TimerangeBound
     // values obtained through a dangerous split.
     #[deny(unused_variables)]
+    #[allow(dead_code)] // TODO
     fn verify(self) -> std::result::Result<TimerangeBound<RouterDesc>, VerifyFailed> {
         // Type annotations to make LSP happy.
         let (mut body, sigs): (RouterDesc, SignaturesData<_>) = (self.body, self.sigs);
