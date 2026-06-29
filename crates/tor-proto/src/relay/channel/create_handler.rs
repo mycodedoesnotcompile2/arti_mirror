@@ -262,11 +262,6 @@ impl CreateRequestHandler {
             msg.handshake(),
         )?;
 
-        let crypt = tor1::CryptStatePair::<Aes128Ctr, Sha1>::construct(keygen)
-            .map_err(into_internal!("Circuit crypt state construction failed"))?;
-
-        let (crypto_out, crypto_in, _binding) = split_relay_layer(crypt);
-
         let circ_net_params = self
             .circ_net_params
             .read()
@@ -279,6 +274,11 @@ impl CreateRequestHandler {
             AlgorithmDiscriminants::FixedWindow,
             /* cgo_enabled= */ false,
         )?;
+
+        let crypt = tor1::CryptStatePair::<Aes128Ctr, Sha1>::construct(keygen)
+            .map_err(into_internal!("Circuit crypt state construction failed"))?;
+
+        let (crypto_out, crypto_in, _binding) = split_relay_layer(crypt);
 
         let response = CreatedFast::new(handshake_msg);
         let response = CreateResponse::CreatedFast(response);
@@ -313,11 +313,6 @@ impl CreateRequestHandler {
             msg_body,
         )?;
 
-        let crypt = tor1::CryptStatePair::<Aes128Ctr, Sha1>::construct(keygen)
-            .map_err(into_internal!("Circuit crypt state construction failed"))?;
-
-        let (crypto_out, crypto_in, _binding) = split_relay_layer(crypt);
-
         let circ_net_params = self
             .circ_net_params
             .read()
@@ -330,6 +325,11 @@ impl CreateRequestHandler {
             AlgorithmDiscriminants::FixedWindow,
             /* cgo_enabled= */ false,
         )?;
+
+        let crypt = tor1::CryptStatePair::<Aes128Ctr, Sha1>::construct(keygen)
+            .map_err(into_internal!("Circuit crypt state construction failed"))?;
+
+        let (crypto_out, crypto_in, _binding) = split_relay_layer(crypt);
 
         let response = Created2::new(handshake_msg);
         let response = CreateResponse::Created2(response);
