@@ -78,14 +78,60 @@ struct StreamReactorContext {
 }
 
 impl<R: Runtime> HopMgr<R> {
+    /// Create a new [`HopMgr`] with an empty hop list,
+    /// settings the incoming stream request handler to `incoming_handler`.
+    ///
+    /// Hops are added with [`HopMgr::add_hop`].
+    #[cfg(feature = "relay")]
+    pub(crate) fn new_with_incoming_handler<S: StreamHandler>(
+        runtime: R,
+        unique_id: UniqId,
+        handler: S,
+        bwd_tx: mpsc::Sender<ReadyStreamMsg>,
+        incoming_handler: IncomingStreamRequestHandler,
+        memquota: CircuitAccount,
+    ) -> Self {
+        Self::new_inner(
+            runtime,
+            unique_id,
+            handler,
+            bwd_tx,
+            Some(incoming_handler),
+            memquota,
+        )
+    }
+
     /// Create a new [`HopMgr`] with an empty hop list.
     ///
     /// Hops are added with [`HopMgr::add_hop`].
+    #[expect(unused)] // TODO(dedup): clients will use this
     pub(crate) fn new<S: StreamHandler>(
         runtime: R,
         unique_id: UniqId,
         handler: S,
         bwd_tx: mpsc::Sender<ReadyStreamMsg>,
+        memquota: CircuitAccount,
+    ) -> Self {
+        Self::new_inner(
+            runtime,
+            unique_id,
+            handler,
+            bwd_tx,
+            #[cfg(any(feature = "hs-service", feature = "relay"))]
+            None,
+            memquota,
+        )
+    }
+
+    /// Helper for the new*() functions.
+    fn new_inner<S: StreamHandler>(
+        runtime: R,
+        unique_id: UniqId,
+        handler: S,
+        bwd_tx: mpsc::Sender<ReadyStreamMsg>,
+        #[cfg(any(feature = "hs-service", feature = "relay"))] incoming_handler: Option<
+            IncomingStreamRequestHandler,
+        >,
         memquota: CircuitAccount,
     ) -> Self {
         // We don't spawn any stream reactors ahead of time.
@@ -94,7 +140,7 @@ impl<R: Runtime> HopMgr<R> {
         let ctx = StreamReactorContext {
             unique_id,
             #[cfg(any(feature = "hs-service", feature = "relay"))]
-            incoming: Arc::new(Mutex::new(None)),
+            incoming: Arc::new(Mutex::new(incoming_handler)),
             handler: Arc::new(handler),
         };
 

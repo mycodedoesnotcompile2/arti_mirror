@@ -62,6 +62,7 @@ mod client;
 mod config;
 mod keys;
 mod relay;
+mod stream;
 mod tasks;
 mod util;
 

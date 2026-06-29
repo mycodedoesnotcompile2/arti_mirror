@@ -21,9 +21,9 @@ use crate::crypto::handshake::fast::CreateFastServer;
 use crate::crypto::handshake::ntor::{NtorSecretKey, NtorServer};
 use crate::memquota::SpecificAccount as _;
 use crate::memquota::{ChannelAccount, CircuitAccount};
-use crate::relay::RelayCirc;
 use crate::relay::channel_provider::ChannelProvider;
 use crate::relay::reactor::Reactor;
+use crate::relay::{IncomingStreamRequestFilter, RelayCirc};
 use smallvec::SmallVec;
 use std::sync::{Arc, RwLock, Weak};
 use tor_cell::chancell::ChanMsg as _;
@@ -54,6 +54,17 @@ pub struct CreateRequestHandler {
     /// The circuit extension keys.
     #[debug(skip)]
     ntor_keys: RwLock<RelayNtorKeys>,
+    /// An [`IncomingStreamRequestFilter`] factory for checking whether the user wants
+    /// this request, or wants to reject it immediately.
+    ///
+    /// Used for obtaining a current [`IncomingStreamRequestFilter`]
+    /// for building a circuit reactor.
+    //
+    // TODO(relay): it's likely this will end up changing quite a bit once we start
+    // figuring out exactly how the config/reconfigure() logic and IncomingStreamRequestFilter
+    // should function for relays.
+    #[debug(skip)]
+    incoming_filter_factory: Box<dyn IncomingStreamRequestFilterFactory + Send + Sync>,
 }
 
 impl CreateRequestHandler {
@@ -62,11 +73,13 @@ impl CreateRequestHandler {
         chan_provider: Weak<dyn ChannelProvider<BuildSpec = OwnedChanTarget> + Send + Sync>,
         circ_net_params: CircNetParameters,
         ntor_keys: RelayNtorKeys,
+        incoming_filter_factory: Box<dyn IncomingStreamRequestFilterFactory + Send + Sync>,
     ) -> Self {
         Self {
             chan_provider,
             circ_net_params: RwLock::new(circ_net_params),
             ntor_keys: RwLock::new(ntor_keys),
+            incoming_filter_factory,
         }
     }
 
@@ -161,7 +174,8 @@ impl CreateRequestHandler {
         // a bounded queue.
         let time_provider = DynTimeProvider::new(runtime.clone());
         let account = memquota.as_raw_account();
-        let (sender, receiver) = MpscSpec::new(10_000_000).new_mq(time_provider, account)?;
+        let (sender, receiver) =
+            MpscSpec::new(10_000_000).new_mq(time_provider.clone(), account)?;
         let (sender, receiver) = crate::circuit::circ_sender::channel(sender, receiver);
 
         // TODO(relay): Do we really want a client padding machine here?
@@ -173,8 +187,16 @@ impl CreateRequestHandler {
             return Err(internal!("Unable to upgrade weak `ChannelProvider`").into());
         };
 
+        // Create an IncomingStreamRequestFilter for this circuit.
+        // This will get applied to every stream request (BEGIN, BEGIN_DIR, RESOLVE)
+        // arriving on the circuit.
+        //
+        // Note: once built, a circuit reactor's IncomingStreamRequestFilter cannot be changed
+        // (it's fixed for the entire duration of the circuit).
+        let incoming_filter = self.incoming_filter_factory.current_filter();
+
         // Build the relay circuit reactor.
-        let (reactor, circ) = Reactor::new(
+        let (reactor, circ, _incoming_streams) = Reactor::new(
             runtime.clone(),
             channel,
             circ_id,
@@ -186,9 +208,12 @@ impl CreateRequestHandler {
             chan_provider,
             padding_ctrl.clone(),
             padding_stream,
+            incoming_filter,
             &memquota,
         )
         .map_err(into_internal!("Failed to start circuit reactor"))?;
+
+        // TODO(relay): send the incoming_streams stream to the handler in arti-relay
 
         // Start the reactor in a task.
         let () = runtime.spawn(async {
@@ -507,5 +532,25 @@ impl CircNetParameters {
             cc,
             flow_ctrl.clone(),
         ))
+    }
+}
+
+/// An [`IncomingStreamRequestFilter`] factory for building [`IncomingStreamRequestFilter`]s.
+///
+/// Each time a new circuit is opened, the [`CreateRequestHandler`] calls
+/// [`IncomingStreamRequestFilterFactory::current_filter`] to build
+/// an [`IncomingStreamRequestFilter`] for the circuit.
+pub trait IncomingStreamRequestFilterFactory {
+    /// Return the [`IncomingStreamRequestFilter`] to apply to the incoming stream requests
+    /// arriving on a circuit.
+    fn current_filter(&self) -> Box<dyn IncomingStreamRequestFilter>;
+}
+
+impl<F> IncomingStreamRequestFilterFactory for F
+where
+    F: Fn() -> Box<dyn IncomingStreamRequestFilter>,
+{
+    fn current_filter(&self) -> Box<dyn IncomingStreamRequestFilter> {
+        (self)()
     }
 }
