@@ -504,7 +504,7 @@ mod ed25519impl {
 
     /// An alleged ed25519 public key, encoded in base64 with optional
     /// padding.
-    #[derive(Debug, Clone, PartialEq, Eq, Deftly)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
     pub struct Ed25519Public(pub Ed25519Identity);
@@ -2757,6 +2757,13 @@ pub mod routerdesc {
         }
     }
 
+    impl ItemValueEncodable for RouterSignature {
+        fn write_item_value_onto(&self, out: ItemEncoder) -> StdResult<(), Bug> {
+            out.object_bytes("SIGNATURE", &self.0);
+            Ok(())
+        }
+    }
+
     /// Estimated bandwidth for a router.
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:bandwidth>
@@ -2785,7 +2792,7 @@ pub mod routerdesc {
     ///
     /// * [`Ed25519NtorCrossCert`]
     /// * <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:ntor-onion-key-crosscert>
-    #[derive(Debug, Clone, Deftly)]
+    #[derive(Debug, Clone, Deftly, PartialEq, Eq)]
     #[derive_deftly(ItemValueParseable, ItemValueEncodable)]
     #[deftly(netdoc(no_extra_args))]
     #[non_exhaustive]

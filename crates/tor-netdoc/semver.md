@@ -1,3 +1,10 @@
+ADDED: `Copy` for `Ed25519Public`
+ADDED: `NetdocEncodable` for `RouterDesc`
+ADDED: `NetdocEncodable` for `RouterDescSignatures`
+ADDED: `ItemValueEncodable` for `RouterSignature`
+ADDED: Derive `PartialEq` and `Eq` on `RouterDescSignatures`
+ADDED: Derive `PartialEq` and `Eq` on `RouterDesc`
+ADDED: Derive `PartialEq` and `Eq` on (embedded) certificate types
 BREAKING: `Ed25519NtorCrossCert::new_signed()` now accepts an `&ExpandedKeypair`
 ADDED: Various `parse2` and `encode` traits for `Intern<T>` wrapped types
 BREAKING: `SoftwareVersion::Other` now stores a `String`
