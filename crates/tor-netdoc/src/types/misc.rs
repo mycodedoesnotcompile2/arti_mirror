@@ -1926,7 +1926,7 @@ mod edcert {
                         Self {
                             _promise_we_verified: (),
                         },
-                        expiration.clone(),
+                        expiration,
                     ),
                     vec![Box::new(sig.clone())],
                 ),
