@@ -94,6 +94,8 @@ impl Ext for CcResponse {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubprotocolRequest {
     /// The protocols to enable.
+    ///
+    /// This is always sorted and without duplicates.
     protocols: Vec<tor_protover::NumberedSubver>,
 }
 
