@@ -88,6 +88,7 @@ memchr = "2.5"
 paste = "1.0.3"
 phf = { version = "0.14.0", features = ["macros"] }
 rand = { version = "0.10.1" }
+rangemap = "1.7"
 saturating-time = "0.4.0"
 serde = { version = "1.0.103", features = ["derive"] }
 serde_with = "3.0.0"

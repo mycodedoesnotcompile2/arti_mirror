@@ -10,3 +10,4 @@ ADDED: `types::policy::AddrPolicy::rules` accessor
 ADDED: `types::policy::PortRange::from_range`, `to_range`
 ADDED: `types::policy::PortRange` is `Copy`
 ADDED: `types::policy::AddrPolicy::rules` returns a `DoubleEndedIterator`
+ADDED: `rangemap_mutate_range`
