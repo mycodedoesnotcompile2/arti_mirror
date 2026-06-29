@@ -1834,7 +1834,7 @@ mod edcert {
 
         /// Creates a new signed [`Ed25519NtorCrossCert`].
         pub fn new_signed(
-            ntor_ed25519: &ed25519::Keypair,
+            ntor_ed25519: &ed25519::ExpandedKeypair,
             id_ed25519: ed25519::Ed25519Identity,
             expiry: SystemTime,
         ) -> StdResult<EmbeddedCert<Self, KeyUnknownCert>, Bug> {
@@ -2838,7 +2838,7 @@ mod test {
     use tor_basic_utils::test_rng::testing_rng;
     use tor_cert::{CertType, CertifiedKey, Ed25519Cert, KeyUnknownCert};
     use tor_checkable::{Timebound, timed::TimerangeBound};
-    use tor_llcrypto::pk::ed25519::{self, Ed25519Identity, Ed25519PublicKey};
+    use tor_llcrypto::pk::ed25519::{self, Ed25519Identity, Ed25519PublicKey, ExpandedKeypair};
 
     use super::*;
     use crate::{
@@ -3726,7 +3726,7 @@ mod test {
             certified_key: ed25519::Ed25519Identity,
             expiry: SystemTime,
         ) -> StdResult<EmbeddedCert<Self, KeyUnknownCert>, Bug> {
-            Self::new_signed(signing_key, certified_key, expiry)
+            Self::new_signed(&ExpandedKeypair::from(signing_key), certified_key, expiry)
         }
 
         fn verify(

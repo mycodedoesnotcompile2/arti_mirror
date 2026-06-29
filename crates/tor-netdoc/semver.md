@@ -1,3 +1,4 @@
+BREAKING: `Ed25519NtorCrossCert::new_signed()` now accepts an `&ExpandedKeypair`
 ADDED: Various `parse2` and `encode` traits for `Intern<T>` wrapped types
 BREAKING: `SoftwareVersion::Other` now stores a `String`
 BREAKING: `Microdesc::ipv4_policy` now stored in `Intern`
