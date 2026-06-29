@@ -267,7 +267,10 @@ impl NormalItemArgument for AddrPortPattern {}
 pub enum IpPattern {
     /// Match all addresses.
     ///
-    /// String representation: `*`
+    /// String representation: `*`.
+    ///
+    /// This is not the same as (say) `0.0.0.0/0`, because that matches only IPv4 addresses,
+    /// whereas `*` matches both IPv4 and IPv6.
     All,
     /// Match addresses of a particular IP version, beginning with a given prefix.
     ///
