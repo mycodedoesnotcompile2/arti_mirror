@@ -12,6 +12,7 @@ use tracing::warn;
 
 use fs_mistrust::Mistrust;
 use tor_basic_utils::iter_join;
+use tor_cell::relaycell::RelayCmd;
 use tor_chanmgr::{ChanMgr, ChanMgrConfig, Dormancy};
 use tor_config_path::CfgPathResolver;
 use tor_dirmgr::DirMgrConfig;
@@ -237,12 +238,17 @@ impl<R: Runtime> TorRelay<R> {
         let circ_net_params = build_circ_net_params(client.dirmgr().params().as_ref().as_ref())
             .context("Failed to build circuit parameters for CREATE* request handler")?;
 
+        // TODO(relay): add exit configuration, and update this to reject BEGIN and RESOLVE
+        // if we are not configured to run as an exit
+        let allow_incoming = &[RelayCmd::BEGIN, RelayCmd::BEGIN_DIR, RelayCmd::RESOLVE];
+
         // A handler that will process CREATE* requests on channels.
         let create_request_handler = CreateRequestHandler::new(
             Arc::downgrade(&chanmgr) as Weak<_>,
             circ_net_params,
             init_key_material.ntor_keys,
             Box::new(|| Box::new(RequestFilter::default()) as Box<_>),
+            allow_incoming,
         );
         let create_request_handler = Arc::new(create_request_handler);
 

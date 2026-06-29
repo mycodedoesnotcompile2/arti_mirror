@@ -1314,6 +1314,9 @@ pub(crate) mod test {
                     new_circ_net_params(),
                     ntor_keys,
                     Box::new(|| Box::new(AllowAllStreamsFilter) as Box<_>),
+                    // The incoming stream command allow list can be empty
+                    // because this test doesn't actually open any streams
+                    &[],
                 ));
                 let peer_target = OwnedChanTargetBuilder::default().build().unwrap();
                 let unverified = RelayInitiatorHandshake::new(
