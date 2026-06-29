@@ -153,6 +153,14 @@ impl SubprotocolRequest {
             .iter()
             .all(|p| list.supports_numbered_subver(*p))
     }
+
+    /// The [`NumberedSubver`]s in this request.
+    ///
+    /// The iterator will not return duplicate [`NumberedSubver`]s.
+    pub fn iter(&self) -> impl Iterator<Item = tor_protover::NumberedSubver> {
+        // `Self::protocols` is documented as not containing duplicates.
+        self.protocols.iter().copied()
+    }
 }
 
 decl_extension_group! {
