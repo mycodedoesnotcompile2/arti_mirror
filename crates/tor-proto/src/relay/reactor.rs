@@ -204,8 +204,7 @@ impl<R: Runtime> Reactor<R> {
         // An incoming stream can still be rejected at a later stage,
         // by the IncomingStreamRequestFilter, or directly by the consumer of the
         // futures::Stream<Item = IncomingStream> (by calling IncomingStream::reject()).
-        let cmd_checker =
-            IncomingCmdChecker::new_any(allowed_stream_cmds);
+        let cmd_checker = IncomingCmdChecker::new_any(allowed_stream_cmds);
         let incoming_handler = IncomingStreamRequestHandler {
             incoming_sender,
             hop_num: None,
@@ -677,7 +676,8 @@ pub(crate) mod test {
     #[test]
     fn reject_extend2_relay() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             let linkspecs = dummy_linkspecs();
@@ -695,7 +695,8 @@ pub(crate) mod test {
     #[test]
     fn reject_extend2_previous_hop() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             // No outbound circuits yet
@@ -737,7 +738,8 @@ pub(crate) mod test {
     #[test]
     fn extend_and_forward() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             // No outbound circuits yet
@@ -788,7 +790,8 @@ pub(crate) mod test {
     #[test]
     fn forward_before_extend() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             // Send an arbitrary unrecognized cell. The reactor should flag this as
@@ -809,7 +812,8 @@ pub(crate) mod test {
     #[test]
     fn reject_invalid_begin() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
@@ -830,7 +834,8 @@ pub(crate) mod test {
     #[test]
     fn destroy_from_client() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             // Simulate the client sending us a DESTROY cell
@@ -851,7 +856,8 @@ pub(crate) mod test {
     #[test]
     fn destroy_from_next_hop() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             // Extend the circuit by another hop
@@ -889,7 +895,8 @@ pub(crate) mod test {
     #[test]
     fn truncate() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             // Simulate the client sending us a TRUNCATE cell
@@ -911,7 +918,8 @@ pub(crate) mod test {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
             const TO_SEND: &[u8] = b"The bells were musical in the silvery sun";
 
-            let (mut ctrl, mut incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
+            let (mut ctrl, mut incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
@@ -942,7 +950,8 @@ pub(crate) mod test {
     #[test]
     fn reject_stream() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, mut incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
+            let (mut ctrl, mut incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
