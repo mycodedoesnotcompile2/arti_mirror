@@ -123,22 +123,19 @@ impl<R: Runtime> DnsLookupClient for TorClient<R> {
 }
 
 /// Run a DNS query over tor, returning either a list of answers, or a DNS error code.
+/// The error format has been kept the same with the (previous) synchronous version
+/// which was processing the queries sequentially and returning as soon as an error
+/// was raised. Now this version returns on the first error raised asynchronously.
 async fn do_query<D: DnsLookupClient>(
     tor_client: &D,
     queries: &[Query],
     prefs: &StreamPrefs,
-) -> Result<Vec<Record>, ResponseCode>
-where
-    D: DnsLookupClient,
-{
-    let mut answers = Vec::new();
-
-    for query in queries {
+) -> Result<Vec<Record>, ResponseCode> {
+    let handle = queries.iter().map(|query| async {
+        let mut records = Vec::new();
         let mut a = Vec::new();
         let mut ptr = Vec::new();
 
-        // TODO if there are N questions, this would take N rtt to answer. By joining all futures it
-        // could take only 1 rtt, but having more than 1 question is actually very rare.
         match query.query_class() {
             DNSClass::IN => {
                 match query.query_type() {
@@ -182,18 +179,24 @@ where
         for (name, ip, typ) in a {
             match (ip, typ) {
                 (IpAddr::V4(v4), RecordType::A) => {
-                    answers.push(Record::from_rdata(name, 3600, RData::A(rdata::A(v4))));
+                    records.push(Record::from_rdata(name, 3600, RData::A(rdata::A(v4))));
                 }
                 (IpAddr::V6(v6), RecordType::AAAA) => {
-                    answers.push(Record::from_rdata(name, 3600, RData::AAAA(rdata::AAAA(v6))));
+                    records.push(Record::from_rdata(name, 3600, RData::AAAA(rdata::AAAA(v6))));
                 }
                 _ => (),
             }
         }
         for (ptr, name) in ptr {
-            answers.push(Record::from_rdata(ptr, 3600, RData::PTR(rdata::PTR(name))));
+            records.push(Record::from_rdata(ptr, 3600, RData::PTR(rdata::PTR(name))));
         }
-    }
+        Ok(records)
+    });
+    let answers = futures::future::try_join_all(handle)
+        .await?
+        .into_iter()
+        .flatten()
+        .collect();
 
     Ok(answers)
 }
