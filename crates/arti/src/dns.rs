@@ -68,25 +68,71 @@ struct DnsResponseTarget<U> {
     socket: Arc<U>,
 }
 
+/// Convert a Tor Error into to DNS ResponseCode.
+// Takes `error` by value so it can be used directly as a `Result::map_err` callback.
+#[allow(clippy::needless_pass_by_value)]
+fn err_conv<E: tor_error::HasKind>(error: E) -> ResponseCode {
+    if tor_error::ErrorKind::RemoteHostNotFound == error.kind() {
+        // NoError without any body is considered to be NODATA as per rfc2308 section-2.2
+        ResponseCode::NoError
+    } else {
+        ResponseCode::ServFail
+    }
+}
+
+/// Generic client used to perform lookup and reverse lookup.
+trait DnsLookupClient {
+    /// Defines a generic error type that we can mock more easily.
+    type Error: tor_error::HasKind;
+
+    /// Performs DNS resolution.
+    async fn resolve_with_prefs(
+        &self,
+        hostname: &str,
+        prefs: &StreamPrefs,
+    ) -> Result<Vec<IpAddr>, Self::Error>;
+
+    /// Performs reverse DNS resolution.
+    async fn resolve_ptr_with_prefs(
+        &self,
+        addr: IpAddr,
+        prefs: &StreamPrefs,
+    ) -> Result<Vec<String>, Self::Error>;
+}
+
+impl<R: Runtime> DnsLookupClient for TorClient<R> {
+    type Error = arti_client::Error;
+
+    /// Performs DNS resolution.
+    async fn resolve_with_prefs(
+        &self,
+        hostname: &str,
+        prefs: &StreamPrefs,
+    ) -> Result<Vec<IpAddr>, Self::Error> {
+        TorClient::resolve_with_prefs(self, hostname, prefs).await
+    }
+
+    /// Performs reverse DNS resolution.
+    async fn resolve_ptr_with_prefs(
+        &self,
+        addr: IpAddr,
+        prefs: &StreamPrefs,
+    ) -> Result<Vec<String>, Self::Error> {
+        TorClient::resolve_ptr_with_prefs(self, addr, prefs).await
+    }
+}
+
 /// Run a DNS query over tor, returning either a list of answers, or a DNS error code.
-async fn do_query<R>(
-    tor_client: &TorClient<R>,
+async fn do_query<D: DnsLookupClient>(
+    tor_client: &D,
     queries: &[Query],
     prefs: &StreamPrefs,
 ) -> Result<Vec<Record>, ResponseCode>
 where
-    R: Runtime,
+    D: DnsLookupClient,
 {
     let mut answers = Vec::new();
 
-    let err_conv = |error: Error| {
-        if tor_error::ErrorKind::RemoteHostNotFound == error.kind() {
-            // NoError without any body is considered to be NODATA as per rfc2308 section-2.2
-            ResponseCode::NoError
-        } else {
-            ResponseCode::ServFail
-        }
-    };
     for query in queries {
         let mut a = Vec::new();
         let mut ptr = Vec::new();
@@ -383,4 +429,114 @@ async fn run_dns_resolver_with_listeners<R: Runtime>(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use futures::executor;
+    use std::{net::Ipv4Addr, str::FromStr};
+
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    enum MockTorError {
+        RemoteHostNotFound,
+    }
+
+    impl tor_error::HasKind for MockTorError {
+        fn kind(&self) -> tor_error::ErrorKind {
+            tor_error::ErrorKind::RemoteHostNotFound
+        }
+    }
+
+    struct MockDnsLookupClient {
+        hostnames: HashMap<String, Vec<IpAddr>>,
+        ips: HashMap<IpAddr, Vec<String>>,
+    }
+
+    impl MockDnsLookupClient {
+        fn new<const M: usize, const N: usize>(
+            hostnames: [(String, Vec<IpAddr>); M],
+            ips: [(IpAddr, Vec<String>); N],
+        ) -> Self {
+            Self {
+                hostnames: HashMap::from(hostnames),
+                ips: HashMap::from(ips),
+            }
+        }
+    }
+
+    impl DnsLookupClient for MockDnsLookupClient {
+        type Error = MockTorError;
+        async fn resolve_with_prefs(
+            &self,
+            hostname: &str,
+            prefs: &StreamPrefs,
+        ) -> Result<Vec<IpAddr>, Self::Error> {
+            match self.hostnames.get(hostname) {
+                Some(ips) => Ok(ips.clone()),
+                None => Err(MockTorError::RemoteHostNotFound),
+            }
+        }
+
+        async fn resolve_ptr_with_prefs(
+            &self,
+            addr: IpAddr,
+            prefs: &StreamPrefs,
+        ) -> Result<Vec<String>, Self::Error> {
+            match self.ips.get(&addr) {
+                Some(addrs) => Ok(addrs.clone()),
+                None => Err(MockTorError::RemoteHostNotFound),
+            }
+        }
+    }
+
+    #[test]
+    fn test_do_query() {
+        let lookup_table = [
+            (
+                "www.arti.com".to_string(),
+                vec![
+                    IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)),
+                    IpAddr::V4(Ipv4Addr::new(2, 2, 2, 2)),
+                ],
+            ),
+            (
+                "www.tor.com".to_string(),
+                vec![IpAddr::V4(Ipv4Addr::new(3, 3, 3, 3))],
+            ),
+        ];
+
+        let reverse_lookup_table = [(
+            IpAddr::V4(Ipv4Addr::new(4, 4, 4, 4)),
+            vec![
+                "www.onion-router.com".to_string(),
+                "www.artichoke.com".to_string(),
+            ],
+        )];
+
+        let mut client = MockDnsLookupClient::new(lookup_table, reverse_lookup_table);
+
+        let queries = [
+            Query::query(Name::from_str("www.arti.com").unwrap(), RecordType::A),
+            Query::query(
+                Name::from_str("4.4.4.4.in-addr.arpa.").unwrap(),
+                RecordType::PTR,
+            ),
+        ];
+
+        let future = async {
+            do_query(&client, &queries, &StreamPrefs::new())
+                .await
+                .unwrap()
+        };
+
+        let res = executor::block_on(future);
+
+        assert_eq!(res.len(), 4);
+        assert!(res.iter().all(|r| r.name.to_string() == "www.arti.com"
+            || r.name.to_string() == "4.4.4.4.in-addr.arpa."));
+    }
 }
