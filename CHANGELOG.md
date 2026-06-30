@@ -318,7 +318,7 @@ for funding the development of Arti!
 [#2571]: https://gitlab.torproject.org/tpo/core/arti/-/issues/2571
 [#2587]: https://gitlab.torproject.org/tpo/core/arti/-/issues/2587
 [#2590]: https://gitlab.torproject.org/tpo/core/arti/-/issues/2590
-[#2601]: https://gitlab.torproject.org/tpo/core/arti/-/work_items/2601
+[#2601]: https://gitlab.torproject.org/tpo/core/arti/-/issues/2601
 [Bureau of Democracy, Human Rights, and Labor]: https://www.state.gov/bureaus-offices/under-secretary-for-civilian-security-democracy-and-human-rights/bureau-of-democracy-human-rights-and-labor/
 [TROVE-2026-24]: https://gitlab.torproject.org/tpo/core/arti/-/work_items/2566
 [TROVE-2026-27]: https://gitlab.torproject.org/tpo/core/arti/-/work_items/2601
