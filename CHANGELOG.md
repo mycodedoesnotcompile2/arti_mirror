@@ -32,7 +32,7 @@ As usual, there are also many small changes and improvements which are detailed 
   could lead to an attacker exploiting an inefficient algorithm, resulting in
   the stalling of the CPU.
   We have not observed this being abused in the wild.
-  ([#2601)]
+  ([#2601])
 
 ### Major features
 
