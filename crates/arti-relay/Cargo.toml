@@ -46,6 +46,8 @@ full = [
 # void your API.
 experimental = ["metrics"]
 
+
+# XXXX This is experimental, but reachable from 'full'.
 metrics = ["tor-chanmgr/metrics", "dep:metrics-exporter-prometheus", "__is_experimental"]
 __is_experimental = []
 
