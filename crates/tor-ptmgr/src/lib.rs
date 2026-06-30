@@ -58,17 +58,19 @@ mod managed;
 
 use crate::config::{TransportConfig, TransportOptions};
 use crate::err::PtError;
+#[cfg(all(feature = "managed-pts", feature = "tor-channel-factory"))]
 use oneshot_fused_workaround as oneshot;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use tor_chanmgr::ProxyProtocol;
+#[cfg(feature = "managed-pts")]
 use tor_config_path::CfgPathResolver;
 use tor_linkspec::PtTransportName;
 use tor_rtcompat::Runtime;
 use tor_socksproto::SocksVersion;
-#[cfg(any(feature = "tor-channel-factory", feature = "managed-pts"))]
+#[cfg(all(feature = "managed-pts", feature = "tor-channel-factory"))]
 use tracing::info;
 use tracing::warn;
 #[cfg(feature = "managed-pts")]
@@ -95,7 +97,7 @@ struct PtSharedState {
     /// Connection information for pluggable transports from currently running binaries.
     ///
     /// Unmanaged pluggable transports are not included in this map.
-    #[cfg(feature = "tor-channel-factory")]
+    #[cfg(feature = "managed-pts")]
     managed_cmethods: HashMap<PtTransportName, PtClientMethod>,
     /// Current configured set of pluggable transports.
     configured: HashMap<PtTransportName, TransportOptions>,
@@ -148,6 +150,7 @@ impl<R: Runtime> PtMgr<R> {
     pub fn new(
         transports: Vec<TransportConfig>,
         #[allow(unused)] state_dir: PathBuf,
+        #[cfg(feature = "managed-pts")]
         path_resolver: Arc<CfgPathResolver>,
         outbound_proxy: Option<ProxyProtocol>,
         rt: R,
@@ -225,7 +228,7 @@ impl<R: Runtime> PtMgr<R> {
         &self,
         transport: &PtTransportName,
     ) -> Result<Option<PtClientMethod>, PtError> {
-        #[allow(unused)]
+        #[cfg(feature = "managed-pts")]
         let (cfg, managed_cmethod) = {
             // NOTE(eta): This is using a RwLock inside async code (but not across an await point).
             //            Arguably this is fine since it's just a small read, and nothing should ever
@@ -234,6 +237,16 @@ impl<R: Runtime> PtMgr<R> {
             let cfg = inner.configured.get(transport);
             let managed_cmethod = inner.managed_cmethods.get(transport);
             (cfg.cloned(), managed_cmethod.cloned())
+        };
+
+        #[cfg(all(feature = "tor-channel-factory", not(feature = "managed-pts")))]
+        let cfg = {
+            // NOTE(eta): This is using a RwLock inside async code (but not across an await point).
+            //            Arguably this is fine since it's just a small read, and nothing should ever
+            //            hold this lock for very long.
+            let inner = self.state.read().expect("ptmgr poisoned");
+            let cfg = inner.configured.get(transport);
+            cfg.cloned()
         };
 
         match cfg {
