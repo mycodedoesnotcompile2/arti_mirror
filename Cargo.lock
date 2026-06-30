@@ -217,6 +217,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry-proto",
  "opentelemetry_sdk",
+ "otlp-file-exporter",
  "paste",
  "pin-project",
  "postage",
@@ -381,8 +382,16 @@ dependencies = [
  "directories",
  "fs-mistrust",
  "futures",
+ "humantime",
+ "humantime-serde",
  "libc",
  "metrics-exporter-prometheus",
+ "opentelemetry",
+ "opentelemetry-appender-tracing",
+ "opentelemetry-otlp",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "otlp-file-exporter",
  "rand 0.10.1",
  "rustls",
  "safelog",
@@ -416,6 +425,7 @@ dependencies = [
  "tor-rtmock",
  "tor-units",
  "tracing",
+ "tracing-opentelemetry",
  "tracing-subscriber",
  "void",
  "web-time-compat",
@@ -4436,6 +4446,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "otlp-file-exporter"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "p256"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7119,6 +7139,7 @@ dependencies = [
  "humantime-serde",
  "itertools 0.14.0",
  "notify",
+ "opentelemetry_sdk",
  "paste",
  "postage",
  "regex",
@@ -7132,6 +7153,7 @@ dependencies = [
  "thiserror 2.0.18",
  "toml 1.1.2+spec-1.1.0",
  "tor-basic-utils",
+ "tor-config-path",
  "tor-error",
  "tor-rtcompat",
  "tracing",
