@@ -93,7 +93,9 @@ use {
 #[derive(Default, Debug)]
 struct PtSharedState {
     /// Connection information for pluggable transports from currently running binaries.
-    #[cfg(feature = "managed-pts")]
+    ///
+    /// Unmanaged pluggable transports are not included in this map.
+    #[cfg(feature = "tor-channel-factory")]
     managed_cmethods: HashMap<PtTransportName, PtClientMethod>,
     /// Current configured set of pluggable transports.
     configured: HashMap<PtTransportName, TransportOptions>,
