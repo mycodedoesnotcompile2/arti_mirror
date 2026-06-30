@@ -11,9 +11,11 @@ keywords = ["tor", "arti", "privacy", "anonymity", "networking"]
 categories = ["network-programming", "cryptography"]
 repository = "https://gitlab.torproject.org/tpo/core/arti.git/"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 full = [
-    "metrics",
     "fs-mistrust/full",
     "safelog/full",
     "tor-chanmgr/full",
@@ -102,6 +104,3 @@ web-time-compat = { path = "../web-time-compat", version = "0.1.0" }
 [dev-dependencies]
 tor-keymgr = { path = "../tor-keymgr", version = "0.43.0", features = ["ephemeral-keystore", "testing"] }
 tor-rtmock = { path = "../tor-rtmock", version = "0.43.0" }
-
-[package.metadata.docs.rs]
-all-features = true
