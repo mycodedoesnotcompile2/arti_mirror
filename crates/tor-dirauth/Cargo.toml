@@ -1,6 +1,6 @@
 [package]
 name = "tor-dirauth"
-version = "0.43.0"
+version = "0.44.0"
 authors = [
     "The Tor Project, Inc.",
     "Ian Jackson <iwj@torproject.org>",
@@ -22,7 +22,7 @@ full = ["tor-netdoc/full"]
 __is_experimental = []
 
 [dependencies]
-tor-netdoc = { version = "0.43.0", path = "../tor-netdoc", features = ["full", "experimental"] }
+tor-netdoc = { version = "0.44.0", path = "../tor-netdoc", features = ["full", "experimental"] }
 
 [dev-dependencies]
 
