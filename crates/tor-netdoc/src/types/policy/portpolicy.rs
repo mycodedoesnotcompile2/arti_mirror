@@ -79,6 +79,14 @@ impl PortPolicy {
         }
     }
 
+    /// Create a PortPolicy from a set of allowed port ranges.
+    ///
+    /// All other ports will be rejected.
+    #[allow(unused)] // TODO dirauth
+    pub(super) fn from_allowed_ranges(allowed: PortRanges) -> Self {
+        Self { allowed }
+    }
+
     /// Return true iff `port` is allowed by this policy.
     pub fn allows_port(&self, port: u16) -> bool {
         self.allowed.contains(port)
