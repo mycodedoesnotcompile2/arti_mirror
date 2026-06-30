@@ -31,6 +31,7 @@ use tor_cell::chancell::CircId;
 use tor_cell::chancell::msg::{
     CreateFast, Created2, CreatedFast, Destroy, DestroyReason, HandshakeType,
 };
+use tor_cell::relaycell::RelayCmd;
 use tor_error::{Bug, ErrorKind, HasKind, debug_report, internal, into_internal};
 use tor_linkspec::OwnedChanTarget;
 use tor_llcrypto::cipher::aes::Aes128Ctr;
@@ -65,6 +66,14 @@ pub struct CreateRequestHandler {
     // should function for relays.
     #[debug(skip)]
     incoming_filter_factory: Box<dyn IncomingStreamRequestFilterFactory + Send + Sync>,
+    /// The allowed incoming stream commands.
+    ///
+    /// Used for rejecting BEGIN and RESOLVE if we are not configured to be an exit.
+    ///
+    // TODO(relay): we might use this for rejecting BEGIN_DIR too,
+    // if we decide to allow relays to opt out of being dir mirrors.
+    // See https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4107/diffs#note_3426447
+    allowed_stream_cmds: SmallVec<[RelayCmd; 3]>,
 }
 
 impl CreateRequestHandler {
@@ -74,12 +83,14 @@ impl CreateRequestHandler {
         circ_net_params: CircNetParameters,
         ntor_keys: RelayNtorKeys,
         incoming_filter_factory: Box<dyn IncomingStreamRequestFilterFactory + Send + Sync>,
+        allowed_stream_cmds: &[RelayCmd],
     ) -> Self {
         Self {
             chan_provider,
             circ_net_params: RwLock::new(circ_net_params),
             ntor_keys: RwLock::new(ntor_keys),
             incoming_filter_factory,
+            allowed_stream_cmds: allowed_stream_cmds.into(),
         }
     }
 
@@ -209,6 +220,7 @@ impl CreateRequestHandler {
             padding_ctrl.clone(),
             padding_stream,
             incoming_filter,
+            &self.allowed_stream_cmds,
             &memquota,
         )
         .map_err(into_internal!("Failed to start circuit reactor"))?;

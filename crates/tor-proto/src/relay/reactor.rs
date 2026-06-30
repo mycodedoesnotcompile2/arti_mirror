@@ -171,6 +171,7 @@ impl<R: Runtime> Reactor<R> {
         padding_ctrl: PaddingController,
         padding_event_stream: PaddingEventStream,
         incoming_filter: Box<dyn IncomingStreamRequestFilter>,
+        allowed_stream_cmds: &[RelayCmd],
         memquota: &CircuitAccount,
     ) -> crate::Result<(
         Self,
@@ -203,8 +204,7 @@ impl<R: Runtime> Reactor<R> {
         // An incoming stream can still be rejected at a later stage,
         // by the IncomingStreamRequestFilter, or directly by the consumer of the
         // futures::Stream<Item = IncomingStream> (by calling IncomingStream::reject()).
-        let cmd_checker =
-            IncomingCmdChecker::new_any(&[RelayCmd::BEGIN, RelayCmd::BEGIN_DIR, RelayCmd::RESOLVE]);
+        let cmd_checker = IncomingCmdChecker::new_any(allowed_stream_cmds);
         let incoming_handler = IncomingStreamRequestHandler {
             incoming_sender,
             hop_num: None,
@@ -369,6 +369,7 @@ pub(crate) mod test {
 
     use std::net::IpAddr;
     use std::sync::{Arc, Mutex, mpsc};
+    use std::task::{Context, Poll, Waker};
 
     // An inbound encryption layer that doesn't do any crypto.
     struct DummyInboundCrypto {}
@@ -440,6 +441,7 @@ pub(crate) mod test {
         /// controlling it.
         fn spawn_reactor<R: Runtime>(
             rt: &R,
+            allowed_stream_cmds: &[RelayCmd],
         ) -> (Self, impl futures::Stream<Item = IncomingStream>) {
             let inbound_chan = working_dummy_channel(rt);
             let circid = CircId::new(1337).unwrap();
@@ -478,6 +480,7 @@ pub(crate) mod test {
                 padding_ctrl,
                 padding_stream,
                 Box::new(AllowAllStreamsFilter),
+                allowed_stream_cmds,
                 &CircuitAccount::new_noop(),
             )
             .unwrap();
@@ -674,7 +677,8 @@ pub(crate) mod test {
     #[test]
     fn reject_extend2_relay() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             let linkspecs = dummy_linkspecs();
@@ -692,7 +696,8 @@ pub(crate) mod test {
     #[test]
     fn reject_extend2_previous_hop() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             // No outbound circuits yet
@@ -734,7 +739,8 @@ pub(crate) mod test {
     #[test]
     fn extend_and_forward() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             // No outbound circuits yet
@@ -785,7 +791,8 @@ pub(crate) mod test {
     #[test]
     fn forward_before_extend() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             // Send an arbitrary unrecognized cell. The reactor should flag this as
@@ -806,7 +813,8 @@ pub(crate) mod test {
     #[test]
     fn reject_invalid_begin() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
@@ -827,7 +835,8 @@ pub(crate) mod test {
     #[test]
     fn destroy_from_client() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             // Simulate the client sending us a DESTROY cell
@@ -848,7 +857,8 @@ pub(crate) mod test {
     #[test]
     fn destroy_from_next_hop() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             // Extend the circuit by another hop
@@ -886,7 +896,8 @@ pub(crate) mod test {
     #[test]
     fn truncate() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, _incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             // Simulate the client sending us a TRUNCATE cell
@@ -908,7 +919,8 @@ pub(crate) mod test {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
             const TO_SEND: &[u8] = b"The bells were musical in the silvery sun";
 
-            let (mut ctrl, mut incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, mut incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
@@ -939,7 +951,8 @@ pub(crate) mod test {
     #[test]
     fn reject_stream() {
         tor_rtmock::MockRuntime::test_with_various(|rt| async move {
-            let (mut ctrl, mut incoming_streams) = ReactorTestCtrl::spawn_reactor(&rt);
+            let (mut ctrl, mut incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]);
             rt.advance_until_stalled().await;
 
             let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
@@ -972,6 +985,53 @@ pub(crate) mod test {
             assert!(logs_contain(
                 "Unexpected RelayCmd(DATA) message on unknown stream 1"
             ));
+        });
+    }
+
+    #[traced_test]
+    #[test]
+    fn only_allow_begin_dir() {
+        tor_rtmock::MockRuntime::test_with_various(|rt| async move {
+            let (mut ctrl, mut incoming_streams) = ReactorTestCtrl::spawn_reactor(
+                &rt,
+                // The stream reactor will only accept BEGIN_DIR streams
+                &[RelayCmd::BEGIN_DIR],
+            );
+            rt.advance_until_stalled().await;
+
+            // Directory streams should be allowed (because BEGIN_DIR is allowed)...
+            //
+            // (TODO(#2613): in theory, BEGIN_DIR streams should be allowed, but in reality,
+            // the stream reactor assumes every incoming stream is a BEGIN stream,
+            // and as a result, rejects every other stream type as a protocol violation.
+            // There is a TODO in parse_incoming_stream_req() that needs to be addressed
+            // before this test can be enabled)
+            //
+            //let begin_dir = relaymsg::BeginDir::default().into();
+            //ctrl.send_fwd(StreamId::new(1), begin_dir, Recognized::Yes, false).await;
+            //rt.advance_until_stalled().await;
+            //
+            //let pending_dir_stream = incoming_streams.next().await.unwrap();
+            //assert!(matches!(pending_dir_stream.request(), IncomingStreamRequest::BeginDir(_)));
+
+            let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
+            ctrl.send_fwd(StreamId::new(2), begin, Recognized::Yes, false)
+                .await;
+            rt.advance_until_stalled().await;
+
+            // ... but the exit stream is not
+            assert!(logs_contain("stream reactor shut down"));
+            assert!(logs_contain(
+                "Stream protocol violation: Unexpected BEGIN on incoming stream circ_id=Circ 8.17"
+            ));
+
+            // The reactor won't create an IncomingStream,
+            // because the stream request is rejected right away
+            let mut noop_cx = Context::from_waker(Waker::noop());
+            assert_eq!(
+                incoming_streams.poll_next_unpin(&mut noop_cx).map(|_| ()),
+                Poll::Pending
+            );
         });
     }
 }

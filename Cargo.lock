@@ -392,6 +392,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tor-basic-utils",
+ "tor-cell",
  "tor-cert",
  "tor-chanmgr",
  "tor-circmgr",
