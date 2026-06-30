@@ -97,7 +97,7 @@ signature = "2"
 static_assertions = "1"
 strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2"
-time = { version = "0.3.47", features = ["formatting", "parsing"] }
+time = { version = "0.3.49", features = ["formatting", "parsing"] }
 tor-async-utils = { version = "0.44.0", path = "../tor-async-utils" }
 tor-basic-utils = { path = "../tor-basic-utils", version = "0.44.0" }
 tor-checkable = { path = "../tor-checkable", version = "0.44.0" }
