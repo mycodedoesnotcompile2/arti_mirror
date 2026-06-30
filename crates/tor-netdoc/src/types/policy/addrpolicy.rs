@@ -18,9 +18,15 @@ use ipnet::IpNet;
 
 use super::{PolicyError, PortRange, RuleKind};
 
-/// A sequence of rules that are applied to an address:port until one
-/// matches.
+/// Sequence of `accept` and `reject` rules
 ///
+/// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:accept>
+///
+/// Encodable in netdocs, and parseable as [`NetdocParseableFields`].
+///
+/// A specific address:port is tested against them in order;
+/// first match wins.
+//
 /// Each rule is of the form "accept PATTERN" or "reject PATTERN",
 /// where every pattern describes a set of addresses and ports.
 /// Address sets are given as a prefix of 0-128 bits that the address
