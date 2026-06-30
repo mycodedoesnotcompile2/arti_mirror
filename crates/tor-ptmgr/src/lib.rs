@@ -150,8 +150,7 @@ impl<R: Runtime> PtMgr<R> {
     pub fn new(
         transports: Vec<TransportConfig>,
         #[allow(unused)] state_dir: PathBuf,
-        #[cfg(feature = "managed-pts")]
-        path_resolver: Arc<CfgPathResolver>,
+        #[cfg(feature = "managed-pts")] path_resolver: Arc<CfgPathResolver>,
         outbound_proxy: Option<ProxyProtocol>,
         rt: R,
     ) -> Result<Self, PtError> {
