@@ -20,6 +20,7 @@ mod addrpolicy;
 mod portpolicy;
 
 use std::fmt;
+use std::ops::RangeInclusive;
 use std::str::FromStr;
 use std::{collections::BTreeSet, fmt::Display};
 use thiserror::Error;
@@ -103,6 +104,18 @@ impl PortRange {
         } else {
             None
         }
+    }
+    /// Create a new `PortRange` from a `RangeInclusive`
+    ///
+    /// Returns `None` if the range is ill-formed, or contains zero.
+    pub fn from_range(r: RangeInclusive<u16>) -> Option<Self> {
+        Self::new(*r.start(), *r.end())
+    }
+    /// Create a new `PortRange` from a `RangeInclusive`
+    ///
+    /// Returns `None` if the range is ill-formed, or contains zero.
+    pub fn to_range(self) -> RangeInclusive<u16> {
+        self.lo..=self.hi
     }
     /// Return true if a port is in this range.
     pub fn contains(&self, port: u16) -> bool {
