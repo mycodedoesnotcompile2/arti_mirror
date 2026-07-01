@@ -182,11 +182,8 @@ $(
     }
 )
     }
-}
 
-/// Expand to an implementation for PartialEq for a given key type.
-macro_rules! impl_eq_variant {
-    { $vname:ident($IDENTITY:ty) } => {
+    $(
         impl<'a> PartialEq<$IDENTITY> for RelayIdRef<'a> {
             fn eq(&self, other: &$IDENTITY) -> bool {
                 matches!(self, RelayIdRef::$vname(this) if this == &other)
@@ -197,13 +194,8 @@ macro_rules! impl_eq_variant {
                 self.as_ref() == *other
             }
         }
-    }
+    )
 }
-
-impl_eq_variant! { Rsa(RsaIdentity) }
-impl_eq_variant! { Ed25519(Ed25519Identity) }
-
-// XXXX this seems misplaced ATM, but it will make sense in a moment
 #[allow(clippy::single_component_path_imports)] // rust-clippy/issues/13419
 use derive_deftly_template_RelayId; // allows putting the macro after RelayIdType
 
