@@ -491,7 +491,10 @@ impl StaticEngine {
                 .map(|(raw, doc)| {
                     doc.into_iter()
                         .map(|(doc, start, end)| {
-                            (raw[start..end].to_owned(), FlavoredConsensusSigned::Plain(doc))
+                            (
+                                raw[start..end].to_owned(),
+                                FlavoredConsensusSigned::Plain(doc),
+                            )
                         })
                         .collect()
                 }),
