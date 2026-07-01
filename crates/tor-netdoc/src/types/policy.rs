@@ -72,8 +72,9 @@ pub enum PolicyError {
 /// assert!(! r.contains(21));
 /// assert!(! r.contains(8001));
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(derive_more::Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(clippy::exhaustive_structs)]
+#[debug("PortRange({})", &self)]
 pub struct PortRange {
     /// The first port in this range.
     lo: u16,
