@@ -134,11 +134,19 @@ impl<R: Runtime> PtMgr<R> {
             }
         }
         for opt in ret.values() {
-            if let TransportOptions::Unmanaged(u) = opt {
-                if !u.is_localhost() {
-                    warn!(
-                        "Configured to connect to a PT on a non-local addresses. This is usually insecure! We recommend running PTs on localhost only."
-                    );
+            match opt {
+                TransportOptions::Unmanaged(u) => {
+                    if !u.is_localhost() {
+                        warn!(
+                            "Configured to connect to a PT on a non-local addresses. This is usually insecure! We recommend running PTs on localhost only."
+                        );
+                    }
+                }
+                #[cfg(feature = "managed-pts")]
+                TransportOptions::Managed(_) => {
+                    // Nothing to check here,
+                    // since we should spawn the managed PT and 
+                    // we shouldn't know what address it will listen on yet.
                 }
             }
         }
