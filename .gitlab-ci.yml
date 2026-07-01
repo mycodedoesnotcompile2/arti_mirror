@@ -410,17 +410,19 @@ rust-clippy-nontest:
 rust-nightly:
   needs: []
   stage: test
+  # Temporarily pinned; see arti#2618.
   #image: docker.io/rustlang/rust:nightly
-  # mitigate https://gitlab.torproject.org/tpo/tpa/team/-/issues/42317
-  timeout: 2h
+  image: rustlang/rust:nightly-2026-06-28
+
   # In case there is a bug in rust:nightly, you can instead pin an older
   # version of the Docker image until that bug is fixed.  To find the
   # SHA256 ID of the last working version of nightly, look at the logs
   # from the last successful CI run.  Here is an example of how to do so:
   #
-  # image: rustlang/rust@sha256:415b7c22ab4a8a3ec3efc9cc8d7b018964f0c6757fff27bbd110e0ed92566321
-  # Temporarily pinned; see arti#2618.
-  image: rustlang/rust:nightly-2026-06-28
+  # image: rustlang/rust:nightly-2026-06-28
+
+  # mitigate https://gitlab.torproject.org/tpo/tpa/team/-/issues/42317
+  timeout: 2h
 
   allow_failure: true
   script:
@@ -443,9 +445,8 @@ rust-nightly:
 check-api-surface:
   needs: []
   stage: test
-  #image: docker.io/rustlang/rust:nightly
-
   # Temporarily pinned; see arti#2618.
+  #image: docker.io/rustlang/rust:nightly
   image: rustlang/rust:nightly-2026-06-28
 
   script:
