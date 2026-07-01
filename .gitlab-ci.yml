@@ -445,7 +445,8 @@ check-api-surface:
   allow_failure: true
   script:
     - maint/common/apt-install jq
-    - ./maint/check-api-surface-arti
+    # (We use CARGO='cargo' to prevent an explicit +nightly.)
+    - CARGO=cargo ./maint/check-api-surface-arti
 
 deb-source:
   needs: []
