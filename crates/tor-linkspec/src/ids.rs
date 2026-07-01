@@ -20,20 +20,8 @@ pub(crate) mod set;
 
 /// The type of a relay identity.
 ///
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Eq,
-    PartialEq,
-    Hash,
-    Ord,
-    PartialOrd,
-    Display,
-    strum::EnumIter,
-    strum::EnumCount,
-    Deftly,
-)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd)] //
+#[derive(Display, strum::EnumIter, strum::EnumCount, Deftly)]
 #[derive_deftly_adhoc]
 #[derive_deftly(RelayId)]
 #[non_exhaustive]
@@ -79,9 +67,8 @@ define_derive_deftly! {
     }
 
     /// A reference to a single relay identity.
-    #[derive(
-        Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Display, From, derive_more::TryInto,
-    )]
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)] //
+    #[derive(Display, From, derive_more::TryInto)]
     #[non_exhaustive]
     pub enum RelayIdRef<'a> {
         $(
