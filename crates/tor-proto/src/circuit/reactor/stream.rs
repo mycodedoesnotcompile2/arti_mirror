@@ -19,7 +19,9 @@ use crate::stream::incoming::{
 
 use tor_async_utils::{SinkTrySend as _, SinkTrySendError as _};
 use tor_cell::relaycell::msg::{AnyRelayMsg, Begin, BeginDir, End, EndReason, Resolve};
-use tor_cell::relaycell::{AnyRelayMsgOuter, RelayCellFormat, RelayCmd, StreamId, UnparsedRelayMsg};
+use tor_cell::relaycell::{
+    AnyRelayMsgOuter, RelayCellFormat, RelayCmd, StreamId, UnparsedRelayMsg,
+};
 use tor_error::{internal, into_internal};
 use tor_log_ratelim::log_ratelim;
 use tor_rtcompat::{DynTimeProvider, Runtime, SleepProvider as _};
