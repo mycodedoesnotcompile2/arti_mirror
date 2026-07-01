@@ -186,14 +186,14 @@ $(
 
 /// Expand to an implementation for PartialEq for a given key type.
 macro_rules! impl_eq_variant {
-    { $var:ident($type:ty) } => {
-        impl<'a> PartialEq<$type> for RelayIdRef<'a> {
-            fn eq(&self, other: &$type) -> bool {
-                matches!(self, RelayIdRef::$var(this) if this == &other)
+    { $vname:ident($IDENTITY:ty) } => {
+        impl<'a> PartialEq<$IDENTITY> for RelayIdRef<'a> {
+            fn eq(&self, other: &$IDENTITY) -> bool {
+                matches!(self, RelayIdRef::$vname(this) if this == &other)
             }
         }
-        impl PartialEq<$type> for RelayId {
-            fn eq(&self, other: &$type) -> bool {
+        impl PartialEq<$IDENTITY> for RelayId {
+            fn eq(&self, other: &$IDENTITY) -> bool {
                 self.as_ref() == *other
             }
         }
