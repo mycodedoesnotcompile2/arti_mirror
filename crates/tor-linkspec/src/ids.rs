@@ -193,6 +193,25 @@ impl<'a> RelayIdRef<'a> {
     }
 }
 
+/// Expand to an implementation for PartialEq for a given key type.
+macro_rules! impl_eq_variant {
+    { $var:ident($type:ty) } => {
+        impl<'a> PartialEq<$type> for RelayIdRef<'a> {
+            fn eq(&self, other: &$type) -> bool {
+                matches!(self, RelayIdRef::$var(this) if this == &other)
+            }
+        }
+        impl PartialEq<$type> for RelayId {
+            fn eq(&self, other: &$type) -> bool {
+                matches!(&self, RelayId::$var(this) if this == other)
+            }
+        }
+    }
+}
+
+impl_eq_variant! { Rsa(RsaIdentity) }
+impl_eq_variant! { Ed25519(Ed25519Identity) }
+
 impl<'a> From<&'a RelayId> for RelayIdRef<'a> {
     fn from(ident: &'a RelayId) -> Self {
         ident.as_ref()
@@ -225,25 +244,6 @@ impl<'a> Redactable for RelayIdRef<'a> {
         }
     }
 }
-
-/// Expand to an implementation for PartialEq for a given key type.
-macro_rules! impl_eq_variant {
-    { $var:ident($type:ty) } => {
-        impl<'a> PartialEq<$type> for RelayIdRef<'a> {
-            fn eq(&self, other: &$type) -> bool {
-                matches!(self, RelayIdRef::$var(this) if this == &other)
-            }
-        }
-        impl PartialEq<$type> for RelayId {
-            fn eq(&self, other: &$type) -> bool {
-                matches!(&self, RelayId::$var(this) if this == other)
-            }
-        }
-    }
-}
-
-impl_eq_variant! { Rsa(RsaIdentity) }
-impl_eq_variant! { Ed25519(Ed25519Identity) }
 
 impl std::str::FromStr for RelayIdType {
     type Err = RelayIdError;
