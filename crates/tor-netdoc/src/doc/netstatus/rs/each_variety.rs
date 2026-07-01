@@ -45,8 +45,7 @@ type DocDigestB64 = FixedB64<DOC_DIGEST_LEN>;
 /// <https://spec.torproject.org/dir-spec/computing-consensus.html#flavor:microdesc>
 /// `r` item.
 #[derive(Debug, Clone, Deftly)]
-#[derive_deftly(ItemValueParseable)]
-#[derive_deftly(ItemValueEncodable)] // XXXX tidy
+#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 #[non_exhaustive]
 pub struct RouterStatusIntroItem {
     /// The nickname for this relay.
@@ -93,8 +92,7 @@ pub struct RouterStatusIntroItem {
 // entry keywords are chosen to be very short to minimise the consensus size, so we
 // use longer names in the struct and specify the keyword separately.
 #[derive(Debug, Clone, Deftly)]
-#[derive_deftly(NetdocParseable)]
-#[derive_deftly(NetdocEncodable)] // XXXX tidy
+#[derive_deftly(NetdocEncodable, NetdocParseable)]
 #[non_exhaustive]
 pub struct RouterStatus {
     /// `r` --- Introduce a routerstatus entry

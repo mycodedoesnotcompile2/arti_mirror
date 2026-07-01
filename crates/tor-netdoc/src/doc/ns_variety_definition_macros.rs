@@ -338,10 +338,9 @@ macro_rules! ns_export_each_variety {
     {
         @ [ $($case:tt)* ] [$($infix:tt)*] $id:ident
     } => { paste::paste!{
-        // XXXX tidy
-        pub use { plain ::$id as [<plain   $($case)* $($infix)* $id>] };
-        pub use { md  ::$id as [<md   $($case)* $($infix)* $id>] };
-        pub use { vote::$id as [<vote $($case)* $($infix)* $id>] };
+        pub use { plain ::$id as [<plain $($case)* $($infix)* $id>] };
+        pub use { md    ::$id as [<md    $($case)* $($infix)* $id>] };
+        pub use { vote  ::$id as [<vote  $($case)* $($infix)* $id>] };
     } };
 }
 
@@ -367,8 +366,7 @@ macro_rules! ns_export_each_flavor {
     {
         @ [ $($case:tt)* ] [$($infix:tt)*] $id:ident
     } => { paste::paste!{
-        // XXXX tidy
-        pub use { plain ::$id as [<plain   $($case)* $($infix)* $id>] };
-        pub use { md  ::$id as [<md   $($case)* $($infix)* $id>] };
+        pub use { plain ::$id as [<plain $($case)* $($infix)* $id>] };
+        pub use { md    ::$id as [<md    $($case)* $($infix)* $id>] };
     } };
 }

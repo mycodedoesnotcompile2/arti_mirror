@@ -68,8 +68,7 @@ static OTHER_VERSION_CACHE: InternCache<str> = InternCache::new();
 ///  * These non-invariants apply both within one instance of this struct,
 ///    and across multiple instances of it within a `RouterStatus`.
 #[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Deftly)]
-#[derive_deftly(ItemValueParseable)]
-#[derive_deftly(ItemValueEncodable)] // XXXX tidy
+#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 #[non_exhaustive]
 pub struct RouterStatusMdDigestsVote {
     /// The methods for which this document is applicable.
