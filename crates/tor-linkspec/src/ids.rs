@@ -194,7 +194,7 @@ macro_rules! impl_eq_variant {
         }
         impl PartialEq<$type> for RelayId {
             fn eq(&self, other: &$type) -> bool {
-                matches!(&self, RelayId::$var(this) if this == other)
+                self.as_ref() == *other
             }
         }
     }
