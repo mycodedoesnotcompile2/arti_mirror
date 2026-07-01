@@ -7,7 +7,7 @@
 
 use std::fmt;
 
-use derive_deftly::Deftly;
+use derive_deftly::{Deftly, define_derive_deftly};
 use derive_more::{Display, From};
 use safelog::Redactable;
 use tor_llcrypto::pk::{
@@ -35,6 +35,7 @@ pub(crate) mod set;
     Deftly,
 )]
 #[derive_deftly_adhoc]
+#[derive_deftly(RelayId)]
 #[non_exhaustive]
 pub enum RelayIdType {
     /// An Ed25519 identity.
@@ -42,6 +43,7 @@ pub enum RelayIdType {
     /// Every relay (currently) has one of these identities. It is the same
     /// as the encoding of the relay's public Ed25519 identity key.
     #[display("Ed25519")]
+    #[deftly(display = "ed25519:{}")]
     Ed25519,
     /// An RSA identity.
     ///
@@ -50,6 +52,7 @@ pub enum RelayIdType {
     /// identity key.  Because of short key length, this type of identity should
     /// not be considered secure on its own.
     #[display("RSA (legacy)")]
+    #[deftly(display = "{}")]
     Rsa,
 }
 
@@ -59,14 +62,20 @@ impl fmt::Display for RelayId {
     }
 }
 
+define_derive_deftly! {
+    /// Derives `enum RelayId`, `enum RelayIdRef`
+    RelayId expect items, beta_deftly:
+
+    ${define IDENTITY $<$vname Identity>}
+
 /// A single relay identity.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, From, Hash)]
 #[non_exhaustive]
 pub enum RelayId {
-    /// An Ed25519 identity.
-    Ed25519(Ed25519Identity),
-    /// An RSA identity.
-    Rsa(RsaIdentity),
+    $(
+        ${vattrs doc}
+        $vname($IDENTITY),
+    )
 }
 
 /// A reference to a single relay identity.
@@ -75,12 +84,12 @@ pub enum RelayId {
 )]
 #[non_exhaustive]
 pub enum RelayIdRef<'a> {
-    /// An Ed25519 identity.
-    #[display("ed25519:{}", _0)]
-    Ed25519(&'a Ed25519Identity),
-    /// An RSA identity.
-    #[display("{}", _0)]
-    Rsa(&'a RsaIdentity),
+    $(
+        ${vattrs doc}
+        #[display(${vmeta(display) as str}, _0)]
+        $vname(&'a $IDENTITY),
+    )
+}
 }
 
 impl RelayIdType {
@@ -211,6 +220,10 @@ macro_rules! impl_eq_variant {
 
 impl_eq_variant! { Rsa(RsaIdentity) }
 impl_eq_variant! { Ed25519(Ed25519Identity) }
+
+// XXXX this seems misplaced ATM, but it will make sense in a moment
+#[allow(clippy::single_component_path_imports)] // rust-clippy/issues/13419
+use derive_deftly_template_RelayId; // allows putting the macro after RelayIdType
 
 impl<'a> From<&'a RelayId> for RelayIdRef<'a> {
     fn from(ident: &'a RelayId) -> Self {
