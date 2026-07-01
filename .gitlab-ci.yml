@@ -40,8 +40,8 @@ variables:
   # For static website deployment job
   SITE_URL: arti.torproject.org
   # Pinned chutney version.
-  # main @ 2026-06-15
-  CHUTNEY_COMMIT: "8e7ad77631b5c5113d513b658b2f822debcd18bd"
+  # main @ 2026-07-01
+  CHUTNEY_COMMIT: "d6659ac34c36122ed2590714e37269d1b983c336"
   # Rust doesn't do backtraces on panic by default, but we do want them in CI
   RUST_BACKTRACE: 1
 
