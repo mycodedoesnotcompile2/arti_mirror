@@ -145,7 +145,7 @@ impl<R: Runtime> PtMgr<R> {
                 #[cfg(feature = "managed-pts")]
                 TransportOptions::Managed(_) => {
                     // Nothing to check here,
-                    // since we should spawn the managed PT and 
+                    // since we should spawn the managed PT and
                     // we shouldn't know what address it will listen on yet.
                 }
             }
