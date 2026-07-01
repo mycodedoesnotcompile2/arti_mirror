@@ -90,8 +90,8 @@ tor-basic-utils = { path = "../tor-basic-utils", version = "0.44.0" }
 [package.metadata.docs.rs]
 all-features = true
 
-[target.'cfg(any(target_arch = "x86", target_arch = "x86_64"))'.dependencies]
-rdrand = "0.8"
+[target.'cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
+rdrand = "0.9"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rand_chacha = "0.10.0"
