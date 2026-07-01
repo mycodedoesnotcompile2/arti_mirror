@@ -11,3 +11,7 @@ ADDED: `types::policy::PortRange::from_range`, `to_range`
 ADDED: `types::policy::PortRange` is `Copy`
 ADDED: `types::policy::AddrPolicy::rules` returns a `DoubleEndedIterator`
 ADDED: `rangemap_mutate_range`
+ADDED: votes: `doc::netstatus::vote`, `NetworkStatusVote`
+ADDED: parts of votes: `VoteAuthoritySection`, `RouterStatusMdDigestsVote`
+ADDED: encoding for votes: `doc::nettstatus::consensus_methods_comma_separated::write_arg_onto`
+ADDED: `AuthCert`: `encode_sign`, `EncodedAuthCert`

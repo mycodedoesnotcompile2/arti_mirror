@@ -338,11 +338,9 @@ macro_rules! ns_export_each_variety {
     {
         @ [ $($case:tt)* ] [$($infix:tt)*] $id:ident
     } => { paste::paste!{
+        // XXXX tidy
         pub use { plain ::$id as [<plain   $($case)* $($infix)* $id>] };
-        // unconditional
         pub use { md  ::$id as [<md   $($case)* $($infix)* $id>] };
-        #[cfg(feature = "incomplete")]
-        #[cfg_attr(docsrs, doc(cfg(feature = "incomplete")))]
         pub use { vote::$id as [<vote $($case)* $($infix)* $id>] };
     } };
 }
@@ -369,8 +367,8 @@ macro_rules! ns_export_each_flavor {
     {
         @ [ $($case:tt)* ] [$($infix:tt)*] $id:ident
     } => { paste::paste!{
+        // XXXX tidy
         pub use { plain ::$id as [<plain   $($case)* $($infix)* $id>] };
-        // unconditional
         pub use { md  ::$id as [<md   $($case)* $($infix)* $id>] };
     } };
 }

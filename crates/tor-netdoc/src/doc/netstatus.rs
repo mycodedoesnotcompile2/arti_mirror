@@ -53,7 +53,6 @@ mod rs;
 
 pub mod md;
 pub mod plain;
-#[cfg(feature = "incomplete")]
 pub mod vote;
 
 #[cfg(feature = "build_docs")]
@@ -61,7 +60,6 @@ mod build;
 
 pub use proto_statuses_parse2_encode::ProtoStatusesNetdocParseAccumulator;
 
-#[cfg(feature = "incomplete")]
 use crate::doc::authcert::EncodedAuthCert;
 
 use crate::doc::authcert::{self, AuthCert, AuthCertKeyIds, AuthCertUnverified};
@@ -323,7 +321,6 @@ pub mod consensus_methods_comma_separated {
     }
 
     /// Encode
-    #[cfg(feature = "incomplete")] // untested
     pub fn write_arg_onto(self_: &ConsensusMethods, out: &mut ItemEncoder) -> Result<(), Bug> {
         out.args_raw_string(&iter_join(",", &self_.methods));
         Ok(())
@@ -1323,7 +1320,6 @@ define_derive_deftly! {
 
     ${defcond F_NORMAL not(fmeta(netdoc(skip)))}
 
-    #[cfg(feature = "incomplete")] // needs EncodedAuthCert, otherwise complete
     impl NetdocParseable for VoteAuthoritySection {
         fn doctype_for_error() -> &'static str {
             "vote.authority.section"
@@ -1359,7 +1355,6 @@ define_derive_deftly! {
         }
     }
 
-    #[cfg(feature = "incomplete")]
     impl NetdocEncodable for VoteAuthoritySection {
         fn encode_unsigned(&self, out: &mut NetdocEncoder) -> Result<(), Bug> {
           $(
@@ -1380,7 +1375,6 @@ define_derive_deftly! {
 #[derive(Deftly, Clone, Debug)]
 #[derive_deftly(VoteAuthoritySection, Constructor)]
 #[allow(clippy::exhaustive_structs)]
-#[cfg(feature = "incomplete")] // needs EncodedAuthCert, otherwise complete
 pub struct VoteAuthoritySection {
     /// Authority entry
     #[deftly(constructor)]
@@ -2060,7 +2054,6 @@ mod encode_impls {
         tor_error::Bug,
     };
 
-    #[cfg(feature = "incomplete")] // untested
     impl NetdocEncodableFields for RelayWeightsItem {
         fn encode_fields(&self, out: &mut NetdocEncoder) -> Result<(), Bug> {
             if let Some(w) = self.params.as_ref().into_retained()? {
@@ -2941,7 +2934,6 @@ mod test {
 
     // consensuses are done in each_flavor.rs: see verify_error_netstatus
     #[test]
-    #[cfg(feature = "incomplete")]
     fn verify_error_netstatus_vote() -> Result<(), anyhow::Error> {
         use VerifyFailed as VF;
         use VoteVerifyFailed as VVF;
@@ -3061,7 +3053,7 @@ mod test {
     ///    in all kinds of network document.
     ///
     ///  * Document-specific, [`MungeForRoundtrip::adjust_exp`]
-    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
+    #[cfg(feature = "retain-unknown")]
     fn roundtrip_netstatus<UV, V, VE>(
         // TODO DIRAUTH use include_str!, so, at call sites
         // https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4121#note_3428675
@@ -3140,7 +3132,7 @@ mod test {
     /// Test that we can re-encode the consensus we parsed, and that we get the same thing back.
     ///
     /// Well, roughly the same thing.
-    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
+    #[cfg(feature = "retain-unknown")]
     #[test]
     fn roundtrip_netstatus_plain() -> anyhow::Result<()> {
         roundtrip_netstatus::<plain::NetworkStatusUnverified, _, _>(
@@ -3150,7 +3142,6 @@ mod test {
         )
     }
 
-    #[cfg(feature = "incomplete")]
     impl MungeForRoundtrip for plain::NetworkStatusUnverified {
         fn adjust_exp(exp: &mut String) {
             let mut regsub = |re, repl| regsub(exp, re, repl);
@@ -3172,7 +3163,7 @@ mod test {
         }
     }
 
-    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
+    #[cfg(feature = "retain-unknown")]
     #[test]
     fn roundtrip_netstatus_md() -> anyhow::Result<()> {
         roundtrip_netstatus::<md::NetworkStatusUnverified, _, _>(
@@ -3182,7 +3173,6 @@ mod test {
         )
     }
 
-    #[cfg(feature = "incomplete")]
     impl MungeForRoundtrip for md::NetworkStatusUnverified {
         fn adjust_exp(exp: &mut String) {
             let mut regsub = |re, repl| regsub(exp, re, repl);
@@ -3199,7 +3189,7 @@ mod test {
         }
     }
 
-    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
+    #[cfg(feature = "retain-unknown")]
     #[test]
     fn roundtrip_netstatus_vote() -> anyhow::Result<()> {
         roundtrip_netstatus::<vote::NetworkStatusUnverified, _, _>(
@@ -3209,7 +3199,6 @@ mod test {
         )
     }
 
-    #[cfg(feature = "incomplete")]
     impl MungeForRoundtrip for vote::NetworkStatusUnverified {
         fn adjust_exp(exp: &mut String) {
             // C Tor writes items in consensuses a different order to in votes!
@@ -3302,7 +3291,7 @@ $2
         Ok(TimerangeBound::new(uv.unwrap_unverified().0, ..))
     }
 
-    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
+    #[cfg(feature = "retain-unknown")]
     #[test]
     fn roundtrip_live_plain() -> anyhow::Result<()> {
         roundtrip_netstatus::<plain::NetworkStatusUnverified, _, _>(
@@ -3312,7 +3301,7 @@ $2
         )
     }
 
-    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
+    #[cfg(feature = "retain-unknown")]
     #[test]
     fn roundtrip_live_md() -> anyhow::Result<()> {
         roundtrip_netstatus::<md::NetworkStatusUnverified, _, _>(
@@ -3322,7 +3311,7 @@ $2
         )
     }
 
-    #[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
+    #[cfg(feature = "retain-unknown")]
     #[test]
     fn roundtrip_live_vote() -> anyhow::Result<()> {
         roundtrip_netstatus::<vote::NetworkStatusUnverified, _, _>(

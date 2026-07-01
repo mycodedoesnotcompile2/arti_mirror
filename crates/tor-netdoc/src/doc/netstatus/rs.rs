@@ -7,7 +7,6 @@
 pub(crate) mod build;
 pub(crate) mod md;
 pub(crate) mod plain;
-#[cfg(feature = "incomplete")]
 pub(crate) mod vote;
 
 use super::{ConsensusFlavor, ConsensusMethods, consensus_methods_comma_separated};
@@ -70,7 +69,7 @@ static OTHER_VERSION_CACHE: InternCache<str> = InternCache::new();
 ///    and across multiple instances of it within a `RouterStatus`.
 #[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Deftly)]
 #[derive_deftly(ItemValueParseable)]
-#[cfg_attr(feature = "incomplete", derive_deftly(ItemValueEncodable))] // untested
+#[derive_deftly(ItemValueEncodable)] // XXXX tidy
 #[non_exhaustive]
 pub struct RouterStatusMdDigestsVote {
     /// The methods for which this document is applicable.

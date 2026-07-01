@@ -46,7 +46,7 @@ type DocDigestB64 = FixedB64<DOC_DIGEST_LEN>;
 /// `r` item.
 #[derive(Debug, Clone, Deftly)]
 #[derive_deftly(ItemValueParseable)]
-#[cfg_attr(feature = "incomplete", derive_deftly(ItemValueEncodable))] // untested
+#[derive_deftly(ItemValueEncodable)] // XXXX tidy
 #[non_exhaustive]
 pub struct RouterStatusIntroItem {
     /// The nickname for this relay.
@@ -94,7 +94,7 @@ pub struct RouterStatusIntroItem {
 // use longer names in the struct and specify the keyword separately.
 #[derive(Debug, Clone, Deftly)]
 #[derive_deftly(NetdocParseable)]
-#[cfg_attr(feature = "incomplete", derive_deftly(NetdocEncodable))] // untested
+#[derive_deftly(NetdocEncodable)] // XXXX tidy
 #[non_exhaustive]
 pub struct RouterStatus {
     /// `r` --- Introduce a routerstatus entry

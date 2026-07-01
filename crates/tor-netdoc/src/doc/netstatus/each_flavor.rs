@@ -550,7 +550,6 @@ impl ExternallySigned<Consensus> for UnvalidatedConsensus {
 /// signatures and timeliness.
 pub type UncheckedConsensus = TimerangeBound<UnvalidatedConsensus>;
 
-#[cfg(feature = "incomplete")] // untested
 impl NetworkStatusUnverified {
     /// Could we verify this consensus or do we need more authcerts?
     ///
@@ -626,7 +625,7 @@ impl NetworkStatusUnverified {
     }
 }
 
-#[cfg(all(feature = "incomplete", feature = "retain-unknown"))]
+#[cfg(feature = "retain-unknown")]
 #[test]
 fn verify_error_netstatus() -> Result<(), anyhow::Error> {
     use assert_matches::assert_matches;
