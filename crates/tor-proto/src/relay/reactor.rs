@@ -1001,11 +1001,15 @@ pub(crate) mod test {
 
             // Directory streams should be allowed (because BEGIN_DIR is allowed)...
             let begin_dir = relaymsg::BeginDir::default().into();
-            ctrl.send_fwd(StreamId::new(1), begin_dir, Recognized::Yes, false).await;
+            ctrl.send_fwd(StreamId::new(1), begin_dir, Recognized::Yes, false)
+                .await;
             rt.advance_until_stalled().await;
 
             let pending_dir_stream = incoming_streams.next().await.unwrap();
-            assert!(matches!(pending_dir_stream.request(), IncomingStreamRequest::BeginDir(_)));
+            assert!(matches!(
+                pending_dir_stream.request(),
+                IncomingStreamRequest::BeginDir(_)
+            ));
 
             let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
             ctrl.send_fwd(StreamId::new(2), begin, Recognized::Yes, false)
