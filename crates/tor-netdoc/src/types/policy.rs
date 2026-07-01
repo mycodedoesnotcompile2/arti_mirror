@@ -25,7 +25,7 @@ use std::{collections::BTreeSet, fmt::Display};
 use thiserror::Error;
 use tor_basic_utils::iter_join;
 
-pub use addrpolicy::{AddrPolicy, AddrPortPattern};
+pub use addrpolicy::{AddrPolicy, AddrPortPattern, IpPattern};
 pub use portpolicy::PortPolicy;
 
 use crate::NormalItemArgument;
