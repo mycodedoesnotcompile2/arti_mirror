@@ -63,7 +63,7 @@ impl fmt::Display for RelayId {
 }
 
 define_derive_deftly! {
-    /// Derives `enum RelayId`, `enum RelayIdRef`
+    /// Derives `enum RelayId`, `enum RelayIdRef`, and many impls
     RelayId expect items, beta_deftly:
 
     ${define IDENTITY $<$vname Identity>}
@@ -90,7 +90,6 @@ pub enum RelayIdRef<'a> {
         $vname(&'a $IDENTITY),
     )
 }
-}
 
 impl RelayIdType {
     /// The number of distinct types currently implemented.
@@ -104,34 +103,29 @@ impl RelayIdType {
 
     /// Return the length of this identity, in bytes.
     pub fn id_len(&self) -> usize {
-        match self {
-            RelayIdType::Ed25519 => ED25519_ID_LEN,
-            RelayIdType::Rsa => RSA_ID_LEN,
-        }
+        match self { $(
+            $vtype => ${shouty_snake_case $vname _ID_LEN},
+        ) }
     }
 }
 
 impl RelayId {
     /// Return a [`RelayIdRef`] pointing to the contents of this identity.
     pub fn as_ref(&self) -> RelayIdRef<'_> {
-        match self {
-            RelayId::Ed25519(key) => key.into(),
-            RelayId::Rsa(key) => key.into(),
-        }
+        match self { $(
+            RelayId::$vname(key) => key.into(),
+        ) }
     }
 
     /// Try to construct a RelayId of a provided `id_type` from a byte-slice.
     ///
     /// Return [`RelayIdError::BadLength`] if the slice is not the correct length for the key.
     pub fn from_type_and_bytes(id_type: RelayIdType, id: &[u8]) -> Result<Self, RelayIdError> {
-        Ok(match id_type {
-            RelayIdType::Rsa => RsaIdentity::from_bytes(id)
+        Ok(match id_type { $(
+            $vtype => $IDENTITY::from_bytes(id)
                 .ok_or(RelayIdError::BadLength)?
                 .into(),
-            RelayIdType::Ed25519 => Ed25519Identity::from_bytes(id)
-                .ok_or(RelayIdError::BadLength)?
-                .into(),
-        })
+        ) })
     }
 
     /// Return the type of this relay identity.
@@ -155,50 +149,38 @@ impl<'a> RelayIdRef<'a> {
     // TODO(nickm): I wish I could make this a proper `ToOwned` implementation,
     // but I see no way to do as long as RelayIdRef<'a> implements Clone too.
     pub fn to_owned(&self) -> RelayId {
-        match *self {
-            RelayIdRef::Ed25519(key) => (*key).into(),
-            RelayIdRef::Rsa(key) => (*key).into(),
-        }
+        match *self { $(
+            RelayIdRef::$vname(key) => (*key).into(),
+        ) }
     }
 
     /// Return the type of this relay identity.
     pub fn id_type(&self) -> RelayIdType {
-        match self {
-            RelayIdRef::Ed25519(_) => RelayIdType::Ed25519,
-            RelayIdRef::Rsa(_) => RelayIdType::Rsa,
-        }
+        match self { $(
+            RelayIdRef::$vname(_) => $vtype,
+        ) }
     }
 
     /// Return a byte-slice corresponding to the contents of this identity.
     pub fn as_bytes(&self) -> &'a [u8] {
-        match self {
-            RelayIdRef::Ed25519(key) => key.as_bytes(),
-            RelayIdRef::Rsa(key) => key.as_bytes(),
-        }
+        match self { $(
+            RelayIdRef::$vname(key) => key.as_bytes(),
+        ) }
     }
 
-    /// Extract the RsaIdentity from a RelayIdRef that is known to hold one.
+$(
+   $/// Extract the `$IDENTITY` from a RelayIdRef that is known to hold one.
     ///
     /// # Panics
     ///
-    /// Panics if this is not an RSA identity.
-    pub(crate) fn unwrap_rsa(self) -> &'a RsaIdentity {
+    /// Panics if this is not an `$vname` identity.
+    pub(crate) fn ${snake_case unwrap_ $vname}(self) -> &'a $IDENTITY {
         match self {
-            RelayIdRef::Rsa(rsa) => rsa,
-            _ => panic!("Not an RSA identity."),
+            RelayIdRef::$vname(key) => key,
+            _ => panic!($"Not an $vname identity."),
         }
     }
-
-    /// Extract the Ed25519Identity from a RelayIdRef that is known to hold one.
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not an Ed25519 identity.
-    pub(crate) fn unwrap_ed25519(self) -> &'a Ed25519Identity {
-        match self {
-            RelayIdRef::Ed25519(ed25519) => ed25519,
-            _ => panic!("Not an Ed25519 identity."),
-        }
+)
     }
 }
 
