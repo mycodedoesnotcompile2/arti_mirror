@@ -68,133 +68,133 @@ define_derive_deftly! {
 
     ${define IDENTITY $<$vname Identity>}
 
-/// A single relay identity.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, From, Hash)]
-#[non_exhaustive]
-pub enum RelayId {
-    $(
-        ${vattrs doc}
-        $vname($IDENTITY),
-    )
-}
-
-/// A reference to a single relay identity.
-#[derive(
-    Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Display, From, derive_more::TryInto,
-)]
-#[non_exhaustive]
-pub enum RelayIdRef<'a> {
-    $(
-        ${vattrs doc}
-        #[display(${vmeta(display) as str}, _0)]
-        $vname(&'a $IDENTITY),
-    )
-}
-
-impl RelayIdType {
-    /// The number of distinct types currently implemented.
-    pub const COUNT: usize = <RelayIdType as strum::EnumCount>::COUNT;
-
-    /// Return an iterator over all
-    pub fn all_types() -> RelayIdTypeIter {
-        use strum::IntoEnumIterator;
-        Self::iter()
+    /// A single relay identity.
+    #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, From, Hash)]
+    #[non_exhaustive]
+    pub enum RelayId {
+        $(
+            ${vattrs doc}
+            $vname($IDENTITY),
+        )
     }
 
-    /// Return the length of this identity, in bytes.
-    pub fn id_len(&self) -> usize {
-        match self { $(
-            $vtype => ${shouty_snake_case $vname _ID_LEN},
-        ) }
-    }
-}
-
-impl RelayId {
-    /// Return a [`RelayIdRef`] pointing to the contents of this identity.
-    pub fn as_ref(&self) -> RelayIdRef<'_> {
-        match self { $(
-            RelayId::$vname(key) => key.into(),
-        ) }
+    /// A reference to a single relay identity.
+    #[derive(
+        Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Display, From, derive_more::TryInto,
+    )]
+    #[non_exhaustive]
+    pub enum RelayIdRef<'a> {
+        $(
+            ${vattrs doc}
+            #[display(${vmeta(display) as str}, _0)]
+            $vname(&'a $IDENTITY),
+        )
     }
 
-    /// Try to construct a RelayId of a provided `id_type` from a byte-slice.
-    ///
-    /// Return [`RelayIdError::BadLength`] if the slice is not the correct length for the key.
-    pub fn from_type_and_bytes(id_type: RelayIdType, id: &[u8]) -> Result<Self, RelayIdError> {
-        Ok(match id_type { $(
-            $vtype => $IDENTITY::from_bytes(id)
-                .ok_or(RelayIdError::BadLength)?
-                .into(),
-        ) })
-    }
+    impl RelayIdType {
+        /// The number of distinct types currently implemented.
+        pub const COUNT: usize = <RelayIdType as strum::EnumCount>::COUNT;
 
-    /// Return the type of this relay identity.
-    pub fn id_type(&self) -> RelayIdType {
-        self.as_ref().id_type()
-    }
+        /// Return an iterator over all
+        pub fn all_types() -> RelayIdTypeIter {
+            use strum::IntoEnumIterator;
+            Self::iter()
+        }
 
-    /// Return a byte-slice corresponding to the contents of this identity.
-    ///
-    /// The return value discards the type of the identity, and so should be
-    /// handled with care to make sure that it does not get confused with an
-    /// identity of some other type.
-    pub fn as_bytes(&self) -> &[u8] {
-        self.as_ref().as_bytes()
-    }
-}
-
-impl<'a> RelayIdRef<'a> {
-    /// Copy this reference into a new [`RelayId`] object.
-    //
-    // TODO(nickm): I wish I could make this a proper `ToOwned` implementation,
-    // but I see no way to do as long as RelayIdRef<'a> implements Clone too.
-    pub fn to_owned(&self) -> RelayId {
-        match *self { $(
-            RelayIdRef::$vname(key) => (*key).into(),
-        ) }
-    }
-
-    /// Return the type of this relay identity.
-    pub fn id_type(&self) -> RelayIdType {
-        match self { $(
-            RelayIdRef::$vname(_) => $vtype,
-        ) }
-    }
-
-    /// Return a byte-slice corresponding to the contents of this identity.
-    pub fn as_bytes(&self) -> &'a [u8] {
-        match self { $(
-            RelayIdRef::$vname(key) => key.as_bytes(),
-        ) }
-    }
-
-$(
-   $/// Extract the `$IDENTITY` from a RelayIdRef that is known to hold one.
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not an `$vname` identity.
-    pub(crate) fn ${snake_case unwrap_ $vname}(self) -> &'a $IDENTITY {
-        match self {
-            RelayIdRef::$vname(key) => key,
-            _ => panic!($"Not an $vname identity."),
+        /// Return the length of this identity, in bytes.
+        pub fn id_len(&self) -> usize {
+            match self { $(
+                $vtype => ${shouty_snake_case $vname _ID_LEN},
+            ) }
         }
     }
-)
+
+    impl RelayId {
+        /// Return a [`RelayIdRef`] pointing to the contents of this identity.
+        pub fn as_ref(&self) -> RelayIdRef<'_> {
+            match self { $(
+                RelayId::$vname(key) => key.into(),
+            ) }
+        }
+
+        /// Try to construct a RelayId of a provided `id_type` from a byte-slice.
+        ///
+        /// Return [`RelayIdError::BadLength`] if the slice is not the correct length for the key.
+        pub fn from_type_and_bytes(id_type: RelayIdType, id: &[u8]) -> Result<Self, RelayIdError> {
+            Ok(match id_type { $(
+                $vtype => $IDENTITY::from_bytes(id)
+                    .ok_or(RelayIdError::BadLength)?
+                    .into(),
+            ) })
+        }
+
+        /// Return the type of this relay identity.
+        pub fn id_type(&self) -> RelayIdType {
+            self.as_ref().id_type()
+        }
+
+        /// Return a byte-slice corresponding to the contents of this identity.
+        ///
+        /// The return value discards the type of the identity, and so should be
+        /// handled with care to make sure that it does not get confused with an
+        /// identity of some other type.
+        pub fn as_bytes(&self) -> &[u8] {
+            self.as_ref().as_bytes()
+        }
     }
 
-    $(
-        impl<'a> PartialEq<$IDENTITY> for RelayIdRef<'a> {
-            fn eq(&self, other: &$IDENTITY) -> bool {
-                matches!(self, RelayIdRef::$vname(this) if this == &other)
+    impl<'a> RelayIdRef<'a> {
+        /// Copy this reference into a new [`RelayId`] object.
+        //
+        // TODO(nickm): I wish I could make this a proper `ToOwned` implementation,
+        // but I see no way to do as long as RelayIdRef<'a> implements Clone too.
+        pub fn to_owned(&self) -> RelayId {
+            match *self { $(
+                RelayIdRef::$vname(key) => (*key).into(),
+            ) }
+        }
+
+        /// Return the type of this relay identity.
+        pub fn id_type(&self) -> RelayIdType {
+            match self { $(
+                RelayIdRef::$vname(_) => $vtype,
+            ) }
+        }
+
+        /// Return a byte-slice corresponding to the contents of this identity.
+        pub fn as_bytes(&self) -> &'a [u8] {
+            match self { $(
+                RelayIdRef::$vname(key) => key.as_bytes(),
+            ) }
+        }
+
+      $(
+       $/// Extract the `$IDENTITY` from a RelayIdRef that is known to hold one.
+        ///
+        /// # Panics
+        ///
+        /// Panics if this is not an `$vname` identity.
+        pub(crate) fn ${snake_case unwrap_ $vname}(self) -> &'a $IDENTITY {
+            match self {
+                RelayIdRef::$vname(key) => key,
+                _ => panic!($"Not an $vname identity."),
             }
         }
-        impl PartialEq<$IDENTITY> for RelayId {
-            fn eq(&self, other: &$IDENTITY) -> bool {
-                self.as_ref() == *other
-            }
+      )
+    }
+
+  $(
+    impl<'a> PartialEq<$IDENTITY> for RelayIdRef<'a> {
+        fn eq(&self, other: &$IDENTITY) -> bool {
+            matches!(self, RelayIdRef::$vname(this) if this == &other)
         }
-    )
+    }
+    impl PartialEq<$IDENTITY> for RelayId {
+        fn eq(&self, other: &$IDENTITY) -> bool {
+            self.as_ref() == *other
+        }
+    }
+  )
 }
 #[allow(clippy::single_component_path_imports)] // rust-clippy/issues/13419
 use derive_deftly_template_RelayId; // allows putting the macro after RelayIdType
