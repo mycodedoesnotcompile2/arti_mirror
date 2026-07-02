@@ -595,6 +595,16 @@ enum StreamEvent {
 
 /// Convert an incoming stream request message (BEGIN, BEGIN_DIR, RESOLVE, etc.)
 /// to an [`IncomingStreamRequest`]
+///
+// TODO(dedup): when we rewrite the client reactor in the multi-reactor register,
+// we should rethink this part a bit: ideally, onion services shouldn't even
+// try to parse BEGIN_DIR, RESOLVE.
+//
+// We will likely need an implementation-specific hook for this,
+// similar to the `{Forward,Backward}Handler` implementation-specific handlers
+// we have for the FWD and BWD reactors.
+//
+// See https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4188#note_3432579
 #[cfg(any(feature = "hs-service", feature = "relay"))]
 fn parse_incoming_stream_req(msg: UnparsedRelayMsg) -> crate::Result<IncomingStreamRequest> {
     /// Helper for parsing an incoming stream request
