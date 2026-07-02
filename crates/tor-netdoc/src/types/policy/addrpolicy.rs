@@ -95,7 +95,7 @@ impl AddrPolicy {
     }
 
     /// List the rules in this pattern
-    pub fn rules(&self) -> impl Iterator<Item = (RuleKind, AddrPortPattern)> + '_ {
+    pub fn rules(&self) -> impl DoubleEndedIterator<Item = (RuleKind, AddrPortPattern)> + '_ {
         self.rules
             .iter()
             .map(|rule| (rule.kind, rule.pattern.clone()))
