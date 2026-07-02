@@ -146,12 +146,38 @@ impl DirMirror {
     /// the scope of this crate; instead we provide the primitives making such
     /// flexibility possible.
     #[allow(clippy::unused_async)] // TODO
-    pub async fn serve<S, T, E>(self, _listener: S) -> Result<(), Infallible>
+    pub async fn serve<S, T, E>(self, mut listener: S) -> Result<(), Infallible>
     where
         S: Stream<Item = Result<T, E>> + Unpin,
         T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
         E: std::error::Error,
     {
-        todo!()
+        use futures::StreamExt as _;
+        use tokio::io::AsyncWriteExt as _;
+
+        // TODO DIRMIRROR: Replace this with the real implementation
+        while let Some(s) = listener.next().await {
+            let mut s = match s {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::debug!("{e:?}");
+                    continue;
+                }
+            };
+
+            let serve_dummy_response = async {
+                s.write_all(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
+                    .await?;
+                s.flush().await?;
+
+                Ok::<(), std::io::Error>(())
+            };
+
+            if let Err(e) = serve_dummy_response.await {
+                tracing::debug!(e=?e, "failed to serve dirmirror connection");
+            }
+        }
+
+        Ok(())
     }
 }
