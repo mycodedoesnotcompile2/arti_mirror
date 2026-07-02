@@ -77,6 +77,8 @@ pub use util::batching_split_before;
 
 pub use err::{BuildError, Error, ExpectedConstantString, NetdocErrorKind, Pos};
 
+pub use util::rangemap_ext::rangemap_mutate_range;
+
 pub use encode::NetdocBuilder;
 
 /// Alias for the Result type returned by most objects in this module.
