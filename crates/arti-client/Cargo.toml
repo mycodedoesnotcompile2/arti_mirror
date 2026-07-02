@@ -128,6 +128,8 @@ compression = ["tor-dirmgr/compression"]
 experimental = [
     "dirfilter",
     "ephemeral-keystore",
+    "hsc-negotiate-extensions",
+    "hss-negotiate-extensions",
     "ctor-keystore",
     "experimental-api",
     "error_detail",
@@ -158,6 +160,8 @@ ctor-keystore = ["tor-keymgr/ctor-keystore", "__is_experimental"]
 error_detail = ["__is_experimental"]
 geoip = ["tor-circmgr/geoip", "tor-dirmgr/geoip", "tor-geoip", "__is_experimental"]
 counter-galois-onion = ["tor-proto/counter-galois-onion", "flowctl-cc"]
+hsc-negotiate-extensions = ["tor-hsclient?/negotiate-extensions", "__is_experimental"]
+hss-negotiate-extensions = ["tor-hsservice?/negotiate-extensions", "__is_experimental"]
 
 restricted-discovery = [
     "onion-service-service",

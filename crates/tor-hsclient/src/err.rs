@@ -129,6 +129,10 @@ pub enum DescriptorErrorDetail {
     #[error("directory error")]
     Directory(#[from] tor_dirclient::RequestError),
 
+    /// Incompatibility with network parameters
+    #[error("descriptor was not compatible with network parameters: {0}")]
+    ParameterMismatch(String),
+
     /// Failed to parse or validate descriptor
     #[error("problem with descriptor")]
     Descriptor(#[from] tor_netdoc::doc::hsdesc::HsDescError),
@@ -415,6 +419,7 @@ impl HasKind for DescriptorErrorDetail {
             DED::Directory(RE::HeadersTooLong(_)) => EK::OnionServiceProtocolViolation,
             DED::Directory(RE::Utf8Encoding(_)) => EK::OnionServiceProtocolViolation,
             DED::Directory(other_re) => other_re.kind(),
+            DED::ParameterMismatch(_) => EK::OnionServiceProtocolViolation,
             DED::Descriptor(e) => e.kind(),
             DED::Bug(e) => e.kind(),
         }
@@ -505,6 +510,7 @@ impl DescriptorErrorDetail {
             E::Timeout => false,
             E::Circuit(_) => false,
             E::Stream(_) => false, // TODO prop360
+            E::ParameterMismatch(_) => false,
             E::Directory(e) => e.should_report_as_suspicious_if_anon(),
             E::Descriptor(e) => e.should_report_as_suspicious(),
             E::Bug(_) => false,

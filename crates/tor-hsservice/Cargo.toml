@@ -73,11 +73,14 @@ experimental = [
     "experimental-api",
     "hs-pow-full",
     "metrics",
+    "negotiate-extensions",
     "onion-service-cli-extra",
 ]
 experimental-api = ["__is_experimental"]
 
 onion-service-cli-extra = ["tor-keymgr/onion-service-cli-extra", "__is_experimental"]
+
+negotiate-extensions = ["__is_experimental"]
 
 __is_experimental = []
 

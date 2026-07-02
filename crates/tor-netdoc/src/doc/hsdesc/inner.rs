@@ -1,5 +1,6 @@
 //! Code to handle the inner document of an onion service descriptor.
 
+use std::num::NonZeroU8;
 use std::time::SystemTime;
 
 use super::{IntroAuthType, IntroPointDesc};
@@ -20,6 +21,7 @@ use tor_hscrypto::NUM_INTRO_POINT_MAX;
 use tor_hscrypto::pk::{HsIntroPtSessionIdKey, HsSvcNtorKey};
 use tor_llcrypto::pk::ed25519::Ed25519Identity;
 use tor_llcrypto::pk::{ValidatableSignature, curve25519, ed25519};
+use tor_protover::Protocols;
 
 /// The contents of the inner document of an onion service descriptor.
 #[derive(Debug, Clone)]
@@ -42,6 +44,17 @@ pub struct HsDescInner {
     pub(super) intro_points: Vec<IntroPointDesc>,
     /// A list of offered proof-of-work parameters, at most one per type.
     pub(super) pow_params: PowParamSet,
+
+    /// A specified sendme increment and sub protocol capability list, if they were provided.
+    ///
+    /// Note that for historical reasons the protocol capabilities here are treated separately
+    /// from those in `protos`.
+    pub(super) flow_control: Option<(Protocols, NonZeroU8)>,
+
+    /// A list of subprotocol capabilities advertised by the onion service.
+    ///
+    /// Note that for historical reasons.
+    pub(super) protos: Protocols,
 }
 
 decl_keyword! {
@@ -57,6 +70,8 @@ decl_keyword! {
         "legacy-key" => LEGACY_KEY,
         "legacy-key-cert" => LEGACY_KEY_CERT,
         "pow-params" => POW_PARAMS,
+        "flow-control" => FLOW_CONTROL,
+        "proto" => PROTO,
     }
 }
 
@@ -70,6 +85,8 @@ static HS_INNER_HEADER_RULES: LazyLock<SectionRules<HsInnerKwd>> = LazyLock::new
     rules.add(INTRO_AUTH_REQUIRED.rule().args(1..));
     rules.add(SINGLE_ONION_SERVICE.rule());
     rules.add(POW_PARAMS.rule().args(1..).may_repeat().obj_optional());
+    rules.add(PROTO.rule().args(0..));
+    rules.add(FLOW_CONTROL.rule().args(2..));
     rules.add(UNRECOGNIZED.rule().may_repeat().obj_optional());
 
     rules.build()
@@ -266,6 +283,24 @@ impl HsDescInner {
         // Recognize `pow-params`, parsing each line and rejecting duplicate types
         let pow_params = PowParamSet::from_items(header.slice(POW_PARAMS))?;
 
+        let protos = if let Some(tok) = header.get(PROTO) {
+            tok.args_as_str()
+                .parse()
+                .map_err(|e| EK::BadArgument.at_pos(tok.pos()).with_source(e))?
+        } else {
+            Protocols::new()
+        };
+        let flow_control = if let Some(tok) = header.get(FLOW_CONTROL) {
+            let inc: NonZeroU8 = tok.required_arg(1)?.parse()?;
+            let proto_range = tok.required_arg(0)?;
+            let fc_p =
+                Protocols::from_kind_and_versions(tor_protover::ProtoKind::FlowCtrl, proto_range)
+                    .map_err(|e| EK::BadArgument.at_pos(tok.arg_pos(0)).with_source(e))?;
+            Some((fc_p, inc))
+        } else {
+            None
+        };
+
         let mut signatures = Vec::new();
         let mut expirations = Vec::new();
         let mut cert_signing_key: Option<Ed25519Identity> = None;
@@ -430,6 +465,8 @@ impl HsDescInner {
             single_onion_service: is_single_onion_service,
             pow_params,
             intro_points,
+            flow_control,
+            protos,
         };
         let sig_gated = SignatureGated::new(inner, signatures);
         let time_bound = match expirations.iter().min() {

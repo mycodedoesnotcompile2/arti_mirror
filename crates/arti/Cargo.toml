@@ -145,6 +145,8 @@ experimental = [
     "arti-client/experimental",
     "experimental-api",
     "hs-pow-full",
+    "hsc-negotiate-extensions",
+    "hss-negotiate-extensions",
     "keymgr",
     "metrics",
     "hsc",
@@ -158,6 +160,9 @@ metrics = ["dep:metrics-exporter-prometheus", "tor-hsservice?/metrics", "tor-hsr
 http-connect = ["base64ct", "http", "hyper", "tor-error/http", "tor-cell"]
 hsc = ["onion-service-client", "experimental-api", "keymgr", "__is_experimental"]
 tokio-console = ["dep:console-subscriber", "__is_experimental"]
+hsc-negotiate-extensions = ["arti-client/hsc-negotiate-extensions", "__is_experimental"]
+hss-negotiate-extensions = ["arti-client/hss-negotiate-extensions", "__is_experimental"]
+
 __is_experimental = []
 
 [dependencies]

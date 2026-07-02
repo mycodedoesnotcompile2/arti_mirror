@@ -243,6 +243,12 @@ impl From<BoundedInt32<0, 255>> for u8 {
     }
 }
 
+impl From<BoundedInt32<1, 254>> for u8 {
+    fn from(val: BoundedInt32<1, 254>) -> u8 {
+        val.value as u8
+    }
+}
+
 impl<const L: i32, const H: i32> From<BoundedInt32<L, H>> for u32 {
     fn from(val: BoundedInt32<L, H>) -> u32 {
         val.value as u32
