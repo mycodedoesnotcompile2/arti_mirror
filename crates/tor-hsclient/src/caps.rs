@@ -52,7 +52,7 @@ impl PeerCaps {
             && fcp.supports_named_subver(FLOWCTRL_CC)
             && supported.supports_named_subver(FLOWCTRL_CC)
         {
-            ([FLOWCTRL_CC].into_iter().collect(), Some(*inc))
+            ([FLOWCTRL_CC].into_iter().collect(), Some(inc.into()))
         } else {
             (Protocols::new(), None)
         };

@@ -1896,7 +1896,7 @@ fn ensure_descriptor_compatible_with_params(
     params: &NetParameters,
 ) -> Result<(), DescriptorErrorDetail> {
     if let Some((_, desc_inc)) = desc.flow_control() {
-        let difference = desc_inc.abs_diff(params.cc_sendme_inc.into());
+        let difference = u8::from(desc_inc).abs_diff(params.cc_sendme_inc.into());
         if difference > 1 {
             return Err(DescriptorErrorDetail::ParameterMismatch(
                 "cc_sendme_inc too far from consensus".into(),

@@ -1,5 +1,6 @@
 //! Code to handle the inner document of an onion service descriptor.
 
+use std::num::NonZeroU8;
 use std::time::SystemTime;
 
 use super::{IntroAuthType, IntroPointDesc};
@@ -48,7 +49,7 @@ pub struct HsDescInner {
     ///
     /// Note that for historical reasons the protocol capabilities here are treated separately
     /// from those in `protos`.
-    pub(super) flow_control: Option<(Protocols, u8)>,
+    pub(super) flow_control: Option<(Protocols, NonZeroU8)>,
 
     /// A list of subprotocol capabilities advertised by the onion service.
     ///
@@ -290,7 +291,7 @@ impl HsDescInner {
             Protocols::new()
         };
         let flow_control = if let Some(tok) = header.get(FLOW_CONTROL) {
-            let inc = tok.required_arg(1)?.parse()?;
+            let inc: NonZeroU8 = tok.required_arg(1)?.parse()?;
             let proto_range = tok.required_arg(0)?;
             let fc_p =
                 Protocols::from_kind_and_versions(tor_protover::ProtoKind::FlowCtrl, proto_range)

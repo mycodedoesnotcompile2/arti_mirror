@@ -35,6 +35,7 @@ use tor_units::IntegerMinutes;
 use derive_builder::Builder;
 use smallvec::SmallVec;
 
+use std::num::NonZeroU8;
 use std::result::Result as StdResult;
 use std::time::SystemTime;
 
@@ -114,7 +115,7 @@ pub struct HsDesc {
     ///
     /// Note that for historical reasons the protocol capabilities here are treated separately
     /// from those in `protos`.
-    pub(super) flow_control: Option<(tor_protover::Protocols, u8)>,
+    pub(super) flow_control: Option<(tor_protover::Protocols, NonZeroU8)>,
 
     /// A list of subprotocol capabilities advertised by the onion service.
     protos: tor_protover::Protocols,
@@ -361,10 +362,11 @@ impl HsDesc {
         &self.protos
     }
 
-    /// Return the `sendme_inc` value declared for congestion control in this descriptor,
-    /// if there was one.
-    pub fn flow_control(&self) -> Option<&(tor_protover::Protocols, u8)> {
-        self.flow_control.as_ref()
+    /// Return the flow control protocols,
+    /// and the `sendme_inc` value declared for congestion control in this descriptor,
+    /// if they were present.
+    pub fn flow_control(&self) -> Option<(tor_protover::Protocols, NonZeroU8)> {
+        self.flow_control.as_ref().map(|(p, inc)| (p.clone(), *inc))
     }
 }
 
