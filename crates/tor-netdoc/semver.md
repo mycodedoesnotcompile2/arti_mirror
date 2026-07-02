@@ -1,3 +1,5 @@
+BREAKING: Remove `Eq` on `RouterDesc` and `RouterDescSignatures`
+BREAKING: Remove `Eq` on `EmbeddedCert` and `NtorOnionKeyCrossCert`
 ADDED: `NetdocEncodable` for `RouterDesc`
 ADDED: `NetdocEncodable` for `RouterDescSignatures`
 ADDED: `ItemValueEncodable` for `RouterSignature`

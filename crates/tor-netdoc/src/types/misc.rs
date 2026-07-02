@@ -2789,7 +2789,7 @@ pub mod routerdesc {
     ///
     /// * [`Ed25519NtorCrossCert`]
     /// * <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:ntor-onion-key-crosscert>
-    #[derive(Debug, Clone, Deftly, PartialEq, Eq)]
+    #[derive(Debug, Clone, Deftly, PartialEq)]
     #[derive_deftly(ItemValueParseable, ItemValueEncodable)]
     #[deftly(netdoc(no_extra_args))]
     #[non_exhaustive]

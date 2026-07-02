@@ -107,7 +107,7 @@ pub struct RouterAnnotation {
 /// # Specification
 ///
 /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html>
-#[derive(Clone, Debug, Deftly, PartialEq, Eq)]
+#[derive(Clone, Debug, Deftly, PartialEq)]
 #[derive_deftly(NetdocParseableUnverified, NetdocEncodable)]
 #[non_exhaustive]
 pub struct RouterDesc {
@@ -278,7 +278,7 @@ pub struct RouterDesc {
 /// Signatures of a [`RouterDesc`].
 ///
 /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:router-sig-ed25519>
-#[derive(Clone, Debug, PartialEq, Eq, Deftly)]
+#[derive(Clone, Debug, PartialEq, Deftly)]
 #[derive_deftly(NetdocParseableSignatures, NetdocEncodable)]
 #[deftly(netdoc(signatures(hashes_accu = "RouterHashAccu")))]
 #[non_exhaustive]
