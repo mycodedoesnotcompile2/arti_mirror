@@ -351,7 +351,7 @@ pub(crate) mod test {
     use crate::crypto::cell::{InboundRelayLayer, OutboundRelayLayer};
     use crate::relay::channel::test::{DummyChan, DummyChanProvider, working_dummy_channel};
     use crate::stream::flow_ctrl::params::FlowCtrlParameters;
-    use crate::stream::incoming::IncomingStream;
+    use crate::stream::incoming::{IncomingStream, IncomingStreamRequest};
 
     use futures::AsyncReadExt as _;
     use tracing_test::traced_test;
@@ -1000,19 +1000,16 @@ pub(crate) mod test {
             rt.advance_until_stalled().await;
 
             // Directory streams should be allowed (because BEGIN_DIR is allowed)...
-            //
-            // (TODO(#2613): in theory, BEGIN_DIR streams should be allowed, but in reality,
-            // the stream reactor assumes every incoming stream is a BEGIN stream,
-            // and as a result, rejects every other stream type as a protocol violation.
-            // There is a TODO in parse_incoming_stream_req() that needs to be addressed
-            // before this test can be enabled)
-            //
-            //let begin_dir = relaymsg::BeginDir::default().into();
-            //ctrl.send_fwd(StreamId::new(1), begin_dir, Recognized::Yes, false).await;
-            //rt.advance_until_stalled().await;
-            //
-            //let pending_dir_stream = incoming_streams.next().await.unwrap();
-            //assert!(matches!(pending_dir_stream.request(), IncomingStreamRequest::BeginDir(_)));
+            let begin_dir = relaymsg::BeginDir::default().into();
+            ctrl.send_fwd(StreamId::new(1), begin_dir, Recognized::Yes, false)
+                .await;
+            rt.advance_until_stalled().await;
+
+            let pending_dir_stream = incoming_streams.next().await.unwrap();
+            assert!(matches!(
+                pending_dir_stream.request(),
+                IncomingStreamRequest::BeginDir(_)
+            ));
 
             let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
             ctrl.send_fwd(StreamId::new(2), begin, Recognized::Yes, false)

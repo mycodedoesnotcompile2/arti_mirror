@@ -18,9 +18,11 @@ use crate::stream::incoming::{
 };
 
 use tor_async_utils::{SinkTrySend as _, SinkTrySendError as _};
-use tor_cell::relaycell::msg::{AnyRelayMsg, Begin, End, EndReason};
-use tor_cell::relaycell::{AnyRelayMsgOuter, RelayCellFormat, StreamId, UnparsedRelayMsg};
-use tor_error::into_internal;
+use tor_cell::relaycell::msg::{AnyRelayMsg, Begin, BeginDir, End, EndReason, Resolve};
+use tor_cell::relaycell::{
+    AnyRelayMsgOuter, RelayCellFormat, RelayCmd, StreamId, UnparsedRelayMsg,
+};
+use tor_error::{internal, into_internal};
 use tor_log_ratelim::log_ratelim;
 use tor_rtcompat::{DynTimeProvider, Runtime, SleepProvider as _};
 
@@ -593,15 +595,46 @@ enum StreamEvent {
 
 /// Convert an incoming stream request message (BEGIN, BEGIN_DIR, RESOLVE, etc.)
 /// to an [`IncomingStreamRequest`]
+///
+// TODO(dedup): when we rewrite the client reactor in the multi-reactor register,
+// we should rethink this part a bit: ideally, onion services shouldn't even
+// try to parse BEGIN_DIR, RESOLVE.
+//
+// We will likely need an implementation-specific hook for this,
+// similar to the `{Forward,Backward}Handler` implementation-specific handlers
+// we have for the FWD and BWD reactors.
+//
+// See https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4188#note_3432579
 #[cfg(any(feature = "hs-service", feature = "relay"))]
 fn parse_incoming_stream_req(msg: UnparsedRelayMsg) -> crate::Result<IncomingStreamRequest> {
-    // TODO(relay): support other stream-initiating messages, not just BEGIN
-    let begin = msg
-        .decode::<Begin>()
-        .map_err(|e| Error::from_bytes_err(e, "Invalid Begin message"))?
-        .into_msg();
+    /// Helper for parsing an incoming stream request
+    /// (BEGIN, BEGIN_DIR, or RESOLVE)
+    macro_rules! parse_stream_req {
+        ($msg:expr, $type:tt) => {{
+            let req = $msg
+                .decode::<$type>()
+                .map_err(|e| {
+                    Error::from_bytes_err(e, concat!("Invalid ", stringify!($type), " message"))
+                })?
+                .into_msg();
 
-    Ok(IncomingStreamRequest::Begin(begin))
+            IncomingStreamRequest::$type(req)
+        }};
+    }
+
+    let req = match msg.cmd() {
+        RelayCmd::BEGIN => parse_stream_req!(msg, Begin),
+        RelayCmd::BEGIN_DIR => parse_stream_req!(msg, BeginDir),
+        RelayCmd::RESOLVE => parse_stream_req!(msg, Resolve),
+        cmd => {
+            // It's a bug if we reach this point, because CircHopOutbound::handle_msg()
+            // should have consumed the message (by forwarding it to the appropriate stream
+            // in its stream map)
+            return Err(internal!("{cmd} is not an incoming stream request").into());
+        }
+    };
+
+    Ok(req)
 }
 
 /// A stream message to be sent to the backward reactor for delivery.
