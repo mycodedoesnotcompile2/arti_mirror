@@ -161,7 +161,7 @@ mod test {
     #[educe(Default, PartialEq)]
     struct TestState {
         map: RangeInclusiveMap<u8, Value>,
-        #[educe(Default(expression = "[None; _]"))] // Default isn't implemented for arrays?!
+        #[educe(Default(expression = "[None; _]"))] // Only short arrays are Default :-/
         reference: [Option<char>; 256],
         #[educe(PartialEq(ignore))]
         ids: IdGenerator,
