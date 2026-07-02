@@ -108,7 +108,7 @@ pub struct RouterAnnotation {
 ///
 /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html>
 #[derive(Clone, Debug, Deftly, PartialEq, Eq)]
-#[derive_deftly(NetdocParseableUnverified)]
+#[derive_deftly(NetdocParseableUnverified, NetdocEncodable)]
 #[non_exhaustive]
 pub struct RouterDesc {
     /// `router` --- Introduce a router descriptor.
@@ -158,8 +158,7 @@ pub struct RouterDesc {
     /// `hibernating` --- Whether the relay is hibernating.
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:hibernating>
-    // TODO DIRAUTH: Mark this as `netdoc(default)` and skip during encoding if false.
-    #[deftly(netdoc(single_arg, default))]
+    #[deftly(netdoc(single_arg, default(skip)))]
     pub hibernating: NumericBoolean,
 
     /// `uptime` --- How long this relay has been continously running
@@ -200,6 +199,9 @@ pub struct RouterDesc {
     /// * Any number of times.
     // TODO: these polices can get bulky too. Perhaps we should
     // de-duplicate them too.
+    // Not skipping the default here is probably desirable, as this field should
+    // generally always be ended with a default policy (i.e. default accept,
+    // default deny).
     #[deftly(netdoc(flatten))]
     pub ipv4_policy: AddrPolicy,
 
@@ -207,7 +209,7 @@ pub struct RouterDesc {
     ///
     /// * `ipv6-policy <accept/reject> PortList`
     /// * At most once.
-    #[deftly(netdoc(default))]
+    #[deftly(netdoc(default(skip)))]
     pub ipv6_policy: Intern<PortPolicy>,
 
     /// `overload-general` --- Relay is overloaded.
@@ -227,7 +229,7 @@ pub struct RouterDesc {
     /// * `family <LongIdent> ...`
     /// * One or more `LongIdent` arguments.
     /// * At most once.
-    #[deftly(netdoc(default))]
+    #[deftly(netdoc(default(skip)))]
     pub family: Intern<RelayFamily>,
 
     /// `family-cert` --- Prove membership in a relay family.
@@ -277,7 +279,7 @@ pub struct RouterDesc {
 ///
 /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:router-sig-ed25519>
 #[derive(Clone, Debug, PartialEq, Eq, Deftly)]
-#[derive_deftly(NetdocParseableSignatures)]
+#[derive_deftly(NetdocParseableSignatures, NetdocEncodable)]
 #[deftly(netdoc(signatures(hashes_accu = "RouterHashAccu")))]
 #[non_exhaustive]
 pub struct RouterDescSignatures {
@@ -296,6 +298,7 @@ pub struct RouterDescSignatures {
 }
 
 // TODO: Implement a .verify() method.
+// TODO: Implement a .encode_sign() method.
 impl RouterDescUnverified {}
 
 /// Description of the software a relay is running.
@@ -1208,7 +1211,10 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
-    use crate::parse2::{self, NetdocParseableUnverified, ParseInput};
+    use crate::{
+        encode::{NetdocEncodable, NetdocEncoder},
+        parse2::{self, NetdocParseableUnverified, ParseInput},
+    };
 
     use super::*;
     const TESTDATA: &str = include_str!("../../testdata/routerdesc1.txt");
@@ -1451,11 +1457,11 @@ mod test {
         Ok(())
     }
 
-    // TODO: For now, this only tests if decoding works with a few field checks.
-    // It should be extended to a full roundtrip test with failed verification
-    // at one point eventually ...
+    /// Simple decoding and round-trip encoding for "normal" router descriptors.
+    ///
+    /// In other words: No edge cases and such.
     #[test]
-    fn test_parse2() {
+    fn test_parse2_simple() {
         let input = ParseInput::new(
             include_str!("../../testdata2/cached-descriptors.new"),
             "cached-descriptors.new",
@@ -1463,11 +1469,12 @@ mod test {
         let rd = parse2::parse_netdoc_multiple::<RouterDescUnverified>(&input)
             .unwrap()
             .into_iter()
-            .map(|rd| rd.unwrap_unverified().0)
-            .collect::<Vec<RouterDesc>>();
+            .map(|rd| rd.unwrap_unverified())
+            .map(|(body, sig)| (body, sig.sigs))
+            .collect::<Vec<(RouterDesc, RouterDescSignatures)>>();
         assert_eq!(rd.len(), 20);
         assert_eq!(
-            rd[0].router,
+            rd[0].0.router,
             RouterDescIntroItem {
                 nickname: "test002a".parse().unwrap(),
                 address: net::Ipv4Addr::LOCALHOST,
@@ -1477,10 +1484,29 @@ mod test {
             }
         );
         assert_eq!(
-            rd[0].fingerprint.unwrap(),
+            rd[0].0.fingerprint.unwrap(),
             "257D 06F0 360B B224 6388 724F 109E C089 5A1D 41FB"
                 .parse()
                 .unwrap()
         );
+
+        // Round-trip encoding by verifying that decoding it equals the original.
+        // This is the best we can get as the current encoder is not bug for
+        // bug compatible with the CTor one (i.e. absence of TAP and different
+        // order), so this is the closest we can get.
+        let mut out = NetdocEncoder::new();
+        for (body, sig) in &rd {
+            body.encode_unsigned(&mut out).unwrap();
+            sig.encode_unsigned(&mut out).unwrap();
+        }
+        let out = out.finish().unwrap();
+        let input2 = ParseInput::new(out.as_str(), "<router descriptor encoding>");
+        let rd2 = parse2::parse_netdoc_multiple::<RouterDescUnverified>(&input2)
+            .unwrap()
+            .into_iter()
+            .map(|rd| rd.unwrap_unverified())
+            .map(|(body, sig)| (body, sig.sigs))
+            .collect::<Vec<(RouterDesc, _)>>();
+        assert_eq!(rd, rd2);
     }
 }
