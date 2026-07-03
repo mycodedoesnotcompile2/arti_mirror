@@ -6,6 +6,7 @@
 
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
+use futures::{FutureExt, TryStreamExt};
 use hickory_proto::op::{Message, OpCode, Query, ResponseCode};
 use hickory_proto::rr::{DNSClass, Name, RData, Record, RecordType, rdata};
 use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
@@ -27,6 +28,9 @@ use crate::proxy::port_info;
 
 /// Maximum length for receiving a single datagram
 const MAX_DATAGRAM_SIZE: usize = 1536;
+
+/// Maxium number of DNS queries that can be processed concurrently
+const MAX_CONCURRENT_DNS_QUERY: usize = 32;
 
 /// A Key used to isolate dns requests.
 ///
@@ -122,6 +126,72 @@ impl<R: Runtime> DnsLookupClient for TorClient<R> {
     }
 }
 
+/// Performs a dns resolution.
+async fn resolve_query<D: DnsLookupClient>(
+    tor_client: &D,
+    query: &Query,
+    prefs: &StreamPrefs,
+) -> Result<Vec<Record>, ResponseCode> {
+    let mut records = Vec::new();
+    let mut a = Vec::new();
+    let mut ptr = Vec::new();
+
+    match query.query_class() {
+        DNSClass::IN => {
+            match query.query_type() {
+                typ @ RecordType::A | typ @ RecordType::AAAA => {
+                    let mut name = query.name().clone();
+                    // name would be "torproject.org." without this
+                    name.set_fqdn(false);
+                    let res = tor_client
+                        .resolve_with_prefs(&name.to_utf8(), prefs)
+                        .await
+                        .map_err(err_conv)?;
+                    for ip in res {
+                        a.push((query.name().clone(), ip, typ));
+                    }
+                }
+                RecordType::PTR => {
+                    let addr = query
+                        .name()
+                        .parse_arpa_name()
+                        .map_err(|_| ResponseCode::FormErr)?
+                        .addr();
+                    let res = tor_client
+                        .resolve_ptr_with_prefs(addr, prefs)
+                        .await
+                        .map_err(err_conv)?;
+                    for domain in res {
+                        let domain = Name::from_utf8(domain).map_err(|_| ResponseCode::ServFail)?;
+                        ptr.push((query.name().clone(), domain));
+                    }
+                }
+                _ => {
+                    return Err(ResponseCode::NotImp);
+                }
+            }
+        }
+        _ => {
+            return Err(ResponseCode::NotImp);
+        }
+    }
+    for (name, ip, typ) in a {
+        match (ip, typ) {
+            (IpAddr::V4(v4), RecordType::A) => {
+                records.push(Record::from_rdata(name, 3600, RData::A(rdata::A(v4))));
+            }
+            (IpAddr::V6(v6), RecordType::AAAA) => {
+                records.push(Record::from_rdata(name, 3600, RData::AAAA(rdata::AAAA(v6))));
+            }
+            _ => (),
+        }
+    }
+    for (ptr, name) in ptr {
+        records.push(Record::from_rdata(ptr, 3600, RData::PTR(rdata::PTR(name))));
+    }
+    Ok(records)
+}
+
 /// Run a DNS query over tor, returning either a list of answers, or a DNS error code.
 /// The error format has been kept the same with the (previous) synchronous version
 /// which was processing the queries sequentially and returning as soon as an error
@@ -131,72 +201,15 @@ async fn do_query<D: DnsLookupClient>(
     queries: &[Query],
     prefs: &StreamPrefs,
 ) -> Result<Vec<Record>, ResponseCode> {
-    let handle = queries.iter().map(|query| async {
-        let mut records = Vec::new();
-        let mut a = Vec::new();
-        let mut ptr = Vec::new();
-
-        match query.query_class() {
-            DNSClass::IN => {
-                match query.query_type() {
-                    typ @ RecordType::A | typ @ RecordType::AAAA => {
-                        let mut name = query.name().clone();
-                        // name would be "torproject.org." without this
-                        name.set_fqdn(false);
-                        let res = tor_client
-                            .resolve_with_prefs(&name.to_utf8(), prefs)
-                            .await
-                            .map_err(err_conv)?;
-                        for ip in res {
-                            a.push((query.name().clone(), ip, typ));
-                        }
-                    }
-                    RecordType::PTR => {
-                        let addr = query
-                            .name()
-                            .parse_arpa_name()
-                            .map_err(|_| ResponseCode::FormErr)?
-                            .addr();
-                        let res = tor_client
-                            .resolve_ptr_with_prefs(addr, prefs)
-                            .await
-                            .map_err(err_conv)?;
-                        for domain in res {
-                            let domain =
-                                Name::from_utf8(domain).map_err(|_| ResponseCode::ServFail)?;
-                            ptr.push((query.name().clone(), domain));
-                        }
-                    }
-                    _ => {
-                        return Err(ResponseCode::NotImp);
-                    }
-                }
-            }
-            _ => {
-                return Err(ResponseCode::NotImp);
-            }
-        }
-        for (name, ip, typ) in a {
-            match (ip, typ) {
-                (IpAddr::V4(v4), RecordType::A) => {
-                    records.push(Record::from_rdata(name, 3600, RData::A(rdata::A(v4))));
-                }
-                (IpAddr::V6(v6), RecordType::AAAA) => {
-                    records.push(Record::from_rdata(name, 3600, RData::AAAA(rdata::AAAA(v6))));
-                }
-                _ => (),
-            }
-        }
-        for (ptr, name) in ptr {
-            records.push(Record::from_rdata(ptr, 3600, RData::PTR(rdata::PTR(name))));
-        }
-        Ok(records)
-    });
-    let answers = futures::future::try_join_all(handle)
-        .await?
-        .into_iter()
-        .flatten()
+    let futures: Vec<_> = queries
+        .iter()
+        .map(|query| resolve_query(tor_client, query, prefs))
         .collect();
+
+    // We put an upper bound to the amount of queries that can be process concurrently.
+    let stream = futures::stream::iter(futures).buffered(MAX_CONCURRENT_DNS_QUERY);
+    let result: Vec<Vec<Record>> = stream.try_collect().await?;
+    let answers = result.into_iter().flatten().collect();
 
     Ok(answers)
 }
