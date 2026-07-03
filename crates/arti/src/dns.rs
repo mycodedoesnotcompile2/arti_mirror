@@ -164,8 +164,10 @@ where
 {
 
     let mut answers: Vec<Record> = Vec::new();
-    let limit_size = 5;
-    for chunk in queries.chunks(limit_size as usize) {
+    let limit_size: usize = 5;
+    // If we have too much queries, we may Ddos ourself, 
+    // so we limit the number of queries we send at once.
+    for chunk in queries.chunks(limit_size) {
         let futures: Vec<_> = chunk
             .iter()
             .map(|query| do_single_query(tor_client, query, prefs))
