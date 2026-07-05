@@ -221,7 +221,7 @@ impl<R: Runtime> PtMgr<R> {
     ///
     /// Returns Ok(None) if no such transport exists.
     #[cfg(any(feature = "standalone-ptmgr", feature = "tor-channel-factory"))]
-    async fn get_cmethod_for_transport(
+    pub async fn get_cmethod_for_transport(
         &self,
         transport: &PtTransportName,
     ) -> Result<Option<PtClientMethod>, PtError> {
