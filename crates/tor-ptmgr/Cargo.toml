@@ -15,9 +15,11 @@ repository = "https://gitlab.torproject.org/tpo/core/arti.git/"
 default = ["managed-pts", "tor-channel-factory"]
 tor-channel-factory = []
 managed-pts = []
+standalone-ptmgr = []
 full = [
     "tor-channel-factory",
     "managed-pts",
+    "standalone-ptmgr",
     "fs-mistrust/full",
     "tor-chanmgr/full",
     "tor-config/full",
