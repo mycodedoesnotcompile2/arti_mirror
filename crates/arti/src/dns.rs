@@ -4,9 +4,9 @@
 //! `DnsProxy::run_dns_proxy` then listens for
 //! DNS requests, and sends back replies in response.
 
+use futures::TryStreamExt;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
-use futures::{FutureExt, TryStreamExt};
 use hickory_proto::op::{Message, OpCode, Query, ResponseCode};
 use hickory_proto::rr::{DNSClass, Name, RData, Record, RecordType, rdata};
 use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
@@ -16,7 +16,7 @@ use std::sync::Arc;
 use tor_rtcompat::{SpawnExt, UdpProvider};
 use tracing::{debug, error, info, warn};
 
-use arti_client::{Error, HasKind, StreamPrefs, TorClient};
+use arti_client::{StreamPrefs, TorClient};
 use safelog::sensitive as sv;
 use tor_config::Listen;
 use tor_error::{error_report, warn_report};
@@ -489,7 +489,7 @@ mod tests {
         async fn resolve_with_prefs(
             &self,
             hostname: &str,
-            prefs: &StreamPrefs,
+            _prefs: &StreamPrefs,
         ) -> Result<Vec<IpAddr>, Self::Error> {
             match self.hostnames.get(hostname) {
                 Some(ips) => Ok(ips.clone()),
@@ -500,7 +500,7 @@ mod tests {
         async fn resolve_ptr_with_prefs(
             &self,
             addr: IpAddr,
-            prefs: &StreamPrefs,
+            _prefs: &StreamPrefs,
         ) -> Result<Vec<String>, Self::Error> {
             match self.ips.get(&addr) {
                 Some(addrs) => Ok(addrs.clone()),
@@ -533,7 +533,7 @@ mod tests {
             ],
         )];
 
-        let mut client = MockDnsLookupClient::new(lookup_table, reverse_lookup_table);
+        let client = MockDnsLookupClient::new(lookup_table, reverse_lookup_table);
 
         let queries = [
             Query::query(Name::from_str("www.arti.com").unwrap(), RecordType::A),
