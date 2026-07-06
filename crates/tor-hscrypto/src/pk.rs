@@ -7,6 +7,7 @@
 use std::fmt::{self, Debug, Display};
 use std::str::FromStr;
 
+use base32ct::{Base32Unpadded, Encoding};
 use derive_deftly::Deftly;
 use digest::Digest;
 use itertools::{Itertools, chain};
@@ -127,8 +128,7 @@ impl safelog::DisplayRedacted for HsId {
         let binary = chain!(self.0.as_ref(), &checksum, &[HSID_ONION_VERSION],)
             .cloned()
             .collect_vec();
-        let mut b32 = data_encoding::BASE32_NOPAD.encode(&binary);
-        b32.make_ascii_lowercase();
+        let b32 = Base32Unpadded::encode_string(&binary);
         write!(f, "{}{}", b32, HSID_ONION_SUFFIX)
     }
 
@@ -176,19 +176,11 @@ impl FromStr for HsId {
             return Err(PE::HsIdContainsSubdomain);
         }
 
-        // We must convert to uppercase because RFC4648 says so and that's what Rust
-        // ecosystem libraries for base32 expect.  All this allocation and copying is
-        // still probably less work than the SHA3 for the checksum.
-        // However, we are going to use this function to *detect* and filter .onion
-        // addresses, so it should have a fast path to reject them.
-        let mut s = s.to_owned();
-        s.make_ascii_uppercase();
-
         // Ideally we'd have code here that would provide a clear error message if
         // we encounter an address with the wrong version.  But that is very complicated
         // because the encoding format does not make that at all convenient.
         // So instead our errors tell you what aspect of the parsing went wrong.
-        let binary = data_encoding::BASE32_NOPAD.decode(s.as_bytes())?;
+        let binary = Base32Unpadded::decode_vec(s.to_lowercase().as_str())?;
         let mut binary = tor_bytes::Reader::from_slice(&binary);
 
         let pubkey: [u8; 32] = binary.extract()?;
@@ -219,7 +211,11 @@ pub enum HsIdParseError {
     ///
     /// `position` is indeed the (byte) position in the input string
     #[error("Invalid base32 in .onion address")]
-    InvalidBase32(#[from] data_encoding::DecodeError),
+    InvalidBase32(#[from] base32ct::Error),
+
+    /// Base32 validation failed
+    #[error("Base32 validation failed")]
+    Base32ValidationFailed,
 
     /// Encoded binary data is invalid
     #[error("Invalid encoded binary data in .onion address")]
@@ -585,7 +581,7 @@ impl Eq for HsClientDescEncKey {}
 
 impl Display for HsClientDescEncKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let x25519_pk = data_encoding::BASE32_NOPAD.encode(&self.0.to_bytes());
+        let x25519_pk = Base32Unpadded::encode_string(&self.0.to_bytes());
         write!(f, "descriptor:x25519:{}", x25519_pk)
     }
 }
@@ -616,8 +612,8 @@ impl FromStr for HsClientDescEncKey {
         //
         // TODO: consider using `data_encoding_macro::new_encoding` to create a new Encoding
         // with an alphabet that includes lowercase letters instead of to_uppercase()ing the string.
-        let encoded_key = encoded_key.to_uppercase();
-        let x25519_pk = data_encoding::BASE32_NOPAD.decode(encoded_key.as_bytes())?;
+        let encoded_key = encoded_key.to_lowercase();
+        let x25519_pk = Base32Unpadded::decode_vec(encoded_key.as_str())?;
         let x25519_pk: [u8; 32] = x25519_pk
             .try_into()
             .map_err(|_| HsClientDescEncKeyParseError::InvalidKeyMaterial)?;
@@ -648,7 +644,7 @@ pub enum HsClientDescEncKeyParseError {
 
     /// Base32 decoding failed.
     #[error("Invalid base32 in client key")]
-    InvalidBase32(#[from] data_encoding::DecodeError),
+    InvalidBase32(#[from] base32ct::Error),
 }
 
 define_pk_keypair! {
@@ -855,7 +851,10 @@ mod test {
         };
 
         chk_err!("wrong", PE::NotOnionDomain);
-        chk_err!("@.onion", PE::InvalidBase32(..));
+        chk_err!(
+            "@.onion",
+            PE::InvalidBase32(base32ct::Error::InvalidEncoding)
+        );
         chk_err!("aaaaaaaa.onion", PE::InvalidData(..));
         chk_err!(edited(55, b'E'), PE::UnsupportedVersion(4));
         chk_err!(edited(53, b'X'), PE::WrongChecksum);
