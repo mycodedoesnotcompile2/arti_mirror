@@ -178,15 +178,6 @@ impl FromStr for HsId {
             return Err(PE::HsIdContainsSubdomain);
         }
 
-        // Validate the base32 to work around base32ct panics
-        //
-        // Ideally we'd do it in the base32ct crate, but for now we have to validate ourselves.
-        let filtered_b32: String = s.chars().filter(|&c| c != '=').collect();
-
-        if !filtered_b32.chars().all(char::is_alphanumeric) {
-            return Err(PE::Base32ValidationFailed);
-        }
-
         // Ideally we'd have code here that would provide a clear error message if
         // we encounter an address with the wrong version.  But that is very complicated
         // because the encoding format does not make that at all convenient.
@@ -862,7 +853,10 @@ mod test {
         };
 
         chk_err!("wrong", PE::NotOnionDomain);
-        chk_err!("@.onion", PE::Base32ValidationFailed);
+        chk_err!(
+            "@.onion",
+            PE::InvalidBase32(base32ct::Error::InvalidEncoding)
+        );
         chk_err!("aaaaaaaa.onion", PE::InvalidData(..));
         chk_err!(edited(55, b'E'), PE::UnsupportedVersion(4));
         chk_err!(edited(53, b'X'), PE::WrongChecksum);
