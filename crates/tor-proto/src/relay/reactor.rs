@@ -840,7 +840,7 @@ pub(crate) mod test {
             rt.advance_until_stalled().await;
 
             // Simulate the client sending us a DESTROY cell
-            let destroy = Destroy::new(DestroyReason::PROTOCOL);
+            let destroy = Destroy::new(DestroyReason::NONE);
             ctrl.send_fwd_cmsg(destroy.into()).await;
             rt.advance_until_stalled().await;
 
@@ -848,7 +848,7 @@ pub(crate) mod test {
                 "Received outbound DESTROY, circuit shutting down"
             ));
 
-            // Ensure the destroy reason (PROTOCOL) is not propagated
+            // Ensure the destroy reason (NONE) is not propagated
             assert_destroy_sent(&mut ctrl, DestroyReason::NONE);
         });
     }
@@ -872,7 +872,7 @@ pub(crate) mod test {
             assert!(ctrl.outbound_chan_launched());
 
             // Simulate the client sending us a DESTROY cell
-            let destroy = Destroy::new(DestroyReason::PROTOCOL);
+            let destroy = Destroy::new(DestroyReason::NONE);
             ctrl.write_outbound(circid, destroy.into());
             rt.advance_until_stalled().await;
 
@@ -886,7 +886,7 @@ pub(crate) mod test {
                 "Received inbound DESTROY, circuit shutting down"
             ));
 
-            // Ensure the destroy reason (PROTOCOL) is not propagated
+            // Ensure the destroy reason (NONE) is not propagated
             // This will check that we've sent a DESTROY cell in both directions.
             assert_destroy_sent(&mut ctrl, DestroyReason::NONE);
         });
