@@ -283,9 +283,7 @@ pub(crate) mod test {
             let (mut tx, mut rx) = fake_mpsc(BUFFER_SIZE);
 
             tx.send(relay_msg()).await.unwrap();
-            tx.send(destroy_msg(DestroyReason::NONE))
-                .await
-                .unwrap();
+            tx.send(destroy_msg(DestroyReason::NONE)).await.unwrap();
 
             // Destroy skips the queue
             let destroy = rx.next().await.unwrap();
@@ -301,9 +299,7 @@ pub(crate) mod test {
         MockRuntime::test_with_various(|_rt| async move {
             let (mut tx, mut rx) = fake_mpsc(BUFFER_SIZE);
 
-            tx.send(destroy_msg(DestroyReason::NONE))
-                .await
-                .unwrap();
+            tx.send(destroy_msg(DestroyReason::NONE)).await.unwrap();
             let destroy = rx.next().await.unwrap();
 
             assert!(matches!(destroy, AnyChanMsg::Destroy(_)));
