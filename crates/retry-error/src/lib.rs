@@ -510,7 +510,7 @@ pub fn fmt_error_with_sources(mut e: &dyn Error, f: &mut fmt::Formatter) -> fmt:
     loop {
         let this = e.to_string();
         if !last.contains(&this) {
-            write!(f, "{}{}", sep.next().expect("repeat ended"), &this)?;
+            write!(f, "{}{}", sep.next().expect("repeat ended"), this)?;
         }
         last = this;
 
