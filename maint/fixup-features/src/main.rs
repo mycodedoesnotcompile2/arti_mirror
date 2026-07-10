@@ -325,10 +325,7 @@ impl Crate {
                     "Dependency for {:?} is given as version='*'",
                     dep.name
                 )),
-                None => w(format!(
-                    "No version found for dependency on {:?}",
-                    dep.name
-                )),
+                None => w(format!("No version found for dependency on {:?}", dep.name)),
                 _ => {}
             }
         }
