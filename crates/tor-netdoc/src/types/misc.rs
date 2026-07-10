@@ -2934,11 +2934,11 @@ mod test {
                 #[allow(clippy::print_stderr)]
                 let b = match s.parse::<B64>() {
                     Ok(b) => {
-                        eprintln!("{:10} {:?}", &s, b.as_bytes());
+                        eprintln!("{:10} {:?}", s, b.as_bytes());
                         b
                     }
                     Err(_) => {
-                        eprintln!("{:10} Err", &s);
+                        eprintln!("{:10} Err", s);
                         continue;
                     }
                 };

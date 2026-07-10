@@ -809,7 +809,7 @@ mod test {
 
     impl DirState for DemoState {
         fn describe(&self) -> String {
-            format!("{:?}", &self)
+            format!("{:?}", self)
         }
         fn bootstrap_progress(&self) -> crate::event::DirProgress {
             crate::event::DirProgress::default()

@@ -432,11 +432,11 @@ fn create_all_services(
     client_config: &TorClientConfig,
 ) -> Result<Vec<OnionService>> {
     let mut services = Vec::new();
-    for (_, cfg) in config.onion_services.iter() {
+    for cfg in config.onion_services.iter() {
         services.push(
             TorClient::<tor_rtcompat::PreferredRuntime>::create_onion_service(
                 client_config,
-                cfg.svc_cfg.clone(),
+                cfg.1.svc_cfg.clone(),
             )?,
         );
     }

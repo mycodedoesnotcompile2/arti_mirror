@@ -224,7 +224,7 @@ impl fmt::Display for BootstrapStatus {
             write!(
                 f,
                 "{}%: {}; {}",
-                percent, &self.conn_status, &self.dir_status
+                percent, self.conn_status, self.dir_status
             )?;
         }
         if let Some(skew) = &self.skew {
