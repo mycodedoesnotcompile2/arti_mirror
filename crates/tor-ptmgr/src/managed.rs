@@ -151,7 +151,9 @@ impl<R: Runtime> PtReactor<R> {
     /// Run one step of the reactor. Returns true if the reactor should terminate.
     pub(crate) async fn run_one_step(&mut self) -> err::Result<bool> {
         use futures::future::Either;
-
+        // Get the next message from each of the running PTs by calling the function "next_message"
+        // which returns Pin<Box<dyn Future<Output = err::Result<PtMessage>> + Send + 'async_trait>>
+        // (Ignore what the signature says, because it uses async_trait)
         let mut all_next_messages = self
             .running
             .iter_mut()
@@ -159,6 +161,7 @@ impl<R: Runtime> PtReactor<R> {
             .collect::<Vec<_>>();
 
         // We can't construct a select_all if all_next_messages is empty.
+        // So we construct a future that will never resolve in that case.
         let mut next_message = if all_next_messages.is_empty() {
             Either::Left(futures::future::pending())
         } else {
@@ -188,6 +191,12 @@ impl<R: Runtime> PtReactor<R> {
                 self.handle_spawned(covers, result);
             }
             internal = self.rx.next() => {
+                // Sender sent a message, or the channel was closed.
+                // To handle the incoming message:
+                // For Reconfigure: we should just ignore the message.
+                // For Spawn: 
+                // if a PT with the same PtTranspostName is already running or requested to spawn,
+                // ignore the duplicate request; otherwise, spawn a new task.
                 drop(all_next_messages);
 
                 match internal {
@@ -211,12 +220,15 @@ impl<R: Runtime> PtReactor<R> {
                             (state.configured.get(&pt).cloned(), state.outbound_proxy.clone())
                         };
 
+                        // If we don't have a configured config, then we can't spawn a PT for this transport.
                         let Some(config) = config else {
                             let _ = result.send(Err(PtError::UnconfiguredTransportDueToConcurrentReconfiguration));
                             return Ok(false);
                         };
 
                         let TransportOptions::Managed(config) = config else {
+                            // This should never happen,
+                            // because we won't even create a PtReactor if the transport is unmanaged.
                             let _ = result.send(Err(internal!("Tried to spawn an unmanaged transport").into()));
                             return Ok(false);
                         };
