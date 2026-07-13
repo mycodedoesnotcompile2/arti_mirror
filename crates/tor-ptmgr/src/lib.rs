@@ -46,7 +46,6 @@
 #![deny(clippy::unused_async)]
 #![deny(clippy::string_slice)] // See arti#2571
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
-// TODO: FWIW, but maybe some tests would be nice?
 pub mod config;
 pub mod err;
 
