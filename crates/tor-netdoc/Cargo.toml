@@ -71,7 +71,7 @@ __is_experimental = []
 [dependencies]
 amplify = { version = "4", default-features = false, features = ["derive"] }
 base64ct = { version = "1.5.1", features = ["alloc"] }
-cipher = { version = "0.4.1", features = ["zeroize"] }
+cipher = { version = "0.5.2", features = ["zeroize"] }
 derive-deftly = { version = "~1.11.3", features = ["full", "beta"] }
 derive_builder = { version = "0.11.2", package = "derive_builder_fork_arti" }
 derive_more = { version = "2.1.1", features = ["full"] }
