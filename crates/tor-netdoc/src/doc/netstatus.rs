@@ -1300,7 +1300,7 @@ impl ItemValueParseable for SharedRandCommit {
                 .next()
                 .ok_or_else(|| args.handle_error(exp, ArgumentError::Missing))?;
             if got != exp {
-                return Err(args.handle_error(exp, ArgumentError::Invalid))?;
+                Err(args.handle_error(exp, ArgumentError::Invalid))?;
             }
         }
         let values = SharedRandCommitV1::from_unparsed(item)?;
