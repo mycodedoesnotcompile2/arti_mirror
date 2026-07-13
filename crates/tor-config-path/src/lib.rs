@@ -564,12 +564,12 @@ mod test_serde {
             let input = TestConfigFile { p };
             let s = match ser(&input) {
                 Ok(s) => s,
-                Err(e) if easy => panic!("ser failed {:?} e={:?}", &input, &e),
+                Err(e) if easy => panic!("ser failed {:?} e={:?}", input, e),
                 Err(_) => return,
             };
             dbg!(&input, &s);
             let output = deser(&s).expect("deser failed");
-            assert_eq!(&input, &output, "s={:?}", &s);
+            assert_eq!(&input, &output, "s={:?}", s);
         };
 
         case(true, CfgPath::new("string".into()));

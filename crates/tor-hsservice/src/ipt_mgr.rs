@@ -584,9 +584,9 @@ impl Debug for IptRelay {
                     Some(IsCurrent) => "cur",
                     None => "old",
                 },
-                &ipt.lid,
-                &ipt.status_last,
-                &ipt.last_descriptor_expiry_including_slop,
+                ipt.lid,
+                ipt.status_last,
+                ipt.last_descriptor_expiry_including_slop,
             )?;
         }
         Ok(())

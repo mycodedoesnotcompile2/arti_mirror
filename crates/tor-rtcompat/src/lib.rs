@@ -709,10 +709,10 @@ mod test {
         let settings = TlsAcceptorSettings::new(tls_cert).unwrap();
 
         let Ok(tls_acceptor) = runtime.tls_acceptor(settings) else {
-            println!("Skipping tls-server test for runtime {:?}", &runtime);
+            println!("Skipping tls-server test for runtime {:?}", runtime);
             return IoResult::Ok(());
         };
-        println!("Running tls-server test for runtime {:?}", &runtime);
+        println!("Running tls-server test for runtime {:?}", runtime);
 
         let tls_connector = runtime.tls_connector();
 
