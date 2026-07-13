@@ -194,7 +194,7 @@ impl<R: Runtime> PtReactor<R> {
                 // Sender sent a message, or the channel was closed.
                 // To handle the incoming message:
                 // For Reconfigure: we should just ignore the message.
-                // For Spawn: 
+                // For Spawn:
                 // if a PT with the same PtTranspostName is already running or requested to spawn,
                 // ignore the duplicate request; otherwise, spawn a new task.
                 drop(all_next_messages);
