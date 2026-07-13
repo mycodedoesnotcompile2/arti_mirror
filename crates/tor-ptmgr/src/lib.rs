@@ -48,7 +48,6 @@
 #![deny(clippy::string_slice)] // See arti#2571
 #![allow(recursion_depth_exceeding_limit)] // arti#2715, rust/issues/159228
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
-// TODO: FWIW, but maybe some tests would be nice?
 pub mod config;
 pub mod err;
 
