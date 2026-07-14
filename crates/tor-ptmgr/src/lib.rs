@@ -59,7 +59,7 @@ mod managed;
 use crate::config::{TransportConfig, TransportOptions};
 use crate::err::PtError;
 #[cfg(all(feature = "managed-pts", feature = "tor-channel-factory"))]
-use oneshot_fused_workaround as oneshot;
+use {oneshot_fused_workaround as oneshot, tracing::info}
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -69,8 +69,6 @@ use tor_config_path::CfgPathResolver;
 use tor_linkspec::PtTransportName;
 use tor_rtcompat::Runtime;
 use tor_socksproto::SocksVersion;
-#[cfg(all(feature = "managed-pts", feature = "tor-channel-factory"))]
-use tracing::info;
 use tracing::warn;
 #[cfg(feature = "managed-pts")]
 use {
