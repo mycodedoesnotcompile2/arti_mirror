@@ -58,7 +58,7 @@ mod managed;
 use crate::config::{TransportConfig, TransportOptions};
 use crate::err::PtError;
 use oneshot_fused_workaround as oneshot;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, hash_map::Entry};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -121,17 +121,19 @@ impl<R: Runtime> PtMgr<R> {
         binaries: Vec<TransportConfig>,
     ) -> Result<HashMap<PtTransportName, TransportOptions>, tor_error::Bug> {
         let mut ret = HashMap::new();
-        // mh means MethodAlreadyHad
-        // used for check if there is multiple transports configured for the same protocol
-        let mut mh = HashSet::new();
         for thing in binaries {
             for tn in thing.protocols.iter() {
-                if !mh.insert(tn.clone()) {
-                    return Err(tor_error::internal!(
-                        "Multiple transports configured for protocol {tn}. This is not currently supported."
-                    ));
+                let key = tn.clone();
+                match ret.entry(key) {
+                    Entry::Occupied(_) => {
+                        return Err(tor_error::internal!(
+                            "Multiple transports configured for protocol {tn}. This is not currently supported."
+                        ));
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(thing.clone().try_into()?);
+                    }
                 }
-                ret.insert(tn.clone(), thing.clone().try_into()?);
             }
         }
         for opt in ret.values() {
