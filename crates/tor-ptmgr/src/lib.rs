@@ -65,7 +65,6 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use tor_chanmgr::ProxyProtocol;
-#[cfg(feature = "managed-pts")]
 use tor_config_path::CfgPathResolver;
 use tor_linkspec::PtTransportName;
 use tor_rtcompat::Runtime;
@@ -155,10 +154,14 @@ impl<R: Runtime> PtMgr<R> {
 
     /// Create a new PtMgr.
     // TODO: maybe don't have the Vec directly exposed?
+    // NOTE(pryty26): Please try to avoid feature-gating function arguments,
+    // if it's a public function.
+    // We can use #[allow(unused)] or _variable to silence warnings for unused arguments
+    // instead of using feature-gating function arguments.
     pub fn new(
         transports: Vec<TransportConfig>,
         #[allow(unused)] state_dir: PathBuf,
-        #[cfg(feature = "managed-pts")] path_resolver: Arc<CfgPathResolver>,
+        #[allow(unused)] path_resolver: Arc<CfgPathResolver>,
         outbound_proxy: Option<ProxyProtocol>,
         rt: R,
     ) -> Result<Self, PtError> {
@@ -235,25 +238,15 @@ impl<R: Runtime> PtMgr<R> {
         &self,
         transport: &PtTransportName,
     ) -> Result<Option<PtClientMethod>, PtError> {
-        #[cfg(feature = "managed-pts")]
-        let (cfg, managed_cmethod) = {
-            // NOTE(eta): This is using a RwLock inside async code (but not across an await point).
-            //            Arguably this is fine since it's just a small read, and nothing should ever
-            //            hold this lock for very long.
+        let cfg = {
             let inner = self.state.read().expect("ptmgr poisoned");
-            let cfg = inner.configured.get(transport);
-            let managed_cmethod = inner.managed_cmethods.get(transport);
-            (cfg.cloned(), managed_cmethod.cloned())
+            inner.configured.get(transport).cloned()
         };
 
-        #[cfg(all(feature = "tor-channel-factory", not(feature = "managed-pts")))]
-        let cfg = {
-            // NOTE(eta): This is using a RwLock inside async code (but not across an await point).
-            //            Arguably this is fine since it's just a small read, and nothing should ever
-            //            hold this lock for very long.
+        #[cfg(feature = "managed-pts")]
+        let managed_cmethod = {
             let inner = self.state.read().expect("ptmgr poisoned");
-            let cfg = inner.configured.get(transport);
-            cfg.cloned()
+            inner.managed_cmethods.get(transport).cloned()
         };
 
         match cfg {
