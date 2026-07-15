@@ -18,6 +18,7 @@
 
 mod addrpolicy;
 mod portpolicy;
+mod summary;
 
 use std::fmt;
 use std::ops::RangeInclusive;
@@ -28,6 +29,7 @@ use tor_basic_utils::iter_join;
 
 pub use addrpolicy::{AddrPolicy, AddrPortPattern, IpPattern};
 pub use portpolicy::PortPolicy;
+pub use summary::{PortPolicies, PortSummaryThresholds};
 
 use crate::NormalItemArgument;
 use crate::parse2::{ArgumentError, ArgumentStream, ItemArgumentParseable};
