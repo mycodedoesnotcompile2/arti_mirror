@@ -53,7 +53,6 @@ mod rs;
 
 pub mod md;
 pub mod plain;
-#[cfg(feature = "incomplete")]
 pub mod vote;
 
 #[cfg(feature = "build_docs")]
@@ -61,7 +60,6 @@ mod build;
 
 pub use proto_statuses_parse2_encode::ProtoStatusesNetdocParseAccumulator;
 
-#[cfg(feature = "incomplete")]
 use crate::doc::authcert::EncodedAuthCert;
 
 use crate::doc::authcert::{self, AuthCert, AuthCertKeyIds, AuthCertUnverified};
@@ -323,7 +321,6 @@ pub mod consensus_methods_comma_separated {
     }
 
     /// Encode
-    #[cfg(feature = "incomplete")] // untested
     pub fn write_arg_onto(self_: &ConsensusMethods, out: &mut ItemEncoder) -> Result<(), Bug> {
         out.args_raw_string(&iter_join(",", &self_.methods));
         Ok(())
@@ -743,8 +740,7 @@ define_derive_deftly! {
         ///
         /// `None` if the value wasn't computed.
         /// That shouldn't happen.
-        // TODO DIRAUTH make private when poc's verification is abolished
-        pub(crate) fn hash_slice_for_verification(
+        fn hash_slice_for_verification(
             &self,
             algo: &DigestAlgoInSignature,
         ) -> Option<&[u8]> {
@@ -893,8 +889,6 @@ pub struct SignatureGroup {
 /// giving [`InsufficientTrustedSigners`](VerifyFailed::InsufficientTrustedSigners).
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
-// TODO DIRAUTH nothing tests that values in here are right, but there are no
-// public entrypoints that return one, so we don't need to cfg it "incomplete".
 pub enum ConsensusVerifiabilityError {
     /// Insufficient trusted signers
     #[error("consensus not signed by enough authorities")]
@@ -1326,7 +1320,6 @@ define_derive_deftly! {
 
     ${defcond F_NORMAL not(fmeta(netdoc(skip)))}
 
-    #[cfg(feature = "incomplete")] // needs EncodedAuthCert, otherwise complete
     impl NetdocParseable for VoteAuthoritySection {
         fn doctype_for_error() -> &'static str {
             "vote.authority.section"
@@ -1362,7 +1355,6 @@ define_derive_deftly! {
         }
     }
 
-    #[cfg(feature = "incomplete")]
     impl NetdocEncodable for VoteAuthoritySection {
         fn encode_unsigned(&self, out: &mut NetdocEncoder) -> Result<(), Bug> {
           $(
@@ -1383,7 +1375,6 @@ define_derive_deftly! {
 #[derive(Deftly, Clone, Debug)]
 #[derive_deftly(VoteAuthoritySection, Constructor)]
 #[allow(clippy::exhaustive_structs)]
-#[cfg(feature = "incomplete")] // needs EncodedAuthCert, otherwise complete
 pub struct VoteAuthoritySection {
     /// Authority entry
     #[deftly(constructor)]
@@ -2063,7 +2054,6 @@ mod encode_impls {
         tor_error::Bug,
     };
 
-    #[cfg(feature = "incomplete")] // untested
     impl NetdocEncodableFields for RelayWeightsItem {
         fn encode_fields(&self, out: &mut NetdocEncoder) -> Result<(), Bug> {
             if let Some(w) = self.params.as_ref().into_retained()? {
@@ -2287,10 +2277,8 @@ impl EncodeOrd for Signature {
 /// Used by callers of [`SignatureGroup::verify_general`],
 /// to allow verification to be suppressed if all we wanted to know was
 /// whether we have enough signatures and enough authcerts.
-//
-// TODO DIRAUTH make this module-private when poc is abolished
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ConsensusSignatureToVerify<'r> {
+struct ConsensusSignatureToVerify<'r> {
     /// KP_auth_sign_rsa
     key: &'r ll::pk::rsa::PublicKey,
 
@@ -2314,8 +2302,7 @@ pub(crate) struct SignatureVerifiedIfIntended {}
 impl<'r> ConsensusSignatureToVerify<'r> {
     /// Verify this signature
     ///
-    // TODO DIRAUTH make this module-private when poc is abolished
-    pub(crate) fn verify(self) -> Result<SignatureVerifiedIfIntended, VerifyFailed> {
+    fn verify(self) -> Result<SignatureVerifiedIfIntended, VerifyFailed> {
         self.key.verify(self.signed_digest, self.signature)?;
         Ok(SignatureVerifiedIfIntended {})
     }
@@ -2472,8 +2459,7 @@ impl SignatureGroup {
     ///
     ///  * We prefer the term `verify` to `validate`.  All this does is signature verification.
     ///
-    // TODO DIRAUTH make this module-private when poc is abolished
-    pub(crate) fn verify_general<E>(
+    fn verify_general<E>(
         &self,
         trusted_authorities: VerifyGeneralTrustedAuthorities,
         certs: &[AuthCert],
@@ -2946,9 +2932,8 @@ mod test {
         assert_eq!(ps, ps3);
     }
 
-    // TODO DIRAUTH test parse2 consensus verify functions
+    // consensuses are done in each_flavor.rs: see verify_error_netstatus
     #[test]
-    #[cfg(feature = "incomplete")]
     fn verify_error_netstatus_vote() -> Result<(), anyhow::Error> {
         use VerifyFailed as VF;
         use VoteVerifyFailed as VVF;
@@ -3027,34 +3012,13 @@ mod test {
         Ok(())
     }
 
-    /// Check that a network document can be parsed and regenerated, mostly identically
-    ///
-    /// The regenerated encoded form doesn't need to be 100% identical:
-    /// it is compared with a *munged* version of the the original input file,
-    /// to cope with differences between C Tor and Arti.
-    ///
-    /// The mungings are:
-    ///
-    ///  * Some fields' syntax are adjusted, where C Tor and Arti disagree
-    ///    in all kinds of network document.
-    ///
-    ///  * Document-specific, [`MungeForRoundtrip::adjust_exp`]
-    #[cfg(feature = "incomplete")]
-    fn roundtrip_netstatus<UV, V, VE>(
-        // TODO DIRAUTH use include_str!, so, at call sites
-        // https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4121#note_3428675
+    #[cfg(feature = "retain-unknown")]
+    #[allow(clippy::type_complexity)]
+    pub(super) fn prep_netstatus_verify<UV: NetdocParseable>(
         file: &str,
-        verify: impl FnOnce(UV, &[RsaIdentity], &[AuthCert]) -> Result<TimerangeBound<V>, VE>,
-        adjust_now: Duration,
-    ) -> anyhow::Result<()>
-    where
-        UV: NetdocParseable + NetdocParseableUnverified + MungeForRoundtrip,
-        UV::Signatures: Clone + Debug + NetdocEncodableFields,
-        VE: Debug + std::error::Error + Send + Sync + 'static,
-        V: Debug + NetdocEncodable,
-    {
+    ) -> anyhow::Result<(UV, String, Vec<AuthCert>, Vec<RsaIdentity>, SystemTime)> {
         let text = fs::read_to_string(file).with_context(|| file.to_owned())?;
-        let now = parse_rfc3339("2000-01-01T00:02:25Z")? + adjust_now;
+        let now = parse_rfc3339("2000-01-01T00:02:25Z")?;
 
         let mut input = ParseInput::new(&text, file);
         input.retain_unknown_values();
@@ -3072,14 +3036,44 @@ mod test {
                 .collect::<Result<Vec<AuthCert>, _>>()?
         };
 
+        let authorities = certs.iter().map(|cert| *cert.fingerprint).collect_vec();
+
+        Ok((doc, text, certs, authorities, now))
+    }
+
+    /// Check that a network document can be parsed and regenerated, mostly identically
+    ///
+    /// The regenerated encoded form doesn't need to be 100% identical:
+    /// it is compared with a *munged* version of the the original input file,
+    /// to cope with differences between C Tor and Arti.
+    ///
+    /// The mungings are:
+    ///
+    ///  * Some fields' syntax are adjusted, where C Tor and Arti disagree
+    ///    in all kinds of network document.
+    ///
+    ///  * Document-specific, [`MungeForRoundtrip::adjust_exp`]
+    #[cfg(feature = "retain-unknown")]
+    fn roundtrip_netstatus<UV, V, VE>(
+        // TODO DIRAUTH use include_str!, so, at call sites
+        // https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4121#note_3428675
+        file: &str,
+        verify: impl FnOnce(UV, &[RsaIdentity], &[AuthCert]) -> Result<TimerangeBound<V>, VE>,
+        adjust_now: Duration,
+    ) -> anyhow::Result<()>
+    where
+        UV: NetdocParseable + NetdocParseableUnverified + MungeForRoundtrip,
+        UV::Signatures: Clone + Debug + NetdocEncodableFields,
+        VE: Debug + std::error::Error + Send + Sync + 'static,
+        V: Debug + NetdocEncodable,
+    {
+        let (doc, text, certs, authorities, now) = prep_netstatus_verify::<UV>(file)?;
+
+        let now = now + adjust_now;
+
         let sigs = doc.inspect_unverified().1.sigs.clone();
 
-        let doc = verify(
-            doc,
-            &certs.iter().map(|cert| *cert.fingerprint).collect_vec(),
-            &certs,
-        )?
-        .check_valid_at(&now)?;
+        let doc = verify(doc, &authorities, &certs)?.check_valid_at(&now)?;
 
         println!("{doc:?}");
 
@@ -3138,9 +3132,7 @@ mod test {
     /// Test that we can re-encode the consensus we parsed, and that we get the same thing back.
     ///
     /// Well, roughly the same thing.
-    //
-    // TODO DIRAUTH want more comprehensive test; testdata2's netstatus lacks many things
-    #[cfg(feature = "incomplete")]
+    #[cfg(feature = "retain-unknown")]
     #[test]
     fn roundtrip_netstatus_plain() -> anyhow::Result<()> {
         roundtrip_netstatus::<plain::NetworkStatusUnverified, _, _>(
@@ -3150,7 +3142,6 @@ mod test {
         )
     }
 
-    #[cfg(feature = "incomplete")]
     impl MungeForRoundtrip for plain::NetworkStatusUnverified {
         fn adjust_exp(exp: &mut String) {
             let mut regsub = |re, repl| regsub(exp, re, repl);
@@ -3172,7 +3163,7 @@ mod test {
         }
     }
 
-    #[cfg(feature = "incomplete")]
+    #[cfg(feature = "retain-unknown")]
     #[test]
     fn roundtrip_netstatus_md() -> anyhow::Result<()> {
         roundtrip_netstatus::<md::NetworkStatusUnverified, _, _>(
@@ -3182,7 +3173,6 @@ mod test {
         )
     }
 
-    #[cfg(feature = "incomplete")]
     impl MungeForRoundtrip for md::NetworkStatusUnverified {
         fn adjust_exp(exp: &mut String) {
             let mut regsub = |re, repl| regsub(exp, re, repl);
@@ -3199,7 +3189,7 @@ mod test {
         }
     }
 
-    #[cfg(feature = "incomplete")]
+    #[cfg(feature = "retain-unknown")]
     #[test]
     fn roundtrip_netstatus_vote() -> anyhow::Result<()> {
         roundtrip_netstatus::<vote::NetworkStatusUnverified, _, _>(
@@ -3209,7 +3199,6 @@ mod test {
         )
     }
 
-    #[cfg(feature = "incomplete")]
     impl MungeForRoundtrip for vote::NetworkStatusUnverified {
         fn adjust_exp(exp: &mut String) {
             // C Tor writes items in consensuses a different order to in votes!
@@ -3280,5 +3269,55 @@ $2
                 regsub(&format!(r#"^{missing_field} .*\n"#), "");
             }
         }
+    }
+
+    fn testdata_live(f: &str) -> String {
+        // We implement an overrideable *prefix* rather than suffix, here,
+        // so that we can access the files in a totally different directory.
+        // (This is helpful with nailing-cargo, amongst other things.)
+        let var = "TOR_NETDOC_TESTDATA_LIVE_PREFIX";
+        let prefix = std::env::var_os(var)
+            .map(|s| s.into_string().expect(var))
+            .unwrap_or("testdata-live/".into());
+        format!("{prefix}{f}")
+    }
+
+    #[allow(clippy::unnecessary_wraps)] // signature needs to match for roundtrip_netstatus
+    fn unwrap_unverified_for_test<UV: NetdocParseableUnverified>(
+        uv: UV,
+        _ids: &[RsaIdentity],
+        _certs: &[AuthCert],
+    ) -> Result<TimerangeBound<UV::Body>, std::convert::Infallible> {
+        Ok(TimerangeBound::new(uv.unwrap_unverified().0, ..))
+    }
+
+    #[cfg(feature = "retain-unknown")]
+    #[test]
+    fn roundtrip_live_plain() -> anyhow::Result<()> {
+        roundtrip_netstatus::<plain::NetworkStatusUnverified, _, _>(
+            &testdata_live("consensus"),
+            unwrap_unverified_for_test,
+            Duration::ZERO,
+        )
+    }
+
+    #[cfg(feature = "retain-unknown")]
+    #[test]
+    fn roundtrip_live_md() -> anyhow::Result<()> {
+        roundtrip_netstatus::<md::NetworkStatusUnverified, _, _>(
+            &testdata_live("consensus-microdesc"),
+            unwrap_unverified_for_test,
+            Duration::ZERO,
+        )
+    }
+
+    #[cfg(feature = "retain-unknown")]
+    #[test]
+    fn roundtrip_live_vote() -> anyhow::Result<()> {
+        roundtrip_netstatus::<vote::NetworkStatusUnverified, _, _>(
+            &testdata_live("authority"),
+            unwrap_unverified_for_test,
+            Duration::ZERO,
+        )
     }
 }

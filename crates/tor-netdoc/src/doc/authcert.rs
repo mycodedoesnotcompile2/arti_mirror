@@ -45,9 +45,7 @@ mod build;
 #[allow(deprecated)]
 pub use build::AuthCertBuilder;
 
-#[cfg(feature = "incomplete")]
 mod encoded;
-#[cfg(feature = "incomplete")]
 pub use encoded::EncodedAuthCert;
 
 decl_keyword! {
@@ -720,9 +718,6 @@ impl AuthCert {
     ///
     /// Yields the string representation of the signed, encoded, document,
     /// as an [`EncodedAuthCert`].
-    // TODO these features are quite tangled
-    // `EncodedAuthCert` is only available with `parse2` and `plain-consensus`
-    #[cfg(feature = "incomplete")] // Needs EncodedAuthCert
     pub fn encode_sign(&self, k_auth_id_rsa: &rsa::KeyPair) -> StdResult<EncodedAuthCert, Bug> {
         let mut encoder = NetdocEncoder::new();
         self.encode_unsigned(&mut encoder)?;
@@ -1216,7 +1211,6 @@ ids 1234567812345678123456781234567812345678 ABCDABCDABCDABCDABCDABCDABCDABCDABC
     }
 
     #[test]
-    #[cfg(feature = "incomplete")]
     fn roundtrip() -> Result<(), anyhow::Error> {
         let mut rng = test_rng::testing_rng();
         let k_auth_id_rsa = rsa::KeyPair::generate(&mut rng)?;
@@ -1249,7 +1243,6 @@ ids 1234567812345678123456781234567812345678 ABCDABCDABCDABCDABCDABCDABCDABCDABC
         Ok(())
     }
 
-    #[cfg(feature = "incomplete")]
     #[test]
     fn parse_authcert() -> anyhow::Result<()> {
         let file = "testdata2/cached-certs--1";
