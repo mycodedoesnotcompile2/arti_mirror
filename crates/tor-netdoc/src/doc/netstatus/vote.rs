@@ -29,8 +29,6 @@ impl NetworkStatusUnverified {
     /// Doesn't check the validity period:
     /// the document is wrapped in [`TimerangeBound`],
     /// ensuring that the caller does that check.
-    //
-    // TODO DIRAUTH test this
     pub fn verify(
         self,
         trusted: &[RsaIdentity],
