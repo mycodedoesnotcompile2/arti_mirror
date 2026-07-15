@@ -154,8 +154,10 @@ def main() -> None:
     parser.add_argument(
         "-s", "--seed", type=int, default=1, help="Simulation PRNG seed"
     )
+    parser.set_defaults(func=_configure_and_run_shadow)
     args = parser.parse_args()
-    _configure_and_run_shadow(args)
+
+    args.func(args)
 
 
 if __name__ == "__main__":
