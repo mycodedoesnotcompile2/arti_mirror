@@ -266,7 +266,10 @@ pub(crate) async fn bind_dns_resolver<R: Runtime>(
     match listen.ip_addrs() {
         Ok(addrgroups) => {
             for addrgroup in addrgroups {
+                let mut failure_count: u32 = 0;
+                let mut addr_count: u32 = 0;
                 for addr in addrgroup {
+                    addr_count += 1;
                     // NOTE: Our logs here displays the local address. We allow this, since
                     // knowing the address is basically essential for diagnostics.
                     match runtime.bind(&addr).await {
@@ -277,6 +280,7 @@ pub(crate) async fn bind_dns_resolver<R: Runtime>(
                         }
                         #[cfg(unix)]
                         Err(ref e) if e.raw_os_error() == Some(libc::EAFNOSUPPORT) => {
+                            failure_count += 1;
                             warn_report!(e, "Address family not supported {}", addr);
                         }
                         Err(ref e) => {
@@ -284,7 +288,10 @@ pub(crate) async fn bind_dns_resolver<R: Runtime>(
                         }
                     }
                 }
-                // TODO: We are supposed to fail if all addresses in a group fail.
+
+                if failure_count >= addr_count {
+                    return Err(anyhow!("All addresses failed to bind in a group"));
+                }
             }
         }
         Err(e) => warn_report!(e, "Invalid listen spec"),
