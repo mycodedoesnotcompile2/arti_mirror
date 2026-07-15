@@ -116,7 +116,7 @@ impl Summariser {
     ///
     /// Overwrites old information - so last update wins.
     ///
-    /// Calls `Reject::apply_rune` once for every relevant combination of:
+    /// Calls `Reject::apply_rule` once for every relevant combination of:
     ///
     ///  * port range (via [`rangemap_mutate_range`])
     ///  * address family (open-coded, two similar calls)
@@ -327,7 +327,7 @@ impl AddrPolicy {
 
 //---------- PortSummaryThresholds configuration type ----------
 
-/// Thresholds for deciding whether a port counts as open, for a summaray
+/// Thresholds for deciding whether a port counts as open, for a summary
 ///
 /// Each value is the maximum number of individual addresses
 /// that may be blocked before the port is considered closed.
