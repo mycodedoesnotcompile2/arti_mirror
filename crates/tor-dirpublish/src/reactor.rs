@@ -407,7 +407,6 @@ where
     /// Called when a task in `self.inflight` produces a result.
     ///
     /// Update our status and launch new tasks as appropriate.
-    #[allow(clippy::cognitive_complexity)]
     fn handle_task_result(&mut self, task_result: TaskResult<T>) {
         let TaskResult {
             target,

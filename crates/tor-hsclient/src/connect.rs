@@ -527,7 +527,6 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
     ///
     /// Does all necessary retries and timeouts.
     /// Returns an error if no valid descriptor could be found.
-    #[allow(clippy::cognitive_complexity)] // TODO: Refactor
     #[instrument(level = "trace", skip_all)]
     async fn descriptor_ensure<'d>(
         &self,
@@ -1222,7 +1221,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
     /// So if there's a failure, it's purely to do with the introduction point.
     ///
     /// Applies timeouts as appropriate.
-    #[allow(clippy::cognitive_complexity, clippy::type_complexity)] // TODO: Refactor
+    #[allow(clippy::type_complexity)] // TODO: Refactor
     #[instrument(level = "trace", skip_all)]
     async fn exchange_introduce(
         &'c self,
@@ -1423,7 +1422,6 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
     /// If, rather than a timeout, we actually encounter some kind of error,
     /// we'll return the appropriate `FailedAttemptError`.
     /// (Who is responsible may vary, so the `FailedAttemptError` variant will reflect that.)
-    #[allow(clippy::cognitive_complexity)]
     async fn complete_rendezvous(
         &'c self,
         ipt: &UsableIntroPt<'_>,
