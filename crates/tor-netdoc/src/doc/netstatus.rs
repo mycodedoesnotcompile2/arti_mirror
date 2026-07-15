@@ -282,7 +282,8 @@ use derive_deftly_template_Lifetime;
 /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:consensus-method>
 #[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, Copy)] //
 #[derive(derive_more::From, derive_more::Into, derive_more::Display, derive_more::FromStr)]
-pub struct ConsensusMethod(u32);
+#[allow(clippy::exhaustive_structs)] // we're v unlikely to want to change this to u16 or u64
+pub struct ConsensusMethod(pub u32);
 impl NormalItemArgument for ConsensusMethod {}
 
 /// A set of consensus methods

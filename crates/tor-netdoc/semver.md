@@ -16,3 +16,4 @@ ADDED: parts of votes: `VoteAuthoritySection`, `RouterStatusMdDigestsVote`
 ADDED: encoding for votes: `doc::nettstatus::consensus_methods_comma_separated::write_arg_onto`
 ADDED: `AuthCert`: `encode_sign`, `EncodedAuthCert`
 ADDED: `types::policy::AddrPolicy::summarise_precise` (and `PortPolicies`, `PortSummaryThresholds`
+ADDED: `ConsensusMethod`'s field is now `pub`
