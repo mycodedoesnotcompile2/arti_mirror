@@ -1204,7 +1204,7 @@ impl<B: AbstractTunnelBuilder<R> + 'static, R: Runtime> AbstractTunnelMgr<B, R> 
 
     /// Execute an action returned by pick-action, and return the
     /// resulting tunnel or error.
-    #[allow(clippy::cognitive_complexity, clippy::type_complexity)] // TODO #2010: Refactor
+    #[allow(clippy::type_complexity)] // TODO #2010: Refactor
     #[instrument(level = "trace", skip_all)]
     async fn take_action(
         self: Arc<Self>,

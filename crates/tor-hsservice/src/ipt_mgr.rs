@@ -802,7 +802,7 @@ impl<R: Runtime, M: Mockable<R>> IptManager<R, M> {
         /// Return value which means "we changed something, please run me again"
         ///
         /// In each case, if we make any changes which indicate we might
-        /// want to restart, , we `return CONTINUE`, and
+        /// want to restart, we `return CONTINUE`, and
         /// our caller will just call us again.
         ///
         /// This approach simplifies the logic: everything here is idempotent.

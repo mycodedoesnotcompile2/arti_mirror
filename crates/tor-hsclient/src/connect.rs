@@ -1222,7 +1222,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
     /// So if there's a failure, it's purely to do with the introduction point.
     ///
     /// Applies timeouts as appropriate.
-    #[allow(clippy::cognitive_complexity, clippy::type_complexity)] // TODO: Refactor
+    #[allow(clippy::type_complexity)] // TODO: Refactor
     #[instrument(level = "trace", skip_all)]
     async fn exchange_introduce(
         &'c self,

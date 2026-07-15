@@ -11,7 +11,7 @@
 #![deny(clippy::cargo_common_metadata)]
 #![deny(clippy::cast_lossless)]
 #![deny(clippy::checked_conversions)]
-#![warn(clippy::cognitive_complexity)]
+#![allow(clippy::cognitive_complexity)]
 #![deny(clippy::debug_assert_with_mut_call)]
 #![deny(clippy::exhaustive_enums)]
 #![deny(clippy::exhaustive_structs)]
@@ -49,7 +49,6 @@
 
 // TODO #2010: Remove this global allow, and either propagate it to the functions that need it,
 // or make those functions less complex.
-#![allow(clippy::cognitive_complexity)]
 // TODO #1645 (either remove this, or decide to have it everywhere)
 #![cfg_attr(
     not(all(feature = "full", feature = "experimental")),
