@@ -30,8 +30,8 @@ pub enum RelayIdType {
     ///
     /// Every relay (currently) has one of these identities. It is the same
     /// as the encoding of the relay's public Ed25519 identity key.
-    #[display("Ed25519")]
-    #[deftly(display = "ed25519:{}")]
+    #[display("Ed25519")] // Display of this enum variant, ie of just the id type
+    #[deftly(display_id = "ed25519:{}")] // Display of a relay id value of this type
     Ed25519,
     /// An RSA identity.
     ///
@@ -40,7 +40,7 @@ pub enum RelayIdType {
     /// identity key.  Because of short key length, this type of identity should
     /// not be considered secure on its own.
     #[display("RSA (legacy)")]
-    #[deftly(display = "{}")]
+    #[deftly(display_id = "{}")]
     Rsa,
 }
 
@@ -73,7 +73,7 @@ define_derive_deftly! {
     pub enum RelayIdRef<'a> {
         $(
             ${vattrs doc}
-            #[display(${vmeta(display) as str}, _0)]
+            #[display(${vmeta(display_id) as str}, _0)]
             $vname(&'a $IDENTITY),
         )
     }
