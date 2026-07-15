@@ -82,8 +82,7 @@ impl PortPolicy {
     /// Create a PortPolicy from a set of allowed port ranges.
     ///
     /// All other ports will be rejected.
-    #[allow(unused)] // TODO dirauth
-    pub(super) fn from_allowed_ranges(allowed: PortRanges) -> Self {
+    pub(super) fn from_allowed_port_ranges(allowed: PortRanges) -> Self {
         Self { allowed }
     }
 

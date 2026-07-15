@@ -211,7 +211,7 @@ impl Summariser {
                 RuleKind::Reject => {}
             }
         }
-        PortPolicy::from_allowed_ranges(allowed)
+        PortPolicy::from_allowed_port_ranges(allowed)
     }
 }
 
