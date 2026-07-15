@@ -414,16 +414,12 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
-    use crate::parse2::{ParseInput, parse_netdoc};
-    use itertools::{Itertools, chain};
+    use crate::parse_testcase_from_netdoc;
+    use itertools::Itertools;
 
     #[derive(Deftly)]
-    #[derive_deftly(NetdocParseable)]
+    #[derive_deftly(NetdocParseableFields)]
     struct TestCase {
-        /// Intro item, not present in test case doc strings
-        #[allow(unused)]
-        intro: (),
-
         /// Input policy, `accept` and `reject` lines
         #[deftly(netdoc(flatten))]
         full: AddrPolicy,
@@ -441,28 +437,7 @@ mod test {
     ///
     /// It returns `Result`, just for the benefit of its self-test.
     fn chk_inner(input_doc: &str) -> anyhow::Result<()> {
-        eprintln!("\n&&&&&&& input test case\n{input_doc}");
-        let doc = chain!(
-            ["intro\n"],
-            input_doc
-                .lines()
-                .map(|l| l.split_once('#').map(|(l, _)| l).unwrap_or(l).trim())
-                .filter(|l| !l.is_empty())
-                .flat_map(|l| [l, "\n"]),
-        )
-        .collect::<String>();
-
-        eprintln!(
-            "---- tidied \n{}----",
-            doc.split_inclusive('\n')
-                // show line numbers in case of parse errors, what a faff
-                .enumerate()
-                .map(|(lno, l)| format!("| {:5} {l}", lno + 1))
-                .collect::<String>()
-        );
-
-        let pinput = ParseInput::new(&doc, "<input doc>");
-        let case: TestCase = parse_netdoc(&pinput).expect("parse failed");
+        let case: TestCase = parse_testcase_from_netdoc(input_doc);
 
         let summary = case.full.summarise_precise(
             &PortSummaryThresholds::DEFAULT,
