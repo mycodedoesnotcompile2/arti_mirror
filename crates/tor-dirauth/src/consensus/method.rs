@@ -47,20 +47,6 @@ impl PartialEq<u32> for SupportedConsensusMethod {
     }
 }
 
-/// Constructor helper for SUPPORTED_METHODS
-///
-/// Lets us hide this semantic vinegar from the `const`, where the actual value is defined,
-/// aiding clarity there.
-macro_rules! map_ranges { { [ $( $lo:literal ..= $hi:literal ),* $(,)? ] } => {
-    &[
-        $(
-            ConsensusMethod($lo) ..=
-            ConsensusMethod($hi),
-        )*
-    ]
-} }
-pub(crate) use map_ranges;
-
 #[cfg(test)]
 mod test {
     // @@ begin test lint list maintained by maint/add_warning @@
