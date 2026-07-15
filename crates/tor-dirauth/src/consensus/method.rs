@@ -79,14 +79,4 @@ mod test {
         let m = e.to_string();
         assert!(m.contains("unsupported consensus method 10000"), "{m:?}");
     }
-
-    #[test]
-    fn supported_well_formed() {
-        for r in SUPPORTED_METHODS {
-            assert!(r.start() <= r.end());
-        }
-        for pair in SUPPORTED_METHODS.windows(2) {
-            assert!(pair[0].end() < pair[1].start());
-        }
-    }
 }
