@@ -18,3 +18,4 @@ ADDED: `AuthCert`: `encode_sign`, `EncodedAuthCert`
 ADDED: `types::policy::AddrPolicy::summarise_precise` (and `PortPolicies`, `PortSummaryThresholds`
 ADDED: `ConsensusMethod`'s field is now `pub`
 BREAKING: `NetdocParseableFields::Accumulator` must be `Default`
+ADDED: `types::policy::PortPolicy::from_ordered_allowed_ranges`
