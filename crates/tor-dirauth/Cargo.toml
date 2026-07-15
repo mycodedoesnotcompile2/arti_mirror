@@ -22,6 +22,8 @@ full = ["tor-netdoc/full"]
 __is_experimental = []
 
 [dependencies]
+derive_more = { version = "2.0.1", features = ["full"] }
+thiserror = "2"
 tor-netdoc = { version = "0.44.0", path = "../tor-netdoc", features = ["full", "experimental"] }
 
 [dev-dependencies]

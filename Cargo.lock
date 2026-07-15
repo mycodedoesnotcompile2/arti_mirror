@@ -7203,6 +7203,8 @@ dependencies = [
 name = "tor-dirauth"
 version = "0.44.0"
 dependencies = [
+ "derive_more",
+ "thiserror 2.0.18",
  "tor-netdoc",
 ]
 
