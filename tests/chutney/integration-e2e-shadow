@@ -35,12 +35,8 @@ SHADOW_LOG_FILE = "shadow.log"
 
 def _integration_e2e(args: argparse.Namespace) -> None:
     """Run the test (from inside shadow)"""
-    subprocess.check_call([_SCRIPT_DIR.joinpath("setup")])
     config = Config.load_json(Path(_SCRIPT_DIR).joinpath("arti.run.json"))
     config.export_env()
-
-    # initialize the network
-    subprocess.check_call([_SCRIPT_DIR.joinpath("init")])
 
     # Try to ensure we tear down the network on exit, including failure, ctrl-c, etc.
     atexit.register(lambda: subprocess.check_call([_SCRIPT_DIR.joinpath("teardown")]))
@@ -61,12 +57,6 @@ def gen_shadow_config(seed: int) -> dict[str, Any]:
 
     env = {
         common.RUNNING_IN_SHADOW_ENV: "yes",
-        # AF_UNIX sockets aren't supported in shadow
-        "CHUTNEY_ENABLE_CONTROLSOCKET": "no",
-        # ipv6 isn't supported in shadow
-        "CHUTNEY_DISABLE_IPV6": "yes",
-        # sandboxing isn't supported in shadow
-        "CHUTNEY_TOR_SANDBOX": "no",
         # re-export PATH. The test scripts assume that
         # usual shell utilities are on it.
         "PATH": os.getenv("PATH"),
@@ -148,6 +138,25 @@ def _configure_and_run_shadow(args: argparse.Namespace) -> None:
         ).strip()
     )
     os.chdir(toplevel)
+
+    # configure this test
+    subprocess.check_call([_SCRIPT_DIR.joinpath("setup")])
+
+    # initialize the network
+    subprocess.check_call(
+        [_SCRIPT_DIR.joinpath("init")],
+        env=(
+            os.environ
+            | dict(
+                # AF_UNIX sockets aren't supported in shadow
+                CHUTNEY_ENABLE_CONTROLSOCKET="no",
+                # ipv6 isn't supported in shadow
+                CHUTNEY_DISABLE_IPV6="yes",
+                # sandboxing isn't supported in shadow
+                CHUTNEY_TOR_SANDBOX="no",
+            )
+        ),
+    )
 
     # Write out shadow config. We could just pipe it directly to the shadow
     # process below, but writing it out is useful for debugging.
