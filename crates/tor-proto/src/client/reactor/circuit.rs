@@ -1202,7 +1202,6 @@ impl Circuit {
     /// The error is propagated all the way up to [`Circuit::handle_cell`],
     /// and eventually ends up being returned from the reactor's `run_once` function,
     /// causing it to shut down.
-    #[allow(clippy::cognitive_complexity)]
     fn handle_meta_cell(
         &mut self,
         handlers: &mut CellHandlers,

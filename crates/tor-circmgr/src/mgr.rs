@@ -970,7 +970,6 @@ impl<B: AbstractTunnelBuilder<R> + 'static, R: Runtime> AbstractTunnelMgr<B, R> 
     /// under the assumption that it will be used for that spec.
     ///
     /// This is the primary entry point for AbstractTunnelMgr.
-    #[allow(clippy::cognitive_complexity)] // TODO #2010: Refactor?
     #[instrument(level = "trace", skip_all)]
     pub(crate) async fn get_or_launch(
         self: &Arc<Self>,

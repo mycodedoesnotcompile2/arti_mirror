@@ -1617,7 +1617,6 @@ impl NetDir {
     // call sites must include a call to `Relay::is_polarity_inverter()` or whatever.
     // IMO the `WeightRole` ought to imply a condition (and it should therefore probably
     // be renamed.)  -Diziet
-    #[allow(clippy::cognitive_complexity)]
     pub fn pick_relay<'a, R, P>(
         &'a self,
         rng: &mut R,
@@ -1698,7 +1697,6 @@ impl NetDir {
     ///
     /// May return fewer than `n` items if there are fewer than `n` with non-zero weight
     /// (or all have zero-weight but there are fewer than `n` total).
-    #[allow(clippy::cognitive_complexity)] // all due to tracing crate.
     fn pick_n_weighted<R, T>(rng: &mut R, n: usize, weighted_items: &[(T, u64)]) -> Vec<T>
     where
         R: rand::Rng,
@@ -1763,7 +1761,6 @@ impl NetDir {
     ///
     /// This function returns an empty vector if (and only if) there are no
     /// relays where `usable` returned true.
-    #[allow(clippy::cognitive_complexity)] // all due to tracing crate.
     pub fn pick_n_relays<'a, R, P>(
         &'a self,
         rng: &mut R,

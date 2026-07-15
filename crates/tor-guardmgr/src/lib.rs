@@ -1178,7 +1178,6 @@ impl GuardMgrInner {
     ///
     /// Changes the guard's status as appropriate, and updates the pending
     /// request as needed.
-    #[allow(clippy::cognitive_complexity)]
     pub(crate) fn handle_msg(
         &mut self,
         request_id: RequestId,

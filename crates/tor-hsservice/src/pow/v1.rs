@@ -499,7 +499,6 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
     /// This also pokes the publisher when needed to cause rotated seeds to be published.
     ///
     /// Returns the next time this function should be called again.
-    #[allow(clippy::cognitive_complexity)]
     async fn rotate_seeds_if_expiring(&self) -> Option<SystemTime> {
         let mut expired_verifiers = vec![];
         let mut new_verifiers = vec![];
@@ -1038,7 +1037,6 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
 
     /// Loop to accept message from the wrapped [`mpsc::Receiver`], validate PoW solves, and
     /// enqueue onto the priority queue.
-    #[allow(clippy::cognitive_complexity)]
     fn accept_loop<P: MockablePowManager>(
         self,
         runtime: &R,

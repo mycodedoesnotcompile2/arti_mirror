@@ -743,7 +743,6 @@ mod test {
             }
 
             #[test]
-            #[allow(clippy::cognitive_complexity)]
             fn saturating() {
                 let (mut m, k1, k2) = construct_near_saturated_slotmap();
 

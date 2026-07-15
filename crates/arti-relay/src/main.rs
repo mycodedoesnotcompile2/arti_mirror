@@ -147,7 +147,6 @@ fn main_main(cli: cli::Cli) -> anyhow::Result<()> {
 }
 
 /// Initialize and start the relay.
-#[allow(clippy::cognitive_complexity)]
 // Pass by value so that we don't need to clone fields, which keeps the code simpler.
 #[allow(clippy::needless_pass_by_value)]
 fn start_relay(_args: cli::RunArgs, global_args: cli::GlobalArgs) -> anyhow::Result<()> {

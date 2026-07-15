@@ -236,7 +236,6 @@ fn list_enabled_features() -> &'static [&'static str] {
 ///
 /// Currently, might panic if wrong arguments are specified.
 #[cfg_attr(feature = "experimental-api", visibility::make(pub))]
-#[allow(clippy::cognitive_complexity)]
 #[instrument(skip_all, level = "trace")]
 fn main_main<I, T>(cli_args: I) -> Result<()>
 where
