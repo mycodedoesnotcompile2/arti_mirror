@@ -145,7 +145,6 @@ impl HttpServer {
     /// This function does not fail, because all errors that could potentially
     /// occur, occur in further sub-tasks spawned by it and handled appropriately,
     /// that is usually logging the error and continuing the execution.
-    #[allow(clippy::cognitive_complexity)]
     pub(crate) async fn serve<I, S, E>(self, mut listener: I) -> Result<(), tor_error::Bug>
     where
         I: Stream<Item = Result<S, E>> + Unpin,
@@ -272,7 +271,6 @@ impl HttpServer {
     /// 6. Compose the [`Response`]
     ///
     /// TODO DIRMIRROR: Implement [`Method::HEAD`].
-    #[allow(clippy::cognitive_complexity)]
     fn handler_tx(
         cache: &Arc<StoreCache>,
         endpoints: &[Endpoint],

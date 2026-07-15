@@ -607,7 +607,6 @@ fn extract_proto_err<'a>(
 }
 
 /// Report an error that occurred within a single proxy task.
-#[allow(clippy::cognitive_complexity)] // warning depends on cfg
 fn report_proxy_error(e: &anyhow::Error) {
     use tor_proto::Error as PE;
     // TODO: In the long run it might be a good idea to use an ErrorKind here if we can get one.
