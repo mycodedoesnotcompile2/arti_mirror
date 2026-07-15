@@ -437,11 +437,10 @@ mod test {
 
     /// Run one test case
     ///
-    /// Test cases are strings in netdoc format, for `TestCase`,
-    /// but without the intro item.
+    /// This is the implementation of `chk`.
     ///
-    /// Whitespace will be normalised and `#`-comments stripped.
-    fn chk(input_doc: &str) {
+    /// It returns `Result`, just for the benefit of its self-test.
+    fn chk_inner(input_doc: &str) -> anyhow::Result<()> {
         eprintln!("\n&&&&&&& input test case\n{input_doc}");
         let doc = chain!(
             ["intro\n"],
@@ -482,8 +481,25 @@ mod test {
             .collect_vec(),
         );
 
-        assert_eq!(summary.v4, case.p4, "v4 summarised != expected");
-        assert_eq!(summary.v6, case.p6, "v6 summarised != expected");
+        /// Like `assert_eq`  combined with `anyhow::ensure` - throws `Err(anyhow::Error)`
+        macro_rules! ensure_eq { { $a:expr, $b:expr } => {
+            anyhow::ensure!($a == $b, "{:?} != {:?}", $a, $b);
+        } }
+
+        ensure_eq!(summary.v4, case.p4);
+        ensure_eq!(summary.v6, case.p6);
+
+        Ok(())
+    }
+
+    /// Run one test case
+    ///
+    /// Test cases are strings in netdoc format, for `TestCase`,
+    /// but without the intro item.
+    ///
+    /// Whitespace will be normalised and `#`-comments stripped.
+    fn chk(input_doc: &str) {
+        chk_inner(input_doc).expect("test failed");
     }
 
     #[test]
@@ -550,5 +566,22 @@ mod test {
                 p4 accept 100,400-414,420-429
                 p6 accept 100,600-614,620-629 "
         ));
+    }
+
+    #[test]
+    fn chk_detects_discrepancies() {
+        // The output is supposed to be `p4 reject 25` ...
+        let input_doc = r"
+                reject *:25
+                p4 reject 26
+                p6 reject 26
+        ";
+        let e = chk_inner(input_doc).expect_err("was supposed to fail");
+        let e = format!("{e:#}"); // # to make anyhow print sources
+
+        assert!(
+            e.contains("!= PortPolicy { allowed: PortRanges([PortRange(1-25)"),
+            "error: {e}"
+        );
     }
 }
