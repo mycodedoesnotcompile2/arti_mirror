@@ -135,7 +135,7 @@ mod test {
     use super::*;
     use educe::Educe;
     use std::fmt::Debug;
-    use void::Void;
+    use void::{ResultVoidExt as _, Void};
 
     type Range = RangeInclusive<u8>;
     const ALL_K: Range = 0..=255;
@@ -241,7 +241,8 @@ mod test {
                 );
                 *vmut = Some(Value { v: val, id });
                 Ok::<_, Void>(())
-            });
+            })
+            .void_unwrap();
         }
 
         fn check(&self) {
@@ -274,7 +275,8 @@ mod test {
             s.mutate_range(10..=19, |_k, v| {
                 assert_eq!(*v, None);
                 Ok::<_, Void>(())
-            });
+            })
+            .void_unwrap();
             assert_eq!(s, s0);
             s.set_range(10..=19, 'n', "_");
         }
