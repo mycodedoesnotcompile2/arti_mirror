@@ -402,14 +402,18 @@ impl<R: Runtime> TorRelay<R> {
         #[allow(clippy::disallowed_methods)]
         let (begin_dir_tx, begin_dir_rx) = mpsc::channel::<tor_proto::Result<DataStream>>(4096);
 
+        // Spawn a directory mirror server task, if we are a dir cache.
+        task_handles.spawn(async {
+            self.dir_mirror.serve(begin_dir_rx).await?;
+            Err(anyhow::anyhow!("dir mirror exited"))
+        });
+
         let runtime = self.runtime.clone();
         // Listen for new Tor streams
         task_handles.spawn(
             // TODO: Should we give all tasks a `start` method?
             crate::stream::handle_incoming_streams(runtime, begin_dir_tx, self.circuit_stream_rx),
         );
-
-        // XXX: pass begin_dir_rx to DirMirror::serve()
 
         // Start the crypto task.
         task_handles.spawn({
