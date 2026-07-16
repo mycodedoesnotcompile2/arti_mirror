@@ -7860,6 +7860,7 @@ dependencies = [
  "derive_more",
  "dyn-clone",
  "educe",
+ "extend",
  "futures",
  "itertools 0.15.0",
  "paste",
