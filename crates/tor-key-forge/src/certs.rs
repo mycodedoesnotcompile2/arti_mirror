@@ -5,7 +5,7 @@ use tor_cert::{Ed25519Cert, EncodedEd25519Cert, SigCheckedCert, UncheckedCert};
 use tor_checkable::TimeRange;
 use tor_llcrypto::pk::ed25519::{self, Ed25519Identity};
 
-use std::{result::Result as StdResult, time::SystemTime};
+use std::result::Result as StdResult;
 
 /// A key certificate.
 #[derive(Clone, Debug)]
@@ -96,10 +96,6 @@ pub struct SigCheckedEd25519Cert {
 impl tor_checkable::TimeBound<ValidatedEd25519Cert> for SigCheckedEd25519Cert {
     fn bounds(&self) -> TimeRange {
         self.cert.bounds()
-    }
-
-    fn is_valid_at(&self, t: &SystemTime) -> StdResult<(), tor_checkable::TimeValidityError> {
-        self.cert.is_valid_at(t)
     }
 
     fn dangerously_assume_timely(self) -> ValidatedEd25519Cert {

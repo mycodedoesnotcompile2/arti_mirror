@@ -56,10 +56,9 @@ pub use tor_cert_x509 as x509;
 use caret::caret_int;
 use tor_bytes::{Error as BytesError, Result as BytesResult};
 use tor_bytes::{Readable, Reader, Writeable, Writer};
-use tor_checkable::{TimeRange, TimeRangeBound, TimeValidityError};
+use tor_checkable::{TimeRange, TimeRangeBound};
 use tor_llcrypto::pk::*;
 
-use saturating_time::SaturatingTime;
 use web_time_compat as time;
 
 pub use err::CertError;
@@ -627,16 +626,6 @@ impl tor_checkable::TimeBound<Ed25519Cert> for Ed25519Cert {
         TimeRangeBound::new((), ..=self.expiry())
     }
 
-    #[allow(unstable_name_collisions)]
-    fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), TimeValidityError> {
-        if self.is_expired_at(*t) {
-            let expiry = self.expiry();
-            Err(TimeValidityError::Expired(t.saturating_duration_since(expiry)))
-        } else {
-            Ok(())
-        }
-    }
-
     fn dangerously_assume_timely(self) -> Ed25519Cert {
         self
     }
@@ -645,10 +634,6 @@ impl tor_checkable::TimeBound<Ed25519Cert> for Ed25519Cert {
 impl tor_checkable::TimeBound<Ed25519Cert> for SigCheckedCert {
     fn bounds(&self) -> TimeRange {
         self.cert.bounds()
-    }
-
-    fn is_valid_at(&self, t: &time::SystemTime) -> std::result::Result<(), TimeValidityError> {
-        self.cert.is_valid_at(t)
     }
 
     fn dangerously_assume_timely(self) -> Ed25519Cert {

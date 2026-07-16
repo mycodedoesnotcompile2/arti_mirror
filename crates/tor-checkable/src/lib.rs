@@ -97,7 +97,15 @@ pub trait TimeBound<T>: Sized {
     /// Check whether this object is valid at a given time.
     ///
     /// Return Ok if the object is valid, and an error if the object is not.
-    fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), TimeValidityError>;
+    ///
+    /// Generally, do not implement this method yourself:
+    /// the provided implementation (which uses `bounds`) will be correct.
+    //
+    // The actual implementation is the overridden impl on `TimeRangeBounds`.
+    fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), TimeValidityError> {
+        // This calls the implemented for `TimeRangeBound`
+        self.bounds().is_valid_at(t)
+    }
 
     /// Return the underlying object without checking whether it's valid.
     fn dangerously_assume_timely(self) -> T;
