@@ -6921,6 +6921,7 @@ dependencies = [
  "derive-deftly",
  "derive_more",
  "educe",
+ "extend",
  "getrandom 0.4.3",
  "hex",
  "itertools 0.15.0",

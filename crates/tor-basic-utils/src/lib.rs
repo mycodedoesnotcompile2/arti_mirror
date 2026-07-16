@@ -71,6 +71,7 @@ pub use paste::paste;
 #[doc(hidden)]
 pub use derive_deftly;
 
+use extend::ext;
 use rand::Rng;
 
 /// Sealed
@@ -283,7 +284,8 @@ impl GenRangeInfallible for Duration {
 // ----------------------------------------------------------------------
 
 /// Renaming of `Path::display` as `display_lossy`
-pub trait PathExt: Sealed {
+#[ext(supertraits = Sealed)]
+pub impl Path {
     /// Display this `Path` as an approximate string, for human consumption in messages
     ///
     /// Operating system paths cannot always be faithfully represented as Rust strings,
@@ -294,15 +296,12 @@ pub trait PathExt: Sealed {
     ///
     /// This method is exactly the same as [`std::path::Path::display`],
     /// but with a different and more discouraging name.
-    fn display_lossy(&self) -> std::path::Display<'_>;
-}
-impl Sealed for Path {}
-impl PathExt for Path {
     #[allow(clippy::disallowed_methods)]
     fn display_lossy(&self) -> std::path::Display<'_> {
         self.display()
     }
 }
+impl Sealed for Path {}
 
 // ----------------------------------------------------------------------
 
