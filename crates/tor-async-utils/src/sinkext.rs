@@ -28,11 +28,7 @@ pub trait SinkExt<Item>: Sink<Item> {
     }
 }
 
-impl<Item, S> SinkExt<Item> for S
-where
-    S: Sink<Item>,
-{
-}
+impl<Item, S> SinkExt<Item> for S where S: Sink<Item> {}
 
 /// Sink returned by [`SinkExt::with_fn`].
 #[pin_project]
