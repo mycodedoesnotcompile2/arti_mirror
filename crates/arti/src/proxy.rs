@@ -12,11 +12,14 @@ semipublic_mod! {
     pub(crate) mod port_info;
 }
 
+use derive_more::Display;
+use extend::ext;
 use futures::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Error as IoError};
 use futures::stream::StreamExt;
 use std::net::IpAddr;
 use std::sync::Arc;
 use tor_basic_utils::error_sources::ErrorSources;
+use tor_log_ratelim::log_ratelim;
 use tor_rtcompat::{NetStreamProvider, SpawnExt, TcpListenOptions};
 use tracing::{debug, error, info, instrument, warn};
 
@@ -516,7 +519,7 @@ pub(crate) async fn run_proxy_with_listeners<R: Runtime>(
         };
         tor_client.runtime().spawn(async move {
             let res = handle_proxy_conn(proxy_context, stream, (sock_id, addr.ip())).await;
-            if let Err(ref e) = res {
+            if let Err(e) = res {
                 report_proxy_error(e);
             }
         })?;
@@ -606,8 +609,35 @@ fn extract_proto_err<'a>(
     None
 }
 
+/// A wrapper that makes anyhow::Error Sized and Cloneable
+/// by wrapping it in an Arc.
+// TODO Add better handling for anyhow errors in tor-log-ratelim
+// create tor-log-ratelim/src/anyhow.rs and put them there
+#[derive(Debug, Clone, Display)]
+#[display("{}", _0)]
+pub(crate) struct RateLimitError(Arc<anyhow::Error>);
+
+impl RateLimitError {
+    /// Creates a new `RateLimitError` from an `anyhow::Error`.
+    pub(crate) fn new(e: anyhow::Error) -> Self {
+        Self(Arc::new(e))
+    }
+}
+
+impl std::error::Error for RateLimitError {}
+
+/// Wraps a `Result` containing an `anyhow::Error` into a `Result`
+/// containing a `Sized` `RateLimitError` to allow usage with `log_ratelim!`.
+#[ext]
+impl<T> Result<T, anyhow::Error> {
+    /// Wraps an `anyhow::Error` into a `Sized` `RateLimitError`
+    fn wrap_for_ratelimit(self) -> Result<T, RateLimitError> {
+        self.map_err(RateLimitError::new)
+    }
+}
+
 /// Report an error that occurred within a single proxy task.
-fn report_proxy_error(e: &anyhow::Error) {
+fn report_proxy_error(e: anyhow::Error) {
     use tor_proto::Error as PE;
     // TODO: In the long run it might be a good idea to use an ErrorKind here if we can get one.
     // This is a bit of a kludge based on the fact that we're using anyhow.
@@ -623,6 +653,111 @@ fn report_proxy_error(e: &anyhow::Error) {
         // which upgrades this to a warning.
         // https://gitlab.torproject.org/tpo/core/arti/-/issues/2439
         Some(e @ PE::NotConnected) => debug!(error = (e as &dyn std::error::Error), "Connection exited"),
-        _ => warn_report!(*e, "Connection exited"),
+        _ => {
+            let err_str = e.to_string();
+            // TODO  extend log_ratelim with a better way to do this
+            // https://gitlab.torproject.org/tpo/core/arti/-/work_items/2632
+            if err_str.contains("command UDP_ASSOCIATE") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (UDP_ASSOCIATE)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else if err_str.contains("remote stream error") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (stream error)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else if err_str.contains("reason CONNRESET") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (CONNRESET)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else if err_str.contains("operation timed out at exit") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (exit timeout)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+           } else if err_str.contains("host refused connection") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (refused connection)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else if err_str.contains("network protocol violation") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (protocol violation)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else if err_str.contains("timeout at exit relay") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (relay timeout)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else if err_str.contains("reset by peer") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (reset by peer)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else if err_str.contains("remote hostname lookup failure") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (lookup failure)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else if err_str.contains("Broken pipe") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (broken pipe)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else if err_str.contains("connection during SOCKS handshake") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (SOCKS handshake)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else if err_str.contains("tor operation timed out") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (tor timeout)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else if err_str.contains("remote stream closed") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (stream closed)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else if err_str.contains("rejected by exit policy") {
+                let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
+                log_ratelim!(
+                    "proxy report (exit policy)";
+                    r;
+                    Err(_) => WARN, "Connection exited";
+                );
+            } else {
+                warn_report!(e, "Connection exited");
+            }
+        }
     }
 }
