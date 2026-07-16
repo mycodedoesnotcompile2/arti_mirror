@@ -358,3 +358,146 @@ pub(crate) fn summarise_policy_v4_approximate(
 
     Ok(allowed)
 }
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use super::*;
+    use derive_deftly::Deftly;
+    use itertools::Itertools;
+    use tor_netdoc::parse_testcase_from_netdoc;
+    use tor_netdoc::types::policy::PortSummaryThresholds;
+
+    /// cut-down (IPv4 only) version of tor-netdoc's summary.rs version
+    const REJECT_PRECISELY_ALLOWED_AMOUNT: &str = r"
+                accept *:100
+                reject 1.0.0.0/8:400-419
+                reject 2.0.0.0/8:410-429
+                reject 0.0.0.0/0:1-399
+                reject 0.0.0.0/0:430-65535
+    ";
+
+    #[derive(Deftly)]
+    #[derive_deftly(tor_netdoc::NetdocParseableFields)]
+    struct IsPreciseTestCase {
+        /// Input policy, `accept` and `reject` lines
+        #[deftly(netdoc(flatten))]
+        full: AddrPolicy,
+    }
+
+    /// Run one test case where the approx summary is, in fact, precise
+    ///
+    /// The expected output is calculated with [`AddrPolicy::summarise_precise`]
+    /// (which uses a quite different implementation strategy to the code here.)
+    fn chk_is_precise(input_doc: &str) {
+        let case: IsPreciseTestCase = parse_testcase_from_netdoc(input_doc);
+
+        let approx = summarise_policy_v4_approximate(
+            //
+            &case.full,
+            SupportedConsensusMethod::MAX,
+        )
+        .unwrap();
+
+        let precise = case.full.summarise_precise(
+            // if the thresholds change in a new consensus method, we'll probably need
+            // to explicitly change the value here and maybe test both thresholds
+            &PortSummaryThresholds::default(),
+            PRIVATE_NETWORKS.iter().copied().map(IpNet::V4),
+        );
+
+        assert_eq!(approx, precise.v4);
+    }
+
+    #[test]
+    fn basics() {
+        chk_is_precise(r"p4 accept 1-65535");
+        chk_is_precise(r"p4 reject 1-65535");
+        chk_is_precise(r"p4 accept *:*");
+        chk_is_precise(r"p4 reject *:25");
+    }
+
+    #[test]
+    fn edge_cases() {
+        chk_is_precise(REJECT_PRECISELY_ALLOWED_AMOUNT);
+
+        // reject a private net, proving it is disregarded
+        chk_is_precise(&format!(
+            r"  {REJECT_PRECISELY_ALLOWED_AMOUNT}
+                reject 100.64.1.0/24:* "
+        ));
+
+        // Reject one more address
+        chk_is_precise(&format!(
+            r"  {REJECT_PRECISELY_ALLOWED_AMOUNT}
+                reject 4.0.0.0/32:415-425 "
+        ));
+    }
+
+    #[derive(Deftly)]
+    #[derive_deftly(tor_netdoc::NetdocParseableFields)]
+    struct ImpreciseTestCase {
+        /// Input policy, `accept` and `reject` lines
+        #[deftly(netdoc(flatten))]
+        full: AddrPolicy,
+
+        /// Expected IPv4 summary
+        p4: PortPolicy,
+    }
+
+    /// Run one test case where the approx summary is imprecise
+    ///
+    /// The expected output is `p4` in the test case.
+    fn chk_imprecise(input_doc: &str) {
+        let case: ImpreciseTestCase = parse_testcase_from_netdoc(input_doc);
+
+        let approx = summarise_policy_v4_approximate(
+            //
+            &case.full,
+            SupportedConsensusMethod::MAX,
+        )
+        .unwrap();
+
+        assert_eq!(approx, case.p4);
+
+        let precise = case.full.summarise_precise(
+            // if the thresholds change in a new consensus method, we'll probably need
+            // to explicitly change the value here and maybe test both thresholds
+            &PortSummaryThresholds::default(),
+            PRIVATE_NETWORKS.iter().copied().map(IpNet::V4),
+        );
+
+        assert_ne!(approx, precise.v4);
+    }
+
+    #[test]
+    fn approximations() {
+        chk_imprecise(&format!(
+            r"  accept 1.0.0.0/32:417 # ignored non-wildcard accept
+                {REJECT_PRECISELY_ALLOWED_AMOUNT}
+                reject 4.0.0.0/32:415-425
+
+                p4 accept 100,400-414,420-429 " // 417 missing
+        ));
+
+        chk_imprecise(
+            r"  reject 10.0.0.0/7:10 # reject 2^25 addresses, but they're half-private
+                reject 4.0.0.0/32:10-20 # tip over the edge
+
+                p4 reject 10 ",
+        );
+    }
+}
