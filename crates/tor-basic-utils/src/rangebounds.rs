@@ -15,17 +15,6 @@ pub trait RangeBoundsExt<T: Ord>: RangeBounds<T> {
     fn intersect<'a, U: RangeBounds<T>>(
         &'a self,
         other: &'a U,
-    ) -> Option<(Bound<&'a T>, Bound<&'a T>)>;
-}
-
-impl<T, R> RangeBoundsExt<T> for R
-where
-    R: RangeBounds<T>,
-    T: Ord,
-{
-    fn intersect<'a, U: RangeBounds<T>>(
-        &'a self,
-        other: &'a U,
     ) -> Option<(Bound<&'a T>, Bound<&'a T>)> {
         use Bound::*;
 
@@ -54,6 +43,13 @@ where
             _ => Some((start, end)),
         }
     }
+}
+
+impl<T, R> RangeBoundsExt<T> for R
+where
+    R: RangeBounds<T>,
+    T: Ord,
+{
 }
 
 /// Return the largest of `b1` and `b2`.
