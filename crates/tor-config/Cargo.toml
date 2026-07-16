@@ -41,6 +41,7 @@ derive-deftly = { version = "~1.11.3", features = ["full", "beta"] }
 derive_builder = { version = "0.11.2", package = "derive_builder_fork_arti" }
 educe = "0.4.22"
 either = "1"
+extend = "1.2.0"
 figment = { version = "0.10.18", features = ["toml"] }
 fs-mistrust = { path = "../fs-mistrust", version = "0.15.0" }
 futures = "0.3.14"
