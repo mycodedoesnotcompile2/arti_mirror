@@ -200,6 +200,7 @@ dependencies = [
  "derive-deftly",
  "derive_builder_fork_arti",
  "derive_more",
+ "extend",
  "fs-mistrust",
  "futures",
  "futures-copy",
@@ -2440,6 +2441,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "extend"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "311a6d2f1f9d60bff73d2c78a0af97ed27f79672f15c238192a5bbb64db56d00"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+]
+
+[[package]]
 name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2625,6 +2637,7 @@ dependencies = [
  "assert_matches",
  "derive_builder_fork_arti",
  "dirs",
+ "extend",
  "libc",
  "pwd-grp",
  "serde",
@@ -2708,6 +2721,7 @@ dependencies = [
 name = "futures-copy"
 version = "0.4.0"
 dependencies = [
+ "extend",
  "futures",
  "libc",
  "pin-project",
@@ -6880,6 +6894,7 @@ dependencies = [
  "cfg-if",
  "derive-deftly",
  "educe",
+ "extend",
  "futures",
  "futures-await-test",
  "oneshot-fused-workaround",
@@ -6906,6 +6921,7 @@ dependencies = [
  "derive-deftly",
  "derive_more",
  "educe",
+ "extend",
  "getrandom 0.4.3",
  "hex",
  "itertools 0.15.0",
@@ -7137,6 +7153,7 @@ dependencies = [
  "derive_builder_fork_arti",
  "educe",
  "either",
+ "extend",
  "figment",
  "fs-mistrust",
  "futures",
@@ -7843,6 +7860,7 @@ dependencies = [
  "derive_more",
  "dyn-clone",
  "educe",
+ "extend",
  "futures",
  "itertools 0.15.0",
  "paste",
@@ -7932,6 +7950,7 @@ dependencies = [
  "digest 0.10.7",
  "educe",
  "enumset",
+ "extend",
  "hex",
  "hex-literal",
  "hostname-validator",
@@ -7985,6 +8004,7 @@ dependencies = [
  "anyhow",
  "derive-deftly",
  "derive_more",
+ "extend",
  "filetime",
  "fs-mistrust",
  "fslock-guard",
@@ -8204,6 +8224,7 @@ dependencies = [
  "derive_more",
  "downcast-rs",
  "erased-serde",
+ "extend",
  "futures",
  "futures-await-test",
  "inventory",

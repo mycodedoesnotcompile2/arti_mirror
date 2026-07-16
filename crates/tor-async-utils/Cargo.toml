@@ -29,6 +29,7 @@ tokio = ["dep:tokio", "dep:tokio-util"]
 cfg-if = "1.0.0"
 derive-deftly = { version = "~1.11.3", features = ["full", "beta"] }
 educe = "0.4.22"
+extend = "1.2.0"
 futures = "0.3.14"
 oneshot-fused-workaround = { path = "../oneshot-fused-workaround", version = "0.7.0" }
 pin-project = "1"
