@@ -25,8 +25,7 @@ pub impl str {
     /// Panics if `count > self.len()`.
     #[allow(clippy::string_slice)] // TODO
     fn strip_end_counted(&self, count: usize) -> &str {
-        let s = self;
-        &s[0..s.len().checked_sub(count).expect("stripping too much")]
+        &self[0..self.len().checked_sub(count).expect("stripping too much")]
     }
 }
 
