@@ -127,7 +127,9 @@ impl CreateRequestHandler {
             circuit_stream_tx: stream_tx,
         };
 
-        let circuit_stream_rx = CircuitIncomingStreamReceiver { circuit_stream_rx: stream_rx };
+        let circuit_stream_rx = CircuitIncomingStreamReceiver {
+            circuit_stream_rx: stream_rx,
+        };
 
         (handler, circuit_stream_rx)
     }
@@ -276,14 +278,14 @@ impl CreateRequestHandler {
                 // (RelayCirc::is_closing() will return `true`).
                 drop(reactor);
             } else {
-            // Only spawn the circuit reactor if the incoming stream handler was
-            // able to receive our message
-            match reactor.run().await {
-                Ok(()) => {}
-                Err(e) => {
-                    debug_report!(e, "Relay circuit reactor exited with an error");
+                // Only spawn the circuit reactor if the incoming stream handler was
+                // able to receive our message
+                match reactor.run().await {
+                    Ok(()) => {}
+                    Err(e) => {
+                        debug_report!(e, "Relay circuit reactor exited with an error");
+                    }
                 }
-            }
             }
         })?;
 
