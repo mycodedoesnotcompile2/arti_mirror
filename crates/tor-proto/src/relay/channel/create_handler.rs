@@ -24,6 +24,9 @@ use crate::memquota::{ChannelAccount, CircuitAccount};
 use crate::relay::channel_provider::ChannelProvider;
 use crate::relay::reactor::Reactor;
 use crate::relay::{IncomingStreamRequestFilter, RelayCirc};
+use crate::stream::IncomingStream;
+use futures::Stream;
+use futures::channel::mpsc;
 use smallvec::SmallVec;
 use std::sync::{Arc, RwLock, Weak};
 use tor_cell::chancell::ChanMsg as _;
@@ -369,6 +372,44 @@ impl CreateRequestHandler {
             .flatten()
             .map(map)
             .collect::<SmallVec<[T; 2]>>()
+    }
+}
+
+/// A receiver for the incoming streams of every circuit
+///
+// Note: in theory, it would be nice if we could get rid of this type altogether.
+// In an ideal world, I would've instead
+//
+//   * added a `RelayCirc::take_incoming_streams()` method for obtaining
+//     the futures::Stream of IncomingStream of that circuit
+//   * made the CreateRequestHandler send each Arc<RelayCirc> over to arti-relay for handling
+//   * made arti-relay obtain the futures::Stream<Item = IncomingStream> of each RelayCirc
+//     by calling `RelayCirc::take_incoming_streams()`
+//
+// However, that would involve adding some locking/interior mutability within RelayCirc
+// (which is always behind an Arc), or extending mq_queue::Receiver to be Clone,
+// which would be tricky to pull off (see the comment on mq_queue::Receiver about this).
+pub struct CircuitIncomingStreamReceiver {
+    /// The receiver for the [`Stream`]s of `IncomingStream` of all circuits.
+    ///
+    /// Receives one [`Stream`] (of tor streams) per circuit.
+    /// Each of these will be handled in a new task.
+    circuit_stream_rx: mpsc::Receiver<<Self as Stream>::Item>,
+}
+
+impl Stream for CircuitIncomingStreamReceiver {
+    // TODO: it would be nice if we could return a type-erased Stream here
+    // (impl Stream<...>), but impl Trait in associated types is unstable.
+    // See rust issue #63063 <https://github.com/rust-lang/rust/issues/63063>
+    type Item = Box<dyn Stream<Item = IncomingStream> + Send + Sync + Unpin>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        use futures::StreamExt as _;
+
+        self.circuit_stream_rx.poll_next_unpin(cx)
     }
 }
 
