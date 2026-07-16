@@ -47,7 +47,7 @@
 #![deny(clippy::string_slice)] // See arti#2571
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 
-use std::time;
+use std::time::{self, Duration};
 use thiserror::Error;
 use web_time_compat::{SystemTime, SystemTimeExt};
 
@@ -61,10 +61,10 @@ pub mod timed;
 pub enum TimeValidityError {
     /// The object is not yet valid
     #[error("Object will not be valid for {}", humantime::format_duration(*.0))]
-    NotYetValid(time::Duration),
+    NotYetValid(Duration),
     /// The object is expired
     #[error("Object has been expired for {}", humantime::format_duration(*.0))]
-    Expired(time::Duration),
+    Expired(Duration),
     /// The object isn't timely, and we don't know why, or won't say.
     #[error("Object is not currently valid")]
     Unspecified,
