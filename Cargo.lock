@@ -8224,6 +8224,7 @@ dependencies = [
  "derive_more",
  "downcast-rs",
  "erased-serde",
+ "extend",
  "futures",
  "futures-await-test",
  "inventory",
