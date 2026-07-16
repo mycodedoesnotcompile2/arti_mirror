@@ -113,6 +113,15 @@ pub fn skip_fmt<T>(_: &T, f: &mut fmt::Formatter) -> fmt::Result {
 
 /// Formats an iterator as an object whose display implementation is a `separator`-separated string
 /// of items from `iter`.
+///
+/// Performs a similar function to `Itertools::format`.  Differences:
+///
+///  * `Itertools::format` panics if the returned formatting helper is formatted twice;
+///    conversely, `iter_join` requires that the iterator be `Clone`.
+///  * `iter_join` only supports `Display`; `.format` supports all formatting traits.
+///  * `iter_join` accepts an `IntoIterator` rather than requiring an `Iterator`.
+//
+// TODO maybe this should be an extension trait method?
 pub fn iter_join(
     separator: &str,
     iter: impl IntoIterator<Item: fmt::Display> + Clone,
