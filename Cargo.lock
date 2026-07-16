@@ -2720,6 +2720,7 @@ dependencies = [
 name = "futures-copy"
 version = "0.4.0"
 dependencies = [
+ "extend",
  "futures",
  "libc",
  "pin-project",
