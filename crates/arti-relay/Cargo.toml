@@ -82,6 +82,7 @@ tor-config = { path = "../tor-config", version = "0.44.0" }
 tor-config-path = { path = "../tor-config-path", version = "0.44.0" }
 tor-dircommon = { version = "0.44.0", path = "../tor-dircommon" }
 tor-dirmgr = { path = "../tor-dirmgr", version = "0.44.0" }
+tor-dirserver = { path = "../tor-dirserver", version = "0.44.0" }
 tor-error = { path = "../tor-error", version = "0.44.0" }
 tor-general-addr = { path = "../tor-general-addr", version = "0.44.0" }
 tor-guardmgr = { version = "0.44.0", path = "../tor-guardmgr" }

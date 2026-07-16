@@ -15,7 +15,10 @@ use tor_basic_utils::iter_join;
 use tor_cell::relaycell::RelayCmd;
 use tor_chanmgr::{ChanMgr, ChanMgrConfig, Dormancy};
 use tor_config_path::CfgPathResolver;
+use tor_dircommon::authority::AuthorityContacts;
+use tor_dircommon::config::{DirTolerance, DownloadScheduleConfig};
 use tor_dirmgr::DirMgrConfig;
+use tor_dirserver::mirror::DirMirror;
 use tor_keymgr::{ArtiNativeKeystore, KeyMgr, KeyMgrBuilder};
 use tor_memquota::MemoryQuotaTracker;
 use tor_netdir::params::NetParameters;
@@ -173,6 +176,9 @@ pub(crate) struct TorRelay<R: Runtime> {
     /// A "client" used by relays to construct circuits.
     client: RelayClient<R>,
 
+    /// The directory mirror object, used for handling BEGIN_DIR.
+    dir_mirror: DirMirror,
+
     /// Channel manager, used by circuits etc.
     chanmgr: Arc<ChanMgr<R>>,
 
@@ -322,10 +328,19 @@ impl<R: Runtime> TorRelay<R> {
             ));
         }
 
+        // TODO DIRMIRROR: Need a config for the DirMirror
+        let path: PathBuf = PathBuf::from("/dev/null");
+        let authorities: AuthorityContacts = Default::default();
+        let schedule: DownloadScheduleConfig = Default::default();
+        let tolerance: DirTolerance = Default::default();
+
+        let dir_mirror = DirMirror::new(path, authorities, schedule, tolerance);
+
         Ok(Self {
             runtime,
             memquota,
             client,
+            dir_mirror,
             chanmgr,
             create_request_handler,
             keymgr: inert.keymgr,
