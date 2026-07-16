@@ -803,7 +803,7 @@ pub(crate) fn check_cert_timeliness<C, CERT>(
     clock_skew: ClockSkew,
 ) -> (Result<()>, CERT)
 where
-    C: TimeBound<CERT, Error = TimeValidityError>,
+    C: TimeBound<CERT>,
 {
     let status = checkable
         .is_valid_at(&now)

@@ -94,13 +94,11 @@ pub struct SigCheckedEd25519Cert {
 }
 
 impl tor_checkable::TimeBound<ValidatedEd25519Cert> for SigCheckedEd25519Cert {
-    type Error = tor_checkable::TimeValidityError;
-
     fn bounds(&self) -> TimeRange {
         self.cert.bounds()
     }
 
-    fn is_valid_at(&self, t: &SystemTime) -> StdResult<(), Self::Error> {
+    fn is_valid_at(&self, t: &SystemTime) -> StdResult<(), tor_checkable::TimeValidityError> {
         self.cert.is_valid_at(t)
     }
 

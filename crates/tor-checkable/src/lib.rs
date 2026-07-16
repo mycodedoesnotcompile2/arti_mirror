@@ -83,9 +83,6 @@ pub enum TimeValidityError {
 /// that implementations must check whether `x ∊ [start; end]` but *not*
 /// `x ∊ (start; end)`.
 pub trait TimeBound<T>: Sized {
-    /// An error type that's returned when the object is _not_ timely.
-    type Error;
-
     /// Get the bounds, in the form of a `TimeRangeBound<()>`
     ///
     /// It is permissible for the start to be after the end.
@@ -100,25 +97,25 @@ pub trait TimeBound<T>: Sized {
     /// Check whether this object is valid at a given time.
     ///
     /// Return Ok if the object is valid, and an error if the object is not.
-    fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), Self::Error>;
+    fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), TimeValidityError>;
 
     /// Return the underlying object without checking whether it's valid.
     fn dangerously_assume_timely(self) -> T;
 
     /// Unwrap this TimeBound object if it is valid at a given time.
-    fn check_valid_at(self, t: &time::SystemTime) -> Result<T, Self::Error> {
+    fn check_valid_at(self, t: &time::SystemTime) -> Result<T, TimeValidityError> {
         self.is_valid_at(t)?;
         Ok(self.dangerously_assume_timely())
     }
 
     /// Unwrap this TimeBound object if it is valid now.
-    fn check_valid_now(self) -> Result<T, Self::Error> {
+    fn check_valid_now(self) -> Result<T, TimeValidityError> {
         self.check_valid_at(&SystemTime::get())
     }
 
     /// Unwrap this object if it is valid at the provided time t.
     /// If no time is provided, check the object at the current time.
-    fn check_valid_at_opt(self, t: Option<time::SystemTime>) -> Result<T, Self::Error> {
+    fn check_valid_at_opt(self, t: Option<time::SystemTime>) -> Result<T, TimeValidityError> {
         match t {
             Some(when) => self.check_valid_at(&when),
             None => self.check_valid_now(),

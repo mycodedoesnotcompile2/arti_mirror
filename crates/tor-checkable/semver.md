@@ -6,4 +6,4 @@ DEPRECATED: Use `TimeRangeBound::extend_end_bound` instead of `extend_tolerance`
 ADDED: `TimeRange` (type alias)
 ADDED: `TimeRange::new_range`, `apply_to`, `start`, `end`, `intersect_bounds`
 ADDED: `TimeRange` `From` impls from (inclusive) `std::ops::Range*` types
-BREAKING: `TimeBound` overhauled: new `time_bounds` method
+BREAKING: `TimeBound` overhauled: new `time_bounds` method; `Error` removed

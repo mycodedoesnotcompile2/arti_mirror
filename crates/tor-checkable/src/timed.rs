@@ -1,6 +1,6 @@
 //! Convenience implementation of a TimeBound object.
 
-use crate::TimeBound;
+use crate::{TimeBound, TimeValidityError};
 use itertools::chain;
 use std::ops::{Bound, Deref, RangeBounds};
 use web_time_compat as time;
@@ -287,8 +287,6 @@ impl_from_range! { std::ops::RangeInclusive<time::SystemTime> }
 impl_from_range! { std::ops::RangeToInclusive<time::SystemTime> }
 
 impl<T> crate::TimeBound<T> for TimeRangeBound<T> {
-    type Error = crate::TimeValidityError;
-
     fn bounds(&self) -> TimeRange {
         TimeRangeBound {
             obj: (),
@@ -297,7 +295,7 @@ impl<T> crate::TimeBound<T> for TimeRangeBound<T> {
         }
     }
 
-    fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), Self::Error> {
+    fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), TimeValidityError> {
         use crate::TimeValidityError;
         if let Some(start) = self.start {
             if let Ok(d) = start.duration_since(*t)
