@@ -7950,6 +7950,7 @@ dependencies = [
  "digest 0.10.7",
  "educe",
  "enumset",
+ "extend",
  "hex",
  "hex-literal",
  "hostname-validator",
