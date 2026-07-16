@@ -142,11 +142,11 @@ pub fn iter_join(
 // ----------------------------------------------------------------------
 
 /// Extension trait to provide `.strip_suffix_ignore_ascii_case()` etc.
-// Using `.as_ref()` as a supertrait lets us make the method a provided one.
-pub trait StrExt: AsRef<str> {
+#[ext(name = StrExt)]
+pub impl str {
     /// Like `str.strip_suffix()` but ASCII-case-insensitive
     fn strip_suffix_ignore_ascii_case(&self, suffix: &str) -> Option<&str> {
-        let whole = self.as_ref();
+        let whole = self;
         let suffix_start = whole.len().checked_sub(suffix.len())?;
         let (rest, possible_suffix) = whole.split_at_checked(suffix_start)?;
         possible_suffix.eq_ignore_ascii_case(suffix).then_some(rest)
@@ -157,7 +157,6 @@ pub trait StrExt: AsRef<str> {
         self.strip_suffix_ignore_ascii_case(suffix).is_some()
     }
 }
-impl StrExt for str {}
 
 // ----------------------------------------------------------------------
 
