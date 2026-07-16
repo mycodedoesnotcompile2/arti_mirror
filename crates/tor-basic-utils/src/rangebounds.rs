@@ -5,7 +5,7 @@ use std::cmp::{self, Ord};
 use std::ops::{Bound, RangeBounds};
 
 /// An extension trait for [`RangeBounds`].
-pub trait RangeBoundsExt<T>: RangeBounds<T> {
+pub trait RangeBoundsExt<T: Ord>: RangeBounds<T> {
     /// Compute the intersection of two `RangeBound`s.
     ///
     /// In essence, this computes the intersection of the intervals described by bounds of the
