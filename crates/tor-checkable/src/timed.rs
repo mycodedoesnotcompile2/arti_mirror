@@ -3,7 +3,7 @@
 use std::ops::{Bound, Deref, RangeBounds};
 use web_time_compat as time;
 
-/// A TimeBound object that is valid for a specified range of time.
+/// A `TimeBound` object that is valid for a specified range of time.
 ///
 /// The range is given as an argument, as in `t1..t2`.
 ///
@@ -11,25 +11,25 @@ use web_time_compat as time;
 ///
 /// ```
 /// use web_time_compat::{SystemTime, SystemTimeExt, Duration};
-/// use tor_checkable::{TimeBound, TimeValidityError, timed::TimerangeBound};
+/// use tor_checkable::{TimeBound, TimeValidityError, timed::TimeRangeBound};
 ///
 /// let now = SystemTime::get();
 /// let one_hour = Duration::new(3600, 0);
 ///
 /// // This seven is only valid for another hour!
-/// let seven = TimerangeBound::new(7_u32, ..now+one_hour);
+/// let seven = TimeRangeBound::new(7_u32, ..now+one_hour);
 ///
 /// assert_eq!(seven.check_valid_at(&now).unwrap(), 7);
 ///
 /// // That consumed the previous seven. Try another one.
-/// let seven = TimerangeBound::new(7_u32, ..now+one_hour);
+/// let seven = TimeRangeBound::new(7_u32, ..now+one_hour);
 /// assert_eq!(seven.check_valid_at(&(now+2*one_hour)),
 ///            Err(TimeValidityError::Expired(one_hour)));
 ///
 /// ```
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
-pub struct TimerangeBound<T> {
+pub struct TimeRangeBound<T> {
     /// The underlying object, which we only want to expose if it is
     /// currently timely.
     obj: T,
@@ -38,6 +38,10 @@ pub struct TimerangeBound<T> {
     /// If present, when the object will no longer be valid.
     end: Option<time::SystemTime>,
 }
+
+/// Deprecated compatibility alias for [`TimeRangeBound`]
+#[deprecated = "use the new name, TimeRangeBound, instead"]
+pub type TimerangeBound<T> = TimeRangeBound<T>;
 
 /// Helper: convert a Bound to its underlying value, if any.
 ///
