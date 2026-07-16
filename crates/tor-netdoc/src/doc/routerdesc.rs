@@ -53,7 +53,7 @@ use std::sync::LazyLock;
 use std::{iter, net, time};
 use tor_basic_utils::intern::Intern;
 use tor_cert::{CertType, KeyUnknownCert};
-use tor_checkable::{Timebound, signed, timed};
+use tor_checkable::{TimeBound, signed, timed};
 use tor_error::{internal, into_internal};
 use tor_llcrypto as ll;
 use tor_llcrypto::pk::rsa::RsaIdentity;
@@ -527,7 +527,7 @@ impl RouterAnnotation {
 
 /// A parsed router descriptor whose signatures and/or validity times
 /// may or may not be invalid.
-pub type UncheckedRouterDesc = signed::SignatureGated<timed::TimerangeBound<RouterDesc>>;
+pub type UncheckedRouterDesc = signed::SignatureGated<timed::TimeRangeBound<RouterDesc>>;
 
 /// How long after its published time is a router descriptor officially
 /// supposed to be usable?
@@ -1088,7 +1088,7 @@ impl RouterDesc {
             proto,
         };
 
-        let time_gated = timed::TimerangeBound::new(desc, start_time..expiry);
+        let time_gated = timed::TimeRangeBound::new(desc, start_time..expiry);
         let sig_gated = signed::SignatureGated::new(time_gated, signatures);
 
         Ok(sig_gated)
@@ -1236,7 +1236,7 @@ mod test {
     #[test]
     fn parse_arbitrary() -> Result<()> {
         use std::str::FromStr;
-        use tor_checkable::{SelfSigned, Timebound};
+        use tor_checkable::{SelfSigned, TimeBound};
         let rd = RouterDesc::parse(TESTDATA)?
             .check_signature()?
             .dangerously_assume_timely();
@@ -1291,7 +1291,7 @@ mod test {
 
     #[test]
     fn parse_no_tap_key() -> Result<()> {
-        use tor_checkable::{SelfSigned, Timebound};
+        use tor_checkable::{SelfSigned, TimeBound};
         let rd = RouterDesc::parse(TESTDATA2)?
             .check_signature()?
             .dangerously_assume_timely();
@@ -1437,7 +1437,7 @@ mod test {
 
     #[test]
     fn test_family_ids() -> Result<()> {
-        use tor_checkable::{SelfSigned, Timebound};
+        use tor_checkable::{SelfSigned, TimeBound};
         let rd = RouterDesc::parse(TESTDATA3)?
             .check_signature()?
             .dangerously_assume_timely();

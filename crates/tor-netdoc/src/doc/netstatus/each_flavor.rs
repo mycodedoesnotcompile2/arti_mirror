@@ -298,7 +298,7 @@ impl Consensus {
             n_authorities: None,
         };
         let timebound_range = unval.consensus.preamble.validity_time_range();
-        let timebound = TimerangeBound::new(unval, timebound_range);
+        let timebound = TimeRangeBound::new(unval, timebound_range);
         Ok((signed_str, remainder, timebound))
     }
 }
@@ -548,7 +548,7 @@ impl ExternallySigned<Consensus> for UnvalidatedConsensus {
 
 /// A Consensus object that has been parsed, but not checked for
 /// signatures and timeliness.
-pub type UncheckedConsensus = TimerangeBound<UnvalidatedConsensus>;
+pub type UncheckedConsensus = TimeRangeBound<UnvalidatedConsensus>;
 
 impl NetworkStatusUnverified {
     /// Could we verify this consensus or do we need more authcerts?
@@ -579,13 +579,13 @@ impl NetworkStatusUnverified {
     /// Verify the signatures
     ///
     /// Doesn't check the validity period:
-    /// the document is wrapped in [`TimerangeBound`],
+    /// the document is wrapped in [`TimeRangeBound`],
     /// ensuring that the caller does that check.
     pub fn verify(
         self,
         trusted_authorities: &[RsaIdentity],
         certs: &[AuthCert],
-    ) -> Result<TimerangeBound<NetworkStatus>, ConsensusVerifyFailed> {
+    ) -> Result<TimeRangeBound<NetworkStatus>, ConsensusVerifyFailed> {
         let (body, sigs) = self.unwrap_unverified();
 
         Self::verify_general(
@@ -596,7 +596,7 @@ impl NetworkStatusUnverified {
         )?;
 
         let time_range = body.preamble.validity_time_range();
-        Ok(TimerangeBound::new(
+        Ok(TimeRangeBound::new(
             body,
             time_range,
         ))

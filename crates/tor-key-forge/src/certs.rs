@@ -92,7 +92,7 @@ pub struct SigCheckedEd25519Cert {
     raw: Vec<u8>,
 }
 
-impl tor_checkable::Timebound<ValidatedEd25519Cert> for SigCheckedEd25519Cert {
+impl tor_checkable::TimeBound<ValidatedEd25519Cert> for SigCheckedEd25519Cert {
     type Error = tor_checkable::TimeValidityError;
 
     fn is_valid_at(&self, t: &SystemTime) -> StdResult<(), Self::Error> {
