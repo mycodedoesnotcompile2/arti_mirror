@@ -24,7 +24,7 @@ use crate::{NetdocErrorKind as EK, NormalItemArgument, Result};
 use tor_basic_utils::impl_debug_hex;
 use tor_checkable::{
     TimeBound, signed,
-    timed::{self, TimerangeBound},
+    timed::{self, TimeRangeBound},
 };
 use tor_error::{internal, into_internal};
 use tor_llcrypto::pk::rsa;
@@ -193,7 +193,7 @@ pub struct UncheckedAuthCert {
     location: Option<Extent>,
 
     /// The actual unchecked certificate.
-    c: signed::SignatureGated<timed::TimerangeBound<AuthCert>>,
+    c: signed::SignatureGated<timed::TimeRangeBound<AuthCert>>,
 }
 
 impl UncheckedAuthCert {
@@ -437,7 +437,7 @@ impl AuthCert {
         let signatures: Vec<Box<dyn pk::ValidatableSignature>> =
             vec![Box::new(v_crosscert), Box::new(v_sig)];
 
-        let timed = timed::TimerangeBound::new(authcert, *dir_key_published..*dir_key_expires);
+        let timed = timed::TimeRangeBound::new(authcert, *dir_key_published..*dir_key_expires);
         let signed = signed::SignatureGated::new(timed, signatures);
         let unchecked = UncheckedAuthCert {
             location,
@@ -596,10 +596,10 @@ impl ItemObjectEncodable for CrossCertObject {
     }
 }
 
-impl tor_checkable::SelfSigned<timed::TimerangeBound<AuthCert>> for UncheckedAuthCert {
+impl tor_checkable::SelfSigned<timed::TimeRangeBound<AuthCert>> for UncheckedAuthCert {
     type Error = signature::Error;
 
-    fn dangerously_assume_wellsigned(self) -> timed::TimerangeBound<AuthCert> {
+    fn dangerously_assume_wellsigned(self) -> timed::TimeRangeBound<AuthCert> {
         self.c.dangerously_assume_wellsigned()
     }
     fn is_well_signed(&self) -> std::result::Result<(), Self::Error> {
@@ -628,7 +628,7 @@ impl AuthCertUnverified {
     pub fn verify(
         self,
         v3idents: &[RsaIdentity],
-    ) -> StdResult<TimerangeBound<AuthCert>, parse2::VerifyFailed> {
+    ) -> StdResult<TimeRangeBound<AuthCert>, parse2::VerifyFailed> {
         let (body, sigs) = (self.body, self.sigs);
 
         // (1) Check whether this comes from a valid authority in `v3idents`.
@@ -656,7 +656,7 @@ impl AuthCertUnverified {
             &sigs.sigs.dir_key_certification.signature,
         )?;
 
-        Ok(TimerangeBound::new(body, validity))
+        Ok(TimeRangeBound::new(body, validity))
     }
 
     /// Verify the signatures (and check validity times)

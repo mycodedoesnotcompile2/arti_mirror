@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tor_basic_utils::RngExt as _;
 use tor_cell::relaycell::hs::pow::{ProofOfWork, v1::ProofOfWorkV1};
-use tor_checkable::timed::TimerangeBound;
+use tor_checkable::timed::TimeRangeBound;
 use tor_error::warn_report;
 use tor_hscrypto::{
     pk::HsBlindIdKey,
@@ -663,7 +663,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
         };
 
         Ok(PowParams::V1(PowParamsV1::new(
-            TimerangeBound::new(seed, ..expiration),
+            TimeRangeBound::new(seed, ..expiration),
             suggested_effort,
         )))
     }

@@ -16,7 +16,7 @@ use smallvec::SmallVec;
 use std::sync::LazyLock;
 use tor_checkable::TimeBound;
 use tor_checkable::signed::SignatureGated;
-use tor_checkable::timed::TimerangeBound;
+use tor_checkable::timed::TimeRangeBound;
 use tor_hscrypto::NUM_INTRO_POINT_MAX;
 use tor_hscrypto::pk::{HsIntroPtSessionIdKey, HsSvcNtorKey};
 use tor_llcrypto::pk::ed25519::Ed25519Identity;
@@ -120,7 +120,7 @@ static HS_INNER_INTRO_RULES: LazyLock<SectionRules<HsInnerKwd>> = LazyLock::new(
 });
 
 /// Helper type returned when we parse an HsDescInner.
-pub(crate) type UncheckedHsDescInner = TimerangeBound<SignatureGated<HsDescInner>>;
+pub(crate) type UncheckedHsDescInner = TimeRangeBound<SignatureGated<HsDescInner>>;
 
 /// Information about one of the certificates inside an HsDescInner.
 ///
@@ -470,8 +470,8 @@ impl HsDescInner {
         };
         let sig_gated = SignatureGated::new(inner, signatures);
         let time_bound = match expirations.iter().min() {
-            Some(t) => TimerangeBound::new(sig_gated, ..t),
-            None => TimerangeBound::new(sig_gated, ..),
+            Some(t) => TimeRangeBound::new(sig_gated, ..t),
+            None => TimeRangeBound::new(sig_gated, ..),
         };
 
         Ok((cert_signing_key, time_bound))

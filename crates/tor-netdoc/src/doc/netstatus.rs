@@ -95,7 +95,7 @@ use digest::Digest;
 use itertools::Itertools;
 use saturating_time::SaturatingTime as _;
 use std::sync::LazyLock;
-use tor_checkable::{ExternallySigned, TimeBound, timed::TimerangeBound};
+use tor_checkable::{ExternallySigned, TimeBound, timed::TimeRangeBound};
 use tor_llcrypto as ll;
 use tor_llcrypto::pk::rsa::RsaIdentity;
 
@@ -3059,7 +3059,7 @@ mod test {
         // TODO DIRAUTH use include_str!, so, at call sites
         // https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4121#note_3428675
         file: &str,
-        verify: impl FnOnce(UV, &[RsaIdentity], &[AuthCert]) -> Result<TimerangeBound<V>, VE>,
+        verify: impl FnOnce(UV, &[RsaIdentity], &[AuthCert]) -> Result<TimeRangeBound<V>, VE>,
         adjust_now: Duration,
     ) -> anyhow::Result<()>
     where
@@ -3288,8 +3288,8 @@ $2
         uv: UV,
         _ids: &[RsaIdentity],
         _certs: &[AuthCert],
-    ) -> Result<TimerangeBound<UV::Body>, std::convert::Infallible> {
-        Ok(TimerangeBound::new(uv.unwrap_unverified().0, ..))
+    ) -> Result<TimeRangeBound<UV::Body>, std::convert::Infallible> {
+        Ok(TimeRangeBound::new(uv.unwrap_unverified().0, ..))
     }
 
     #[cfg(feature = "retain-unknown")]

@@ -35,7 +35,7 @@ use tor_cell::relaycell::RelayMsg;
 use tor_cell::relaycell::hs::{
     AuthKeyType, EstablishRendezvous, IntroduceAck, RendezvousEstablished,
 };
-use tor_checkable::{TimeBound, timed::TimerangeBound};
+use tor_checkable::{TimeBound, timed::TimeRangeBound};
 use tor_circmgr::hspool::HsCircPool;
 use tor_circmgr::timeouts::Action as TimeoutsAction;
 use tor_dirclient::request::Requestable as _;
@@ -102,7 +102,7 @@ struct HsDescForTp {
     /// is for the same time period as this one.
     time_period: TimePeriod,
     /// The descriptor
-    desc: TimerangeBound<HsDesc>,
+    desc: TimeRangeBound<HsDesc>,
 }
 
 /// Part of `Data` that relates to our information about the HsDir requery periods
@@ -747,14 +747,14 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
     ///
     /// On success, returns the descriptor.
     ///
-    /// While the returned descriptor is `TimerangeBound`, its validity at the current time *has*
+    /// While the returned descriptor is `TimeRangeBound`, its validity at the current time *has*
     /// been checked.
     #[instrument(level = "trace", skip_all)]
     async fn descriptor_fetch_attempt(
         &self,
         hsdir: &Relay<'_>,
         params: &NetParameters,
-    ) -> Result<TimerangeBound<HsDesc>, DescriptorErrorDetail> {
+    ) -> Result<TimeRangeBound<HsDesc>, DescriptorErrorDetail> {
         let max_len: usize = self
             .netdir
             .params()

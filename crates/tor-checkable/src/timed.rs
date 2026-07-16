@@ -57,8 +57,8 @@ fn unwrap_bound(b: Bound<&'_ time::SystemTime>) -> Option<time::SystemTime> {
     }
 }
 
-impl<T> TimerangeBound<T> {
-    /// Construct a new TimerangeBound object from a given object and range.
+impl<T> TimeRangeBound<T> {
+    /// Construct a new TimeRangeBound object from a given object and range.
     ///
     /// Note that we do not distinguish between inclusive and
     /// exclusive bounds: `x..y` and `x..=y` are treated the same
@@ -72,7 +72,7 @@ impl<T> TimerangeBound<T> {
         Self { obj, start, end }
     }
 
-    /// Construct a new TimerangeBound object from a given object, start time, and end time.
+    /// Construct a new TimeRangeBound object from a given object, start time, and end time.
     pub fn new_from_start_end(
         obj: T,
         start: Option<time::SystemTime>,
@@ -101,18 +101,18 @@ impl<T> TimerangeBound<T> {
         };
         Self { start, ..self }
     }
-    /// Consume this [`TimerangeBound`], and return a new one with the same
+    /// Consume this [`TimeRangeBound`], and return a new one with the same
     /// bounds, applying `f` to its protected value.
     ///
     /// The caller must ensure that `f` does not make any assumptions about the
     /// timeliness of the protected value, or leak any of its contents in
     /// an inappropriate way.
     #[must_use]
-    pub fn dangerously_map<F, U>(self, f: F) -> TimerangeBound<U>
+    pub fn dangerously_map<F, U>(self, f: F) -> TimeRangeBound<U>
     where
         F: FnOnce(T) -> U,
     {
-        TimerangeBound {
+        TimeRangeBound {
             obj: f(self.obj),
             start: self.start,
             end: self.end,
@@ -142,20 +142,20 @@ impl<T> TimerangeBound<T> {
         &self.obj
     }
 
-    /// Return a `TimerangeBound` containing a reference
+    /// Return a `TimeRangeBound` containing a reference
     ///
     /// This can be useful to call methods like `.check_valid_at`
     /// without consuming the inner `T`.
-    pub fn as_ref(&self) -> TimerangeBound<&T> {
-        TimerangeBound {
+    pub fn as_ref(&self) -> TimeRangeBound<&T> {
+        TimeRangeBound {
             obj: &self.obj,
             start: self.start,
             end: self.end,
         }
     }
 
-    /// Return a `TimerangeBound` containing a reference to `T`'s `Deref`
-    pub fn as_deref(&self) -> TimerangeBound<&T::Target>
+    /// Return a `TimeRangeBound` containing a reference to `T`'s `Deref`
+    pub fn as_deref(&self) -> TimeRangeBound<&T::Target>
     where
         T: Deref,
     {
@@ -168,7 +168,7 @@ impl<T> TimerangeBound<T> {
     }
 }
 
-impl<T> RangeBounds<time::SystemTime> for TimerangeBound<T> {
+impl<T> RangeBounds<time::SystemTime> for TimeRangeBound<T> {
     fn start_bound(&self) -> Bound<&time::SystemTime> {
         self.start
             .as_ref()
@@ -184,7 +184,7 @@ impl<T> RangeBounds<time::SystemTime> for TimerangeBound<T> {
     }
 }
 
-impl<T> crate::TimeBound<T> for TimerangeBound<T> {
+impl<T> crate::TimeBound<T> for TimeRangeBound<T> {
     type Error = crate::TimeValidityError;
 
     fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), Self::Error> {
@@ -244,7 +244,7 @@ mod test {
         let tor_v0_4_4_5 = parse_rfc3339("2020-09-15T00:00:00Z").unwrap();
         let today = parse_rfc3339("2020-09-22T00:00:00Z").unwrap();
 
-        let tr = TimerangeBound::new((), ..tor_v0_4_4_5);
+        let tr = TimeRangeBound::new((), ..tor_v0_4_4_5);
         assert_eq!(tr.start, None);
         assert_eq!(tr.end, Some(tor_v0_4_4_5));
         assert!(tr.is_valid_at(&mixminion_v0_0_1).is_ok());
@@ -254,7 +254,7 @@ mod test {
             Err(TimeValidityError::Expired(7 * one_day))
         );
 
-        let tr = TimerangeBound::new((), tor_v0_0_2pre13..=tor_v0_4_4_5);
+        let tr = TimeRangeBound::new((), tor_v0_0_2pre13..=tor_v0_4_4_5);
         assert_eq!(tr.start, Some(tor_v0_0_2pre13));
         assert_eq!(tr.end, Some(tor_v0_4_4_5));
         assert_eq!(
@@ -279,7 +279,7 @@ mod test {
         assert_eq!(tr.start, None);
         assert_eq!(tr.end, None);
 
-        let tr = TimerangeBound::new((), tor_v0_4_4_5..);
+        let tr = TimeRangeBound::new((), tor_v0_4_4_5..);
         assert_eq!(tr.start, Some(tor_v0_4_4_5));
         assert_eq!(tr.end, None);
         assert_eq!(
@@ -301,32 +301,32 @@ mod test {
         let za = humantime::parse_rfc3339("1994-04-27T00:00:00Z").unwrap();
 
         // check_valid_at
-        let tr = TimerangeBound::new("Hello world", cz_sk..eu);
+        let tr = TimeRangeBound::new("Hello world", cz_sk..eu);
         assert!(tr.check_valid_at(&za).is_err());
 
-        let tr = TimerangeBound::new("Hello world", cz_sk..za);
+        let tr = TimeRangeBound::new("Hello world", cz_sk..za);
         assert_eq!(tr.check_valid_at(&eu), Ok("Hello world"));
 
         // check_valid_now
-        let tr = TimerangeBound::new("hello world", de..);
+        let tr = TimeRangeBound::new("hello world", de..);
         assert_eq!(tr.check_valid_now(), Ok("hello world"));
 
-        let tr = TimerangeBound::new("hello world", ..za);
+        let tr = TimeRangeBound::new("hello world", ..za);
         assert!(tr.check_valid_now().is_err());
 
         // Now try check_valid_at_opt() api
-        let tr = TimerangeBound::new("hello world", de..);
+        let tr = TimeRangeBound::new("hello world", de..);
         assert_eq!(tr.check_valid_at_opt(None), Ok("hello world"));
-        let tr = TimerangeBound::new("hello world", de..);
+        let tr = TimeRangeBound::new("hello world", de..);
         assert_eq!(
             tr.check_valid_at_opt(Some(SystemTime::get())),
             Ok("hello world")
         );
-        let tr = TimerangeBound::new("hello world", ..za);
+        let tr = TimeRangeBound::new("hello world", ..za);
         assert!(tr.check_valid_at_opt(None).is_err());
 
         // edge cases
-        let tr = TimerangeBound::new("Hello world", de..eu);
+        let tr = TimeRangeBound::new("Hello world", de..eu);
         let nano = Duration::from_nanos(1);
         assert!(tr.is_valid_at(&(de - nano)).is_err());
         assert!(tr.is_valid_at(&de).is_ok());
@@ -340,7 +340,7 @@ mod test {
     fn test_dangerous() {
         let t1 = SystemTime::get();
         let t2 = t1 + Duration::from_secs(60 * 525600);
-        let tr = TimerangeBound::new("cups of coffee", t1..=t2);
+        let tr = TimeRangeBound::new("cups of coffee", t1..=t2);
 
         assert_eq!(tr.dangerously_peek(), &"cups of coffee");
 
@@ -355,7 +355,7 @@ mod test {
         let t1 = SystemTime::get();
         let min = Duration::from_secs(60);
 
-        let tb = TimerangeBound::new(17_u32, t1..t1 + 5 * min);
+        let tb = TimeRangeBound::new(17_u32, t1..t1 + 5 * min);
         let tb = tb.dangerously_map(|v| v * v);
         assert!(tb.is_valid_at(&(t1 + 1 * min)).is_ok());
         assert!(tb.is_valid_at(&(t1 + 10 * min)).is_err());
@@ -369,9 +369,9 @@ mod test {
         let t1 = SystemTime::get();
         let min = Duration::from_secs(60);
 
-        let tb1: TimerangeBound<String> = TimerangeBound::new("hi".into(), t1..t1 + 5 * min);
-        let tb2: TimerangeBound<&String> = tb1.as_ref();
-        let tb3: TimerangeBound<&str> = tb1.as_deref();
+        let tb1: TimeRangeBound<String> = TimeRangeBound::new("hi".into(), t1..t1 + 5 * min);
+        let tb2: TimeRangeBound<&String> = tb1.as_ref();
+        let tb3: TimeRangeBound<&str> = tb1.as_deref();
         assert_eq!(tb1, tb2.dangerously_map(|s| s.clone()));
         assert_eq!(tb1, tb3.dangerously_map(|s| s.to_owned()));
     }

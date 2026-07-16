@@ -527,7 +527,7 @@ impl RouterAnnotation {
 
 /// A parsed router descriptor whose signatures and/or validity times
 /// may or may not be invalid.
-pub type UncheckedRouterDesc = signed::SignatureGated<timed::TimerangeBound<RouterDesc>>;
+pub type UncheckedRouterDesc = signed::SignatureGated<timed::TimeRangeBound<RouterDesc>>;
 
 /// How long after its published time is a router descriptor officially
 /// supposed to be usable?
@@ -1088,7 +1088,7 @@ impl RouterDesc {
             proto,
         };
 
-        let time_gated = timed::TimerangeBound::new(desc, start_time..expiry);
+        let time_gated = timed::TimeRangeBound::new(desc, start_time..expiry);
         let sig_gated = signed::SignatureGated::new(time_gated, signatures);
 
         Ok(sig_gated)
