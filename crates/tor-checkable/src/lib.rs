@@ -54,7 +54,7 @@ use web_time_compat::{SystemTime, SystemTimeExt};
 pub mod signed;
 pub mod timed;
 
-/// An error that can occur when checking whether a Timebound object is
+/// An error that can occur when checking whether a TimeBound object is
 /// currently valid.
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 #[non_exhaustive]
@@ -76,13 +76,13 @@ pub enum TimeValidityError {
 /// valid method, so that you can make sure that nobody uses the object before
 /// checking it.
 ///
-/// [`Timebound`] implementations are required to be **inclusive** of the
+/// [`TimeBound`] implementations are required to be **inclusive** of the
 /// bounds when performing a verification.  Mathematically speaking, this means
 /// that implementations must check whether `x ∊ [start; end]` but *not*
 /// `x ∊ (start; end)`.
 //
 // TODO: We should really provide a method or something to obtain a
-// TimeboundRange from a TimeBound, as TimeBound itself is not a nice type to
+// TimeBoundRange from a TimeBound, as TimeBound itself is not a nice type to
 // work with.
 pub trait TimeBound<T>: Sized {
     /// An error type that's returned when the object is _not_ timely.
@@ -96,13 +96,13 @@ pub trait TimeBound<T>: Sized {
     /// Return the underlying object without checking whether it's valid.
     fn dangerously_assume_timely(self) -> T;
 
-    /// Unwrap this Timebound object if it is valid at a given time.
+    /// Unwrap this TimeBound object if it is valid at a given time.
     fn check_valid_at(self, t: &time::SystemTime) -> Result<T, Self::Error> {
         self.is_valid_at(t)?;
         Ok(self.dangerously_assume_timely())
     }
 
-    /// Unwrap this Timebound object if it is valid now.
+    /// Unwrap this TimeBound object if it is valid now.
     fn check_valid_now(self) -> Result<T, Self::Error> {
         self.check_valid_at(&SystemTime::get())
     }

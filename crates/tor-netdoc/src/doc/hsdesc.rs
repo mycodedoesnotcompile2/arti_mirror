@@ -25,7 +25,7 @@ use crate::{NetdocErrorKind as EK, Result};
 
 use tor_checkable::signed::{self, SignatureGated};
 use tor_checkable::timed::{self, TimerangeBound};
-use tor_checkable::{SelfSigned, Timebound};
+use tor_checkable::{SelfSigned, TimeBound};
 use tor_hscrypto::pk::{HsBlindId, HsClientDescEncKeypair, HsIntroPtSessionIdKey, HsSvcNtorKey};
 use tor_hscrypto::{RevisionCounter, Subcredential};
 use tor_linkspec::EncodedLinkSpec;
@@ -205,7 +205,7 @@ impl HsDesc {
     /// # Example
     /// ```
     /// # use hex_literal::hex;
-    /// # use tor_checkable::{SelfSigned, Timebound};
+    /// # use tor_checkable::{SelfSigned, TimeBound};
     /// # use tor_netdoc::doc::hsdesc::HsDesc;
     /// # use tor_netdoc::Error;
     /// #

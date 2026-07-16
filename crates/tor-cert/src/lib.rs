@@ -621,7 +621,7 @@ impl tor_checkable::SelfSigned<SigCheckedCert> for UncheckedCert {
     }
 }
 
-impl tor_checkable::Timebound<Ed25519Cert> for Ed25519Cert {
+impl tor_checkable::TimeBound<Ed25519Cert> for Ed25519Cert {
     type Error = tor_checkable::TimeValidityError;
 
     #[allow(unstable_name_collisions)]
@@ -639,7 +639,7 @@ impl tor_checkable::Timebound<Ed25519Cert> for Ed25519Cert {
     }
 }
 
-impl tor_checkable::Timebound<Ed25519Cert> for SigCheckedCert {
+impl tor_checkable::TimeBound<Ed25519Cert> for SigCheckedCert {
     type Error = tor_checkable::TimeValidityError;
     fn is_valid_at(&self, t: &time::SystemTime) -> std::result::Result<(), Self::Error> {
         self.cert.is_valid_at(t)

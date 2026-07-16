@@ -14,7 +14,7 @@ use crate::{NetdocErrorKind as EK, Result};
 use itertools::Itertools as _;
 use smallvec::SmallVec;
 use std::sync::LazyLock;
-use tor_checkable::Timebound;
+use tor_checkable::TimeBound;
 use tor_checkable::signed::SignatureGated;
 use tor_checkable::timed::TimerangeBound;
 use tor_hscrypto::NUM_INTRO_POINT_MAX;
@@ -499,7 +499,7 @@ mod test {
 
     use hex_literal::hex;
     use itertools::chain;
-    use tor_checkable::{SelfSigned, Timebound};
+    use tor_checkable::{SelfSigned, TimeBound};
 
     use super::*;
     use crate::doc::hsdesc::{

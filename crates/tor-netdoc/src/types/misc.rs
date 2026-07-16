@@ -1509,7 +1509,7 @@ mod edcert {
     use tor_cert::{CertType, CertifiedKey, Ed25519Cert, KeyUnknownCert};
     use tor_checkable::signed::SignatureGated;
     use tor_checkable::timed::TimerangeBound;
-    use tor_checkable::{SelfSigned, Timebound};
+    use tor_checkable::{SelfSigned, TimeBound};
     use tor_error::{Bug, into_internal};
     use tor_llcrypto::pk::ed25519::{self, Ed25519PublicKey, ValidatableEd25519Signature};
 
@@ -2834,7 +2834,7 @@ mod test {
     use base64ct::Encoding;
     use tor_basic_utils::test_rng::testing_rng;
     use tor_cert::{CertType, CertifiedKey, Ed25519Cert, KeyUnknownCert};
-    use tor_checkable::{Timebound, timed::TimerangeBound};
+    use tor_checkable::{TimeBound, timed::TimerangeBound};
     use tor_llcrypto::pk::ed25519::{self, Ed25519Identity, Ed25519PublicKey, ExpandedKeypair};
 
     use super::*;

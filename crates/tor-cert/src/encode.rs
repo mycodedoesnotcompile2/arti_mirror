@@ -221,7 +221,7 @@ mod test {
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
     use crate::{CertifiedKey, Ed25519Cert};
-    use tor_checkable::{SelfSigned, Timebound};
+    use tor_checkable::{SelfSigned, TimeBound};
     use web_time_compat::{Duration, SystemTimeExt};
 
     #[test]

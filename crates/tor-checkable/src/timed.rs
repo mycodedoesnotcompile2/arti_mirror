@@ -11,7 +11,7 @@ use web_time_compat as time;
 ///
 /// ```
 /// use web_time_compat::{SystemTime, SystemTimeExt, Duration};
-/// use tor_checkable::{Timebound, TimeValidityError, timed::TimerangeBound};
+/// use tor_checkable::{TimeBound, TimeValidityError, timed::TimerangeBound};
 ///
 /// let now = SystemTime::get();
 /// let one_hour = Duration::new(3600, 0);
@@ -180,7 +180,7 @@ impl<T> RangeBounds<time::SystemTime> for TimerangeBound<T> {
     }
 }
 
-impl<T> crate::Timebound<T> for TimerangeBound<T> {
+impl<T> crate::TimeBound<T> for TimerangeBound<T> {
     type Error = crate::TimeValidityError;
 
     fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), Self::Error> {
@@ -226,7 +226,7 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
-    use crate::{TimeValidityError, Timebound};
+    use crate::{TimeValidityError, TimeBound};
     use humantime::parse_rfc3339;
     use web_time_compat::{Duration, SystemTime, SystemTimeExt};
 

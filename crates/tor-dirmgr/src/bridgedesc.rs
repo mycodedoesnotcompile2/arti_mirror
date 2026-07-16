@@ -20,7 +20,7 @@ use tracing::{debug, info, trace};
 
 use safelog::sensitive;
 use tor_basic_utils::retry::RetryDelay;
-use tor_checkable::{SelfSigned, Timebound};
+use tor_checkable::{SelfSigned, TimeBound};
 use tor_circmgr::CircMgr;
 use tor_error::{AbsRetryTime, HasRetryTime, RetryTime};
 use tor_error::{ErrorKind, HasKind, error_report, internal};

@@ -597,7 +597,7 @@ define_derive_deftly! {
     ///
     /// ```
     /// use derive_deftly::Deftly;
-    /// use tor_checkable::{Timebound, timed::TimerangeBound};
+    /// use tor_checkable::{TimeBound, timed::TimerangeBound};
     /// use tor_netdoc::derive_deftly_template_AsMutSelf;
     /// use tor_netdoc::derive_deftly_template_NetdocParseableSignatures;
     /// use tor_netdoc::derive_deftly_template_NetdocParseableUnverified;

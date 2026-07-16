@@ -13,7 +13,7 @@ use tor_cell::chancell::msg::AnyChanMsg;
 use tor_cell::chancell::{AnyChanCell, ChanMsg, msg};
 use tor_cell::restrict::{RestrictedMsg, restricted_msg};
 use tor_cert::CertType;
-use tor_checkable::{TimeValidityError, Timebound};
+use tor_checkable::{TimeValidityError, TimeBound};
 use tor_error::internal;
 use tor_linkspec::{
     ChanTarget, ChannelMethod, OwnedChanTarget, OwnedChanTargetBuilder, RelayIds, RelayIdsBuilder,
@@ -803,7 +803,7 @@ pub(crate) fn check_cert_timeliness<C, CERT>(
     clock_skew: ClockSkew,
 ) -> (Result<()>, CERT)
 where
-    C: Timebound<CERT, Error = TimeValidityError>,
+    C: TimeBound<CERT, Error = TimeValidityError>,
 {
     let status = checkable
         .is_valid_at(&now)

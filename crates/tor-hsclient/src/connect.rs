@@ -35,7 +35,7 @@ use tor_cell::relaycell::RelayMsg;
 use tor_cell::relaycell::hs::{
     AuthKeyType, EstablishRendezvous, IntroduceAck, RendezvousEstablished,
 };
-use tor_checkable::{Timebound, timed::TimerangeBound};
+use tor_checkable::{TimeBound, timed::TimerangeBound};
 use tor_circmgr::hspool::HsCircPool;
 use tor_circmgr::timeouts::Action as TimeoutsAction;
 use tor_dirclient::request::Requestable as _;

@@ -1,7 +1,7 @@
 use tor_bytes::Writeable;
 use tor_cert::rsa::RsaCrosscert;
 use tor_cert::{Ed25519Cert, KeyType};
-use tor_checkable::{ExternallySigned, SelfSigned, Timebound};
+use tor_checkable::{ExternallySigned, SelfSigned, TimeBound};
 
 use hex_literal::hex;
 

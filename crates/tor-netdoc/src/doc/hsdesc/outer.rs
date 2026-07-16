@@ -3,7 +3,7 @@
 use itertools::Itertools as _;
 use std::sync::LazyLock;
 use tor_cert::Ed25519Cert;
-use tor_checkable::Timebound;
+use tor_checkable::TimeBound;
 use tor_checkable::signed::SignatureGated;
 use tor_checkable::timed::TimerangeBound;
 use tor_error::internal;

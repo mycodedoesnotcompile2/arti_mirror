@@ -23,7 +23,7 @@ use crate::{NetdocErrorKind as EK, NormalItemArgument, Result};
 
 use tor_basic_utils::impl_debug_hex;
 use tor_checkable::{
-    Timebound, signed,
+    TimeBound, signed,
     timed::{self, TimerangeBound},
 };
 use tor_error::{internal, into_internal};
@@ -786,7 +786,7 @@ mod test {
 
     #[test]
     fn parse_one() -> crate::Result<()> {
-        use tor_checkable::{SelfSigned, Timebound};
+        use tor_checkable::{SelfSigned, TimeBound};
         let cert = AuthCert::parse(TESTDATA)?
             .check_signature()
             .unwrap()
