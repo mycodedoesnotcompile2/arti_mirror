@@ -404,5 +404,4 @@ pub trait RuntimeSubstExt: sealed::Sealed + Runtime + Sized {
     }
 }
 impl<R: Runtime> sealed::Sealed for R {}
-impl<R: Runtime + Sized> RuntimeSubstExt for R {
-}
+impl<R: Runtime + Sized> RuntimeSubstExt for R {}
