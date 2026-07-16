@@ -70,7 +70,7 @@ pub enum TimeValidityError {
     Unspecified,
 }
 
-/// A Timebound object is one that is only valid for a given range of time.
+/// A `TimeBound` object is one that is only valid for a given range of time.
 ///
 /// It's better to wrap things in a TimeBound than to give them an is_valid()
 /// valid method, so that you can make sure that nobody uses the object before
@@ -82,9 +82,9 @@ pub enum TimeValidityError {
 /// `x ∊ (start; end)`.
 //
 // TODO: We should really provide a method or something to obtain a
-// TimeboundRange from a Timebound, as Timebound itself is not a nice type to
+// TimeboundRange from a TimeBound, as TimeBound itself is not a nice type to
 // work with.
-pub trait Timebound<T>: Sized {
+pub trait TimeBound<T>: Sized {
     /// An error type that's returned when the object is _not_ timely.
     type Error;
 
@@ -116,6 +116,9 @@ pub trait Timebound<T>: Sized {
         }
     }
 }
+
+#[deprecated = "use the new name, TimeBound, instead"]
+pub use TimeBound as Timebound;
 
 /// A cryptographically signed object that can be validated without
 /// additional public keys.
