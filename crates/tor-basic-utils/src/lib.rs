@@ -119,6 +119,8 @@ pub fn skip_fmt<T>(_: &T, f: &mut fmt::Formatter) -> fmt::Result {
 ///    conversely, `iter_join` requires that the iterator be `Clone`.
 ///  * `iter_join` only supports `Display`; `.format` supports all formatting traits.
 ///  * `iter_join` accepts an `IntoIterator` rather than requiring an `Iterator`.
+//
+// TODO maybe this should be an extension trait method?
 pub fn iter_join(
     separator: &str,
     iter: impl IntoIterator<Item: fmt::Display> + Clone,
