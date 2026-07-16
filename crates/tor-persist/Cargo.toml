@@ -35,6 +35,7 @@ __is_experimental = []
 amplify = { version = "4", default-features = false, features = ["derive"], optional = true }
 derive-deftly = { version = "~1.11.3", features = ["full", "beta"] }
 derive_more = { version = "2.0.1", features = ["full"] }
+extend = "1.2.0"
 filetime = { version = "0.2", default-features = false }
 fs-mistrust = { path = "../fs-mistrust", version = "0.15.0", features = ["walkdir"] }
 fslock-guard = { path = "../fslock-guard", version = "0.8.0" }
