@@ -230,7 +230,7 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
-    use crate::{TimeValidityError, TimeBound};
+    use crate::{TimeBound, TimeValidityError};
     use humantime::parse_rfc3339;
     use web_time_compat::{Duration, SystemTime, SystemTimeExt};
 
