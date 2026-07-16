@@ -54,6 +54,8 @@ use web_time_compat::{SystemTime, SystemTimeExt};
 pub mod signed;
 pub mod timed;
 
+pub use timed::TimeRangeBound;
+
 /// An error that can occur when checking whether a TimeBound object is
 /// currently valid.
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
