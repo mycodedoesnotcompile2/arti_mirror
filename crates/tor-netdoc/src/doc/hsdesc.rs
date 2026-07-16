@@ -24,8 +24,8 @@ use tor_error::internal;
 use crate::{NetdocErrorKind as EK, Result};
 
 use tor_checkable::signed::{self, SignatureGated};
-use tor_checkable::timed::{self, TimerangeBound};
-use tor_checkable::{SelfSigned, Timebound};
+use tor_checkable::timed::{self, TimeRangeBound};
+use tor_checkable::{SelfSigned, TimeBound};
 use tor_hscrypto::pk::{HsBlindId, HsClientDescEncKeypair, HsIntroPtSessionIdKey, HsSvcNtorKey};
 use tor_hscrypto::{RevisionCounter, Subcredential};
 use tor_linkspec::EncodedLinkSpec;
@@ -68,7 +68,7 @@ pub struct StoredHsDescMeta {
 /// An unchecked StoredHsDescMeta: parsed, but not checked for liveness or validity.
 #[cfg(feature = "hs-dir")]
 pub type UncheckedStoredHsDescMeta =
-    signed::SignatureGated<timed::TimerangeBound<StoredHsDescMeta>>;
+    signed::SignatureGated<timed::TimeRangeBound<StoredHsDescMeta>>;
 
 /// Information about how long to hold a given onion service descriptor, and
 /// when to replace it.
@@ -175,7 +175,7 @@ pub struct EncryptedHsDesc {
 }
 
 /// An unchecked HsDesc: parsed, but not checked for liveness or validity.
-pub type UncheckedEncryptedHsDesc = signed::SignatureGated<timed::TimerangeBound<EncryptedHsDesc>>;
+pub type UncheckedEncryptedHsDesc = signed::SignatureGated<timed::TimeRangeBound<EncryptedHsDesc>>;
 
 #[cfg(feature = "hs-dir")]
 impl StoredHsDescMeta {
@@ -205,7 +205,7 @@ impl HsDesc {
     /// # Example
     /// ```
     /// # use hex_literal::hex;
-    /// # use tor_checkable::{SelfSigned, Timebound};
+    /// # use tor_checkable::{SelfSigned, TimeBound};
     /// # use tor_netdoc::doc::hsdesc::HsDesc;
     /// # use tor_netdoc::Error;
     /// #
@@ -273,7 +273,7 @@ impl HsDesc {
         valid_at: SystemTime,
         subcredential: &Subcredential,
         hsc_desc_enc: Option<&HsClientDescEncKeypair>,
-    ) -> StdResult<TimerangeBound<Self>, HsDescError> {
+    ) -> StdResult<TimeRangeBound<Self>, HsDescError> {
         use HsDescError as E;
         let unchecked_desc = Self::parse(input, blinded_onion_id)
             .map_err(E::OuterParsing)?
@@ -310,9 +310,9 @@ impl HsDesc {
         // means the time bounds of the two layers definitely intersect, so new_bounds **must** be
         // Some. It is a bug if new_bounds is None.
         let new_bounds = new_bounds
-            .ok_or_else(|| internal!("failed to compute TimerangeBounds for a valid descriptor"))?;
+            .ok_or_else(|| internal!("failed to compute TimeRangeBounds for a valid descriptor"))?;
 
-        Ok(TimerangeBound::new(hsdesc, new_bounds))
+        Ok(TimeRangeBound::new(hsdesc, new_bounds))
     }
 
     /// One or more introduction points used to contact the onion service.
@@ -521,7 +521,7 @@ impl EncryptedHsDesc {
         &self,
         subcredential: &Subcredential,
         hsc_desc_enc: Option<&HsClientDescEncKeypair>,
-    ) -> StdResult<TimerangeBound<SignatureGated<HsDesc>>, HsDescError> {
+    ) -> StdResult<TimeRangeBound<SignatureGated<HsDesc>>, HsDescError> {
         use HsDescError as E;
         let blinded_id = self.outer_doc.blinded_id();
         let revision_counter = self.outer_doc.revision_counter();

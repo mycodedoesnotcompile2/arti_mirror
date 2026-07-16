@@ -95,7 +95,7 @@ use digest::Digest;
 use itertools::Itertools;
 use saturating_time::SaturatingTime as _;
 use std::sync::LazyLock;
-use tor_checkable::{ExternallySigned, Timebound, timed::TimerangeBound};
+use tor_checkable::{ExternallySigned, TimeBound, timed::TimeRangeBound};
 use tor_llcrypto as ll;
 use tor_llcrypto::pk::rsa::RsaIdentity;
 
@@ -2610,7 +2610,7 @@ mod test {
     use std::fmt::Debug;
     use std::fs;
     use std::time::Duration;
-    use tor_checkable::Timebound;
+    use tor_checkable::TimeBound;
 
     const CERTS: &str = include_str!("../../testdata/authcerts2.txt");
     const CONSENSUS: &str = include_str!("../../testdata/mdconsensus1.txt");
@@ -2632,7 +2632,7 @@ mod test {
     #[test]
     fn parse_and_validate_md() -> crate::Result<()> {
         use std::net::SocketAddr;
-        use tor_checkable::{SelfSigned, Timebound};
+        use tor_checkable::{SelfSigned, TimeBound};
         let mut certs = Vec::new();
         for cert in AuthCert::parse_multiple(CERTS)? {
             let cert = cert?.check_signature()?.dangerously_assume_timely();
@@ -2697,7 +2697,7 @@ mod test {
 
     #[test]
     fn parse_and_validate_ns() -> crate::Result<()> {
-        use tor_checkable::{SelfSigned, Timebound};
+        use tor_checkable::{SelfSigned, TimeBound};
         let mut certs = Vec::new();
         for cert in AuthCert::parse_multiple(PLAIN_CERTS)? {
             let cert = cert?.check_signature()?.dangerously_assume_timely();
@@ -3059,7 +3059,7 @@ mod test {
         // TODO DIRAUTH use include_str!, so, at call sites
         // https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4121#note_3428675
         file: &str,
-        verify: impl FnOnce(UV, &[RsaIdentity], &[AuthCert]) -> Result<TimerangeBound<V>, VE>,
+        verify: impl FnOnce(UV, &[RsaIdentity], &[AuthCert]) -> Result<TimeRangeBound<V>, VE>,
         adjust_now: Duration,
     ) -> anyhow::Result<()>
     where
@@ -3288,8 +3288,8 @@ $2
         uv: UV,
         _ids: &[RsaIdentity],
         _certs: &[AuthCert],
-    ) -> Result<TimerangeBound<UV::Body>, std::convert::Infallible> {
-        Ok(TimerangeBound::new(uv.unwrap_unverified().0, ..))
+    ) -> Result<TimeRangeBound<UV::Body>, std::convert::Infallible> {
+        Ok(TimeRangeBound::new(uv.unwrap_unverified().0, ..))
     }
 
     #[cfg(feature = "retain-unknown")]

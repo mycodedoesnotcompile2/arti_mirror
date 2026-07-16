@@ -1508,8 +1508,8 @@ mod edcert {
     };
     use tor_cert::{CertType, CertifiedKey, Ed25519Cert, KeyUnknownCert};
     use tor_checkable::signed::SignatureGated;
-    use tor_checkable::timed::TimerangeBound;
-    use tor_checkable::{SelfSigned, Timebound};
+    use tor_checkable::timed::TimeRangeBound;
+    use tor_checkable::{SelfSigned, TimeBound};
     use tor_error::{Bug, into_internal};
     use tor_llcrypto::pk::ed25519::{self, Ed25519PublicKey, ValidatableEd25519Signature};
 
@@ -1589,15 +1589,15 @@ mod edcert {
         /// 3. MUST be of [`CertType::IDENTITY_V_SIGNING`].
         /// 4. Certified key MUST BE of [`tor_cert::CertifiedKey::Ed25519`].
         /// 5. Both keys MUST be valid mappings to a [`ed25519::PublicKey`].
-        pub fn verify(cert: KeyUnknownCert) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
+        pub fn verify(cert: KeyUnknownCert) -> StdResult<TimeRangeBound<Self>, VerifyFailed> {
             let cert = cert
                 // 1. MUST have the identity key in the `signed-with-ed25519-key` extension.
                 .should_have_signing_key()
                 .map_err(|_| VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData))?
                 // 2. MUST have a valid signature by the identity key.
                 .check_signature()?
-                // Okay to call because we create TimerangeBound later.
-                // TODO DIRAUTH: Use TimerangeBound instead.
+                // Okay to call because we create TimeRangeBound later.
+                // TODO DIRAUTH: Use TimeRangeBound instead.
                 .dangerously_assume_timely();
 
             // 3. MUST be of [`CertType::IDENTITY_V_SIGNING`].
@@ -1623,7 +1623,7 @@ mod edcert {
                 return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
             }
 
-            Ok(TimerangeBound::new(
+            Ok(TimeRangeBound::new(
                 Self {
                     id_ed25519,
                     sign_ed25519,
@@ -1698,14 +1698,14 @@ mod edcert {
         pub fn verify(
             id_ed25519: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
-        ) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
+        ) -> StdResult<TimeRangeBound<Self>, VerifyFailed> {
             let cert = cert
                 // 1. MUST have the `signed-with-ed25519-key` extension containing the family key.
                 .should_have_signing_key()?
                 // 2. MUST have a valid signature by the family key.
                 .check_signature()?
-                // Okay to call because we create TimerangeBound later.
-                // TODO DIRAUTH: Use TimerangeBound instead.
+                // Okay to call because we create TimeRangeBound later.
+                // TODO DIRAUTH: Use TimeRangeBound instead.
                 .dangerously_assume_timely();
 
             // 3. MUST be of of [`CertType::FAMILY_V_IDENTITY`].
@@ -1734,7 +1734,7 @@ mod edcert {
                 return Err(VerifyFailed::ParseEmbedded(ErrorProblem::ObjectInvalidData));
             }
 
-            Ok(TimerangeBound::new(
+            Ok(TimeRangeBound::new(
                 Self { family_ed25519 },
                 ..cert.expiry(),
             ))
@@ -1822,7 +1822,7 @@ mod edcert {
             ntor_ed25519: ed25519::Ed25519Identity,
             id_ed25519: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
-        ) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
+        ) -> StdResult<TimeRangeBound<Self>, VerifyFailed> {
             Ok(
                 // .verify_inner() ensures 1-3.
                 Self::verify_inner(ntor_ed25519, id_ed25519, cert)?
@@ -1884,7 +1884,7 @@ mod edcert {
             cert: KeyUnknownCert,
         ) -> StdResult<
             (
-                SignatureGated<TimerangeBound<Self>>,
+                SignatureGated<TimeRangeBound<Self>>,
                 ValidatableEd25519Signature,
                 SystemTime,
             ),
@@ -1915,14 +1915,14 @@ mod edcert {
             // Fish out the expiration date from the certificate.
             //
             // Important: We must not set SystemTime::UNIX_EPOCH as the lower
-            // bound, because with TimerangeBound, a lower-bound of zero is not
+            // bound, because with TimeRangeBound, a lower-bound of zero is not
             // equal to an absent lower bound!
             let cert = cert.dangerously_assume_timely();
             let expiration = ..cert.expiry();
 
             Ok((
                 SignatureGated::new(
-                    TimerangeBound::new(
+                    TimeRangeBound::new(
                         Self {
                             _promise_we_verified: (),
                         },
@@ -2834,7 +2834,7 @@ mod test {
     use base64ct::Encoding;
     use tor_basic_utils::test_rng::testing_rng;
     use tor_cert::{CertType, CertifiedKey, Ed25519Cert, KeyUnknownCert};
-    use tor_checkable::{Timebound, timed::TimerangeBound};
+    use tor_checkable::{TimeBound, timed::TimeRangeBound};
     use tor_llcrypto::pk::ed25519::{self, Ed25519Identity, Ed25519PublicKey, ExpandedKeypair};
 
     use super::*;
@@ -3640,7 +3640,7 @@ mod test {
             signing_key: Option<ed25519::Ed25519Identity>,
             certified_key: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
-        ) -> StdResult<TimerangeBound<Self>, VerifyFailed>;
+        ) -> StdResult<TimeRangeBound<Self>, VerifyFailed>;
     }
 
     impl Ed25519CertTest for Ed25519IdentityCert {
@@ -3670,7 +3670,7 @@ mod test {
             _signing_key: Option<ed25519::Ed25519Identity>,
             _certified_key: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
-        ) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
+        ) -> StdResult<TimeRangeBound<Self>, VerifyFailed> {
             Self::verify(cert)
         }
     }
@@ -3701,7 +3701,7 @@ mod test {
             _signing_key: Option<ed25519::Ed25519Identity>,
             certified_key: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
-        ) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
+        ) -> StdResult<TimeRangeBound<Self>, VerifyFailed> {
             Self::verify(certified_key, cert)
         }
     }
@@ -3730,7 +3730,7 @@ mod test {
             signing_key: Option<ed25519::Ed25519Identity>,
             certified_key: ed25519::Ed25519Identity,
             cert: KeyUnknownCert,
-        ) -> StdResult<TimerangeBound<Self>, VerifyFailed> {
+        ) -> StdResult<TimeRangeBound<Self>, VerifyFailed> {
             Self::verify(signing_key.unwrap(), certified_key, cert)
         }
     }

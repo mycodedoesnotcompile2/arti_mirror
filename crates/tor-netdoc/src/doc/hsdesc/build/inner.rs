@@ -310,7 +310,7 @@ mod test {
     use std::net::Ipv4Addr;
     use std::time::UNIX_EPOCH;
     use tor_basic_utils::test_rng::Config;
-    use tor_checkable::timed::TimerangeBound;
+    use tor_checkable::timed::TimeRangeBound;
     #[cfg(feature = "hs-pow-full")]
     use tor_hscrypto::pow::v1::{Effort, Seed};
     use tor_linkspec::LinkSpec;
@@ -532,7 +532,7 @@ eNThmyleMYdmFucrbgPcZNDO6S81MZD1r7q61Hectpha37ioha85fpNt+/yDfebh
 
         let pow_expiration = parse_rfc3339("1994-04-29T00:00:00Z").unwrap();
         let pow_params = PowParams::V1(PowParamsV1::new(
-            TimerangeBound::new(Seed::from([0; 32]), ..pow_expiration),
+            TimeRangeBound::new(Seed::from([0; 32]), ..pow_expiration),
             Effort::new(64),
         ));
 

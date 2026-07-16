@@ -339,7 +339,7 @@ mod test {
     use super::*;
     use crate::doc::hsdesc::{EncryptedHsDesc, HsDesc as ParsedHsDesc};
     use tor_basic_utils::test_rng::Config;
-    use tor_checkable::{SelfSigned, Timebound};
+    use tor_checkable::{SelfSigned, TimeBound};
     use tor_hscrypto::pk::{HsClientDescEncKeypair, HsIdKeypair};
     use tor_hscrypto::time::TimePeriod;
     use tor_linkspec::LinkSpec;

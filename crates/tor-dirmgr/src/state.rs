@@ -33,7 +33,7 @@ use crate::{
     event,
 };
 use crate::{DocSource, SharedMutArc};
-use tor_checkable::{ExternallySigned, SelfSigned, Timebound};
+use tor_checkable::{ExternallySigned, SelfSigned, TimeBound};
 #[cfg(feature = "geoip")]
 use tor_geoip::GeoipDb;
 use tor_llcrypto::pk::rsa::RsaIdentity;
