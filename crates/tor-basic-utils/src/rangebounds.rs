@@ -45,12 +45,7 @@ pub trait RangeBoundsExt<T: Ord>: RangeBounds<T> {
     }
 }
 
-impl<T, R> RangeBoundsExt<T> for R
-where
-    R: RangeBounds<T>,
-    T: Ord,
-{
-}
+impl<T: Ord, R: RangeBounds<T>> RangeBoundsExt<T> for R {}
 
 /// Return the largest of `b1` and `b2`.
 ///
