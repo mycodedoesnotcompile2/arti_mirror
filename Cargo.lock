@@ -6894,6 +6894,7 @@ dependencies = [
  "cfg-if",
  "derive-deftly",
  "educe",
+ "extend",
  "futures",
  "futures-await-test",
  "oneshot-fused-workaround",
