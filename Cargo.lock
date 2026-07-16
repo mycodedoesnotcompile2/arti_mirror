@@ -200,6 +200,7 @@ dependencies = [
  "derive-deftly",
  "derive_builder_fork_arti",
  "derive_more",
+ "extend",
  "fs-mistrust",
  "futures",
  "futures-copy",
