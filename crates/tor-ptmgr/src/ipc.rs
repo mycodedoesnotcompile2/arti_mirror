@@ -114,18 +114,17 @@ pub enum PtMessage {
 
 /// Parse a value (something on the RHS of an =), which could be a CString as defined by
 /// control-spec.txt §2. Returns (value, unparsed rest of string).
+// TODO(pryty26): Adding some octal parsing tests for this function would be nice.
 fn parse_one_value(from: &str) -> Result<(String, &str), &'static str> {
     let first_char = from.chars().next();
     Ok(if first_char.is_none() {
         (String::new(), "")
     } else if let Some('"') = first_char {
         // This is a CString, so we're going to need to parse it char-by-char.
-        // FIXME(eta): This currently doesn't parse octal escape codes, even though the spec says
-        //             we should. That's finicky, though, and probably not used.
         let mut ret = String::new();
         let mut chars = from.chars();
         assert_eq!(chars.next(), Some('"')); // discard "
-        loop {
+        'l: loop {
             let ch = chars.next().ok_or("ran out of input parsing CString")?;
             match ch {
                 '\\' => match chars
@@ -135,8 +134,41 @@ fn parse_one_value(from: &str) -> Result<(String, &str), &'static str> {
                     'n' => ret.push('\n'),
                     'r' => ret.push('\r'),
                     't' => ret.push('\t'),
-                    '0'..='8' => return Err("attempted unsupported octal escape code"),
-                    ch2 => ret.push(ch2),
+                    ch if ch.is_digit(8) => {
+                        // Note(pryty26): We will parse up to 3 octal digits,
+                        // so push the first digit and then consume up to 2 more. And then parse them all.
+                        // But if there is a str which is not a valid octal digit,
+                        // we will break and append those to the ret,
+                        // including collected numbers, just like we are parsing normal chars.
+                        // Of course, if there is a double quote we will break and not append it.
+                        let mut octal_digits: String = String::new();
+                        octal_digits.push(ch);
+                        for _ in 0..2 {
+                            let ch = match chars.next() {
+                                Some('\"') => {
+                                    ret.push_str(&octal_digits);
+                                    return Ok((ret, chars.as_str()));
+                                } // append the digits, then break and don't append the double quote
+                                Some(ch) => ch,
+                                None => Err("ran out of input parsing CString")?,
+                            };
+
+                            if ch.is_digit(8) {
+                                octal_digits.push(ch);
+                            } else {
+                                // Not valid octal digit,
+                                // so break and append the collected octal digits and the current char to ret.
+                                ret.push_str(&octal_digits);
+                                ret.push(ch);
+                                continue 'l;
+                            }
+                        }
+                        let code_point: u32 = u32::from_str_radix(&octal_digits, 8)
+                            .map_err(|_| "invalid octal number")?;
+                        let c = char::from_u32(code_point).ok_or("invalid Unicode code point")?;
+                        ret.push(c);
+                    }
+                    ch => ret.push(ch),
                 },
                 '"' => break,
                 _ => ret.push(ch),
@@ -1259,7 +1291,10 @@ mod test {
             let msg = format!("LOG SEVERITY=debug MESSAGE=\"\\{i}\"");
             assert_eq!(
                 msg.parse::<PtMessage>(),
-                Err(Cow::from("attempted unsupported octal escape code"))
+                Ok(PtMessage::Log {
+                    severity: "debug".to_string(),
+                    message: i.to_string()
+                })
             );
         }
         assert_eq!(
