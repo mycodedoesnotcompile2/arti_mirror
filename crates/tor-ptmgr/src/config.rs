@@ -22,7 +22,9 @@ use {crate::PtClientMethod, tor_socksproto::SocksVersion};
 /// controlled by Arti).
 /// Example:
 /// ``` rust
-///     let config = TransportConfigBuilder::default()
+///     use tor_ptmgr::config::{TransportConfigBuilder, TransportConfig};
+///     use tor_config_path::CfgPath;
+///     let config: TransportConfig = TransportConfigBuilder::default()
 ///            .protocols(vec!["obfs4".parse().unwrap(), "snowflake".parse().unwrap()])
 ///            .path(CfgPath::new("/usr/bin/obfs4proxy".into()))
 ///            .build().unwrap();
