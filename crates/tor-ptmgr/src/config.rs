@@ -1,5 +1,4 @@
 //! Configuration logic for tor-ptmgr.
-
 use std::net::SocketAddr;
 
 use derive_deftly::Deftly;
@@ -20,6 +19,8 @@ use {crate::PtClientMethod, tor_socksproto::SocksVersion};
 /// A pluggable transport can be either _managed_ (run as an external process
 /// that we launch and monitor), or _unmanaged_ (running on a local port, not
 /// controlled by Arti).
+// Note(pryty26):
+// Tests for these are in the lib.rs
 #[derive(Clone, Debug, Deftly, Eq, PartialEq)]
 #[derive_deftly(TorConfig)]
 #[deftly(tor_config(no_default_trait, pre_build = "Self::validate"))]
