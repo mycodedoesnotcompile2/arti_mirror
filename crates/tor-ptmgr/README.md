@@ -29,9 +29,15 @@ Tor-channel-specific stuff behind a `tor-channel-factory` feature, but there
 are no APIs for using PTs without that feature currently.  That should
 change. (See issue [arti#666](https://gitlab.torproject.org/tpo/core/arti/-/issues/666))
 
+But we are going to change it. [See issue [arti#2625](https://gitlab.torproject.org/tpo/core/arti/-/issues/2625)]
+
 TODO: The first version of this crate will probably only conform
 to the original Tor pluggable transport protocol, and not to more recent variants
 as documented at `pluggabletransports.info`
+
+# Standalone-PtMgr
+
+Warn! The `standalone-ptmgr` binary is **experimental** and is **NOT** included in the `full` feature set.
 
 ## Feature flags
 
