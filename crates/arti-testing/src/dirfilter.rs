@@ -140,9 +140,7 @@ impl DirFilter for BadSignaturesFilter {
         consensus.siggroup.hashes.sha1 = Some(*b"can you reverse sha1");
         consensus.siggroup.hashes.sha256 = Some(*b"sha256 preimage is harder so far");
 
-        Ok(UncheckedMdConsensus::new(
-            consensus, time_bounds,
-        ))
+        Ok(UncheckedMdConsensus::new(consensus, time_bounds))
     }
 }
 
@@ -166,9 +164,7 @@ impl DirFilter for NonexistentSigningKeysFilter {
             signature.key_ids.sk_fingerprint = sk_fingerprint.into();
         }
 
-        Ok(UncheckedMdConsensus::new(
-            consensus, time_bounds,
-        ))
+        Ok(UncheckedMdConsensus::new(consensus, time_bounds))
     }
 }
 
@@ -190,8 +186,6 @@ impl DirFilter for BadMicrodescDigestsFilter {
             rs.m.0 = rng.random();
         }
 
-        Ok(UncheckedMdConsensus::new(
-            consensus, time_bounds,
-        ))
+        Ok(UncheckedMdConsensus::new(consensus, time_bounds))
     }
 }

@@ -156,9 +156,7 @@ impl<T> TimeRangeBound<T> {
     ///
     /// The caller takes responsibility for making sure that the bounds are
     /// actually checked.
-    pub fn dangerously_into_parts(
-        self,
-    ) -> (T, TimeRange) {
+    pub fn dangerously_into_parts(self) -> (T, TimeRange) {
         let bounds = self.bounds();
 
         (self.obj, bounds)
