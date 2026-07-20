@@ -121,6 +121,8 @@ impl<R: Runtime> PtMgr<R> {
         binaries: Vec<TransportConfig>,
     ) -> Result<HashMap<PtTransportName, TransportOptions>, tor_error::Bug> {
         let mut ret = HashMap::new();
+        // FIXME(pryty26): 
+        // We should perform this check much earlier, when the config is parsed.
         for thing in binaries {
             for tn in thing.protocols.iter() {
                 let key = tn.clone();
