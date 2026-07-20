@@ -280,7 +280,7 @@ impl HsDesc {
             .check_signature()
             .map_err(|e| E::OuterValidation(e.into()))?;
 
-        let (inner_desc, new_bounds) = {
+        let (inner_timerangebound, new_bounds) = {
             // We use is_valid_at and dangerously_into_parts instead of check_valid_at because we
             // need the time bounds of the outer layer (for computing the intersection with the
             // time bounds of the inner layer).
@@ -300,7 +300,7 @@ impl HsDesc {
             (inner_timerangebound, new_bounds)
         };
 
-        let hsdesc = inner_desc
+        let hsdesc = inner_timerangebound
             .if_valid_at(&valid_at)
             .map_err(|e| E::InnerValidation(e.into()))?
             .check_signature()
