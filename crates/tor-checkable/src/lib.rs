@@ -126,7 +126,10 @@ pub trait TimeBound: Sized {
 
     /// Unwrap this object if it is valid at the provided time t.
     /// If no time is provided, check the object at the current time.
-    fn check_valid_at_opt(self, t: Option<time::SystemTime>) -> Result<Self::Inner, TimeValidityError> {
+    fn check_valid_at_opt(
+        self,
+        t: Option<time::SystemTime>,
+    ) -> Result<Self::Inner, TimeValidityError> {
         match t {
             Some(when) => self.check_valid_at(&when),
             None => self.check_valid_now(),
