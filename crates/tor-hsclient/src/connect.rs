@@ -825,11 +825,13 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         let desc = HsDesc::parse_decrypt_validate(
             &desc_text,
             &self.hs_blind_id,
-            now,
             &self.subcredential,
             hsc_desc_enc,
         )
         .map_err(DescriptorErrorDetail::from)?;
+
+        // Check the validity time (relied on by descriptor_ensure)
+        desc.check_valid_at(&now)?;
 
         // Validate cc_sendme_inc, if present, is within ±1 of params.cc_sendme_inc.
         ensure_descriptor_compatible_with_params(desc.dangerously_peek(), params)?;
@@ -2143,12 +2145,12 @@ mod test {
         HsDesc::parse_decrypt_validate(
             test_data::TEST_DATA_2,
             &hs_blind_id,
-            now,
             &subcredential,
             Some(&ks_hsc_desc_enc()),
         )
         .unwrap()
-        .dangerously_assume_timely()
+        .if_valid_at(&now)
+        .unwrap()
     }
 
     fn build_test_netdir() -> Arc<NetDir> {

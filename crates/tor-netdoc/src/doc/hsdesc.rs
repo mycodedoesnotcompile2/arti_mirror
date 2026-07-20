@@ -268,7 +268,6 @@ impl HsDesc {
     pub fn parse_decrypt_validate(
         input: &str,
         blinded_onion_id: &HsBlindId,
-        valid_at: SystemTime,
         subcredential: &Subcredential,
         hsc_desc_enc: Option<&HsClientDescEncKeypair>,
     ) -> StdResult<TimeRangeBound<Self>, HsDescError> {
@@ -290,11 +289,6 @@ impl HsDesc {
 
             Ok::<_, E>(hsdesc)
         })?;
-
-        // XXXX remove the valid_at parameter, and this call
-        r.check_valid_at(&valid_at)
-            // XXXX this error is possibly wrong
-            .map_err(|e| E::OuterValidation(e.into()))?;
 
         Ok(r)
     }
