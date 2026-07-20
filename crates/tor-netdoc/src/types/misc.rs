@@ -3787,7 +3787,7 @@ mod test {
             unverified,
         )
         .unwrap()
-        .extend_tolerance(Duration::from_secs(60 * 60))
+        .extend_end_bound(Duration::from_secs(60 * 60))
         .is_valid_at(&now)
         .unwrap();
     }

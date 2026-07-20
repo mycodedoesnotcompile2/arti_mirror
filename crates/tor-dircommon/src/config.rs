@@ -162,7 +162,7 @@ impl DirTolerance {
     /// `timebound` according to this configuration.
     pub fn extend_tolerance<B>(&self, timebound: TimeRangeBound<B>) -> TimeRangeBound<B> {
         timebound
-            .extend_tolerance(self.post_valid_tolerance)
+            .extend_end_bound(self.post_valid_tolerance)
             .extend_start_bound(self.pre_valid_tolerance)
     }
 
