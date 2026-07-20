@@ -163,7 +163,7 @@ impl DirTolerance {
     pub fn extend_tolerance<B>(&self, timebound: TimeRangeBound<B>) -> TimeRangeBound<B> {
         timebound
             .extend_tolerance(self.post_valid_tolerance)
-            .extend_pre_tolerance(self.pre_valid_tolerance)
+            .extend_start_bound(self.pre_valid_tolerance)
     }
 
     /// Return a new consensus [`Lifetime`] that extends the validity intervals

@@ -1103,7 +1103,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             .clone()
             .verify(&[to_rsa_id(FINGERPRINT)])
             .unwrap()
-            .extend_pre_tolerance(Duration::from_secs(1))
+            .extend_start_bound(Duration::from_secs(1))
             .check_valid_at(&(to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)))
             .unwrap();
 
@@ -1234,7 +1234,7 @@ ids 1234567812345678123456781234567812345678 ABCDABCDABCDABCDABCDABCDABCDABCDABC
             parse_netdoc(&ParseInput::new(encoded.as_ref(), "<encoded>"))?;
         let reparsed_value = reparsed_uv
             .verify(&[k_auth_id_rsa.to_public_key().to_rsa_identity()])?
-            .extend_pre_tolerance(tolerance)
+            .extend_start_bound(tolerance)
             .extend_tolerance(tolerance)
             .check_valid_at(&now)?;
         dbg!(&reparsed_value);
