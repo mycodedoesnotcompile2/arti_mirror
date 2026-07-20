@@ -9,3 +9,4 @@ ADDED: `TimeRange` `From` impls from (inclusive) `std::ops::Range*` types
 BREAKING: `TimeBound` overhauled: new `time_bounds` method; `Error` removed
 BREAKING: `TimeBound::is_valid_at` is now provided and should not generally be overridden
 BREAKING: `TimeBound`'s wrapped type is now `TimeBound::Inner`
+DEPRECATED: `TimeBound:::check_valid_at_opt`

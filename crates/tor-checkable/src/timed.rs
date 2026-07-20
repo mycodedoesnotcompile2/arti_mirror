@@ -425,14 +425,17 @@ mod test {
 
         // Now try check_valid_at_opt() api
         let tr = TimeRangeBound::new("hello world", de..);
-        assert_eq!(tr.check_valid_at_opt(None), Ok("hello world"));
-        let tr = TimeRangeBound::new("hello world", de..);
-        assert_eq!(
-            tr.check_valid_at_opt(Some(SystemTime::get())),
-            Ok("hello world")
-        );
-        let tr = TimeRangeBound::new("hello world", ..za);
-        assert!(tr.check_valid_at_opt(None).is_err());
+        #[allow(deprecated)]
+        {
+            assert_eq!(tr.check_valid_at_opt(None), Ok("hello world"));
+            let tr = TimeRangeBound::new("hello world", de..);
+            assert_eq!(
+                tr.check_valid_at_opt(Some(SystemTime::get())),
+                Ok("hello world")
+            );
+            let tr = TimeRangeBound::new("hello world", ..za);
+            assert!(tr.check_valid_at_opt(None).is_err());
+        }
 
         // edge cases
         let tr = TimeRangeBound::new("Hello world", de..eu);

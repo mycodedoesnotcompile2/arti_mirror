@@ -126,6 +126,13 @@ pub trait TimeBound: Sized {
 
     /// Unwrap this object if it is valid at the provided time t.
     /// If no time is provided, check the object at the current time.
+    ///
+    /// # Deprecated
+    ///
+    /// We do not believe runtime-selectable current time overrides,
+    /// via `Option<SystemTime>`, make sense.
+    /// We use `tor_rtcompat::Runtime` for mocking.
+    #[deprecated = "use check_valid_at"]
     fn check_valid_at_opt(
         self,
         t: Option<time::SystemTime>,
