@@ -256,14 +256,12 @@ mod test {
     use tor_rtmock::MockRuntime;
 
     /// Initialize test basics that is runtime and a KeyMgr.
-    pub(super) fn new_keymgr() -> Arc<KeyMgr> {
+    pub(super) fn new_keymgr() -> KeyMgr {
         let store = Box::new(ArtiEphemeralKeystore::new("test".to_string()));
-        Arc::new(
-            KeyMgrBuilder::default()
-                .primary_store(store)
-                .build()
-                .unwrap(),
-        )
+        KeyMgrBuilder::default()
+            .primary_store(store)
+            .build()
+            .unwrap()
     }
 
     /// Test the actual bootstrap function, `try_generate_keys()` which is in charge of

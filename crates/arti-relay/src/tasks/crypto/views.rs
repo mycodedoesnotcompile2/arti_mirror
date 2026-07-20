@@ -293,7 +293,7 @@ mod test {
     #[test]
     fn reconcile_new_keys() {
         let keymgr = new_keymgr();
-        let mut view = FullKeyView::new(keymgr.clone()).unwrap();
+        let mut view = FullKeyView::new(&keymgr).unwrap();
 
         insert_link_key(&keymgr, ts(1000));
         insert_signing_key(&keymgr, ts(2000));
@@ -311,7 +311,7 @@ mod test {
     #[test]
     fn reconcile_no_change() {
         let keymgr = new_keymgr();
-        let mut view = FullKeyView::new(keymgr.clone()).unwrap();
+        let mut view = FullKeyView::new(&keymgr).unwrap();
 
         insert_link_key(&keymgr, ts(1000));
         insert_signing_key(&keymgr, ts(2000));
@@ -333,7 +333,7 @@ mod test {
     #[test]
     fn reconcile_ntor_keys() {
         let keymgr = new_keymgr();
-        let mut view = FullKeyView::new(keymgr.clone()).unwrap();
+        let mut view = FullKeyView::new(&keymgr).unwrap();
 
         let older_ts = ts(1000);
         let newer_ts = ts(2000);
@@ -353,7 +353,7 @@ mod test {
     #[test]
     fn reconcile_rotated_key() {
         let keymgr = new_keymgr();
-        let mut view = FullKeyView::new(keymgr.clone()).unwrap();
+        let mut view = FullKeyView::new(&keymgr).unwrap();
 
         insert_link_key(&keymgr, ts(1000));
 

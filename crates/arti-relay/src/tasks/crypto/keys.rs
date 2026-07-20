@@ -498,8 +498,6 @@ mod test {
 
     use super::*;
 
-    use std::sync::Arc;
-
     use crate::{
         keys::{RelayLinkSigningKeypairSpecifierPattern, RelaySigningKeypairSpecifierPattern},
         tasks::crypto::test::new_keymgr,
@@ -519,7 +517,7 @@ mod test {
     }
 
     /// Initial setup of a test. Build a mock runtime, key manager and setup identity keys.
-    fn setup() -> Arc<KeyMgr> {
+    fn setup() -> KeyMgr {
         let keymgr = new_keymgr();
         setup_identity_keys(&keymgr);
         keymgr
