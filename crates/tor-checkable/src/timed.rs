@@ -158,8 +158,8 @@ impl<T> TimeRangeBound<T> {
     /// actually checked.
     pub fn dangerously_into_parts(
         self,
-    ) -> (T, (Option<time::SystemTime>, Option<time::SystemTime>)) {
-        let bounds = self.bounds_start_end();
+    ) -> (T, TimeRange) {
+        let bounds = self.bounds();
 
         (self.obj, bounds)
     }
@@ -455,8 +455,8 @@ mod test {
 
         let (a, b) = tr.dangerously_into_parts();
         assert_eq!(a, "cups of coffee");
-        assert_eq!(b.0, Some(t1));
-        assert_eq!(b.1, Some(t2));
+        assert_eq!(b.start(), Some(t1));
+        assert_eq!(b.end(), Some(t2));
     }
 
     #[test]
