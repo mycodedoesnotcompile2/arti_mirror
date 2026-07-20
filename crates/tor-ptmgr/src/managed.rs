@@ -30,9 +30,6 @@ pub(crate) enum PtReactorMessage {
     Reconfigured,
     /// Ask the reactor to spawn a pluggable transport binary.
     #[cfg_attr(not(feature = "tor-channel-factory"), allow(dead_code))]
-    // FIXME(pryty): This variant is "checked" in many places
-    // but it's never constructed
-    // thus it would be hard to remove it
     Spawn {
         /// Spawn a binary to provide this PT.
         pt: PtTransportName,
