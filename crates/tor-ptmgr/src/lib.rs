@@ -232,16 +232,18 @@ impl<R: Runtime> PtMgr<R> {
         &self,
         transport: &PtTransportName,
     ) -> Result<Option<PtClientMethod>, PtError> {
-        let cfg = {
+        let (cfg, managed_cmethod) = {
+            // NOTE(eta): This is using a RwLock inside async code (but not across an await point).
+            //            Arguably this is fine since it's just a small read, and nothing should ever
+            //            hold this lock for very long.
             let inner = self.state.read().expect("ptmgr poisoned");
-            inner.configured.get(transport).cloned()
+            let cfg = inner.configured.get(transport);
+            let managed_cmethod = inner.managed_cmethods.get(transport);
+            (cfg.cloned(), managed_cmethod.cloned())
         };
 
-        #[cfg(feature = "managed-pts")]
-        let managed_cmethod = {
-            let inner = self.state.read().expect("ptmgr poisoned");
-            inner.managed_cmethods.get(transport).cloned()
-        };
+        #[cfg(not(feature = "managed-pts"))]
+        let _ = managed_cmethod; // avoid unused variable warning
 
         match cfg {
             Some(TransportOptions::Unmanaged(cfg)) => {
