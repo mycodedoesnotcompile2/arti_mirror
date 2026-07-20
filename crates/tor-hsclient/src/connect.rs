@@ -827,8 +827,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
             &self.hs_blind_id,
             &self.subcredential,
             hsc_desc_enc,
-        )
-        .map_err(DescriptorErrorDetail::from)?;
+        )?;
 
         // Check the validity time (relied on by descriptor_ensure)
         desc.check_valid_at(&now)?;
