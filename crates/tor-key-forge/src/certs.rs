@@ -2,6 +2,7 @@
 
 use crate::{CertType, InvalidCertError, KeyUnknownCert};
 use tor_cert::{Ed25519Cert, EncodedEd25519Cert, SigCheckedCert, UncheckedCert};
+use tor_checkable::TimeRange;
 use tor_llcrypto::pk::ed25519::{self, Ed25519Identity};
 
 use std::{result::Result as StdResult, time::SystemTime};
@@ -94,6 +95,10 @@ pub struct SigCheckedEd25519Cert {
 
 impl tor_checkable::TimeBound<ValidatedEd25519Cert> for SigCheckedEd25519Cert {
     type Error = tor_checkable::TimeValidityError;
+
+    fn bounds(&self) -> TimeRange {
+        self.cert.bounds()
+    }
 
     fn is_valid_at(&self, t: &SystemTime) -> StdResult<(), Self::Error> {
         self.cert.is_valid_at(t)

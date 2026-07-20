@@ -82,13 +82,20 @@ pub enum TimeValidityError {
 /// bounds when performing a verification.  Mathematically speaking, this means
 /// that implementations must check whether `x ∊ [start; end]` but *not*
 /// `x ∊ (start; end)`.
-//
-// TODO: We should really provide a method or something to obtain a
-// TimeBoundRange from a TimeBound, as TimeBound itself is not a nice type to
-// work with.
 pub trait TimeBound<T>: Sized {
     /// An error type that's returned when the object is _not_ timely.
     type Error;
+
+    /// Get the bounds, in the form of a `TimeRangeBound<()>`
+    ///
+    /// It is permissible for the start to be after the end.
+    /// In that case, it's simply never valid: either expired, or too soon, or both.
+    //
+    // We don't return an `impl RangeBounds` because an `impl RangeBounds` would seems to
+    // imply we support open (exclusive) ranges, which we don't.
+    // We don't actually need to be generic here; returning a concrete type which
+    // is just a pair of Option is fine.
+    fn bounds(&self) -> TimeRange;
 
     /// Check whether this object is valid at a given time.
     ///

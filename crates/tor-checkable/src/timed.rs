@@ -1,5 +1,6 @@
 //! Convenience implementation of a TimeBound object.
 
+use crate::TimeBound;
 use itertools::chain;
 use std::ops::{Bound, Deref, RangeBounds};
 use web_time_compat as time;
@@ -12,6 +13,9 @@ use web_time_compat as time;
 ///
 /// **Non-invariant**: it is possible for the start to be after the end.
 /// In that case, it's simply never valid: either expired, or too soon, or both.
+///
+/// `TimeRangeBound<()>` aka `TimeRange` is sometimes used as a representation of a time range,
+/// for example, the return value from [`TimeBound::bounds`].
 ///
 /// ```
 /// use web_time_compat::{SystemTime, SystemTimeExt, Duration};
@@ -195,18 +199,6 @@ impl<T> TimeRangeBound<T> {
         (self.start, self.end)
     }
 
-    /// Get just the bounds, in the form of a `TimeRangeBound<()>`
-    ///
-    /// XXXX make this into a trait method
-    #[allow(unused)] // XXXX
-    fn bounds(&self) -> TimeRangeBound<()> {
-        TimeRangeBound {
-            obj: (),
-            start: self.start,
-            end: self.end,
-        }
-    }
-
     /// Narrow the bounds of `self` to the overlap with `bounds`
     ///
     /// If the bounds conflict (ie, if the intersection is empty),
@@ -296,6 +288,14 @@ impl_from_range! { std::ops::RangeToInclusive<time::SystemTime> }
 
 impl<T> crate::TimeBound<T> for TimeRangeBound<T> {
     type Error = crate::TimeValidityError;
+
+    fn bounds(&self) -> TimeRange {
+        TimeRangeBound {
+            obj: (),
+            start: self.start,
+            end: self.end,
+        }
+    }
 
     fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), Self::Error> {
         use crate::TimeValidityError;
