@@ -18,8 +18,6 @@ mod outer;
 pub mod pow;
 
 pub use desc_enc::DecryptionError;
-use tor_basic_utils::rangebounds::RangeBoundsExt;
-use tor_error::internal;
 
 use crate::{NetdocErrorKind as EK, Result};
 
@@ -280,39 +278,26 @@ impl HsDesc {
             .check_signature()
             .map_err(|e| E::OuterValidation(e.into()))?;
 
-        let (inner_timerangebound, new_bounds) = {
-            // We use is_valid_at and dangerously_into_parts instead of check_valid_at because we
-            // need the time bounds of the outer layer (for computing the intersection with the
-            // time bounds of the inner layer).
-            unchecked_desc
-                .check_valid_at(&valid_at)
-                .map_err(|e| E::OuterValidation(e.into()))?;
-            // It's safe to use dangerously_peek() as we've just checked if unchecked_desc is
-            // valid at the current time
+        let r = TimeRangeBound::build_intersect(|bounds| {
             let inner_timerangebound = unchecked_desc
-                .dangerously_peek()
+                .unwrap_with(bounds)
                 .decrypt(subcredential, hsc_desc_enc)?;
 
-            let new_bounds = unchecked_desc
-                .intersect(&inner_timerangebound)
-                .map(|(b1, b2)| (b1.cloned(), b2.cloned()));
-
-            (inner_timerangebound, new_bounds)
-        };
-
+        // XXXX indentation is wrong
         let hsdesc = inner_timerangebound
-            .if_valid_at(&valid_at)
-            .map_err(|e| E::InnerValidation(e.into()))?
+            .unwrap_with(bounds)
             .check_signature()
             .map_err(|e| E::InnerValidation(e.into()))?;
 
-        // If we've reached this point, it means the descriptor is valid at specified time. This
-        // means the time bounds of the two layers definitely intersect, so new_bounds **must** be
-        // Some. It is a bug if new_bounds is None.
-        let new_bounds = new_bounds
-            .ok_or_else(|| internal!("failed to compute TimeRangeBounds for a valid descriptor"))?;
+            Ok::<_, E>(hsdesc)
+        })?;
 
-        Ok(TimeRangeBound::new(hsdesc, new_bounds))
+        // XXXX remove the valid_at parameter, and this call
+        r.check_valid_at(&valid_at)
+            // XXXX this error is possibly wrong
+            .map_err(|e| E::OuterValidation(e.into()))?;
+
+        Ok(r)
     }
 
     /// One or more introduction points used to contact the onion service.
