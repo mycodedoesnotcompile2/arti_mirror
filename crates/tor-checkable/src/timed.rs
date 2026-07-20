@@ -74,6 +74,8 @@ impl<T> TimeRangeBound<T> {
     /// Note that we do not distinguish between inclusive and
     /// exclusive bounds: `x..y` and `x..=y` are treated the same
     /// here - as an inclusive range.
+    ///
+    /// Use `TimeRange::new_range` to create a `TimeRange` aka a `TimeRangeBound<()>`.
     pub fn new<U>(obj: T, range: U) -> Self
     where
         U: RangeBounds<time::SystemTime>,
@@ -205,6 +207,44 @@ impl<T> TimeRangeBound<T> {
     }
 }
 
+impl TimeRange {
+    /// Create a new `TimeRange` from a `std::ops::RangeBounds`
+    pub fn new_range<U>(range: U) -> Self
+    where
+        U: RangeBounds<time::SystemTime>,
+    {
+        Self::new((), range)
+    }
+
+    /// Applies this `TimeRange` to a value, protecting it
+    pub fn apply_to<T>(self, t: T) -> TimeRangeBound<T> {
+        TimeRangeBound::new(t, self.bounds())
+    }
+
+    /// Get the end of the validity period
+    ///
+    /// `None` means there is no start: the object has been valid forever.
+    ///
+    /// Provided only for `TimeRange`; to call on a general [`TimeRangeBound<T>`],
+    /// write `.bounds().start()`.
+    pub fn start(&self) -> Option<time::SystemTime> {
+        self.start
+    }
+
+    /// Get the start of the validity period
+    ///
+    /// `None` means there is no end: the object will been valid forever.
+    /// This is normally a mistake.
+    ///
+    /// Provided only for `TimeRange`; to call on a general [`TimeRangeBound<T>`],
+    /// write `.bounds().start()`.
+    //
+    // We could forbid this but it would make everything much less orthogonal.
+    pub fn end(&self) -> Option<time::SystemTime> {
+        self.end
+    }
+}
+
 impl<T> RangeBounds<time::SystemTime> for TimeRangeBound<T> {
     fn start_bound(&self) -> Bound<&time::SystemTime> {
         self.start
@@ -220,6 +260,23 @@ impl<T> RangeBounds<time::SystemTime> for TimeRangeBound<T> {
             .unwrap_or(Bound::Unbounded)
     }
 }
+
+/// Implement `From<$R> for TimeRange` via `new_range`
+macro_rules! impl_from_range { { $R:ty } => {
+    impl From<$R> for TimeRange {
+        fn from(r: $R) -> TimeRange {
+            TimeRange::new_range(r)
+        }
+    }
+} }
+
+// We don't implement trivial-seeming `From`/`Into` conversions from non-inclusive ranges,
+// since strictly speaking we don't preserve the semantics.
+// They can still be converted manually with `new_range`.
+impl_from_range! { std::ops::RangeFrom<time::SystemTime> }
+impl_from_range! { std::ops::RangeFull }
+impl_from_range! { std::ops::RangeInclusive<time::SystemTime> }
+impl_from_range! { std::ops::RangeToInclusive<time::SystemTime> }
 
 impl<T> crate::TimeBound<T> for TimeRangeBound<T> {
     type Error = crate::TimeValidityError;
