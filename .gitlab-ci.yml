@@ -48,8 +48,8 @@ variables:
 default:
   image:
     name: containers.torproject.org/tpo/tpa/base-images/debian:trixie
-    docker:
-      platform: linux/amd64
+  tags:
+    - amd64
   before_script:
     # get section_start and section_end bash functions
     - source maint/ci-log-span-fns.sh
@@ -484,8 +484,6 @@ deb-binary-amd64:
       - "*.deb"
       - "*.changes"
       - "*.buildinfo"
-  tags:
-    - amd64
 
 # Note: big-endian targets do not compile due to lack of support from the merlin
 # crate, needed by the 'batch' feature of ed25519-dalek. A fix seems available
@@ -509,8 +507,6 @@ deb-binary-amd64:
       - "*.deb"
       - "*.changes"
       - "*.buildinfo"
-  tags:
-    - amd64
 
 deb-binary-arm64:
   needs: []
@@ -638,8 +634,6 @@ build-shadow:
     - key: $CI_JOB_NAME-shadow-$JOB_SHADOW_COMMIT
       paths:
       - opt/shadow
-  tags:
-    - amd64
   script:
     # Build shadow
     - |
