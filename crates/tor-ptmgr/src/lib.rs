@@ -152,10 +152,6 @@ impl<R: Runtime> PtMgr<R> {
 
     /// Create a new PtMgr.
     // TODO: maybe don't have the Vec directly exposed?
-    // NOTE(pryty26): Please try to avoid feature-gating function arguments,
-    // if it's a public function.
-    // We can use #[allow(unused)] or _variable to silence warnings for unused arguments
-    // instead of using feature-gating function arguments.
     pub fn new(
         transports: Vec<TransportConfig>,
         #[allow(unused)] state_dir: PathBuf,
