@@ -54,7 +54,7 @@ use web_time_compat::{SystemTime, SystemTimeExt};
 pub mod signed;
 pub mod timed;
 
-pub use timed::{TimeRange, TimeRangeBound};
+pub use timed::{TimeRange, TimeRangeBound, TimeRangeBoundBuilder};
 
 /// An error that can occur when checking whether a TimeBound object is
 /// currently valid.
@@ -122,6 +122,24 @@ pub trait TimeBound: Sized {
     /// Unwrap this TimeBound object if it is valid now.
     fn if_valid_now(self) -> Result<Self::Inner, TimeValidityError> {
         self.if_valid_at(&SystemTime::get())
+    }
+
+    /// Gain access to the `Inner`, handling the timeout with a `TimeRangeBoundBuilder`
+    ///
+    /// Unwraps `self`, giving access to `Self::Inner`.
+    /// Time time bounds are recorded in the `TimeRangeBoundBuilder`,
+    /// and will be applied to the `T` overall return value
+    /// from the `logic` closure supplied to [`TimeRangeBound::build_intersect`].
+    ///
+    /// Can only be called within the `logic` closure to `TimeRangeBound::build_intersect`.
+    ///
+    /// # CORRECTNESS
+    ///
+    /// Information from the `Inner` returned from `unwrap_with`
+    /// should only be used to help construct the return value from `logic`.
+    /// See [`TimeRangeBound::build_intersect`] for more details.
+    fn unwrap_with(self, builder: &mut TimeRangeBoundBuilder) -> Self::Inner {
+        builder.incorporate_unwrap(self)
     }
 
     /// Unwrap this object if it is valid at the provided time t.

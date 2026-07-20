@@ -211,6 +211,76 @@ impl<T> TimeRangeBound<T> {
         self.start = chain!(self.start, bounds.start()).max();
         self.end = chain!(self.end, bounds.end()).min();
     }
+
+    /// Process multiple `TimeBound`s, intersecting their validity ranges
+    ///
+    /// Within `logic`, [`TimeBound::unwrap_with`] can be used,
+    /// for unwrapping [`TimeBound`]s.
+    ///
+    /// Those time bounds are accumulated within the [`TimeRangeBoundBuilder`],
+    /// and when `logic` returns, they are applied to its result.
+    ///
+    /// This allows multiple time-bound components of (a Tor protocol element)
+    /// to be conveniently processed into an overall return value.
+    ///
+    /// The API is intended to prevent accidentally forgetting to check
+    /// or process one of the time bounds; `TimeRangeBoundBuilder` is
+    /// an alternative to manual use of `dangerously_*` and `intersect`.
+    ///
+    /// # CORRECTNESS
+    ///
+    /// Everything that needs to be bound to the time range must be returned
+    /// only as part of the return value from `logic`.
+    ///
+    /// It is the caller's responsibility not to smuggle out
+    /// values whose validity time has not been checked
+    /// out via mutable captures in `logic`, global variables, etc.
+    ///
+    /// Likewise, if `logic` returns `Err`, this must mean that callers don't treat
+    /// the data as valid or successful.  I.e. `Error` must really be an error,
+    /// and not be used as a way to smuggle out potentially-out-of-time-range data.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use humantime::parse_rfc3339;
+    /// use tor_checkable::{TimeBound as _, TimeRangeBound};
+    ///
+    /// // Fake document.  A real document would involve signature verification too.
+    /// struct Data {}
+    /// struct FakeDoc { data: Data, sig: TimeRangeBound<()>, }
+    /// impl FakeDoc {
+    ///     fn parse(_dummy: &str) -> TimeRangeBound<Self> {
+    ///         let t = |s| parse_rfc3339(s).unwrap();
+    ///         let sig = TimeRangeBound::new((), ..=t("2001-01-01T00:00:01Z"));
+    ///         let doc = FakeDoc { data: Data {}, sig };
+    ///         TimeRangeBound::new(doc, ..=t("2000-01-01T00:00:01Z"))
+    ///     }
+    /// }
+    ///
+    /// // Demo usage of TimeBoundRangeBuilder, in verification function
+    /// fn parse_verify(input: &str) -> Result<TimeRangeBound<Data>, ()> {
+    ///     let parsed = FakeDoc::parse(input); // real parser would be fallible
+    ///     TimeRangeBound::build_intersect(move |times| {
+    ///         let FakeDoc { data, sig } = parsed.unwrap_with(times);
+    ///         let _: () = sig.unwrap_with(times); // would verify signature too
+    ///         Ok(data)
+    ///     })
+    /// }
+    ///
+    /// assert_eq!(
+    ///     parse_verify("dummy").unwrap().bounds().end(),
+    ///     Some(parse_rfc3339("2000-01-01T00:00:01Z").unwrap()),
+    /// );
+    /// ```
+    pub fn build_intersect<Error, Logic>(logic: Logic) -> Result<Self, Error>
+    where
+        Logic: FnOnce(&mut TimeRangeBoundBuilder) -> Result<T, Error>,
+    {
+        let mut builder = TimeRangeBoundBuilder(TimeRange::new_range(..));
+        let output = logic(&mut builder)?;
+        Ok(builder.0.apply_to(output))
+    }
 }
 
 impl TimeRange {
@@ -248,6 +318,57 @@ impl TimeRange {
     // We could forbid this but it would make everything much less orthogonal.
     pub fn end(&self) -> Option<time::SystemTime> {
         self.end
+    }
+}
+
+/// Accumulator used by `TimeRangeBounds::build_intersect`
+///
+/// Provided to the user's `logic` callback by [`TimeRangeBound::build_intersect`]
+///
+/// There is no other way to obtain a `TimeRangeBoundBuilder`.
+// ^ this property allows the API to prevent accidental drops of time bounds.
+pub struct TimeRangeBoundBuilder(TimeRange);
+
+impl TimeRangeBoundBuilder {
+    /// Handle a `TimeBound`, ensuring its validity range will be honoured
+    ///
+    /// This is equivalent to [`TimeBound::unwrap_with`],
+    /// which is normally more convenient.
+    ///
+    /// # CORRECTNESS
+    ///
+    /// See [`TimeBound::unwrap_with`] and [`TimeRangeBound::build_intersect`].
+    pub fn incorporate_unwrap<Component: TimeBound>(
+        &mut self,
+        component: Component,
+    ) -> Component::Inner {
+        self.intersect_bounds(component.bounds());
+        // Correctness: we include the component's bounds in `self`,
+        // so that when the whole `build` function returns. those bounds will be re-applied.
+        component.dangerously_assume_timely()
+    }
+
+    /// Narrow the bounds of `self` to the overlap with `bounds`
+    ///
+    /// Equivalent to `.as_mut_range().intersect_bounds()`.
+    pub fn intersect_bounds(&mut self, bounds: TimeRange) {
+        self.as_mut_range().intersect_bounds(bounds);
+    }
+
+    /// Mutably access the being-built time range.
+    ///
+    /// This range is the intersection of all the ranges
+    /// from calls to `incorporate_unwrap` and
+    /// `intersect_bounds`.
+    ///
+    /// # CORRECTNESS
+    ///
+    /// Normally it is only correct to narrow the range, not widen it.
+    /// Getting the time range right is the responsibility of the caller.
+    ///
+    /// Consider [`intersect_bounds`](TimeRangeBoundBuilder::intersect_bounds) instead.
+    pub fn as_mut_range(&mut self) -> &mut TimeRange {
+        &mut self.0
     }
 }
 
