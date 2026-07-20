@@ -42,6 +42,14 @@ pub struct TimeRangeBound<T> {
     end: Option<time::SystemTime>,
 }
 
+/// Validity time range.
+///
+/// We use `TimeRangeBound<()>` to represent just a validity range.
+//
+// We could have a separate `TimeBounds` struct but it would have to have
+// many of the same constructors, accessors, etc.
+pub type TimeRange = TimeRangeBound<()>;
+
 /// Deprecated compatibility alias for [`TimeRangeBound`]
 #[deprecated = "use the new name, TimeRangeBound, instead"]
 pub type TimerangeBound<T> = TimeRangeBound<T>;
