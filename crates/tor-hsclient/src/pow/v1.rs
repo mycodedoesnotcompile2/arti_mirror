@@ -88,6 +88,7 @@ impl HsPowClientV1 {
         if self.effort == Effort::zero() {
             return Ok(None);
         }
+        #[allow(clippy::disallowed_methods)] // TODO don't call if_valid_now, use mockable time
         let instance = self.instance.as_ref().if_valid_now()?.clone();
         let mut input = SolverInput::new(instance, self.effort);
         // TODO: config option

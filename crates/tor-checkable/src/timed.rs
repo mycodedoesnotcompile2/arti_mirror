@@ -417,11 +417,14 @@ mod test {
         assert_eq!(tr.if_valid_at(&eu), Ok("Hello world"));
 
         // check_valid_now
-        let tr = TimeRangeBound::new("hello world", de..);
-        assert_eq!(tr.if_valid_now(), Ok("hello world"));
+        #[allow(clippy::disallowed_methods)]
+        {
+            let tr = TimeRangeBound::new("hello world", de..);
+            assert_eq!(tr.if_valid_now(), Ok("hello world"));
 
-        let tr = TimeRangeBound::new("hello world", ..za);
-        assert!(tr.if_valid_now().is_err());
+            let tr = TimeRangeBound::new("hello world", ..za);
+            assert!(tr.if_valid_now().is_err());
+        }
 
         // Now try check_valid_at_opt() api
         let tr = TimeRangeBound::new("hello world", de..);

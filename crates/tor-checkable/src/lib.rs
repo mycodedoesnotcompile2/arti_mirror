@@ -133,6 +133,7 @@ pub trait TimeBound: Sized {
     /// via `Option<SystemTime>`, make sense.
     /// We use `tor_rtcompat::Runtime` for mocking.
     #[deprecated = "use check_valid_at"]
+    #[allow(clippy::disallowed_methods)]
     fn check_valid_at_opt(
         self,
         t: Option<time::SystemTime>,
