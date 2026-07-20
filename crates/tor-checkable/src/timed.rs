@@ -84,16 +84,6 @@ impl<T> TimeRangeBound<T> {
         Self { obj, start, end }
     }
 
-    /// Adjust this time-range bound to tolerate an expiration time farther
-    /// in the future.
-    #[must_use]
-    pub fn extend_tolerance(self, d: time::Duration) -> Self {
-        let end = match self.end {
-            Some(t) => t.checked_add(d),
-            _ => None,
-        };
-        Self { end, ..self }
-    }
     /// Adjust this time-range bound to tolerate an initial validity
     /// time farther in the past.
     #[must_use]
@@ -103,6 +93,16 @@ impl<T> TimeRangeBound<T> {
             _ => None,
         };
         Self { start, ..self }
+    }
+    /// Adjust this time-range bound to tolerate an expiration time farther
+    /// in the future.
+    #[must_use]
+    pub fn extend_tolerance(self, d: time::Duration) -> Self {
+        let end = match self.end {
+            Some(t) => t.checked_add(d),
+            _ => None,
+        };
+        Self { end, ..self }
     }
     /// Consume this [`TimeRangeBound`], and return a new one with the same
     /// bounds, applying `f` to its protected value.
