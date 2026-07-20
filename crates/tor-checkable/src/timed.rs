@@ -1,5 +1,6 @@
 //! Convenience implementation of a TimeBound object.
 
+use itertools::chain;
 use std::ops::{Bound, Deref, RangeBounds};
 use web_time_compat as time;
 
@@ -205,6 +206,21 @@ impl<T> TimeRangeBound<T> {
             end: self.end,
         }
     }
+
+    /// Narrow the bounds of `self` to the overlap with `bounds`
+    ///
+    /// If the bounds conflict (ie, if the intersection is empty),
+    /// simply yields a `TimeRangeBound` that is never valid.
+    ///
+    /// (This is unlike `tor_basic_utils::rangebounds::RangeBoundsExt::intersect`
+    /// which *is* implemented for `TimeRange` via [`RangeBounds`]:
+    /// `intersect` insists on returning a well-formed range,
+    /// whereas `TimeRangeBound` can be empty if `start > end`.)
+    // (we can't make the ref to tor_basic_utils a doc link since that's not in scope!)
+    pub fn intersect_bounds(&mut self, bounds: TimeRange) {
+        self.start = chain!(self.start, bounds.start()).max();
+        self.end = chain!(self.end, bounds.end()).min();
+    }
 }
 
 impl TimeRange {
@@ -326,6 +342,7 @@ mod test {
     use super::*;
     use crate::{TimeBound, TimeValidityError};
     use humantime::parse_rfc3339;
+    use tor_basic_utils::rangebounds::RangeBoundsExt as _;
     use web_time_compat::{Duration, SystemTime, SystemTimeExt};
 
     #[test]
@@ -468,5 +485,39 @@ mod test {
         let tb3: TimeRangeBound<&str> = tb1.as_deref();
         assert_eq!(tb1, tb2.dangerously_map(|s| s.clone()));
         assert_eq!(tb1, tb3.dangerously_map(|s| s.to_owned()));
+    }
+
+    #[test]
+    fn test_intersect_bounds() {
+        // we use tor-basic-utils's intersect as a reference implementation
+        let bounds = || {
+            chain!(
+                [None],
+                (0..=10)
+                    .map(|days| {
+                        parse_rfc3339("2000-01-01T00:00:01Z").unwrap()
+                            + Duration::from_secs(days * 86400)
+                    })
+                    .map(Some),
+            )
+        };
+
+        for a_start in bounds() {
+            for a_end in bounds() {
+                for b_start in bounds() {
+                    for b_end in bounds() {
+                        let mut a = TimeRange::new_from_start_end((), a_start, a_end);
+                        let b = TimeRange::new_from_start_end((), b_start, b_end);
+                        let exp = a.intersect(&b).map(TimeRange::new_range);
+                        a.intersect_bounds(b);
+                        if let Some(exp) = exp {
+                            assert_eq!(a, exp);
+                        } else {
+                            assert!(a.start() > a.end());
+                        }
+                    }
+                }
+            }
+        }
     }
 }

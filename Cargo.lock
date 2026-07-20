@@ -7083,8 +7083,10 @@ name = "tor-checkable"
 version = "0.44.0"
 dependencies = [
  "humantime",
+ "itertools 0.15.0",
  "signature",
  "thiserror 2.0.18",
+ "tor-basic-utils",
  "tor-llcrypto",
  "web-time-compat",
 ]
