@@ -277,7 +277,7 @@ impl HsDesc {
             .check_signature()
             .map_err(|e| E::OuterValidation(e.into()))?;
 
-        let r = TimeRangeBound::build_intersect(|bounds| {
+        TimeRangeBound::build_intersect(|bounds| {
             let inner_timerangebound = unchecked_desc
                 .unwrap_with(bounds)
                 .decrypt(subcredential, hsc_desc_enc)?;
@@ -287,10 +287,8 @@ impl HsDesc {
                 .check_signature()
                 .map_err(|e| E::InnerValidation(e.into()))?;
 
-            Ok::<_, E>(hsdesc)
-        })?;
-
-        Ok(r)
+            Ok(hsdesc)
+        })
     }
 
     /// One or more introduction points used to contact the onion service.
