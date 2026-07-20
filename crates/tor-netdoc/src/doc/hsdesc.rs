@@ -283,11 +283,10 @@ impl HsDesc {
                 .unwrap_with(bounds)
                 .decrypt(subcredential, hsc_desc_enc)?;
 
-        // XXXX indentation is wrong
-        let hsdesc = inner_timerangebound
-            .unwrap_with(bounds)
-            .check_signature()
-            .map_err(|e| E::InnerValidation(e.into()))?;
+            let hsdesc = inner_timerangebound
+                .unwrap_with(bounds)
+                .check_signature()
+                .map_err(|e| E::InnerValidation(e.into()))?;
 
             Ok::<_, E>(hsdesc)
         })?;
