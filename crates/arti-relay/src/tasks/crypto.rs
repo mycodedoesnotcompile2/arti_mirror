@@ -117,7 +117,7 @@ pub(crate) struct Reactor<R: Runtime> {
     /// Reference to the create request handler so we can update it.
     create_request_handler: Arc<CreateRequestHandler>,
     /// Full key view.
-    view: FullKeyView,
+    view: FullKeyView<Arc<KeyMgr>>,
     /// Net directory provider used to watch for consensus changes.
     netdir: Arc<dyn NetDirProvider>,
 }
