@@ -8,7 +8,7 @@ use tor_config::derive::prelude::*;
 use tor_config_path::CfgPath;
 use tor_linkspec::PtTransportName;
 
-#[cfg(feature = "tor-channel-factory")]
+#[cfg(any(feature = "tor-channel-factory", feature = "standalone-ptmgr"))]
 use {crate::PtClientMethod, tor_socksproto::SocksVersion};
 
 /// A single pluggable transport.
@@ -194,7 +194,7 @@ pub(crate) struct UnmanagedTransportOptions {
 
 impl UnmanagedTransportOptions {
     /// A client method that can be used to contact this transport.
-    #[cfg(feature = "tor-channel-factory")]
+    #[cfg(any(feature = "tor-channel-factory", feature = "standalone-ptmgr"))]
     pub(crate) fn cmethod(&self) -> PtClientMethod {
         PtClientMethod {
             // TODO: Someday we might want to support other protocols;

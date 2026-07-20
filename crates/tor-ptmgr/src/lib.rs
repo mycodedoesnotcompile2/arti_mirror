@@ -70,6 +70,8 @@ use tor_rtcompat::Runtime;
 use tor_socksproto::SocksVersion;
 #[cfg(any(feature = "tor-channel-factory", feature = "managed-pts"))]
 use tracing::info;
+#[cfg(any(feature = "standalone-ptmgr", feature = "tor-channel-factory"))]
+use tracing::trace;
 use tracing::warn;
 #[cfg(feature = "managed-pts")]
 use {
@@ -86,7 +88,6 @@ use {
         factory::{AbstractPtError, ChannelFactory},
         transport::ExternalProxyPlugin,
     },
-    tracing::trace,
 };
 
 /// Shared mutable state between the `PtReactor` and `PtMgr`.
@@ -219,8 +220,8 @@ impl<R: Runtime> PtMgr<R> {
     /// May have to launch a managed transport as needed.
     ///
     /// Returns Ok(None) if no such transport exists.
-    #[cfg(feature = "tor-channel-factory")]
-    async fn get_cmethod_for_transport(
+    #[cfg(any(feature = "standalone-ptmgr", feature = "tor-channel-factory"))]
+    pub async fn get_cmethod_for_transport(
         &self,
         transport: &PtTransportName,
     ) -> Result<Option<PtClientMethod>, PtError> {
@@ -289,7 +290,10 @@ impl<R: Runtime> PtMgr<R> {
     }
 
     /// Communicate with the PT reactor to launch a managed transport.
-    #[cfg(all(feature = "tor-channel-factory", feature = "managed-pts"))]
+    #[cfg(any(
+        all(feature = "standalone-ptmgr", feature = "managed-pts"),
+        all(feature = "tor-channel-factory", feature = "managed-pts")
+    ))]
     async fn spawn_transport(
         &self,
         transport: &PtTransportName,
