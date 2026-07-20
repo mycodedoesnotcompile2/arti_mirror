@@ -48,7 +48,11 @@ impl NetworkStatusUnverified {
 
             // We do the authcert validity time check here, with reference to
             // the vote's declared validity period, not the current time or whatever.
-            let test_validity_at = |t| authcert.check_valid_at(&t).map_err(VVF::AuthCertWrongValidity);
+            let test_validity_at = |t| {
+                authcert
+                    .check_valid_at(&t)
+                    .map_err(VVF::AuthCertWrongValidity)
+            };
 
             // test at all relevant times, in a uniform way so we can break out check
             test_validity_at(*body.preamble.lifetime.valid_after)?;
