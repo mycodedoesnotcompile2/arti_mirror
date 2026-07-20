@@ -573,7 +573,7 @@ mod test {
                     v1.seed().to_owned().dangerously_assume_timely(),
                     expected_seed
                 );
-                assert_eq!(v1.seed().bounds().1, expected_expiry);
+                assert_eq!(v1.seed().bounds_start_end().1, expected_expiry);
             }
             #[allow(unreachable_patterns)]
             _ => unreachable!(),

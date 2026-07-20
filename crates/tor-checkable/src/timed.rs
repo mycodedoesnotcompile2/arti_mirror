@@ -130,7 +130,7 @@ impl<T> TimeRangeBound<T> {
     pub fn dangerously_into_parts(
         self,
     ) -> (T, (Option<time::SystemTime>, Option<time::SystemTime>)) {
-        let bounds = self.bounds();
+        let bounds = self.bounds_start_end();
 
         (self.obj, bounds)
     }
@@ -166,8 +166,20 @@ impl<T> TimeRangeBound<T> {
     }
 
     /// Return the underlying time bounds of this object.
-    pub fn bounds(&self) -> (Option<time::SystemTime>, Option<time::SystemTime>) {
+    pub fn bounds_start_end(&self) -> (Option<time::SystemTime>, Option<time::SystemTime>) {
         (self.start, self.end)
+    }
+
+    /// Get just the bounds, in the form of a `TimeRangeBound<()>`
+    ///
+    /// XXXX make this into a trait method
+    #[allow(unused)] // XXXX
+    fn bounds(&self) -> TimeRangeBound<()> {
+        TimeRangeBound {
+            obj: (),
+            start: self.start,
+            end: self.end,
+        }
     }
 }
 

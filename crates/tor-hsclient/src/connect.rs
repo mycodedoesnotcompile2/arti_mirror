@@ -2264,7 +2264,7 @@ mod test {
         }
 
         // Check how long the descriptor is valid for
-        let (start_time, end_time) = data.desc.as_ref().unwrap().desc.bounds();
+        let (start_time, end_time) = data.desc.as_ref().unwrap().desc.bounds_start_end();
         assert_eq!(start_time, None);
 
         let desc_valid_until = humantime::parse_rfc3339("2023-02-11T20:00:00Z").unwrap();
@@ -2307,7 +2307,7 @@ mod test {
                 );
             }
 
-            let (start_time, end_time) = data.desc.as_ref().unwrap().desc.bounds();
+            let (start_time, end_time) = data.desc.as_ref().unwrap().desc.bounds_start_end();
             assert_eq!(start_time, None);
 
             let desc_valid_until = humantime::parse_rfc3339("2023-02-11T20:00:00Z").unwrap();
