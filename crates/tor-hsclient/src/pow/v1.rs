@@ -88,7 +88,7 @@ impl HsPowClientV1 {
         if self.effort == Effort::zero() {
             return Ok(None);
         }
-        let instance = self.instance.as_ref().check_valid_now()?.clone();
+        let instance = self.instance.as_ref().if_valid_now()?.clone();
         let mut input = SolverInput::new(instance, self.effort);
         // TODO: config option
         input.runtime(Default::default());

@@ -171,7 +171,7 @@ fn validate_ed25519_cert(
         .should_be_signed_with(&Ed25519Identity::from(signed_with))?
         .check_signature()?;
 
-    let cert = cert.check_valid_at(ts)?;
+    let cert = cert.if_valid_at(ts)?;
     let subject = Ed25519Identity::from(subject);
 
     if subject != *cert.subject_key()? {

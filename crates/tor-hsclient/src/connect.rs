@@ -550,7 +550,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
                 .expect("Some but now None")
                 .desc
                 .as_ref()
-                .check_valid_at(&now)
+                .if_valid_at(&now)
                 .expect("Ok but now Err")
         };
 
@@ -566,7 +566,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         let now = self.runtime.wallclock();
 
         let stored_revision = data.as_ref().and_then(|previously| {
-            if let Ok(desc) = previously.desc.as_ref().check_valid_at(&now) {
+            if let Ok(desc) = previously.desc.as_ref().if_valid_at(&now) {
                 // Ideally we would just return desc but that confuses borrowck,
                 // so we have to use unwrap_valid_desc() each time
                 // we need the known-to-be-Some descriptor instead.

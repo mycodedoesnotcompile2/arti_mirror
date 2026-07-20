@@ -27,11 +27,11 @@ use web_time_compat as time;
 /// // This seven is only valid for another hour!
 /// let seven = TimeRangeBound::new(7_u32, ..now+one_hour);
 ///
-/// assert_eq!(seven.check_valid_at(&now).unwrap(), 7);
+/// assert_eq!(seven.if_valid_at(&now).unwrap(), 7);
 ///
 /// // That consumed the previous seven. Try another one.
 /// let seven = TimeRangeBound::new(7_u32, ..now+one_hour);
-/// assert_eq!(seven.check_valid_at(&(now+2*one_hour)),
+/// assert_eq!(seven.if_valid_at(&(now+2*one_hour)),
 ///            Err(TimeValidityError::Expired(one_hour)));
 ///
 /// ```
@@ -411,17 +411,17 @@ mod test {
 
         // check_valid_at
         let tr = TimeRangeBound::new("Hello world", cz_sk..eu);
-        assert!(tr.check_valid_at(&za).is_err());
+        assert!(tr.if_valid_at(&za).is_err());
 
         let tr = TimeRangeBound::new("Hello world", cz_sk..za);
-        assert_eq!(tr.check_valid_at(&eu), Ok("Hello world"));
+        assert_eq!(tr.if_valid_at(&eu), Ok("Hello world"));
 
         // check_valid_now
         let tr = TimeRangeBound::new("hello world", de..);
-        assert_eq!(tr.check_valid_now(), Ok("hello world"));
+        assert_eq!(tr.if_valid_now(), Ok("hello world"));
 
         let tr = TimeRangeBound::new("hello world", ..za);
-        assert!(tr.check_valid_now().is_err());
+        assert!(tr.if_valid_now().is_err());
 
         // Now try check_valid_at_opt() api
         let tr = TimeRangeBound::new("hello world", de..);
@@ -472,7 +472,7 @@ mod test {
         assert!(tb.is_valid_at(&(t1 + 1 * min)).is_ok());
         assert!(tb.is_valid_at(&(t1 + 10 * min)).is_err());
 
-        let val = tb.check_valid_at(&(t1 + 1 * min)).unwrap();
+        let val = tb.if_valid_at(&(t1 + 1 * min)).unwrap();
         assert_eq!(val, 289);
     }
 

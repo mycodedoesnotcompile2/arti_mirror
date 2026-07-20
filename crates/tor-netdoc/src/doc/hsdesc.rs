@@ -221,12 +221,12 @@ impl HsDesc {
     /// // Validate the signature and timeliness of the outer document
     /// let checked_desc = unchecked_desc
     ///     .check_signature()?
-    ///     .check_valid_at(&timestamp)?;
+    ///     .if_valid_at(&timestamp)?;
     /// // Decrypt the outer and inner layers of the descriptor
     /// let unchecked_decrypted_desc = checked_desc.decrypt(&subcredential, None)?;
     /// // Validate the signature and timeliness of the inner document
     /// let hsdesc = unchecked_decrypted_desc
-    ///     .check_valid_at(&timestamp)?
+    ///     .if_valid_at(&timestamp)?
     ///     .check_signature()?;
     /// # Ok::<(), anyhow::Error>(())
     /// ```
@@ -301,7 +301,7 @@ impl HsDesc {
         };
 
         let hsdesc = inner_desc
-            .check_valid_at(&valid_at)
+            .if_valid_at(&valid_at)
             .map_err(|e| E::InnerValidation(e.into()))?
             .check_signature()
             .map_err(|e| E::InnerValidation(e.into()))?;
@@ -644,12 +644,12 @@ pub mod test_data {
 
         let desc = HsDesc::parse(TEST_DATA, &blinded_id)?
             .check_signature()?
-            .check_valid_at(&humantime::parse_rfc3339("2023-01-23T15:00:00Z").unwrap())
+            .if_valid_at(&humantime::parse_rfc3339("2023-01-23T15:00:00Z").unwrap())
             .unwrap()
             .decrypt(&TEST_SUBCREDENTIAL.into(), None)
             .unwrap();
         let desc = desc
-            .check_valid_at(&humantime::parse_rfc3339("2023-01-24T03:00:00Z").unwrap())
+            .if_valid_at(&humantime::parse_rfc3339("2023-01-24T03:00:00Z").unwrap())
             .unwrap();
         let desc = desc.check_signature().unwrap();
         Ok(desc)
@@ -685,7 +685,7 @@ mod test {
     fn parse_meta_good() -> Result<()> {
         let meta = StoredHsDescMeta::parse(TEST_DATA)?
             .check_signature()?
-            .check_valid_at(&humantime::parse_rfc3339("2023-01-23T15:00:00Z").unwrap())
+            .if_valid_at(&humantime::parse_rfc3339("2023-01-23T15:00:00Z").unwrap())
             .unwrap();
 
         assert_eq!(meta.blinded_id.as_ref(), &TEST_DATA_HS_BLIND_ID);
@@ -755,7 +755,7 @@ mod test {
             .unwrap()
             .check_signature()
             .unwrap()
-            .check_valid_at(&humantime::parse_rfc3339("2023-02-09T12:00:00Z").unwrap())
+            .if_valid_at(&humantime::parse_rfc3339("2023-02-09T12:00:00Z").unwrap())
             .unwrap()
     }
 
@@ -782,7 +782,7 @@ mod test {
             .decrypt(&subcredential, Some(&HsClientDescEncKeypair::new(pk, sk)))
             .unwrap();
         let desc = desc
-            .check_valid_at(&humantime::parse_rfc3339("2023-01-24T03:00:00Z").unwrap())
+            .if_valid_at(&humantime::parse_rfc3339("2023-01-24T03:00:00Z").unwrap())
             .unwrap();
         let desc = desc.check_signature().unwrap();
         assert_eq!(desc.intro_points.len(), 3);

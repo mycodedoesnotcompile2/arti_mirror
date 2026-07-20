@@ -39,7 +39,7 @@ fn test_valid_ed() {
         .unwrap()
         .check_signature()
         .unwrap()
-        .check_valid_at(&notional_time)
+        .if_valid_at(&notional_time)
         .unwrap();
 
     assert_eq!(cert.subject_key().key_type(), KeyType::ED25519_KEY);
@@ -68,7 +68,7 @@ fn test_valid_ed() {
         .unwrap()
         .check_signature()
         .unwrap()
-        .check_valid_at(&notional_time)
+        .if_valid_at(&notional_time)
         .unwrap();
     assert_eq!(cert.subject_key().key_type(), KeyType::SHA256_OF_X509);
     assert_eq!(cert.subject_key().as_bytes(), &tls_cert_digest[..]);
@@ -118,7 +118,7 @@ fn test_valid_rsa_cc() {
     let cert = cert
         .check_signature(&pk)
         .unwrap()
-        .check_valid_at(&notional_time)
+        .if_valid_at(&notional_time)
         .unwrap();
     assert!(cert.subject_key_matches(&ed_identity.into()));
 }

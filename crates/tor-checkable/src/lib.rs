@@ -114,14 +114,14 @@ pub trait TimeBound: Sized {
     fn dangerously_assume_timely(self) -> Self::Inner;
 
     /// Unwrap this TimeBound object if it is valid at a given time.
-    fn check_valid_at(self, t: &time::SystemTime) -> Result<Self::Inner, TimeValidityError> {
+    fn if_valid_at(self, t: &time::SystemTime) -> Result<Self::Inner, TimeValidityError> {
         self.is_valid_at(t)?;
         Ok(self.dangerously_assume_timely())
     }
 
     /// Unwrap this TimeBound object if it is valid now.
-    fn check_valid_now(self) -> Result<Self::Inner, TimeValidityError> {
-        self.check_valid_at(&SystemTime::get())
+    fn if_valid_now(self) -> Result<Self::Inner, TimeValidityError> {
+        self.if_valid_at(&SystemTime::get())
     }
 
     /// Unwrap this object if it is valid at the provided time t.
@@ -138,8 +138,8 @@ pub trait TimeBound: Sized {
         t: Option<time::SystemTime>,
     ) -> Result<Self::Inner, TimeValidityError> {
         match t {
-            Some(when) => self.check_valid_at(&when),
-            None => self.check_valid_now(),
+            Some(when) => self.if_valid_at(&when),
+            None => self.if_valid_now(),
         }
     }
 }

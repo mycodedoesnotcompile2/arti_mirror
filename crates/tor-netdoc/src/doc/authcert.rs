@@ -668,7 +668,7 @@ impl AuthCertUnverified {
     /// The caller must check that the KP_auth_id is correct/relevant.
     pub fn verify_selfcert(self, now: SystemTime) -> StdResult<AuthCert, parse2::VerifyFailed> {
         let h_kp_auth_id_rsa = self.inspect_unverified().0.fingerprint.0;
-        Ok(self.verify(&[h_kp_auth_id_rsa])?.check_valid_at(&now)?)
+        Ok(self.verify(&[h_kp_auth_id_rsa])?.if_valid_at(&now)?)
     }
 }
 
@@ -1059,7 +1059,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             .clone()
             .verify(&[to_rsa_id(FINGERPRINT)])
             .unwrap()
-            .check_valid_at(&to_system_time(VALID_SYSTEM_TIME))
+            .if_valid_at(&to_system_time(VALID_SYSTEM_TIME))
             .unwrap();
 
         // Test with an invalid authority.
@@ -1073,7 +1073,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             res.clone()
                 .verify(&[to_rsa_id(FINGERPRINT)],)
                 .unwrap()
-                .check_valid_at(&SystemTime::UNIX_EPOCH,)
+                .if_valid_at(&SystemTime::UNIX_EPOCH,)
                 .map_err(VerifyFailed::from)
                 .unwrap_err(),
             VerifyFailed::TooNew
@@ -1084,7 +1084,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             .clone()
             .verify(&[to_rsa_id(FINGERPRINT)])
             .unwrap()
-            .check_valid_at(&to_system_time(DIR_KEY_PUBLISHED))
+            .if_valid_at(&to_system_time(DIR_KEY_PUBLISHED))
             .unwrap();
 
         // Now fail when we are 1s below ...
@@ -1092,7 +1092,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             res.clone()
                 .verify(&[to_rsa_id(FINGERPRINT)],)
                 .unwrap()
-                .check_valid_at(&(to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)),)
+                .if_valid_at(&(to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)),)
                 .map_err(VerifyFailed::from)
                 .unwrap_err(),
             VerifyFailed::TooNew
@@ -1104,7 +1104,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             .verify(&[to_rsa_id(FINGERPRINT)])
             .unwrap()
             .extend_start_bound(Duration::from_secs(1))
-            .check_valid_at(&(to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)))
+            .if_valid_at(&(to_system_time(DIR_KEY_PUBLISHED) - Duration::from_secs(1)))
             .unwrap();
 
         // Test a key too old.
@@ -1112,7 +1112,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             res.clone()
                 .verify(&[to_rsa_id(FINGERPRINT)],)
                 .unwrap()
-                .check_valid_at(
+                .if_valid_at(
                     &SystemTime::UNIX_EPOCH
                         .checked_add(Duration::from_secs(2000000000))
                         .unwrap(),
@@ -1127,7 +1127,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             .clone()
             .verify(&[to_rsa_id(FINGERPRINT)])
             .unwrap()
-            .check_valid_at(&to_system_time(DIR_KEY_EXPIRES))
+            .if_valid_at(&to_system_time(DIR_KEY_EXPIRES))
             .unwrap();
 
         // Now fail when we are 1s above ...
@@ -1135,7 +1135,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             res.clone()
                 .verify(&[to_rsa_id(FINGERPRINT)],)
                 .unwrap()
-                .check_valid_at(&(to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1)),)
+                .if_valid_at(&(to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1)),)
                 .map_err(VerifyFailed::from)
                 .unwrap_err(),
             VerifyFailed::TooOld
@@ -1147,7 +1147,7 @@ mzMT023bleZ574az+117yNAr6XbIgqQfzbySzVLPXM8ZN9BrGR40KDZ2638ZJjRu
             .verify(&[to_rsa_id(FINGERPRINT)])
             .unwrap()
             .extend_end_bound(Duration::from_secs(1))
-            .check_valid_at(&(to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1)))
+            .if_valid_at(&(to_system_time(DIR_KEY_EXPIRES) + Duration::from_secs(1)))
             .unwrap();
 
         // Check with non-matching fingerprint and long-term identity key.
@@ -1236,7 +1236,7 @@ ids 1234567812345678123456781234567812345678 ABCDABCDABCDABCDABCDABCDABCDABCDABC
             .verify(&[k_auth_id_rsa.to_public_key().to_rsa_identity()])?
             .extend_start_bound(tolerance)
             .extend_end_bound(tolerance)
-            .check_valid_at(&now)?;
+            .if_valid_at(&now)?;
         dbg!(&reparsed_value);
 
         assert_eq!(input_value, reparsed_value);
