@@ -285,7 +285,7 @@ impl HsDesc {
             // need the time bounds of the outer layer (for computing the intersection with the
             // time bounds of the inner layer).
             unchecked_desc
-                .is_valid_at(&valid_at)
+                .check_valid_at(&valid_at)
                 .map_err(|e| E::OuterValidation(e.into()))?;
             // It's safe to use dangerously_peek() as we've just checked if unchecked_desc is
             // valid at the current time

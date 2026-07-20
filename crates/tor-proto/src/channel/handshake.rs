@@ -806,7 +806,7 @@ where
     C: TimeBound,
 {
     let status = checkable
-        .is_valid_at(&now)
+        .check_valid_at(&now)
         .map_err(|e| match (e, clock_skew) {
             (TimeValidityError::Expired(expired_by), ClockSkew::Fast(skew))
                 if expired_by < skew =>

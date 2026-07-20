@@ -105,9 +105,9 @@ pub trait TimeBound: Sized {
     /// the provided implementation (which uses `bounds`) will be correct.
     //
     // The actual implementation is the overridden impl on `TimeRangeBounds`.
-    fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), TimeValidityError> {
+    fn check_valid_at(&self, t: &time::SystemTime) -> Result<(), TimeValidityError> {
         // This calls the implemented for `TimeRangeBound`
-        self.bounds().is_valid_at(t)
+        self.bounds().check_valid_at(t)
     }
 
     /// Return the underlying object without checking whether it's valid.
@@ -115,7 +115,7 @@ pub trait TimeBound: Sized {
 
     /// Unwrap this TimeBound object if it is valid at a given time.
     fn if_valid_at(self, t: &time::SystemTime) -> Result<Self::Inner, TimeValidityError> {
-        self.is_valid_at(t)?;
+        self.check_valid_at(t)?;
         Ok(self.dangerously_assume_timely())
     }
 

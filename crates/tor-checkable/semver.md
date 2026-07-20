@@ -12,3 +12,4 @@ BREAKING: `TimeBound`'s wrapped type is now `TimeBound::Inner`
 DEPRECATED: `TimeBound:::check_valid_at_opt`
 BREAKING: Use `TimeBound:::if_valid_at` instead of `check_valid_at`
 BREAKING: Use `TimeBound:::if_valid_now` instead of `check_valid_now`
+BREAKING: Use `TimeBound:::check_valid_at` instead of `is_valid_at`

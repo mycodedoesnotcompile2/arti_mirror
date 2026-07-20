@@ -295,7 +295,7 @@ impl<T> crate::TimeBound for TimeRangeBound<T> {
         }
     }
 
-    fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), TimeValidityError> {
+    fn check_valid_at(&self, t: &time::SystemTime) -> Result<(), TimeValidityError> {
         use crate::TimeValidityError;
         if let Some(start) = self.start {
             if let Ok(d) = start.duration_since(*t)
@@ -356,10 +356,10 @@ mod test {
         let tr = TimeRangeBound::new((), ..tor_v0_4_4_5);
         assert_eq!(tr.start, None);
         assert_eq!(tr.end, Some(tor_v0_4_4_5));
-        assert!(tr.is_valid_at(&mixminion_v0_0_1).is_ok());
-        assert!(tr.is_valid_at(&tor_v0_0_2pre13).is_ok());
+        assert!(tr.check_valid_at(&mixminion_v0_0_1).is_ok());
+        assert!(tr.check_valid_at(&tor_v0_0_2pre13).is_ok());
         assert_eq!(
-            tr.is_valid_at(&today),
+            tr.check_valid_at(&today),
             Err(TimeValidityError::Expired(7 * one_day))
         );
 
@@ -367,12 +367,12 @@ mod test {
         assert_eq!(tr.start, Some(tor_v0_0_2pre13));
         assert_eq!(tr.end, Some(tor_v0_4_4_5));
         assert_eq!(
-            tr.is_valid_at(&mixminion_v0_0_1),
+            tr.check_valid_at(&mixminion_v0_0_1),
             Err(TimeValidityError::NotYetValid(285 * one_day))
         );
-        assert!(tr.is_valid_at(&cussed_nougat).is_ok());
+        assert!(tr.check_valid_at(&cussed_nougat).is_ok());
         assert_eq!(
-            tr.is_valid_at(&today),
+            tr.check_valid_at(&today),
             Err(TimeValidityError::Expired(7 * one_day))
         );
 
@@ -392,10 +392,10 @@ mod test {
         assert_eq!(tr.start, Some(tor_v0_4_4_5));
         assert_eq!(tr.end, None);
         assert_eq!(
-            tr.is_valid_at(&cussed_nougat),
+            tr.check_valid_at(&cussed_nougat),
             Err(TimeValidityError::NotYetValid(4427 * one_day))
         );
-        assert!(tr.is_valid_at(&today).is_ok());
+        assert!(tr.check_valid_at(&today).is_ok());
     }
 
     #[test]
@@ -440,12 +440,12 @@ mod test {
         // edge cases
         let tr = TimeRangeBound::new("Hello world", de..eu);
         let nano = Duration::from_nanos(1);
-        assert!(tr.is_valid_at(&(de - nano)).is_err());
-        assert!(tr.is_valid_at(&de).is_ok());
-        assert!(tr.is_valid_at(&(de + nano)).is_ok());
-        assert!(tr.is_valid_at(&(eu - nano)).is_ok());
-        assert!(tr.is_valid_at(&eu).is_ok());
-        assert!(tr.is_valid_at(&(eu + nano)).is_err());
+        assert!(tr.check_valid_at(&(de - nano)).is_err());
+        assert!(tr.check_valid_at(&de).is_ok());
+        assert!(tr.check_valid_at(&(de + nano)).is_ok());
+        assert!(tr.check_valid_at(&(eu - nano)).is_ok());
+        assert!(tr.check_valid_at(&eu).is_ok());
+        assert!(tr.check_valid_at(&(eu + nano)).is_err());
     }
 
     #[test]
@@ -469,8 +469,8 @@ mod test {
 
         let tb = TimeRangeBound::new(17_u32, t1..t1 + 5 * min);
         let tb = tb.dangerously_map(|v| v * v);
-        assert!(tb.is_valid_at(&(t1 + 1 * min)).is_ok());
-        assert!(tb.is_valid_at(&(t1 + 10 * min)).is_err());
+        assert!(tb.check_valid_at(&(t1 + 1 * min)).is_ok());
+        assert!(tb.check_valid_at(&(t1 + 10 * min)).is_err());
 
         let val = tb.if_valid_at(&(t1 + 1 * min)).unwrap();
         assert_eq!(val, 289);

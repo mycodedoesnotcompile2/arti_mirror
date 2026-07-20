@@ -3583,7 +3583,7 @@ mod test {
                     self.ntor_onion_key_crosscert.cert.raw_unverified().clone(),
                 )
                 .unwrap()
-                .is_valid_at(&now)
+                .check_valid_at(&now)
                 .unwrap();
             }
         }
@@ -3777,7 +3777,7 @@ mod test {
             unverified.clone(),
         )
         .unwrap()
-        .is_valid_at(&now)
+        .check_valid_at(&now)
         .unwrap();
 
         // See if .verify() also agrees when expired but with toleration.
@@ -3788,7 +3788,7 @@ mod test {
         )
         .unwrap()
         .extend_end_bound(Duration::from_secs(60 * 60))
-        .is_valid_at(&now)
+        .check_valid_at(&now)
         .unwrap();
     }
 
@@ -3870,7 +3870,7 @@ mod test {
                 Ed25519Identity::from_bytes(certified_key.as_bytes()).unwrap(),
                 cert,
             )
-            .and_then(|expired| expired.is_valid_at(&now).map_err(|e| e.into()))
+            .and_then(|expired| expired.check_valid_at(&now).map_err(|e| e.into()))
             .unwrap_err();
         }
     }
