@@ -93,7 +93,9 @@ pub struct SigCheckedEd25519Cert {
     raw: Vec<u8>,
 }
 
-impl tor_checkable::TimeBound<ValidatedEd25519Cert> for SigCheckedEd25519Cert {
+impl tor_checkable::TimeBound for SigCheckedEd25519Cert {
+    type Inner = ValidatedEd25519Cert;
+
     fn bounds(&self) -> TimeRange {
         self.cert.bounds()
     }

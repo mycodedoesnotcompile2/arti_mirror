@@ -797,13 +797,13 @@ pub(crate) fn verify_link_auth_cert(
 /// regardless of whether the certs are expired, so we can determine
 /// whether we got a plausible handshake with a skewed partner, or
 /// whether the handshake is definitely bad.
-pub(crate) fn check_cert_timeliness<C, CERT>(
+pub(crate) fn check_cert_timeliness<C>(
     checkable: C,
     now: SystemTime,
     clock_skew: ClockSkew,
-) -> (Result<()>, CERT)
+) -> (Result<()>, C::Inner)
 where
-    C: TimeBound<CERT>,
+    C: TimeBound,
 {
     let status = checkable
         .is_valid_at(&now)

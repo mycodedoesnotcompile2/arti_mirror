@@ -82,7 +82,10 @@ pub enum TimeValidityError {
 /// bounds when performing a verification.  Mathematically speaking, this means
 /// that implementations must check whether `x ∊ [start; end]` but *not*
 /// `x ∊ (start; end)`.
-pub trait TimeBound<T>: Sized {
+pub trait TimeBound: Sized {
+    /// The inner, wrapped type, which is being protected by this `TimeBound` implementation
+    type Inner;
+
     /// Get the bounds, in the form of a `TimeRangeBound<()>`
     ///
     /// It is permissible for the start to be after the end.
@@ -108,22 +111,22 @@ pub trait TimeBound<T>: Sized {
     }
 
     /// Return the underlying object without checking whether it's valid.
-    fn dangerously_assume_timely(self) -> T;
+    fn dangerously_assume_timely(self) -> Self::Inner;
 
     /// Unwrap this TimeBound object if it is valid at a given time.
-    fn check_valid_at(self, t: &time::SystemTime) -> Result<T, TimeValidityError> {
+    fn check_valid_at(self, t: &time::SystemTime) -> Result<Self::Inner, TimeValidityError> {
         self.is_valid_at(t)?;
         Ok(self.dangerously_assume_timely())
     }
 
     /// Unwrap this TimeBound object if it is valid now.
-    fn check_valid_now(self) -> Result<T, TimeValidityError> {
+    fn check_valid_now(self) -> Result<Self::Inner, TimeValidityError> {
         self.check_valid_at(&SystemTime::get())
     }
 
     /// Unwrap this object if it is valid at the provided time t.
     /// If no time is provided, check the object at the current time.
-    fn check_valid_at_opt(self, t: Option<time::SystemTime>) -> Result<T, TimeValidityError> {
+    fn check_valid_at_opt(self, t: Option<time::SystemTime>) -> Result<Self::Inner, TimeValidityError> {
         match t {
             Some(when) => self.check_valid_at(&when),
             None => self.check_valid_now(),

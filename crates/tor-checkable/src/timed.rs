@@ -284,7 +284,9 @@ impl_from_range! { std::ops::RangeFull }
 impl_from_range! { std::ops::RangeInclusive<time::SystemTime> }
 impl_from_range! { std::ops::RangeToInclusive<time::SystemTime> }
 
-impl<T> crate::TimeBound<T> for TimeRangeBound<T> {
+impl<T> crate::TimeBound for TimeRangeBound<T> {
+    type Inner = T;
+
     fn bounds(&self) -> TimeRange {
         TimeRangeBound {
             obj: (),

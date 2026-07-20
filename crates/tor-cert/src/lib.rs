@@ -621,7 +621,9 @@ impl tor_checkable::SelfSigned<SigCheckedCert> for UncheckedCert {
     }
 }
 
-impl tor_checkable::TimeBound<Ed25519Cert> for Ed25519Cert {
+impl tor_checkable::TimeBound for Ed25519Cert {
+    type Inner = Ed25519Cert;
+
     fn bounds(&self) -> TimeRange {
         TimeRangeBound::new((), ..=self.expiry())
     }
@@ -631,7 +633,9 @@ impl tor_checkable::TimeBound<Ed25519Cert> for Ed25519Cert {
     }
 }
 
-impl tor_checkable::TimeBound<Ed25519Cert> for SigCheckedCert {
+impl tor_checkable::TimeBound for SigCheckedCert {
+    type Inner = Ed25519Cert;
+
     fn bounds(&self) -> TimeRange {
         self.cert.bounds()
     }
