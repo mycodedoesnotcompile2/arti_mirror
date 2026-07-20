@@ -9,6 +9,9 @@ use web_time_compat as time;
 ///
 /// The range is always treated as inclusive.
 ///
+/// **Non-invariant**: it is possible for the start to be after the end.
+/// In that case, it's simply never valid: either expired, or too soon, or both.
+///
 /// ```
 /// use web_time_compat::{SystemTime, SystemTimeExt, Duration};
 /// use tor_checkable::{TimeBound, TimeValidityError, timed::TimeRangeBound};
