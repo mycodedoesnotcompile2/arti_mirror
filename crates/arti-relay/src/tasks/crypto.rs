@@ -79,15 +79,15 @@ pub(crate) struct InitKeyMaterial {
 /// Returned the initialization key material.
 pub(crate) fn init_keys<R: Runtime>(
     runtime: &R,
-    keymgr: Arc<KeyMgr>,
+    keymgr: &KeyMgr,
 ) -> anyhow::Result<InitKeyMaterial> {
     let now = runtime.wallclock();
 
     // Attempt to generate our identity keys (ed and RSA). Those keys DO NOT rotate. It won't be
     // replaced if they already exists.
-    keys::generate_key::<RelayIdentityKeypair>(&keymgr, &RelayIdentityKeypairSpecifier::new())?;
+    keys::generate_key::<RelayIdentityKeypair>(keymgr, &RelayIdentityKeypairSpecifier::new())?;
     keys::generate_key::<RelayIdentityRsaKeypair>(
-        &keymgr,
+        keymgr,
         &RelayIdentityRsaKeypairSpecifier::new(),
     )?;
 
@@ -95,7 +95,7 @@ pub(crate) fn init_keys<R: Runtime>(
     // there is no consensus yet, so we have to use the default parameters.
     let _ = keys::try_rotate_keys(
         now,
-        &keymgr,
+        keymgr,
         KeyRotationParams::from(&tor_netdir::params::NetParameters::default()),
     )?;
 
@@ -117,7 +117,7 @@ pub(crate) struct Reactor<R: Runtime> {
     /// Reference to the create request handler so we can update it.
     create_request_handler: Arc<CreateRequestHandler>,
     /// Full key view.
-    view: FullKeyView<Arc<KeyMgr>>,
+    view: FullKeyView<KeyMgr>,
     /// Net directory provider used to watch for consensus changes.
     netdir: Arc<dyn NetDirProvider>,
 }
@@ -128,7 +128,7 @@ impl<R: Runtime> Reactor<R> {
         runtime: R,
         chanmgr: Arc<ChanMgr<R>>,
         create_request_handler: Arc<CreateRequestHandler>,
-        keymgr: Arc<KeyMgr>,
+        keymgr: KeyMgr,
         netdir: Arc<dyn NetDirProvider>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
@@ -271,7 +271,7 @@ mod test {
     #[test]
     fn test_bootstrap() {
         MockRuntime::test_with_various(|runtime| async move {
-            let _auth_material = match init_keys(&runtime, new_keymgr()) {
+            let _auth_material = match init_keys(&runtime, &new_keymgr()) {
                 Ok(a) => a,
                 Err(e) => {
                     panic!("Unable to bootstrap keys and generate RelayChannelAuthMaterial: {e}");
