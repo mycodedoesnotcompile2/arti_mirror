@@ -107,7 +107,6 @@ impl Permit {
     /// Returns true if the permit had at least `tokens` that are now claimed. Else,
     /// return false and nothing is claimed as in the caller is trying to use more
     /// than it was granted.
-    #[must_use]
     pub fn claim(&mut self, tokens: u64) -> Result<(), BwPoolError> {
         match self.granted.checked_sub(tokens) {
             Some(left) => {
