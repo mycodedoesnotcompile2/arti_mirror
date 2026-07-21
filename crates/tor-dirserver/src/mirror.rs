@@ -145,6 +145,13 @@ impl DirMirror {
     /// with a `RELAY_BEGIN_DIR` cell.  How this is concretely done, is outside
     /// the scope of this crate; instead we provide the primitives making such
     /// flexibility possible.
+    ///
+    // TODO DIRMIRROR: can we change the listener to be a
+    // Stream<Item = T> + Unpin instead of Stream<Item = Result<T, E>> + Unpin?
+    // We expect the calling code to filter out any errors before handing
+    // the stream over to DirMirror::serve().
+    //
+    // See https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4222#note_3437135
     #[allow(clippy::unused_async)] // TODO
     pub async fn serve<S, T, E>(self, mut listener: S) -> Result<(), Infallible>
     where
