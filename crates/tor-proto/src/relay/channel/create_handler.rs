@@ -424,7 +424,8 @@ impl CreateRequestHandler {
     }
 }
 
-/// A receiver for the incoming streams of every circuit
+/// A receiver of [`Stream`]s (one for each incoming circuit),
+/// where each `Stream` produces [`IncomingStream`]s for that circuit.
 ///
 // Note: in theory, it would be nice if we could get rid of this type altogether.
 // In an ideal world, I would've instead
