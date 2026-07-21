@@ -216,7 +216,7 @@ impl ResolutionState {
         // Having the relay do its own summary is fine.
         //
         // But, anyway here are some notes for how to support V6:
-        //  - Ex;pose the Net trait from tor-netdoc's summariser.
+        //  - Expose the Net trait from tor-netdoc's summariser.
         //    Under some other name, presumably, and maybe it should be implemented
         //    for IpvXAddr rather IpvXNet.
         //  - In each match below, use those trait methods.
