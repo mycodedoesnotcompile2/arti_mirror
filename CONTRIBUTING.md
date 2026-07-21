@@ -171,13 +171,18 @@ Improvements or bugfixes to the existing code would be great.
 
 Improving the look and feel of the documentation would also rock.
 
-We've made a bunch of notes throughout the document in comments with strings
-like "FIXME" or "TODO".
+You could take a look in our
+[ticket tracker](https://gitlab.torproject.org/tpo/core/arti/-/work_items).
+Many of these tickets are difficult, or things we're actively working on,
+but you may be able to find some low hanging fruit that we haven't had time for.
 
-When we have TODOs that we want to fix prior to the release of a particular
-feature or milestone, we define a special TODO format.
-Right now we have "TODO HS" (or "TODO hs") for things we intend to fix
-before we release support for Tor Hidden Services (.onion services).
+When you see "TODO" and "FIXME" in the code, you should approach with caution.
+Often a programmer will write a note like that when their head is very full.
+The thing that the TODO suggests ought to be done may be a bad idea,
+or very difficult.  Usually the first thing to do with an in-code TODO
+is research and double-checking, and then making a judgement about what should be done.
+Often if a TODO looks juicy, the best next step is to file a ticket
+with your findings and a more concrete proposal.
 
 If you want to make a temporary change that ought *definitely* not to be merged,
 mark it with <code>XX&#88;</code>.
