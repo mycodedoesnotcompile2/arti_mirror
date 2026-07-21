@@ -245,7 +245,7 @@ impl BandwidthAcquirer {
     /// Enqueue a request for `tokens` tokens that is NOT in flight.
     ///
     /// Return a [`PoolClosed`] error if the refiller is gone.
-    fn enqueue_request(&mut self, cx: &mut Context<'_>, tokens: u64) -> Result<(), BwPoolError> {
+    /// Return a [`BwPoolError::PoolClosed`] error if the refiller is gone.
         // Prepare the waiter for this new request.
         self.waiter.prepare(cx.waker(), tokens);
         // Add the waiter before sending to avoid this race:
