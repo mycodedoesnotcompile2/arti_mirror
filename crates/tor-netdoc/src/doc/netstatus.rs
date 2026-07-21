@@ -533,6 +533,7 @@ impl ProtoStatuses {
 //
 // This is yet a third version number representation in arti!  Here it's just String.
 // TODO unify RecommendedTorVersions, RelayPlatform, TorVersion
+// When this is fixed, remove the workaround in netstatus::test::roundtrip_netstatus
 #[derive(Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd)] //
 #[derive(derive_more::Deref, derive_more::Into)]
 pub struct RecommendedTorVersions(BTreeSet<String>);
@@ -3094,6 +3095,21 @@ mod test {
                 let mut s = c[1].to_owned();
                 regsub(&mut s, r#"="#, "");
                 s
+            },
+        );
+
+        // We don't manage proper numerical sorting of version numbers.
+        // Doing is is awkward.  See the (2nd) TODO on RecommendedTorVersions.
+        regsub(
+            //
+            &mut exp,
+            r#"^(client|server)-versions (.+)$"#,
+            |c: &regex::Captures| -> String {
+                format!(
+                    "{}-versions {}",
+                    &c[1],
+                    iter_join(",", c[2].split(',').sorted()),
+                )
             },
         );
 
