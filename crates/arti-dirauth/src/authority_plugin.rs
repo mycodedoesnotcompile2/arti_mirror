@@ -10,6 +10,7 @@ use tor_dirauth::consensus;
 use tor_error::ErrorReport as _;
 
 mod utils;
+use utils::{FilenameOrStdio, map_range};
 
 /// Options and arguments to plugin invocation
 #[derive(Debug, clap::Parser)]
@@ -22,6 +23,12 @@ struct CliArgs {
 /// Operation verb and its arguments
 #[derive(Debug, Clone, clap::Subcommand)]
 enum CliOperation {
+    /// `list-methods`, "mode 1"
+    ListMethods {
+        /// Output file
+        #[arg(short = 'o')]
+        output: FilenameOrStdio,
+    },
 }
 
 /// Top-level error - program exits with this, or `Ok(())`
@@ -29,7 +36,6 @@ enum CliOperation {
 enum CliError {
     /// Invalid operation or usage
     #[error("invalid operation or usage")]
-    #[allow(dead_code)] // XXXX
     InvalidInputs(#[source] anyhow::Error),
 
     /// Unsupported consensus method
@@ -39,16 +45,23 @@ enum CliError {
 
     /// Operational error
     #[error("failed")]
-    #[allow(dead_code)] // XXXX
     OperationalError(#[source] anyhow::Error),
 }
 
 /// Actual implementation of the plugin's invocations
 ///
 /// Split off for ease of testing.
-#[allow(clippy::needless_pass_by_value)] // XXXX
 fn plugin_impl(args: CliArgs) -> Result<(), CliError> {
     match args.op {
+        CliOperation::ListMethods { output } => output.write(|w| {
+            for m in consensus::SUPPORTED_METHODS
+                .iter()
+                .flat_map(|r| map_range(r, |e| u32::from(*e)))
+            {
+                writeln!(w, "{m}")?;
+            }
+            Ok(())
+        }),
     }
 }
 
