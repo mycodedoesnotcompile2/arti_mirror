@@ -3,8 +3,8 @@
 //!
 //! [`BandwidthPool`] is a set of tokens that many tasks can draw from concurrently
 //! representing a bandwidth [`Permit`]. Deciding how many tokens become available and
-//! when is the job of the [`BandwidthRefiller`] which should be run in a task that owns
-//! a token bucket.
+//! when is the job of the [`BandwidthRefiller`] which should be run in a task that has a
+//! reference to the pool's token bucket.
 //!
 //! # Pool
 //!
