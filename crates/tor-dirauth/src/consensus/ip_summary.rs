@@ -57,7 +57,7 @@ const PRIVATE_NETWORKS: &[Ipv4Net] = ipnet_consts![
 /// Port resolution algorithm, main state
 ///
 /// We implement the algorithm specified in
-/// <https://spec.torproject.org/dir-spec/consensus-formats.html?highlight=p#item:p>.
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:p>.
 ///
 /// As noted there, we perform the algorithm in parallel, and independently, for each port.
 /// But, we use a rangemap so that we can deal with ranges rather than individual ports.
