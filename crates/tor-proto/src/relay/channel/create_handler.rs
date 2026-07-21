@@ -107,9 +107,6 @@ impl CreateRequestHandler {
         // as all the channels on this relay will want to send one item on it
         // each time a new circuit is created.
         //
-        // This needs to be large enough so that the channel reactors
-        // don't get blocked.
-        //
         // The value set here is a guesstimate.
         const CIRC_STREAM_BUF_SIZE: usize = 1024;
 
