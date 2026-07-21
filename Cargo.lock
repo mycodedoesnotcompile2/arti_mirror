@@ -7220,8 +7220,13 @@ dependencies = [
 name = "tor-dirauth"
 version = "0.44.0"
 dependencies = [
+ "derive-deftly",
  "derive_more",
+ "ipnet",
+ "itertools 0.15.0",
+ "rangemap",
  "thiserror 2.0.18",
+ "tor-error",
  "tor-netdoc",
 ]
 

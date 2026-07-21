@@ -23,10 +23,15 @@ __is_experimental = []
 
 [dependencies]
 derive_more = { version = "2.0.1", features = ["full"] }
+ipnet = "2.10"
+itertools = "0.15.0"
+rangemap = "1.7"
 thiserror = "2"
+tor-error = { path = "../tor-error", version = "0.44.0" }
 tor-netdoc = { version = "0.44.0", path = "../tor-netdoc", features = ["full", "experimental"] }
 
 [dev-dependencies]
+derive-deftly = { version = "~1.11.3", features = ["full", "beta"] }
 
 [package.metadata.docs.rs]
 all-features = true
