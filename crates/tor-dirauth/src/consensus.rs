@@ -2,6 +2,7 @@
 
 use crate::internal_prelude::*;
 
+mod ip_summary;
 mod method;
 
 pub use method::*;
