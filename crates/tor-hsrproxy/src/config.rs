@@ -300,14 +300,6 @@ impl FromStr for TargetAddr {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use ProxyConfigError as PCE;
 
-        /// Return true if 's' looks like an attempted IPv4 or IPv6 socketaddr.
-        fn looks_like_attempted_addr(s: &str) -> bool {
-            s.starts_with(|c: char| c.is_ascii_digit())
-                || s.strip_prefix('[')
-                    .map(|rhs| rhs.starts_with(|c: char| c.is_ascii_hexdigit() || c == ':'))
-                    .unwrap_or(false)
-        }
-
         #[cfg(unix)]
         if let Some(path) = s.strip_prefix("unix:") {
             return Ok(Self::Unix(UnixSocketAddr::from_pathname(path).map_err(
@@ -321,7 +313,8 @@ impl FromStr for TargetAddr {
             Some(stripped) => (true, stripped),
             None => (false, s),
         };
-        if let Ok(sa) = target_str.parse::<SocketAddr>() {
+        let parsed_addr = target_str.parse::<SocketAddr>();
+        if let Ok(sa) = parsed_addr {
             return Ok(Self::Inet(sa));
         }
         if let Some((host, port_str)) = target_str.rsplit_once(':') {
@@ -344,8 +337,9 @@ impl FromStr for TargetAddr {
         }
         let looks_like_ip = target_str.starts_with(|c: char| c.is_ascii_digit() || c == '[');
         if has_inet_prefix || looks_like_ip {
-            let parse_err = target_str.parse::<SocketAddr>().unwrap_err();
-            return Err(PCE::InvalidTargetAddr(target_str.to_string(), parse_err));
+            if let Err(parse_err) = parsed_addr {
+                return Err(PCE::InvalidTargetAddr(target_str.to_string(), parse_err));
+            }
         }
 
         Err(PCE::UnrecognizedTargetType(s.to_string()))
