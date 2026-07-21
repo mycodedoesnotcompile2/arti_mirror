@@ -138,6 +138,8 @@ impl ResolutionState {
         ports: RangeInclusive<u16>,
         mut update: impl FnMut(PortStateRunning) -> PortState,
     ) -> Result<(), EarlyTermination> {
+        // Silently disregard port 0 as per the spec
+        //  https://spec.torproject.org/dir-spec/computing-consensus.html#exit-summary:semantics
         let ports = if *ports.start() == 0 {
             1..=*ports.end()
         } else {
