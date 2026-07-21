@@ -81,7 +81,7 @@ mod test {
     use std::time::Duration;
 
     use tor_basic_utils::test_rng::testing_rng;
-    use tor_checkable::{ExternallySigned, Timebound};
+    use tor_checkable::{ExternallySigned, TimeBound};
     use web_time_compat::SystemTimeExt;
 
     use crate::SEC_PER_HOUR;

@@ -6,6 +6,7 @@
 
 use derive_deftly::{Deftly, define_derive_deftly};
 use std::fmt::{self, Display};
+use tor_cell::chancell::BoxedCellBody;
 use tor_cell::chancell::msg::{self as chanmsg};
 use tor_cell::restricted_msg;
 
@@ -79,6 +80,25 @@ impl Display for CreateResponse {
             CR::Destroy(destroy) => write!(f, "DESTROY({})", destroy.reason()),
             CR::CreatedFast(_) => Display::fmt("CREATED_FAST", f),
             CR::Created2(_) => Display::fmt("CREATED2", f),
+        }
+    }
+}
+
+restricted_msg! {
+    /// A RELAY or RELAY_EARLY channel message.
+    #[derive(Debug)]
+    pub(crate) enum RelayMaybeEarlyChanMsg : ChanMsg {
+        Relay,
+        RelayEarly,
+    }
+}
+
+impl RelayMaybeEarlyChanMsg {
+    /// Consume this message and return a `BoxedCellBody` for encryption/decryption.
+    pub(crate) fn into_relay_body(self) -> BoxedCellBody {
+        match self {
+            Self::Relay(x) => x.into_relay_body(),
+            Self::RelayEarly(x) => x.into_relay_body(),
         }
     }
 }

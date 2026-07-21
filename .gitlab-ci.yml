@@ -40,16 +40,16 @@ variables:
   # For static website deployment job
   SITE_URL: arti.torproject.org
   # Pinned chutney version.
-  # main @ 2026-06-15
-  CHUTNEY_COMMIT: "8e7ad77631b5c5113d513b658b2f822debcd18bd"
+  # main @ 2026-07-01
+  CHUTNEY_COMMIT: "d6659ac34c36122ed2590714e37269d1b983c336"
   # Rust doesn't do backtraces on panic by default, but we do want them in CI
   RUST_BACKTRACE: 1
 
 default:
   image:
     name: containers.torproject.org/tpo/tpa/base-images/debian:trixie
-    docker:
-      platform: linux/amd64
+  tags:
+    - amd64
   before_script:
     # get section_start and section_end bash functions
     - source maint/ci-log-span-fns.sh
@@ -410,15 +410,20 @@ rust-clippy-nontest:
 rust-nightly:
   needs: []
   stage: test
-  image: docker.io/rustlang/rust:nightly
-  # mitigate https://gitlab.torproject.org/tpo/tpa/team/-/issues/42317
-  timeout: 2h
+  # Temporarily pinned; see arti#2618.
+  #image: docker.io/rustlang/rust:nightly
+  image: rustlang/rust:nightly-2026-06-28
+
   # In case there is a bug in rust:nightly, you can instead pin an older
   # version of the Docker image until that bug is fixed.  To find the
   # SHA256 ID of the last working version of nightly, look at the logs
   # from the last successful CI run.  Here is an example of how to do so:
   #
-  # image: rustlang/rust@sha256:415b7c22ab4a8a3ec3efc9cc8d7b018964f0c6757fff27bbd110e0ed92566321
+  # image: rustlang/rust:nightly-2026-06-28
+
+  # mitigate https://gitlab.torproject.org/tpo/tpa/team/-/issues/42317
+  timeout: 2h
+
   allow_failure: true
   script:
     - rustup show
@@ -440,10 +445,14 @@ rust-nightly:
 check-api-surface:
   needs: []
   stage: test
-  image: docker.io/rustlang/rust:nightly
+  # Temporarily pinned; see arti#2618.
+  #image: docker.io/rustlang/rust:nightly
+  image: rustlang/rust:nightly-2026-06-28
+
   script:
     - maint/common/apt-install jq
-    - ./maint/check-api-surface-arti
+    # (We use CARGO='cargo' to prevent an explicit +nightly.)
+    - CARGO=cargo ./maint/check-api-surface-arti
 
 deb-source:
   needs: []
@@ -475,8 +484,6 @@ deb-binary-amd64:
       - "*.deb"
       - "*.changes"
       - "*.buildinfo"
-  tags:
-    - amd64
 
 # Note: big-endian targets do not compile due to lack of support from the merlin
 # crate, needed by the 'batch' feature of ed25519-dalek. A fix seems available
@@ -500,8 +507,6 @@ deb-binary-amd64:
       - "*.deb"
       - "*.changes"
       - "*.buildinfo"
-  tags:
-    - amd64
 
 deb-binary-arm64:
   needs: []
@@ -629,8 +634,6 @@ build-shadow:
     - key: $CI_JOB_NAME-shadow-$JOB_SHADOW_COMMIT
       paths:
       - opt/shadow
-  tags:
-    - amd64
   script:
     # Build shadow
     - |

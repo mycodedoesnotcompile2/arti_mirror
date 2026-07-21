@@ -49,11 +49,11 @@ use derive_deftly::Deftly;
 use ll::pk::ed25519::Ed25519Identity;
 use saturating_time::SaturatingTime;
 use std::fmt::Display;
-use std::sync::Arc;
 use std::sync::LazyLock;
 use std::{iter, net, time};
+use tor_basic_utils::intern::Intern;
 use tor_cert::{CertType, KeyUnknownCert};
-use tor_checkable::{Timebound, signed, timed};
+use tor_checkable::{TimeBound, signed, timed};
 use tor_error::{internal, into_internal};
 use tor_llcrypto as ll;
 use tor_llcrypto::pk::rsa::RsaIdentity;
@@ -107,7 +107,8 @@ pub struct RouterAnnotation {
 /// # Specification
 ///
 /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html>
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deftly, PartialEq)]
+#[derive_deftly(NetdocParseableUnverified, NetdocEncodable)]
 #[non_exhaustive]
 pub struct RouterDesc {
     /// `router` --- Introduce a router descriptor.
@@ -125,6 +126,7 @@ pub struct RouterDesc {
     /// * `master-key-ed25519 <master key>`
     /// * Exactly once.
     // TODO DIRAUTH when implementing verification, don't forget to check this!
+    #[deftly(netdoc(single_arg))]
     pub master_key_ed25519: Ed25519Public,
 
     /// `bandwidth` --- Report router's network bandwidth.
@@ -143,24 +145,27 @@ pub struct RouterDesc {
     ///
     /// * `published <date> <time>`
     /// * Exactly once.
+    #[deftly(netdoc(single_arg))]
     pub published: Iso8601TimeSp,
 
     /// `fingerprint` --- Redundant hash of ASN-1 encoding of router identity key.
     ///
     /// * `fingerprint <spaced fingerprint>`
     /// * At most once.
+    #[deftly(netdoc(single_arg))]
     pub fingerprint: Option<SpFingerprint>,
 
     /// `hibernating` --- Whether the relay is hibernating.
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:hibernating>
-    // TODO: Mark this as `netdoc(default)` and skip during encoding if false.
+    #[deftly(netdoc(single_arg, default(skip)))]
     pub hibernating: NumericBoolean,
 
     /// `uptime` --- How long this relay has been continously running
     ///
     /// * `uptime <number>`
     /// * At most once.
+    #[deftly(netdoc(single_arg))]
     pub uptime: Option<u64>,
 
     /// `onion-key` --- Relay's obsolete RSA tap key.
@@ -174,6 +179,7 @@ pub struct RouterDesc {
     ///
     /// * `ntor-onion-key <base64 padded key>`
     /// * Exactly once.
+    #[deftly(netdoc(single_arg))]
     pub ntor_onion_key: Curve25519Public,
 
     /// `ntor-onion-key-crosscert` --- Reverse cert by K_ntor on KP_relayid_ed
@@ -193,13 +199,18 @@ pub struct RouterDesc {
     /// * Any number of times.
     // TODO: these polices can get bulky too. Perhaps we should
     // de-duplicate them too.
+    // Not skipping the default here is probably desirable, as this field should
+    // generally always be ended with a default policy (i.e. default accept,
+    // default deny).
+    #[deftly(netdoc(flatten))]
     pub ipv4_policy: AddrPolicy,
 
     /// `ipv6-policy` --- Exit plicy summary for IPv6
     ///
     /// * `ipv6-policy <accept/reject> PortList`
     /// * At most once.
-    pub ipv6_policy: Arc<PortPolicy>,
+    #[deftly(netdoc(default(skip)))]
+    pub ipv6_policy: Intern<PortPolicy>,
 
     /// `overload-general` --- Relay is overloaded.
     ///
@@ -218,7 +229,8 @@ pub struct RouterDesc {
     /// * `family <LongIdent> ...`
     /// * One or more `LongIdent` arguments.
     /// * At most once.
-    pub family: Arc<RelayFamily>,
+    #[deftly(netdoc(default(skip)))]
+    pub family: Intern<RelayFamily>,
 
     /// `family-cert` --- Prove membership in a relay family.
     ///
@@ -246,6 +258,7 @@ pub struct RouterDesc {
     /// `or-address` --- Alternative ORport address and port
     ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:or-address>
+    #[deftly(netdoc(single_arg))]
     pub or_address: Vec<net::SocketAddr>,
 
     /// `tunnelled-dir-server` --- Accepts a `BEGIN_DIR` relay message.
@@ -265,8 +278,8 @@ pub struct RouterDesc {
 /// Signatures of a [`RouterDesc`].
 ///
 /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:router-sig-ed25519>
-#[derive(Clone, Debug, Deftly)]
-#[derive_deftly(NetdocParseableSignatures)]
+#[derive(Clone, Debug, PartialEq, Deftly)]
+#[derive_deftly(NetdocParseableSignatures, NetdocEncodable)]
 #[deftly(netdoc(signatures(hashes_accu = "RouterHashAccu")))]
 #[non_exhaustive]
 pub struct RouterDescSignatures {
@@ -283,6 +296,10 @@ pub struct RouterDescSignatures {
     /// * RSA signature of the document, including `router-sig-ed25519`.
     pub router_signature: RouterSignature,
 }
+
+// TODO: Implement a .verify() method.
+// TODO: Implement a .encode_sign() method.
+impl RouterDescUnverified {}
 
 /// Description of the software a relay is running.
 ///
@@ -510,7 +527,7 @@ impl RouterAnnotation {
 
 /// A parsed router descriptor whose signatures and/or validity times
 /// may or may not be invalid.
-pub type UncheckedRouterDesc = signed::SignatureGated<timed::TimerangeBound<RouterDesc>>;
+pub type UncheckedRouterDesc = signed::SignatureGated<timed::TimeRangeBound<RouterDesc>>;
 
 /// How long after its published time is a router descriptor officially
 /// supposed to be usable?
@@ -565,8 +582,8 @@ impl RouterDesc {
     }
 
     /// Return the declared family of this descriptor.
-    pub fn family(&self) -> Arc<RelayFamily> {
-        Arc::clone(&self.family)
+    pub fn family(&self) -> Intern<RelayFamily> {
+        Intern::clone(&self.family)
     }
 
     /// Return the authenticated family IDs of this descriptor.
@@ -640,7 +657,6 @@ impl RouterDesc {
     /// This function does the same as parse(), but returns errors based on
     /// byte-wise positions.  The parse() function converts such errors
     /// into line-and-byte positions.
-    #[allow(clippy::string_slice)] // TODO
     fn parse_internal(r: &mut NetDocReader<'_, RouterKwd>) -> Result<UncheckedRouterDesc> {
         // TODO: This function is too long!  The little "paragraphs" here
         // that parse one item at a time should be made into sub-functions.
@@ -744,7 +760,10 @@ impl RouterDesc {
             let mut d = ll::d::Sha256::new();
             d.update(&b"Tor router descriptor signature v1"[..]);
             let signed_end = ed_sig_pos + b"router-sig-ed25519 ".len();
-            d.update(&s[start_offset..signed_end]);
+            d.update(
+                s.get(start_offset..signed_end)
+                    .ok_or(internal!("chopped utf8"))?,
+            );
             let d = d.finalize();
             let sig: [u8; 64] = ed_sig
                 .parse_arg::<B64>(0)?
@@ -758,7 +777,10 @@ impl RouterDesc {
         let rsa_signature: ll::pk::rsa::ValidatableRsaSignature = {
             let mut d = ll::d::Sha1::new();
             let signed_end = rsa_sig_pos + b"router-signature\n".len();
-            d.update(&s[start_offset..signed_end]);
+            d.update(
+                s.get(start_offset..signed_end)
+                    .ok_or(internal!("chopped utf8"))?,
+            );
             let d = d.finalize();
             let sig = rsa_sig.obj("SIGNATURE")?;
             // TODO: we need to accept prefixes here. COMPAT BLOCKER.
@@ -1066,7 +1088,7 @@ impl RouterDesc {
             proto,
         };
 
-        let time_gated = timed::TimerangeBound::new(desc, start_time..expiry);
+        let time_gated = timed::TimeRangeBound::new(desc, start_time..expiry);
         let sig_gated = signed::SignatureGated::new(time_gated, signatures);
 
         Ok(sig_gated)
@@ -1189,6 +1211,11 @@ mod test {
     #![allow(clippy::needless_pass_by_value)]
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use crate::{
+        encode::{NetdocEncodable, NetdocEncoder},
+        parse2::{self, NetdocParseableUnverified, ParseInput},
+    };
+
     use super::*;
     const TESTDATA: &str = include_str!("../../testdata/routerdesc1.txt");
     const TESTDATA2: &str = include_str!("../../testdata/routerdesc2.txt");
@@ -1209,7 +1236,7 @@ mod test {
     #[test]
     fn parse_arbitrary() -> Result<()> {
         use std::str::FromStr;
-        use tor_checkable::{SelfSigned, Timebound};
+        use tor_checkable::{SelfSigned, TimeBound};
         let rd = RouterDesc::parse(TESTDATA)?
             .check_signature()?
             .dangerously_assume_timely();
@@ -1264,7 +1291,7 @@ mod test {
 
     #[test]
     fn parse_no_tap_key() -> Result<()> {
-        use tor_checkable::{SelfSigned, Timebound};
+        use tor_checkable::{SelfSigned, TimeBound};
         let rd = RouterDesc::parse(TESTDATA2)?
             .check_signature()?
             .dangerously_assume_timely();
@@ -1410,7 +1437,7 @@ mod test {
 
     #[test]
     fn test_family_ids() -> Result<()> {
-        use tor_checkable::{SelfSigned, Timebound};
+        use tor_checkable::{SelfSigned, TimeBound};
         let rd = RouterDesc::parse(TESTDATA3)?
             .check_signature()?
             .dangerously_assume_timely();
@@ -1428,5 +1455,58 @@ mod test {
         );
 
         Ok(())
+    }
+
+    /// Simple decoding and round-trip encoding for "normal" router descriptors.
+    ///
+    /// In other words: No edge cases and such.
+    #[test]
+    fn test_parse2_simple() {
+        let input = ParseInput::new(
+            include_str!("../../testdata2/cached-descriptors.new"),
+            "cached-descriptors.new",
+        );
+        let rd = parse2::parse_netdoc_multiple::<RouterDescUnverified>(&input)
+            .unwrap()
+            .into_iter()
+            .map(|rd| rd.unwrap_unverified())
+            .map(|(body, sig)| (body, sig.sigs))
+            .collect::<Vec<(RouterDesc, RouterDescSignatures)>>();
+        assert_eq!(rd.len(), 20);
+        assert_eq!(
+            rd[0].0.router,
+            RouterDescIntroItem {
+                nickname: "test002a".parse().unwrap(),
+                address: net::Ipv4Addr::LOCALHOST,
+                orport: 5102,
+                socksport: 0,
+                dirport: 7102
+            }
+        );
+        assert_eq!(
+            rd[0].0.fingerprint.unwrap(),
+            "257D 06F0 360B B224 6388 724F 109E C089 5A1D 41FB"
+                .parse()
+                .unwrap()
+        );
+
+        // Round-trip encoding by verifying that decoding it equals the original.
+        // This is the best we can get as the current encoder is not bug for
+        // bug compatible with the CTor one (i.e. absence of TAP and different
+        // order), so this is the closest we can get.
+        let mut out = NetdocEncoder::new();
+        for (body, sig) in &rd {
+            body.encode_unsigned(&mut out).unwrap();
+            sig.encode_unsigned(&mut out).unwrap();
+        }
+        let out = out.finish().unwrap();
+        let input2 = ParseInput::new(out.as_str(), "<router descriptor encoding>");
+        let rd2 = parse2::parse_netdoc_multiple::<RouterDescUnverified>(&input2)
+            .unwrap()
+            .into_iter()
+            .map(|rd| rd.unwrap_unverified())
+            .map(|(body, sig)| (body, sig.sigs))
+            .collect::<Vec<(RouterDesc, _)>>();
+        assert_eq!(rd, rd2);
     }
 }

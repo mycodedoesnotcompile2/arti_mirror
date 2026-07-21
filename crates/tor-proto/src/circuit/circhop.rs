@@ -136,11 +136,6 @@ impl HopSettings {
         };
         if hoptype == HopNegotiationType::None {
             ccontrol.use_fallback_alg();
-        } else if hoptype == HopNegotiationType::HsV3 {
-            // TODO #2037, TODO-CGO: We need a way to send congestion control extensions
-            // in this case too.  But since we aren't sending them, we
-            // should use the fallback algorithm.
-            ccontrol.use_fallback_alg();
         }
         let ccontrol = ccontrol; // drop mut
 
@@ -151,8 +146,14 @@ impl HopSettings {
             HopNegotiationType::HsV3 => {
                 // TODO-CGO: Support CGO when available.
                 cfg_if! {
-                    if #[cfg(feature = "hs-common")] {
-                        RelayCryptLayerProtocol::HsV3(RelayCellFormat::V0)
+                    if #[cfg(all(feature = "hs-common", feature = "flowctl-cc", feature = "counter-galois-onion"))] {
+                        if ccontrol.alg().compatible_with_cgo() && caps.supports_named_subver(named::RELAY_CRYPT_CGO) {
+                            RelayCryptLayerProtocol::Cgo
+                        } else {
+                            RelayCryptLayerProtocol::HsV3(RelayCellFormat::V0)
+                        }
+                    } else if #[cfg(feature = "hs-common")] {
+                            RelayCryptLayerProtocol::HsV3(RelayCellFormat::V0)
                     } else {
                         return Err(
                             tor_error::internal!("Unexpectedly tried to negotiate HsV3 without support!").into(),

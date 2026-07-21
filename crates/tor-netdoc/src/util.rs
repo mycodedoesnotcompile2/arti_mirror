@@ -2,6 +2,7 @@
 
 use derive_deftly::define_derive_deftly;
 
+pub(crate) mod rangemap_ext;
 pub(crate) mod str;
 
 pub mod batching_split_before;
@@ -115,7 +116,7 @@ fn test_as_mut_compiles() {
 }
 
 #[cfg(test)]
-pub(crate) fn regsub(update: &mut String, re: &str, repl: &str) {
+pub(crate) fn regsub(update: &mut String, re: &str, repl: impl regex::Replacer) {
     *update = regex::Regex::new(&format!("(?m){re}"))
         .expect(re)
         .replace_all(update, repl)

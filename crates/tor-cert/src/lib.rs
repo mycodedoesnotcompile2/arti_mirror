@@ -11,7 +11,7 @@
 #![deny(clippy::cargo_common_metadata)]
 #![deny(clippy::cast_lossless)]
 #![deny(clippy::checked_conversions)]
-#![warn(clippy::cognitive_complexity)]
+#![allow(clippy::cognitive_complexity)] // See arti#2556
 #![deny(clippy::debug_assert_with_mut_call)]
 #![deny(clippy::exhaustive_enums)]
 #![deny(clippy::exhaustive_structs)]
@@ -168,7 +168,7 @@ caret_int! {
 
 /// Structure for an Ed25519-signed certificate as described in Tor's
 /// cert-spec.txt.
-#[derive(Debug, Clone, derive_builder::Builder)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_builder::Builder)]
 #[builder(build_fn(skip))]
 pub struct Ed25519Cert {
     /// How many _hours_ after the epoch will this certificate expire?
@@ -262,7 +262,7 @@ impl CertifiedKey {
 }
 
 /// An extension in a Tor certificate.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum CertExt {
     /// Indicates which Ed25519 public key signed this cert.
     SignedWithEd25519(SignedWithEd25519Ext),
@@ -271,7 +271,7 @@ enum CertExt {
 }
 
 /// Any unrecognized extension on a Tor certificate.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(unused)]
 struct UnrecognizedExt {
     /// True iff this extension must be understand in order to validate the
@@ -294,7 +294,7 @@ impl CertExt {
 }
 
 /// Extension indicating that a key that signed a given certificate.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct SignedWithEd25519Ext {
     /// The key that signed the certificate including this extension.
     pk: ed25519::Ed25519Identity,
@@ -448,7 +448,7 @@ impl Ed25519Cert {
 /// [`should_have_signing_key`](KeyUnknownCert::should_have_signing_key);
 /// in the latter, call
 /// [`should_be_signed_with`](KeyUnknownCert::should_be_signed_with).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KeyUnknownCert {
     /// The certificate whose signing key might not be known.
     cert: UncheckedCert,
@@ -530,7 +530,7 @@ impl KeyUnknownCert {
 
 /// A certificate that has been parsed, but whose signature and
 /// timeliness have not been checked.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UncheckedCert {
     /// The parsed certificate, possibly modified by inserting an externally
     /// supplied key as its signing key.
@@ -548,7 +548,7 @@ pub struct UncheckedCert {
 
 /// A certificate that has been parsed and signature-checked, but whose
 /// timeliness has not been checked.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SigCheckedCert {
     /// The certificate that might or might not be timely
     cert: Ed25519Cert,
@@ -621,7 +621,7 @@ impl tor_checkable::SelfSigned<SigCheckedCert> for UncheckedCert {
     }
 }
 
-impl tor_checkable::Timebound<Ed25519Cert> for Ed25519Cert {
+impl tor_checkable::TimeBound<Ed25519Cert> for Ed25519Cert {
     type Error = tor_checkable::TimeValidityError;
 
     #[allow(unstable_name_collisions)]
@@ -639,7 +639,7 @@ impl tor_checkable::Timebound<Ed25519Cert> for Ed25519Cert {
     }
 }
 
-impl tor_checkable::Timebound<Ed25519Cert> for SigCheckedCert {
+impl tor_checkable::TimeBound<Ed25519Cert> for SigCheckedCert {
     type Error = tor_checkable::TimeValidityError;
     fn is_valid_at(&self, t: &time::SystemTime) -> std::result::Result<(), Self::Error> {
         self.cert.is_valid_at(t)
@@ -651,7 +651,7 @@ impl tor_checkable::Timebound<Ed25519Cert> for SigCheckedCert {
 }
 
 /// A certificate expiration time, represented in _hours_ since the unix epoch.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ExpiryHours(u32);
 
 /// The number of seconds in an hour.

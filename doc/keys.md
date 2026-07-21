@@ -155,11 +155,8 @@ hs_ed25519_secret_key
 Broken entries
 
 hostname
-
 hs_unrecognized_entry
-
 hss/allium-cepa/unrecognized-entry
-
 unrecognized-path-dir/ks_hs_id.ed25519_expanded_private
 
 ```

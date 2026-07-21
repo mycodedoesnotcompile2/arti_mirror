@@ -12,21 +12,26 @@ use crate::circuit::celltypes::{CreateRequest, CreateResponse};
 use crate::circuit::circhop::{HopNegotiationType, HopSettings};
 use crate::client::circuit::CircParameters;
 use crate::client::circuit::padding::PaddingController;
+use crate::crypto::binding::CircuitBinding;
 use crate::crypto::cell::CryptInit as _;
-use crate::crypto::cell::RelayLayer as _;
-use crate::crypto::cell::{InboundRelayLayer, OutboundRelayLayer, tor1};
+use crate::crypto::cell::{InboundRelayLayer, OutboundRelayLayer, RelayLayer, tor1};
 use crate::crypto::handshake::RelayHandshakeError;
 use crate::crypto::handshake::ServerHandshake as _;
 use crate::crypto::handshake::fast::CreateFastServer;
+use crate::crypto::handshake::ntor::{NtorSecretKey, NtorServer};
 use crate::memquota::SpecificAccount as _;
 use crate::memquota::{ChannelAccount, CircuitAccount};
-use crate::relay::RelayCirc;
 use crate::relay::channel_provider::ChannelProvider;
 use crate::relay::reactor::Reactor;
+use crate::relay::{IncomingStreamRequestFilter, RelayCirc};
+use smallvec::SmallVec;
 use std::sync::{Arc, RwLock, Weak};
 use tor_cell::chancell::ChanMsg as _;
 use tor_cell::chancell::CircId;
-use tor_cell::chancell::msg::{CreateFast, CreatedFast, Destroy, DestroyReason};
+use tor_cell::chancell::msg::{
+    CreateFast, Created2, CreatedFast, Destroy, DestroyReason, HandshakeType,
+};
+use tor_cell::relaycell::RelayCmd;
 use tor_error::{Bug, ErrorKind, HasKind, debug_report, internal, into_internal};
 use tor_linkspec::OwnedChanTarget;
 use tor_llcrypto::cipher::aes::Aes128Ctr;
@@ -35,7 +40,7 @@ use tor_llcrypto::pk::ed25519::Ed25519Identity;
 use tor_llcrypto::pk::rsa::RsaIdentity;
 use tor_memquota::mq_queue::ChannelSpec as _;
 use tor_memquota::mq_queue::MpscSpec;
-use tor_relay_crypto::pk::RelayNtorKeys;
+use tor_relay_crypto::pk::{RelayNtorKeypair, RelayNtorKeys};
 use tor_rtcompat::SpawnExt as _;
 use tor_rtcompat::{DynTimeProvider, Runtime};
 use tracing::warn;
@@ -50,6 +55,25 @@ pub struct CreateRequestHandler {
     /// The circuit extension keys.
     #[debug(skip)]
     ntor_keys: RwLock<RelayNtorKeys>,
+    /// An [`IncomingStreamRequestFilter`] factory for checking whether the user wants
+    /// this request, or wants to reject it immediately.
+    ///
+    /// Used for obtaining a current [`IncomingStreamRequestFilter`]
+    /// for building a circuit reactor.
+    //
+    // TODO(relay): it's likely this will end up changing quite a bit once we start
+    // figuring out exactly how the config/reconfigure() logic and IncomingStreamRequestFilter
+    // should function for relays.
+    #[debug(skip)]
+    incoming_filter_factory: Box<dyn IncomingStreamRequestFilterFactory + Send + Sync>,
+    /// The allowed incoming stream commands.
+    ///
+    /// Used for rejecting BEGIN and RESOLVE if we are not configured to be an exit.
+    ///
+    // TODO(relay): we might use this for rejecting BEGIN_DIR too,
+    // if we decide to allow relays to opt out of being dir mirrors.
+    // See https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4107/diffs#note_3426447
+    allowed_stream_cmds: SmallVec<[RelayCmd; 3]>,
 }
 
 impl CreateRequestHandler {
@@ -58,11 +82,15 @@ impl CreateRequestHandler {
         chan_provider: Weak<dyn ChannelProvider<BuildSpec = OwnedChanTarget> + Send + Sync>,
         circ_net_params: CircNetParameters,
         ntor_keys: RelayNtorKeys,
+        incoming_filter_factory: Box<dyn IncomingStreamRequestFilterFactory + Send + Sync>,
+        allowed_stream_cmds: &[RelayCmd],
     ) -> Self {
         Self {
             chan_provider,
             circ_net_params: RwLock::new(circ_net_params),
             ntor_keys: RwLock::new(ntor_keys),
+            incoming_filter_factory,
+            allowed_stream_cmds: allowed_stream_cmds.into(),
         }
     }
 
@@ -129,9 +157,8 @@ impl CreateRequestHandler {
         &self,
         runtime: &R,
         channel: &Arc<Channel>,
-        // TODO(relay): Use these for ntor handshakes.
-        _our_ed25519_id: &Ed25519Identity,
-        _our_rsa_id: &RsaIdentity,
+        our_ed25519_id: &Ed25519Identity,
+        our_rsa_id: &RsaIdentity,
         circ_id: CircId,
         msg: &CreateRequest,
         memquota: &ChannelAccount,
@@ -140,11 +167,13 @@ impl CreateRequestHandler {
         // Perform the handshake crypto and build the response.
         let handshake_components = match msg {
             CreateRequest::CreateFast(msg) => self.handle_create_fast(msg)?,
-            CreateRequest::Create2(_) => {
-                // TODO(relay): We might want to offload this to a CPU worker in the future.
-                // TODO(relay): Implement this.
-                return Err(internal!("Not implemented").into());
-            }
+            CreateRequest::Create2(msg) => match msg.handshake_type() {
+                HandshakeType::NTOR_V3 => self.handle_create2_ntorv3(msg.body(), our_ed25519_id)?,
+                HandshakeType::NTOR => self.handle_create2_ntor(msg.body(), our_rsa_id)?,
+                x @ HandshakeType::TAP | x => {
+                    return Err(HandleCreateError::Create2HandshakeType(x));
+                }
+            },
         };
 
         let memquota = CircuitAccount::new(memquota)?;
@@ -156,7 +185,8 @@ impl CreateRequestHandler {
         // a bounded queue.
         let time_provider = DynTimeProvider::new(runtime.clone());
         let account = memquota.as_raw_account();
-        let (sender, receiver) = MpscSpec::new(10_000_000).new_mq(time_provider, account)?;
+        let (sender, receiver) =
+            MpscSpec::new(10_000_000).new_mq(time_provider.clone(), account)?;
         let (sender, receiver) = crate::circuit::circ_sender::channel(sender, receiver);
 
         // TODO(relay): Do we really want a client padding machine here?
@@ -168,8 +198,16 @@ impl CreateRequestHandler {
             return Err(internal!("Unable to upgrade weak `ChannelProvider`").into());
         };
 
+        // Create an IncomingStreamRequestFilter for this circuit.
+        // This will get applied to every stream request (BEGIN, BEGIN_DIR, RESOLVE)
+        // arriving on the circuit.
+        //
+        // Note: once built, a circuit reactor's IncomingStreamRequestFilter cannot be changed
+        // (it's fixed for the entire duration of the circuit).
+        let incoming_filter = self.incoming_filter_factory.current_filter();
+
         // Build the relay circuit reactor.
-        let (reactor, circ) = Reactor::new(
+        let (reactor, circ, _incoming_streams) = Reactor::new(
             runtime.clone(),
             channel,
             circ_id,
@@ -181,9 +219,13 @@ impl CreateRequestHandler {
             chan_provider,
             padding_ctrl.clone(),
             padding_stream,
+            incoming_filter,
+            &self.allowed_stream_cmds,
             &memquota,
         )
         .map_err(into_internal!("Failed to start circuit reactor"))?;
+
+        // TODO(relay): send the incoming_streams stream to the handler in arti-relay
 
         // Start the reactor in a task.
         let () = runtime.spawn(async {
@@ -213,7 +255,10 @@ impl CreateRequestHandler {
         // TODO(relay): We might want to offload this to a CPU worker in the future.
         let (keygen, handshake_msg) = CreateFastServer::server(
             &mut rand::rng(),
+            // The CREATE_FAST handshake doesn't accept or return extensions,
+            // so this `AuxDataReply` is a no-op.
             &mut |_: &()| Some(()),
+            // The CREATE_FAST handshake doesn't use any keys.
             &[()],
             msg.handshake(),
         )?;
@@ -228,11 +273,9 @@ impl CreateRequestHandler {
             // CREATE_FAST always uses fixed-window flow control.
             .as_circ_parameters(AlgorithmDiscriminants::FixedWindow)?;
 
-        // TODO(relay): I think we might want to get these from the consensus instead?
-        let protos = tor_protover::Protocols::default();
-
-        // TODO(relay): I'm not sure if this is the right way to do this. It works for
+        // TODO(relay): I don't think that this is the right way to do this. It works for
         // CREATE_FAST, but we might want to rethink it for CREATE2.
+        let protos = tor_protover::Protocols::default();
         let hop_settings =
             HopSettings::from_params_and_caps(HopNegotiationType::None, &circ_params, &protos)
                 .map_err(into_internal!("Unable to build `HopSettings`"))?;
@@ -240,8 +283,7 @@ impl CreateRequestHandler {
         let response = CreatedFast::new(handshake_msg);
         let response = CreateResponse::CreatedFast(response);
 
-        let (crypto_out, crypto_in, _binding) = crypt.split_relay_layer();
-        let (crypto_out, crypto_in) = (Box::new(crypto_out), Box::new(crypto_in));
+        let (crypto_out, crypto_in, _binding) = split_relay_layer(crypt);
 
         Ok(CompletedHandshakeComponents {
             response,
@@ -250,6 +292,102 @@ impl CreateRequestHandler {
             crypto_in,
         })
     }
+
+    /// The handshake code for a CREATE2 ntor (non-v3) request.
+    fn handle_create2_ntor(
+        &self,
+        msg_body: &[u8],
+        our_rsa_id: &RsaIdentity,
+    ) -> Result<CompletedHandshakeComponents, HandleCreateError> {
+        let ntor_keys = self.ntor_keys(|k| {
+            NtorSecretKey::new(k.secret().clone(), *k.public().inner(), *our_rsa_id)
+        });
+
+        // TODO(relay): We might want to offload this to a CPU worker in the future.
+        let (keygen, handshake_msg) = NtorServer::server(
+            &mut rand::rng(),
+            // The ntor (non-v3) handshake doesn't accept or return extensions,
+            // so this `AuxDataReply` is a no-op.
+            &mut |_: &()| Some(()),
+            ntor_keys.as_ref(),
+            msg_body,
+        )?;
+
+        let crypt = tor1::CryptStatePair::<Aes128Ctr, Sha1>::construct(keygen)
+            .map_err(into_internal!("Circuit crypt state construction failed"))?;
+
+        let (crypto_out, crypto_in, _binding) = split_relay_layer(crypt);
+
+        let circ_params = self
+            .circ_net_params
+            .read()
+            .expect("rwlock poisoned")
+            // CREATE2 with ntor (non-v3) always uses fixed-window flow control.
+            .as_circ_parameters(AlgorithmDiscriminants::FixedWindow)?;
+
+        // TODO(relay): I don't think that this is the right way to do this. It works for
+        // ntor, but won't work well for ntor-v3.
+        let protos = tor_protover::Protocols::default();
+        let hop_settings =
+            HopSettings::from_params_and_caps(HopNegotiationType::None, &circ_params, &protos)
+                .map_err(into_internal!("Unable to build `HopSettings`"))?;
+
+        let response = Created2::new(handshake_msg);
+        let response = CreateResponse::Created2(response);
+
+        Ok(CompletedHandshakeComponents {
+            response,
+            hop_settings,
+            crypto_out,
+            crypto_in,
+        })
+    }
+
+    /// The handshake code for a CREATE2 ntor-v3 request.
+    fn handle_create2_ntorv3(
+        &self,
+        _msg_body: &[u8],
+        _our_ed25519_id: &Ed25519Identity,
+    ) -> Result<CompletedHandshakeComponents, HandleCreateError> {
+        Err(HandleCreateError::Create2HandshakeType(
+            HandshakeType::NTOR_V3,
+        ))
+    }
+
+    /// Helper to get the ntor keypairs after some transformation `map`.
+    ///
+    /// The `map` transformation must be fast since it blocks a read lock.
+    /// The returned keys are sorted with the most recent key first.
+    ///
+    /// It would be nice if this just returned an iterator,
+    /// but the read lock prevents this.
+    fn ntor_keys<T>(&self, map: impl FnMut(&RelayNtorKeypair) -> T) -> impl AsRef<[T]> {
+        let ntor_keys = self.ntor_keys.read().expect("rwlock poisoned");
+        let ntor_keys = [Some(ntor_keys.latest()), ntor_keys.previous()];
+        ntor_keys
+            .into_iter()
+            .flatten()
+            .map(map)
+            .collect::<SmallVec<[T; 2]>>()
+    }
+}
+
+/// Helper function to split a `RelayLayer` into forward and backward type-erased trait objects.
+fn split_relay_layer<F, B>(
+    crypt: impl RelayLayer<F, B>,
+) -> (
+    Box<dyn OutboundRelayLayer + Send>,
+    Box<dyn InboundRelayLayer + Send>,
+    CircuitBinding,
+)
+where
+    F: OutboundRelayLayer + Send + 'static,
+    B: InboundRelayLayer + Send + 'static,
+{
+    let (crypto_out, crypto_in, binding) = crypt.split_relay_layer();
+    let (crypto_out, crypto_in) = (Box::new(crypto_out), Box::new(crypto_in));
+
+    (crypto_out, crypto_in, binding)
 }
 
 /// An error that occurred while handling a CREATE* request.
@@ -258,6 +396,9 @@ enum HandleCreateError {
     /// Circuit relay handshake failed.
     #[error("Circuit relay handshake failed")]
     Handshake(#[from] RelayHandshakeError),
+    /// The requested handshake type is unsupported.
+    #[error("Unsupported handshake type {0}")]
+    Create2HandshakeType(HandshakeType),
     /// A memquota error.
     #[error("Memquota error")]
     Memquota(#[from] tor_memquota::Error),
@@ -276,6 +417,7 @@ impl HasKind for HandleCreateError {
     fn kind(&self) -> ErrorKind {
         match self {
             Self::Handshake(e) => e.kind(),
+            Self::Create2HandshakeType(_) => ErrorKind::NotImplemented,
             Self::Memquota(e) => e.kind(),
             Self::Spawn(e) => e.kind(),
             Self::Internal(_) => ErrorKind::Internal,
@@ -402,5 +544,25 @@ impl CircNetParameters {
             cc,
             flow_ctrl.clone(),
         ))
+    }
+}
+
+/// An [`IncomingStreamRequestFilter`] factory for building [`IncomingStreamRequestFilter`]s.
+///
+/// Each time a new circuit is opened, the [`CreateRequestHandler`] calls
+/// [`IncomingStreamRequestFilterFactory::current_filter`] to build
+/// an [`IncomingStreamRequestFilter`] for the circuit.
+pub trait IncomingStreamRequestFilterFactory {
+    /// Return the [`IncomingStreamRequestFilter`] to apply to the incoming stream requests
+    /// arriving on a circuit.
+    fn current_filter(&self) -> Box<dyn IncomingStreamRequestFilter>;
+}
+
+impl<F> IncomingStreamRequestFilterFactory for F
+where
+    F: Fn() -> Box<dyn IncomingStreamRequestFilter>,
+{
+    fn current_filter(&self) -> Box<dyn IncomingStreamRequestFilter> {
+        (self)()
     }
 }

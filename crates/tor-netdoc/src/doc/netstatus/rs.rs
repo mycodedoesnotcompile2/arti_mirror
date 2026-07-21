@@ -7,7 +7,6 @@
 pub(crate) mod build;
 pub(crate) mod md;
 pub(crate) mod plain;
-#[cfg(feature = "incomplete")]
 pub(crate) mod vote;
 
 use super::{ConsensusFlavor, ConsensusMethods, consensus_methods_comma_separated};
@@ -50,6 +49,7 @@ pub enum SoftwareVersion {
 ///
 /// We use this because we expect there not to be very many distinct versions of
 /// relay software in existence.
+// TODO DIRAUTH: Improve the caching here.
 static OTHER_VERSION_CACHE: InternCache<str> = InternCache::new();
 
 /// `m` item in votes
@@ -68,8 +68,7 @@ static OTHER_VERSION_CACHE: InternCache<str> = InternCache::new();
 ///  * These non-invariants apply both within one instance of this struct,
 ///    and across multiple instances of it within a `RouterStatus`.
 #[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Deftly)]
-#[derive_deftly(ItemValueParseable)]
-#[cfg_attr(feature = "incomplete", derive_deftly(ItemValueEncodable))] // untested
+#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
 #[non_exhaustive]
 pub struct RouterStatusMdDigestsVote {
     /// The methods for which this document is applicable.
@@ -91,7 +90,9 @@ impl std::str::FromStr for SoftwareVersion {
             }
         }
 
-        Ok(SoftwareVersion::Other(OTHER_VERSION_CACHE.intern_ref(s)))
+        Ok(SoftwareVersion::Other(
+            OTHER_VERSION_CACHE.intern_ref(s).into(),
+        ))
     }
 }
 

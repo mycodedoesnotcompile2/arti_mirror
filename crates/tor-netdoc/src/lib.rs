@@ -11,7 +11,7 @@
 #![deny(clippy::cargo_common_metadata)]
 #![deny(clippy::cast_lossless)]
 #![deny(clippy::checked_conversions)]
-#![warn(clippy::cognitive_complexity)]
+#![allow(clippy::cognitive_complexity)] // See arti#2556
 #![deny(clippy::debug_assert_with_mut_call)]
 #![deny(clippy::exhaustive_enums)]
 #![deny(clippy::exhaustive_structs)]
@@ -67,6 +67,9 @@ pub mod types;
 #[cfg(test)]
 mod test2;
 
+#[cfg(any(test, feature = "testing"))]
+mod test_support;
+
 #[doc(hidden)]
 pub use derive_deftly;
 
@@ -76,6 +79,11 @@ pub use derive_deftly;
 pub use util::batching_split_before;
 
 pub use err::{BuildError, Error, ExpectedConstantString, NetdocErrorKind, Pos};
+
+pub use util::rangemap_ext::rangemap_mutate_range;
+
+#[cfg(any(test, feature = "testing"))]
+pub use test_support::parse_testcase_from_netdoc;
 
 pub use encode::NetdocBuilder;
 

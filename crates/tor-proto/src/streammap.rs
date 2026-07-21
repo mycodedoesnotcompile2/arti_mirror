@@ -609,7 +609,6 @@ mod test {
     }
 
     #[test]
-    #[allow(clippy::cognitive_complexity)]
     fn streammap_basics() -> Result<()> {
         let mut map = StreamMap::new();
         let mut next_id = map.next_stream_id;
