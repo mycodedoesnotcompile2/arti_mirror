@@ -111,7 +111,6 @@ pub enum PtMessage {
     /// A line containing an unknown command.
     Unknown(String),
 }
-
 /// Parse a value (something on the RHS of an =), which could be a CString as defined by
 /// control-spec.txt §2. Returns (value, unparsed rest of string).
 // TODO(pryty26): Adding some octal parsing tests for this function would be nice.
@@ -127,49 +126,72 @@ fn parse_one_value(from: &str) -> Result<(String, &str), &'static str> {
         'l: loop {
             let ch = chars.next().ok_or("ran out of input parsing CString")?;
             match ch {
-                '\\' => match chars
-                    .next()
-                    .ok_or("encountered trailing backslash in CString")?
+                '\\' =>
+                // Note(pryty26):
+                // We need that loop, because sometimes we need to reparse the octal
+                // If we found a \ and then we found a \ again during parsing the octal,
+                // we need to reparse it.
                 {
-                    'n' => ret.push('\n'),
-                    'r' => ret.push('\r'),
-                    't' => ret.push('\t'),
-                    ch if ch.is_digit(8) => {
-                        // Note(pryty26): We will parse up to 3 octal digits,
-                        // so push the first digit and then consume up to 2 more. And then parse them all.
-                        // But if there is a str which is not a valid octal digit,
-                        // we will break and append those to the ret,
-                        // including collected numbers, just like we are parsing normal chars.
-                        // Of course, if there is a double quote we will break and not append it.
-                        let mut octal_digits: String = String::new();
-                        octal_digits.push(ch);
-                        for _ in 0..2 {
-                            let ch = match chars.next() {
-                                Some('\"') => {
-                                    ret.push_str(&octal_digits);
-                                    return Ok((ret, chars.as_str()));
-                                } // append the digits, then break and don't append the double quote
-                                Some(ch) => ch,
-                                None => Err("ran out of input parsing CString")?,
-                            };
-
-                            if ch.is_digit(8) {
+                    'm: loop {
+                        match chars
+                            .next()
+                            .ok_or("encountered trailing backslash in CString")?
+                        {
+                            'n' => ret.push('\n'),
+                            'r' => ret.push('\r'),
+                            't' => ret.push('\t'),
+                            ch if ch.is_digit(8) => {
+                                // Note(pryty26): We will parse up to 3 octal digits,
+                                // so push the first digit and then consume up to 2 more. And then parse them all.
+                                // But if there is a str which is not a valid octal digit,
+                                // we will break and append those to the ret,
+                                // including collected numbers, just like we are parsing normal chars.
+                                // Of course, if there is a double quote we will break and not append it.
+                                let mut octal_digits: String = String::new();
                                 octal_digits.push(ch);
-                            } else {
-                                // Not valid octal digit,
-                                // so break and append the collected octal digits and the current char to ret.
-                                ret.push_str(&octal_digits);
-                                ret.push(ch);
-                                continue 'l;
+                                for _ in 0..2 {
+                                    let ch: char = match chars.next() {
+                                        Some('\"') => {
+                                            ret.push_str(&octal_digits);
+                                            return Ok((ret, chars.as_str()));
+                                        } // append the digits, then break and don't append the double quote
+                                        Some('\\') => {
+                                            // We need to reparse it.
+                                            ret.push_str(&octal_digits);
+                                            ret.push('\\');
+                                            continue 'm;
+                                        }
+                                        Some(ch) => ch,
+                                        None => return Err("ran out of input parsing CString"),
+                                    };
+
+                                    if ch.is_digit(8) {
+                                        octal_digits.push(ch);
+                                    } else {
+                                        // Not valid octal digit,
+                                        // so break and append the collected octal digits and the current char to ret.
+                                        ret.push_str(&octal_digits);
+                                        ret.push(ch);
+                                        continue 'l;
+                                    }
+                                }
+                                let code_point: u32 = u32::from_str_radix(&octal_digits, 8)
+                                    .map_err(|_| "invalid octal number")?;
+                                let c = char::from_u32(code_point)
+                                    .ok_or("invalid Unicode code point")?;
+                                ret.push(c);
                             }
+                            '\\' => {
+                                // We need to reparse it.
+                                ret.push('\\');
+                                continue 'm;
+                            }
+                            ch => ret.push(ch),
                         }
-                        let code_point: u32 = u32::from_str_radix(&octal_digits, 8)
-                            .map_err(|_| "invalid octal number")?;
-                        let c = char::from_u32(code_point).ok_or("invalid Unicode code point")?;
-                        ret.push(c);
+                        // it will automatically break to the outer loop.
+                        break 'm;
                     }
-                    ch => ret.push(ch),
-                },
+                }
                 '"' => break,
                 _ => ret.push(ch),
             }
