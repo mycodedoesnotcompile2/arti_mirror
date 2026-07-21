@@ -34,6 +34,7 @@ run-curl () {
     local url="$1"
     local file="$2"
     if test -s "$file"; then return; fi
+    echo >&2 "fetching $url"
     curl "http://$url" >"$file.tmp"
     mv -f "$file"{.tmp,}
 }
