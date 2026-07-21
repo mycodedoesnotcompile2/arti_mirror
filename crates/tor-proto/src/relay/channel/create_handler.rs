@@ -94,7 +94,8 @@ pub struct CreateRequestHandler {
 }
 
 impl CreateRequestHandler {
-    /// Build a new [`CreateRequestHandler`].
+    /// Build a new [`CreateRequestHandler`], and a [`CircuitIncomingStreamReceiver`]
+    /// for receiving new streams that are opened on any incoming circuits.
     pub fn new(
         chan_provider: Weak<dyn ChannelProvider<BuildSpec = OwnedChanTarget> + Send + Sync>,
         circ_net_params: CircNetParameters,
