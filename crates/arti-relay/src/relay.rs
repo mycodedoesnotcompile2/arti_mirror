@@ -404,6 +404,11 @@ impl<R: Runtime> TorRelay<R> {
 
         // Spawn a directory mirror server task, if we are a dir cache.
         task_handles.spawn(async {
+            // TODO DIRMIRROR: it would be nicer if serve() returned
+            // Result<Void, _> to statically prove that it indeed never
+            // returns with a non-error.
+            // Plus, if we do that, we can simplify this invocation,
+            // because we won't need the anyhow! error below.
             self.dir_mirror.serve(begin_dir_rx).await?;
             Err(anyhow::anyhow!("dir mirror exited"))
         });
