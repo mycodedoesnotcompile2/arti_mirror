@@ -27,9 +27,15 @@ cd "$out"
 
 files=(consensus authority consensus-microdesc)
 
+run-curl () {
+    local url="$1"
+    local file="$2"
+    curl "$url" >"$file"
+}
+
 start () {
     for f in "${files[@]}"; do
-	curl "$auth/tor/status-vote/current/$f" >.entire."$f"
+        run-curl "$auth/tor/status-vote/current/$f" .entire."$f"
 
 	perl -ne 'print or die $! unless m/^r /..0' \
 	     <.entire."$f" >"$f.new"
