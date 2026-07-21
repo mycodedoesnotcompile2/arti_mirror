@@ -198,7 +198,7 @@ impl RefillWaiter {
 /// channel. The channel is a FIFO of waiters.
 ///
 /// Dropping it closes the pool which makes queued and new acquirers fail with
-/// [`super::PoolClosed`].
+/// [`super::BwPoolError::PoolClosed`].
 #[derive(Debug)]
 pub struct BandwidthRefiller {
     /// The shared token bucket which comes from the [`super::BandwidthPool`].
