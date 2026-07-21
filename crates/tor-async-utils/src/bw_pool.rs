@@ -122,7 +122,8 @@ impl Permit {
     /// Used in the for a Sink implementation that gets its permit in the poll_ready()
     /// which is before the start_send().
     pub fn claim_all(&mut self) {
-        let _ = self.claim(self.granted);
+        let r = self.claim(self.granted);
+        debug_assert!(r.is_ok());
     }
 
     /// How many tokens this permit still has granted a.k.a available.
