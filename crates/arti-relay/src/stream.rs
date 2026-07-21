@@ -65,7 +65,7 @@ async fn handle_circuit_incoming_streams<R: Runtime>(
         let begin_dir_tx = begin_dir_tx.clone();
 
         // Spawn a new task for each individual stream
-        let _ = runtime.spawn(async move {
+        if let Err(e) = runtime.spawn(async move {
             let res = match stream.request() {
                 IncomingStreamRequest::Begin(_) => exit::handle_begin(stream).await,
                 IncomingStreamRequest::BeginDir(_) => {
@@ -78,6 +78,8 @@ async fn handle_circuit_incoming_streams<R: Runtime>(
             if let Err(e) = res {
                 warn_report!(e, "Could not handle incoming stream");
             }
-        });
+        }) {
+            warn_report!(e, "Failed to launch incoming stream handler task");
+        }
     }
 }
