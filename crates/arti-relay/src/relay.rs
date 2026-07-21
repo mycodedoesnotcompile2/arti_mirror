@@ -392,7 +392,7 @@ impl<R: Runtime> TorRelay<R> {
             }
         });
 
-        // TODO(relay-tuning): The buffer size here was picked mostly arbitrarily
+        // TODO DIRMIRROR: The buffer size here was picked mostly arbitrarily
         // (on my new and not-very-busy relay, I noticed bursts of ~5000 BEGIN_DIR requests per second,
         // but I'm not sure how representative this is).
         //
