@@ -368,7 +368,12 @@ impl BandwidthPool {
             return None;
         }
         // If we have any waiters as in queued requests, the fast path is not available.
-        // This prevents new commers from jumping the queue.
+        // This prevents new comers from jumping the queue.
+        //
+        // There is a benign race here: a waiter can enqueue between this and the claim()
+        // below. This is equivalent to this call having run entirely before the enqueue,
+        // so it is a valid ordering. In other words, the caller will always be before
+        // the new waiters and thus accessing the fast path is correct.
         if self.bucket.has_waiters() {
             return None;
         }
