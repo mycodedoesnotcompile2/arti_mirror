@@ -9,6 +9,8 @@ use anyhow::Context as _;
 use tor_dirauth::consensus;
 use tor_error::ErrorReport as _;
 
+mod utils;
+
 /// Options and arguments to plugin invocation
 #[derive(Debug, clap::Parser)]
 struct CliArgs {
