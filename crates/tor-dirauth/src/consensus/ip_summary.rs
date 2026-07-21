@@ -241,6 +241,9 @@ impl ResolutionState {
             (RuleKind::Reject, IPP::Net(IpNet::V4(net))) => {
                 // "* Disregard `reject`s whose addrspec is an IPv4 subnet
                 //    completely contained within a private network (see below)."
+                //
+                // (As per the spec's suggested approximation, we treat partially-private
+                // rejects as public, rather than counting the addresses precisely.)
                 if PRIVATE_NETWORKS
                     .iter()
                     .any(|private| private.contains(&net))
