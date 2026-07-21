@@ -12,6 +12,13 @@
 #
 # The downloaded files should not be directly committed.  This script will download each file
 # with `curl` only once, not re-downloading files it already has.
+#
+#
+# Output, all in crates/tor-netdoc/testdata-live:
+#
+#     authority                         Vote
+#     consensus                         Consensus (plain)
+#     consensus-microdesc               Consensus (md)
 
 set -euo pipefail
 
