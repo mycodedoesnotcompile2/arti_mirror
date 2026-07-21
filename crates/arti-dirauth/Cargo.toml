@@ -24,6 +24,12 @@ __is_experimental = []
 tor-dirauth = { path = "../tor-dirauth", version = "0.44.0" }
 tor-netdoc = { path = "../tor-netdoc", version = "0.44.0", features = ["full", "incomplete"] }
 
+[[bin]]
+name = "arti-authority-plugin"
+path = "src/bin/arti_authority_plugin.rs"
+test = false
+bench = false
+
 [dev-dependencies]
 
 [package.metadata.docs.rs]
