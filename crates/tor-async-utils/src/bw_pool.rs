@@ -189,7 +189,8 @@ impl BandwidthAcquirer {
     /// requested amount is used. Only when a [`Permit`] is emitted that a new `tokens`
     /// value can be used.
     ///
-    /// Returns the error [`PoolClosed`] if the [`BandwidthRefiller`] has been dropped.
+    /// Returns a [`BwPoolError::PoolClosed`] error if the [`BandwidthRefiller`] has been
+    /// dropped.
     pub fn poll_acquire(
         &mut self,
         cx: &mut Context<'_>,
