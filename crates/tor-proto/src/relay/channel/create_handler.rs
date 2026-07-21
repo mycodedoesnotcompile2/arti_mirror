@@ -2,28 +2,29 @@
 
 use crate::FlowCtrlParameters;
 use crate::ccparams::{
-    Algorithm, AlgorithmDiscriminants, CongestionControlParams, CongestionWindowParams,
-    FixedWindowParams, RoundTripEstimatorParams, VegasParams,
+    AlgorithmDiscriminants, CongestionWindowParams, FixedWindowParams, RoundTripEstimatorParams,
+    VegasParams,
 };
 use crate::channel::Channel;
 use crate::circuit::CircuitRxSender;
 use crate::circuit::UniqId;
 use crate::circuit::celltypes::{CreateRequest, CreateResponse};
-use crate::circuit::circhop::{HopNegotiationType, HopSettings};
-use crate::client::circuit::CircParameters;
+use crate::circuit::circhop::{HandshakeParamsError, HopSettings};
 use crate::client::circuit::padding::PaddingController;
 use crate::crypto::binding::CircuitBinding;
 use crate::crypto::cell::CryptInit as _;
-use crate::crypto::cell::{InboundRelayLayer, OutboundRelayLayer, RelayLayer, tor1};
+use crate::crypto::cell::{InboundRelayLayer, OutboundRelayLayer, RelayLayer, cgo, tor1};
 use crate::crypto::handshake::RelayHandshakeError;
 use crate::crypto::handshake::ServerHandshake as _;
 use crate::crypto::handshake::fast::CreateFastServer;
 use crate::crypto::handshake::ntor::{NtorSecretKey, NtorServer};
+use crate::crypto::handshake::ntor_v3::{NtorV3SecretKey, NtorV3Server};
 use crate::memquota::SpecificAccount as _;
 use crate::memquota::{ChannelAccount, CircuitAccount};
 use crate::relay::channel_provider::ChannelProvider;
 use crate::relay::reactor::Reactor;
 use crate::relay::{IncomingStreamRequestFilter, RelayCirc};
+use aes::Aes128Enc;
 use smallvec::SmallVec;
 use std::sync::{Arc, RwLock, Weak};
 use tor_cell::chancell::ChanMsg as _;
@@ -32,7 +33,8 @@ use tor_cell::chancell::msg::{
     CreateFast, Created2, CreatedFast, Destroy, DestroyReason, HandshakeType,
 };
 use tor_cell::relaycell::RelayCmd;
-use tor_error::{Bug, ErrorKind, HasKind, debug_report, internal, into_internal};
+use tor_cell::relaycell::extend::{CcRequest, CcResponse, CircRequestExt, CircResponseExt};
+use tor_error::{ErrorKind, HasKind, debug_report, internal, into_internal};
 use tor_linkspec::OwnedChanTarget;
 use tor_llcrypto::cipher::aes::Aes128Ctr;
 use tor_llcrypto::d::Sha1;
@@ -40,10 +42,11 @@ use tor_llcrypto::pk::ed25519::Ed25519Identity;
 use tor_llcrypto::pk::rsa::RsaIdentity;
 use tor_memquota::mq_queue::ChannelSpec as _;
 use tor_memquota::mq_queue::MpscSpec;
+use tor_protover::NumberedSubver;
 use tor_relay_crypto::pk::{RelayNtorKeypair, RelayNtorKeys};
 use tor_rtcompat::SpawnExt as _;
 use tor_rtcompat::{DynTimeProvider, Runtime};
-use tracing::warn;
+use tracing::{debug, trace};
 
 /// Everything needed to handle CREATE* messages on channels.
 #[derive(derive_more::Debug)]
@@ -263,27 +266,28 @@ impl CreateRequestHandler {
             msg.handshake(),
         )?;
 
-        let crypt = tor1::CryptStatePair::<Aes128Ctr, Sha1>::construct(keygen)
-            .map_err(into_internal!("Circuit crypt state construction failed"))?;
-
-        let circ_params = self
+        let circ_net_params = self
             .circ_net_params
             .read()
             .expect("rwlock poisoned")
-            // CREATE_FAST always uses fixed-window flow control.
-            .as_circ_parameters(AlgorithmDiscriminants::FixedWindow)?;
+            .clone();
 
-        // TODO(relay): I don't think that this is the right way to do this. It works for
-        // CREATE_FAST, but we might want to rethink it for CREATE2.
-        let protos = tor_protover::Protocols::default();
-        let hop_settings =
-            HopSettings::from_params_and_caps(HopNegotiationType::None, &circ_params, &protos)
-                .map_err(into_internal!("Unable to build `HopSettings`"))?;
+        let hop_settings = HopSettings::from_handshake_params(
+            circ_net_params,
+            // CREATE_FAST always uses fixed-window flow control.
+            AlgorithmDiscriminants::FixedWindow,
+            /* cgo_enabled= */ false,
+        )?;
+
+        let crypt = tor1::CryptStatePair::<Aes128Ctr, Sha1>::construct(keygen)
+            .map_err(into_internal!("Circuit crypt state construction failed"))?;
+
+        let (crypto_out, crypto_in, _binding) = split_relay_layer(crypt);
 
         let response = CreatedFast::new(handshake_msg);
         let response = CreateResponse::CreatedFast(response);
 
-        let (crypto_out, crypto_in, _binding) = split_relay_layer(crypt);
+        trace!("Completed CREATE_FAST handshake");
 
         Ok(CompletedHandshakeComponents {
             response,
@@ -313,27 +317,28 @@ impl CreateRequestHandler {
             msg_body,
         )?;
 
+        let circ_net_params = self
+            .circ_net_params
+            .read()
+            .expect("rwlock poisoned")
+            .clone();
+
+        let hop_settings = HopSettings::from_handshake_params(
+            circ_net_params,
+            // CREATE2 with ntor (non-v3) always uses fixed-window flow control.
+            AlgorithmDiscriminants::FixedWindow,
+            /* cgo_enabled= */ false,
+        )?;
+
         let crypt = tor1::CryptStatePair::<Aes128Ctr, Sha1>::construct(keygen)
             .map_err(into_internal!("Circuit crypt state construction failed"))?;
 
         let (crypto_out, crypto_in, _binding) = split_relay_layer(crypt);
 
-        let circ_params = self
-            .circ_net_params
-            .read()
-            .expect("rwlock poisoned")
-            // CREATE2 with ntor (non-v3) always uses fixed-window flow control.
-            .as_circ_parameters(AlgorithmDiscriminants::FixedWindow)?;
-
-        // TODO(relay): I don't think that this is the right way to do this. It works for
-        // ntor, but won't work well for ntor-v3.
-        let protos = tor_protover::Protocols::default();
-        let hop_settings =
-            HopSettings::from_params_and_caps(HopNegotiationType::None, &circ_params, &protos)
-                .map_err(into_internal!("Unable to build `HopSettings`"))?;
-
         let response = Created2::new(handshake_msg);
         let response = CreateResponse::Created2(response);
+
+        trace!("Completed ntor handshake");
 
         Ok(CompletedHandshakeComponents {
             response,
@@ -346,12 +351,152 @@ impl CreateRequestHandler {
     /// The handshake code for a CREATE2 ntor-v3 request.
     fn handle_create2_ntorv3(
         &self,
-        _msg_body: &[u8],
-        _our_ed25519_id: &Ed25519Identity,
+        msg_body: &[u8],
+        our_ed25519_id: &Ed25519Identity,
     ) -> Result<CompletedHandshakeComponents, HandleCreateError> {
-        Err(HandleCreateError::Create2HandshakeType(
-            HandshakeType::NTOR_V3,
-        ))
+        let ntor_keys = self.ntor_keys(|k| {
+            NtorV3SecretKey::new(k.secret().clone(), *k.public().inner(), *our_ed25519_id)
+        });
+
+        let circ_net_params = self
+            .circ_net_params
+            .read()
+            .expect("rwlock poisoned")
+            .clone();
+
+        // These can be negotiated during the handshake.
+        let mut cc_algorithm = AlgorithmDiscriminants::FixedWindow;
+        let mut cgo_enabled = false;
+
+        // Helper which processes extension requests and returns any responses.
+        // Returns `None` if the handshake should fail.
+        let mut ext_reply_fn = |client_exts: &[CircRequestExt]| {
+            let mut response_exts = Vec::new();
+
+            // https://spec.torproject.org/tor-spec/create-created-cells.html#additional-data
+            //
+            // > Unless otherwise specified in the documentation for an extension type:
+            // > - [...]
+            // > - Parties MUST ignore any occurrence of an extension with a given type after the first such occurrence.
+            //
+            // TODO: Is there something nicer that we can do here?
+            // We could use accessors like `ExtList::get_cc_request()` (part of arti!4135).
+            // This would require iterating over the extension list multiple times,
+            // but that probably has neglibible cost overall.
+            let mut handled_cc_request = false;
+            let mut handled_subproto_request = false;
+
+            for ext in client_exts {
+                match ext {
+                    CircRequestExt::CcRequest(CcRequest { .. }) => {
+                        if handled_cc_request {
+                            continue;
+                        }
+                        handled_cc_request = true;
+
+                        cc_algorithm = AlgorithmDiscriminants::Vegas;
+
+                        // TODO: (opara) We can get rid of this conversion and panic
+                        // but it partly conflicts with arti!4135,
+                        // so leaving the refactoring for later.
+                        let sendme_inc: u8 = circ_net_params
+                            .cc
+                            .cwnd
+                            .sendme_inc()
+                            .try_into()
+                            .expect("sendme_inc does not fit in u8, but should be in [1, 254]");
+                        let response = CcResponse::new(sendme_inc);
+                        response_exts.push(CircResponseExt::CcResponse(response));
+                    }
+                    CircRequestExt::SubprotocolRequest(subproto_request) => {
+                        if handled_subproto_request {
+                            continue;
+                        }
+                        handled_subproto_request = true;
+
+                        // The `SubprotocolRequest::iter()` says it won't give us duplicates.
+                        for subproto in subproto_request.iter() {
+                            const RELAY_CRYPT_CGO: NumberedSubver =
+                                NumberedSubver::from_named(tor_protover::named::RELAY_CRYPT_CGO);
+
+                            match subproto {
+                                RELAY_CRYPT_CGO => cgo_enabled = true,
+                                _ => {
+                                    // TODO: It would be nice if this respected the protocol warning mode.
+                                    // But `debug_report!` would require an error type.
+                                    // Alternatively maybe it would be nice if we could return the
+                                    // error message to the caller instead of logging it.
+                                    // (And for other logging calls below.)
+                                    debug!(
+                                        ?subproto,
+                                        "CREATE2 ntor-v3 handshake requested unsupported subprotocol",
+                                    );
+                                    return None;
+                                }
+                            }
+                        }
+                    }
+                    CircRequestExt::Unrecognized(ext) => {
+                        // https://spec.torproject.org/tor-spec/create-created-cells.html#additional-data
+                        //
+                        // > Parties MUST ignore extensions with `EXT_FIELD_TYPE` bodies they do not recognize.
+                        debug!(
+                            ?ext,
+                            "CREATE2 ntor-v3 handshake requested unrecognized extension",
+                        );
+                    }
+                    ext => {
+                        // https://spec.torproject.org/tor-spec/create-created-cells.html#additional-data
+                        //
+                        // > Parties MUST ignore extensions with `EXT_FIELD_TYPE` bodies they do not recognize.
+                        //
+                        // We recognize this but don't know what to do with it.
+                        // We haven't implemented it, or it doesn't make sense
+                        // (for example `CircRequestExt::ProofOfWork`).
+                        // So we'll just behave as if we don't recognize it.
+                        debug!(
+                            ?ext,
+                            "CREATE2 ntor-v3 handshake requested unsupported extension",
+                        );
+                    }
+                }
+            }
+
+            Some(response_exts)
+        };
+
+        // TODO(relay): We might want to offload this to a CPU worker in the future.
+        let (keygen, handshake_msg) = NtorV3Server::server(
+            &mut rand::rng(),
+            &mut ext_reply_fn,
+            ntor_keys.as_ref(),
+            msg_body,
+        )?;
+
+        let hop_settings =
+            HopSettings::from_handshake_params(circ_net_params, cc_algorithm, cgo_enabled)?;
+
+        let (crypto_out, crypto_in, _binding) = if cgo_enabled {
+            let crypt = cgo::CryptStatePair::<Aes128Enc, Aes128Enc>::construct(keygen)
+                .map_err(into_internal!("Circuit crypt state construction failed"))?;
+            split_relay_layer(crypt)
+        } else {
+            let crypt = tor1::CryptStatePair::<Aes128Ctr, Sha1>::construct(keygen)
+                .map_err(into_internal!("Circuit crypt state construction failed"))?;
+            split_relay_layer(crypt)
+        };
+
+        let response = Created2::new(handshake_msg);
+        let response = CreateResponse::Created2(response);
+
+        trace!(cgo_enabled, ?cc_algorithm, "Completed ntor-v3 handshake");
+
+        Ok(CompletedHandshakeComponents {
+            response,
+            hop_settings,
+            crypto_out,
+            crypto_in,
+        })
     }
 
     /// Helper to get the ntor keypairs after some transformation `map`.
@@ -396,6 +541,9 @@ enum HandleCreateError {
     /// Circuit relay handshake failed.
     #[error("Circuit relay handshake failed")]
     Handshake(#[from] RelayHandshakeError),
+    /// Circuit relay handshake failed.
+    #[error("Failed to process the circuit relay handshake parameters")]
+    HandshakeParameters(#[from] HandshakeParamsError),
     /// The requested handshake type is unsupported.
     #[error("Unsupported handshake type {0}")]
     Create2HandshakeType(HandshakeType),
@@ -417,6 +565,7 @@ impl HasKind for HandleCreateError {
     fn kind(&self) -> ErrorKind {
         match self {
             Self::Handshake(e) => e.kind(),
+            Self::HandshakeParameters(e) => e.kind(),
             Self::Create2HandshakeType(_) => ErrorKind::NotImplemented,
             Self::Memquota(e) => e.kind(),
             Self::Spawn(e) => e.kind(),
@@ -494,57 +643,8 @@ impl CongestionControlNetParams {
 #[derive(Debug, Clone)]
 #[allow(clippy::exhaustive_structs)]
 pub struct CircNetParameters {
-    /// Whether we should include ed25519 identities when we send EXTEND2 cells.
-    pub extend_by_ed25519_id: bool,
-
     /// Congestion control network parameters.
     pub cc: CongestionControlNetParams,
-}
-
-impl CircNetParameters {
-    /// Convert the [`CircNetParameters`] into a [`CircParameters`].
-    ///
-    /// We expect the circuit creation handshake to know what congestion control algorithm was
-    /// negotiated, and provide that as `algorithm`.
-    //
-    // We disable `unused` warnings at the root of tor-proto,
-    // but it's nice to have here so we re-enable it.
-    #[warn(unused)]
-    fn as_circ_parameters(&self, algorithm: AlgorithmDiscriminants) -> Result<CircParameters, Bug> {
-        // Unpack everything to make sure that we aren't missing anything
-        // (otherwise clippy would warn).
-        let Self {
-            extend_by_ed25519_id,
-            cc:
-                CongestionControlNetParams {
-                    fixed_window,
-                    vegas_exit,
-                    cwnd,
-                    rtt,
-                    flow_ctrl,
-                },
-        } = self;
-
-        let algorithm = match algorithm {
-            AlgorithmDiscriminants::FixedWindow => Algorithm::FixedWindow(*fixed_window),
-            AlgorithmDiscriminants::Vegas => Algorithm::Vegas(*vegas_exit),
-        };
-
-        // TODO(arti#2442): The builder pattern here seems like a footgun.
-        let cc = CongestionControlParams::builder()
-            .alg(algorithm)
-            .fixed_window_params(*fixed_window)
-            .cwnd_params(*cwnd)
-            .rtt_params(rtt.clone())
-            .build()
-            .map_err(into_internal!("Could not build `CongestionControlParams`"))?;
-
-        Ok(CircParameters::new(
-            *extend_by_ed25519_id,
-            cc,
-            flow_ctrl.clone(),
-        ))
-    }
 }
 
 /// An [`IncomingStreamRequestFilter`] factory for building [`IncomingStreamRequestFilter`]s.

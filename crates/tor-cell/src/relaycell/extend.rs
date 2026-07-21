@@ -94,6 +94,8 @@ impl Ext for CcResponse {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubprotocolRequest {
     /// The protocols to enable.
+    ///
+    /// This is always sorted and without duplicates.
     protocols: Vec<tor_protover::NumberedSubver>,
 }
 
@@ -150,6 +152,14 @@ impl SubprotocolRequest {
         self.protocols
             .iter()
             .all(|p| list.supports_numbered_subver(*p))
+    }
+
+    /// The [`NumberedSubver`]s in this request.
+    ///
+    /// The iterator will not return duplicate [`NumberedSubver`]s.
+    pub fn iter(&self) -> impl Iterator<Item = tor_protover::NumberedSubver> {
+        // `Self::protocols` is documented as not containing duplicates.
+        self.protocols.iter().copied()
     }
 }
 
