@@ -19,6 +19,8 @@
 #     authority                         Vote
 #     consensus                         Consensus (plain)
 #     consensus-microdesc               Consensus (md)
+#
+#     NETSTATUS--entry--NICKNAME        Routerstatus entry for NICKNAME in NETSTATUS
 
 set -euo pipefail
 
@@ -58,11 +60,13 @@ start () {
 include_relay () {
     id=$1; nick=$2
     for f in "${files[@]}"; do
+	ent_file="$f--entry--$nick"
 	perl -ne '
               BEGIN { $exp = shift @ARGV; }
     	      $y = ($1 eq $exp) if m/^r (\S+ \S+) /;
 	      print or die $! if $y;
-        ' <.entire."$f" >>"$f.new" "$nick $id"
+        ' <.entire."$f" >"$ent_file" "$nick $id"
+	cat "$ent_file">>"$f.new" 
     done
 }
 
