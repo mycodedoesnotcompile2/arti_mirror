@@ -30,7 +30,7 @@ files=(consensus authority consensus-microdesc)
 run-curl () {
     local url="$1"
     local file="$2"
-    curl "$url" >"$file"
+    curl "http://$url" >"$file"
 }
 
 start () {
