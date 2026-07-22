@@ -344,7 +344,7 @@ impl TimeRangeBoundBuilder {
     ) -> Component::Inner {
         self.intersect_bounds(component.bounds());
         // Correctness: we include the component's bounds in `self`,
-        // so that when the whole `build` function returns. those bounds will be re-applied.
+        // so that when the whole `build` function returns, those bounds will be re-applied.
         component.dangerously_assume_timely()
     }
 
