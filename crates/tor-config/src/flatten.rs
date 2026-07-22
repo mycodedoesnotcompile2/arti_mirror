@@ -105,10 +105,9 @@ define_derive_deftly! {
     //  https://docs.rs/derive-deftly/latest/derive_deftly/macro.define_derive_deftly.html#exporting-a-template-for-use-by-other-crates
     //
     // The semantic behaviour of the template *does* have semver implications.
-    export Flattenable for struct, expect items:
+    export Flattenable for struct, expect items, beta_deftly:
 
-    impl<$tgens> $crate::Flattenable for $ttype
-    where $twheres {
+    ${impl $crate::Flattenable} {
         fn has_field(s: &str) -> bool {
             let fnames = $crate::flattenable_extract_fields::<'_, Self>();
             IntoIterator::into_iter(fnames).any(|f| *f == s)

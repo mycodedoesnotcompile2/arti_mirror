@@ -13,7 +13,7 @@ use tor_cell::chancell::msg::AnyChanMsg;
 use tor_cell::chancell::{AnyChanCell, ChanMsg, msg};
 use tor_cell::restrict::{RestrictedMsg, restricted_msg};
 use tor_cert::CertType;
-use tor_checkable::{TimeValidityError, Timebound};
+use tor_checkable::{TimeBound, TimeValidityError};
 use tor_error::internal;
 use tor_linkspec::{
     ChanTarget, ChannelMethod, OwnedChanTarget, OwnedChanTargetBuilder, RelayIds, RelayIdsBuilder,
@@ -803,7 +803,7 @@ pub(crate) fn check_cert_timeliness<C, CERT>(
     clock_skew: ClockSkew,
 ) -> (Result<()>, CERT)
 where
-    C: Timebound<CERT, Error = TimeValidityError>,
+    C: TimeBound<CERT, Error = TimeValidityError>,
 {
     let status = checkable
         .is_valid_at(&now)
@@ -937,6 +937,7 @@ pub(crate) mod test {
 
     #[cfg(feature = "relay")]
     use {
+        crate::circuit::reactor::test::AllowAllStreamsFilter,
         crate::relay::channel::handshake::RelayInitiatorHandshake,
         crate::relay::channel::test::{RelayMsgBuf, fake_auth_material},
         tor_basic_utils::test_rng::{TestingRng, testing_rng},
@@ -1312,6 +1313,10 @@ pub(crate) mod test {
                     Arc::downgrade(&chan_provider) as Weak<_>,
                     new_circ_net_params(),
                     ntor_keys,
+                    Box::new(|| Box::new(AllowAllStreamsFilter) as Box<_>),
+                    // The incoming stream command allow list can be empty
+                    // because this test doesn't actually open any streams
+                    &[],
                 ));
                 let peer_target = OwnedChanTargetBuilder::default().build().unwrap();
                 let unverified = RelayInitiatorHandshake::new(

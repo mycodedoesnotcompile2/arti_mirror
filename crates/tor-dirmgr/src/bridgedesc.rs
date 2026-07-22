@@ -20,7 +20,7 @@ use tracing::{debug, info, trace};
 
 use safelog::sensitive;
 use tor_basic_utils::retry::RetryDelay;
-use tor_checkable::{SelfSigned, Timebound};
+use tor_checkable::{SelfSigned, TimeBound};
 use tor_circmgr::CircMgr;
 use tor_error::{AbsRetryTime, HasRetryTime, RetryTime};
 use tor_error::{ErrorKind, HasKind, error_report, internal};
@@ -371,7 +371,7 @@ impl Debug for State {
         ) -> fmt::Result {
             writeln!(f, "  {}:", name)?;
             for b in schedule {
-                fmt_bridge(f, &b.bridge, &format_args!("{} {:?}", summary, &b.when))?;
+                fmt_bridge(f, &b.bridge, &format_args!("{} {:?}", summary, b.when))?;
             }
             Ok(())
         }
@@ -1572,12 +1572,12 @@ impl State {
         // (Will not cope if spawn ever failed, since that violates the invariant.)
         for (b, where_) in &tracked.tracked {
             match where_ {
-                None => panic!("missing {}", &b),
+                None => panic!("missing {}", b),
                 Some(Where::Schedule {
                     sch_name,
                     found_in_current,
                 }) => {
-                    assert!(found_in_current, "not-Schedule {} {}", &b, sch_name);
+                    assert!(found_in_current, "not-Schedule {} {}", b, sch_name);
                 }
                 _ => {}
             }

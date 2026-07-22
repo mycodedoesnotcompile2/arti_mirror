@@ -438,7 +438,7 @@ impl Readable for Relay {
 /// A Relay cell that is allowed to contain a CREATE message.
 ///
 /// Only a limited number of these may be sent on each circuit.
-#[derive(Clone, Debug, derive_more::Deref, derive_more::From, derive_more::Into, Deftly)]
+#[derive(Clone, Debug, derive_more::Deref, derive_more::From, Deftly)]
 #[derive_deftly(HasMemoryCost)]
 pub struct RelayEarly(Relay);
 impl Readable for RelayEarly {

@@ -126,7 +126,7 @@ impl ClientTunnel {
     /// Returns an error if the tunnel has more than one circuit.
     pub fn as_single_circ(&self) -> Result<&ClientCirc> {
         if self.circ.is_multi_path {
-            return Err(bad_api_usage!("Single circuit getter on multi path tunnel"))?;
+            Err(bad_api_usage!("Single circuit getter on multi path tunnel"))?;
         }
         Ok(&self.circ)
     }

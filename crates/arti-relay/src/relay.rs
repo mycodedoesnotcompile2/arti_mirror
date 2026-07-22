@@ -12,6 +12,7 @@ use tracing::warn;
 
 use fs_mistrust::Mistrust;
 use tor_basic_utils::iter_join;
+use tor_cell::relaycell::RelayCmd;
 use tor_chanmgr::{ChanMgr, ChanMgrConfig, Dormancy};
 use tor_config_path::CfgPathResolver;
 use tor_dirmgr::DirMgrConfig;
@@ -25,6 +26,7 @@ use tor_rtcompat::{NetStreamProvider, Runtime};
 
 use crate::client::RelayClient;
 use crate::config::TorRelayConfig;
+use crate::stream::RequestFilter;
 use crate::tasks::channel::build_circ_net_params;
 use crate::tasks::crypto::InitKeyMaterial;
 
@@ -73,12 +75,8 @@ pub(crate) struct InertTorRelay {
     /// Location on disk where we store persistent data.
     state_mgr: FsStateMgr,
 
-    /// Key manager. The ownership is shared between the crypto task and the main task
-    /// [`TorRelay`].
-    ///
-    // NOTE: In a future world, would be great if this wouldn't be an Arc<> and we could move it to
-    // the crypto task so nobody has access to it. For now, this is the compromise for simplicity.
-    keymgr: Arc<KeyMgr>,
+    /// Key manager.
+    keymgr: KeyMgr,
 }
 
 impl InertTorRelay {
@@ -130,14 +128,14 @@ impl InertTorRelay {
     /// Connect the [`InertTorRelay`] to the Tor network.
     pub(crate) async fn init<R: Runtime>(self, runtime: R) -> anyhow::Result<TorRelay<R>> {
         // Attempt to generate any missing keys/cert from the KeyMgr.
-        let init_key_material = crate::tasks::crypto::init_keys(&runtime, Arc::clone(&self.keymgr))
+        let init_key_material = crate::tasks::crypto::init_keys(&runtime, &self.keymgr)
             .context("Failed to generate keys")?;
 
         TorRelay::init(runtime, self, init_key_material).await
     }
 
     /// Create the [key manager](KeyMgr).
-    fn create_keymgr(state_path: &Path, mistrust: &Mistrust) -> anyhow::Result<Arc<KeyMgr>> {
+    fn create_keymgr(state_path: &Path, mistrust: &Mistrust) -> anyhow::Result<KeyMgr> {
         let key_store_dir = state_path.join("keystore");
 
         let persistent_store = ArtiNativeKeystore::from_path_and_mistrust(&key_store_dir, mistrust)
@@ -151,7 +149,6 @@ impl InertTorRelay {
             .primary_store(Box::new(persistent_store))
             .build()
             .context("Failed to build the 'KeyMgr'")?;
-        let keymgr = Arc::new(keymgr);
 
         // TODO: support C-tor keystore
 
@@ -182,7 +179,7 @@ pub(crate) struct TorRelay<R: Runtime> {
     create_request_handler: Arc<CreateRequestHandler>,
 
     /// See [`InertTorRelay::keymgr`].
-    keymgr: Arc<KeyMgr>,
+    keymgr: KeyMgr,
 
     /// Listening OR ports.
     or_listeners: Vec<<R as NetStreamProvider<SocketAddr>>::Listener>,
@@ -236,11 +233,17 @@ impl<R: Runtime> TorRelay<R> {
         let circ_net_params = build_circ_net_params(client.dirmgr().params().as_ref().as_ref())
             .context("Failed to build circuit parameters for CREATE* request handler")?;
 
+        // TODO(relay): add exit configuration, and update this to reject BEGIN and RESOLVE
+        // if we are not configured to run as an exit
+        let allow_incoming = &[RelayCmd::BEGIN, RelayCmd::BEGIN_DIR, RelayCmd::RESOLVE];
+
         // A handler that will process CREATE* requests on channels.
         let create_request_handler = CreateRequestHandler::new(
             Arc::downgrade(&chanmgr) as Weak<_>,
             circ_net_params,
             init_key_material.ntor_keys,
+            Box::new(|| Box::new(RequestFilter::default()) as Box<_>),
+            allow_incoming,
         );
         let create_request_handler = Arc::new(create_request_handler);
 

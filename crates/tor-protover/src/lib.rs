@@ -11,7 +11,7 @@
 #![deny(clippy::cargo_common_metadata)]
 #![deny(clippy::cast_lossless)]
 #![deny(clippy::checked_conversions)]
-#![warn(clippy::cognitive_complexity)]
+#![allow(clippy::cognitive_complexity)] // See arti#2556
 #![deny(clippy::debug_assert_with_mut_call)]
 #![deny(clippy::exhaustive_enums)]
 #![deny(clippy::exhaustive_structs)]
@@ -114,7 +114,7 @@ pub struct NamedSubver {
     kind: ProtoKind,
     /// The version of the protocol
     ///
-    /// Must be in 0..=MAX_VER
+    /// Must be in 1..=MAX_VER
     version: u8,
 }
 
@@ -280,7 +280,8 @@ static PROTOCOLS: InternCache<ProtocolsInner> = InternCache::new();
 
 impl From<ProtocolsInner> for Protocols {
     fn from(value: ProtocolsInner) -> Self {
-        Protocols(PROTOCOLS.intern(value))
+        // TODO: Use Intern more natively.
+        Protocols(PROTOCOLS.intern(value).into())
     }
 }
 
@@ -294,6 +295,23 @@ impl Protocols {
     /// `required-relay-protocols` field of the consensus.
     pub fn new() -> Self {
         Protocols::default()
+    }
+
+    /// Construct a new [`Protocols`] from a single recognized kind and a list of associated versions.
+    ///
+    /// (This method should not usually be needed for new parts of Arti:
+    /// its only use-case is a legacy piece of hsdesc parsing.)
+    pub fn from_kind_and_versions(kind: ProtoKind, versions: &str) -> Result<Self, ParseError> {
+        let versions = parse_version_mask(versions)?;
+        let mut protocols = ProtocolsInner::default();
+
+        if let Some(p) = protocols.recognized.get_mut(usize::from(kind.get())) {
+            *p = versions;
+        } else {
+            return Err(ParseError::Malformed);
+        }
+
+        Ok(protocols.into())
     }
 
     /// Helper: return true iff this protocol set contains the
@@ -482,7 +500,10 @@ impl ProtocolsInner {
     ///
     /// Uses `foundmask`, a bit mask saying which recognized protocols
     /// we've already found entries for.  Returns an error if `ent` is
-    /// for a protocol we've already added.
+    /// for a recognized protocol we've already added.
+    ///
+    /// WARNING: This method DOES NOT enforce uniqueness for unrecognized protocols.
+    /// The caller is responsible for doing that.
     ///
     /// Does not preserve sorting order; the caller must call `self.unrecognized.sort()` before returning.
     fn add(&mut self, foundmask: &mut u64, ent: SubprotocolEntry) -> Result<(), ParseError> {
@@ -497,14 +518,7 @@ impl ProtocolsInner {
                 *foundmask |= bit;
                 self.recognized[idx] = ent.supported;
             }
-            Protocol::Unrecognized(ref s) => {
-                if self
-                    .unrecognized
-                    .iter()
-                    .any(|ent| ent.proto.is_unrecognized(s))
-                {
-                    return Err(ParseError::Duplicate);
-                }
+            Protocol::Unrecognized(_) => {
                 if ent.supported != 0 {
                     self.unrecognized.push(ent);
                 }
@@ -518,7 +532,7 @@ impl ProtocolsInner {
 #[derive(Error, Debug, PartialEq, Eq, Clone)]
 #[non_exhaustive]
 pub enum ParseError {
-    /// A protocol version was not in the range 0..=63.
+    /// A protocol version was not in the range 1..=63.
     #[error("Protocol version out of range")]
     OutOfRange,
     /// Some subprotocol or protocol version appeared more than once.
@@ -557,6 +571,50 @@ fn is_good_number(n: &str) -> bool {
     n.chars().all(|ch| ch.is_ascii_digit()) && !n.starts_with('0')
 }
 
+/// Parse a version-list in `versions` into a bitmask.
+#[allow(clippy::string_slice)] // TODO
+fn parse_version_mask(versions: &str) -> Result<u64, ParseError> {
+    if versions.is_empty() {
+        // We need to handle this case specially, since otherwise
+        // it would be treated below as a single empty value, which
+        // would be rejected.
+        return Ok(0);
+    }
+    // Construct a bitmask based on the comma-separated versions.
+    let mut supported = 0_u64;
+    for ent in versions.split(',') {
+        // Find and parse lo and hi for a single range of versions.
+        // (If this is not a range, but rather a single version v,
+        // treat it as if it were a range v-v.)
+        let (lo_s, hi_s) = ent.split_once('-').unwrap_or((ent, ent));
+
+        if !is_good_number(lo_s) {
+            return Err(ParseError::Malformed);
+        }
+        if !is_good_number(hi_s) {
+            return Err(ParseError::Malformed);
+        }
+        let lo: u64 = lo_s.parse().map_err(|_| ParseError::Malformed)?;
+        let hi: u64 = hi_s.parse().map_err(|_| ParseError::Malformed)?;
+        // Make sure that lo and hi are in-bounds and consistent.
+        if lo > (MAX_VER as u64) || hi > (MAX_VER as u64) {
+            return Err(ParseError::OutOfRange);
+        }
+        if lo > hi {
+            return Err(ParseError::Malformed);
+        }
+        let mask = bitrange(lo, hi);
+        // Make sure that no version is included twice.
+        if (supported & mask) != 0 {
+            return Err(ParseError::Duplicate);
+        }
+        // Add the appropriate bits to the mask.
+        supported |= mask;
+    }
+
+    Ok(supported)
+}
+
 /// A single SubprotocolEntry is parsed from a string of the format
 /// Name=Versions, where Versions is a comma-separated list of
 /// integers or ranges of integers.
@@ -572,47 +630,10 @@ impl std::str::FromStr for SubprotocolEntry {
             Some(p) => Protocol::Proto(p),
             None => Protocol::Unrecognized(name.to_string()),
         };
-        if versions.is_empty() {
-            // We need to handle this case specially, since otherwise
-            // it would be treated below as a single empty value, which
-            // would be rejected.
-            return Ok(SubprotocolEntry {
-                proto,
-                supported: 0,
-            });
-        }
-        // Construct a bitmask based on the comma-separated versions.
-        let mut supported = 0_u64;
-        for ent in versions.split(',') {
-            // Find and parse lo and hi for a single range of versions.
-            // (If this is not a range, but rather a single version v,
-            // treat it as if it were a range v-v.)
-            let (lo_s, hi_s) = ent.split_once('-').unwrap_or((ent, ent));
-
-            if !is_good_number(lo_s) {
-                return Err(ParseError::Malformed);
-            }
-            if !is_good_number(hi_s) {
-                return Err(ParseError::Malformed);
-            }
-            let lo: u64 = lo_s.parse().map_err(|_| ParseError::Malformed)?;
-            let hi: u64 = hi_s.parse().map_err(|_| ParseError::Malformed)?;
-            // Make sure that lo and hi are in-bounds and consistent.
-            if lo > (MAX_VER as u64) || hi > (MAX_VER as u64) {
-                return Err(ParseError::OutOfRange);
-            }
-            if lo > hi {
-                return Err(ParseError::Malformed);
-            }
-            let mask = bitrange(lo, hi);
-            // Make sure that no version is included twice.
-            if (supported & mask) != 0 {
-                return Err(ParseError::Duplicate);
-            }
-            // Add the appropriate bits to the mask.
-            supported |= mask;
-        }
-        Ok(SubprotocolEntry { proto, supported })
+        Ok(SubprotocolEntry {
+            proto,
+            supported: parse_version_mask(versions)?,
+        })
     }
 }
 
@@ -643,6 +664,14 @@ impl std::str::FromStr for Protocols {
             result.add(&mut foundmask, s)?;
         }
         result.unrecognized.sort();
+        if result
+            .unrecognized
+            .windows(2)
+            .any(|w| w[0].proto == w[1].proto)
+        {
+            return Err(ParseError::Duplicate);
+        }
+
         Ok(result.into())
     }
 }

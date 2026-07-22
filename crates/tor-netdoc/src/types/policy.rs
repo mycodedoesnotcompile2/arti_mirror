@@ -18,15 +18,18 @@
 
 mod addrpolicy;
 mod portpolicy;
+mod summary;
 
 use std::fmt;
+use std::ops::RangeInclusive;
 use std::str::FromStr;
 use std::{collections::BTreeSet, fmt::Display};
 use thiserror::Error;
 use tor_basic_utils::iter_join;
 
-pub use addrpolicy::{AddrPolicy, AddrPortPattern};
+pub use addrpolicy::{AddrPolicy, AddrPortPattern, IpPattern};
 pub use portpolicy::PortPolicy;
+pub use summary::{PortPolicies, PortSummaryThresholds};
 
 use crate::NormalItemArgument;
 use crate::parse2::{ArgumentError, ArgumentStream, ItemArgumentParseable};
@@ -44,11 +47,13 @@ pub enum PolicyError {
     /// An address could not be interpreted.
     #[error("Invalid address")]
     InvalidAddress,
-    /// Tried to use a bitmask with the address "*".
-    #[error("mask with star")]
+    /// Tried to use a bitmask or prefix len with the address "*".
+    // TODO maybe rename this, we never use masks, only prefix lengths
+    #[error("mask or prefix length with star")]
     MaskWithStar,
     /// A bit mask was out of range.
-    #[error("invalid mask")]
+    // TODO maybe rename this, we never use masks, only prefix lengths
+    #[error("invalid prefix length or mask")]
     InvalidMask,
     /// A policy could not be parsed for some other reason.
     #[error("Invalid policy")]
@@ -69,8 +74,9 @@ pub enum PolicyError {
 /// assert!(! r.contains(21));
 /// assert!(! r.contains(8001));
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(derive_more::Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(clippy::exhaustive_structs)]
+#[debug("PortRange({})", &self)]
 pub struct PortRange {
     /// The first port in this range.
     lo: u16,
@@ -101,6 +107,18 @@ impl PortRange {
         } else {
             None
         }
+    }
+    /// Create a new `PortRange` from a `RangeInclusive`
+    ///
+    /// Returns `None` if the range is ill-formed, or contains zero.
+    pub fn from_range(r: RangeInclusive<u16>) -> Option<Self> {
+        Self::new(*r.start(), *r.end())
+    }
+    /// Create a new `PortRange` from a `RangeInclusive`
+    ///
+    /// Returns `None` if the range is ill-formed, or contains zero.
+    pub fn to_range(self) -> RangeInclusive<u16> {
+        self.lo..=self.hi
     }
     /// Return true if a port is in this range.
     pub fn contains(&self, port: u16) -> bool {

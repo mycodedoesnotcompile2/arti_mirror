@@ -24,8 +24,8 @@ use tor_error::internal;
 use crate::{NetdocErrorKind as EK, Result};
 
 use tor_checkable::signed::{self, SignatureGated};
-use tor_checkable::timed::{self, TimerangeBound};
-use tor_checkable::{SelfSigned, Timebound};
+use tor_checkable::timed::{self, TimeRangeBound};
+use tor_checkable::{SelfSigned, TimeBound};
 use tor_hscrypto::pk::{HsBlindId, HsClientDescEncKeypair, HsIntroPtSessionIdKey, HsSvcNtorKey};
 use tor_hscrypto::{RevisionCounter, Subcredential};
 use tor_linkspec::EncodedLinkSpec;
@@ -35,6 +35,7 @@ use tor_units::IntegerMinutes;
 use derive_builder::Builder;
 use smallvec::SmallVec;
 
+use std::num::NonZeroU8;
 use std::result::Result as StdResult;
 use std::time::SystemTime;
 
@@ -67,7 +68,7 @@ pub struct StoredHsDescMeta {
 /// An unchecked StoredHsDescMeta: parsed, but not checked for liveness or validity.
 #[cfg(feature = "hs-dir")]
 pub type UncheckedStoredHsDescMeta =
-    signed::SignatureGated<timed::TimerangeBound<StoredHsDescMeta>>;
+    signed::SignatureGated<timed::TimeRangeBound<StoredHsDescMeta>>;
 
 /// Information about how long to hold a given onion service descriptor, and
 /// when to replace it.
@@ -109,11 +110,15 @@ pub struct HsDesc {
 
     /// A list of offered proof-of-work parameters, at most one per type.
     pow_params: pow::PowParamSet,
-    // /// A list of recognized CREATE handshakes that this onion service supports.
-    //
-    // TODO:  When someday we add a "create2 format" other than "hs-ntor", we
-    // should turn this into a caret enum, record this info, and expose it.
-    // create2_formats: Vec<u32>,
+
+    /// A specified sendme increment and sub protocol capability list, if they were provided.
+    ///
+    /// Note that for historical reasons the protocol capabilities here are treated separately
+    /// from those in `protos`.
+    pub(super) flow_control: Option<(tor_protover::Protocols, NonZeroU8)>,
+
+    /// A list of subprotocol capabilities advertised by the onion service.
+    protos: tor_protover::Protocols,
 }
 
 /// A type of authentication that is required when introducing to an onion
@@ -170,7 +175,7 @@ pub struct EncryptedHsDesc {
 }
 
 /// An unchecked HsDesc: parsed, but not checked for liveness or validity.
-pub type UncheckedEncryptedHsDesc = signed::SignatureGated<timed::TimerangeBound<EncryptedHsDesc>>;
+pub type UncheckedEncryptedHsDesc = signed::SignatureGated<timed::TimeRangeBound<EncryptedHsDesc>>;
 
 #[cfg(feature = "hs-dir")]
 impl StoredHsDescMeta {
@@ -200,7 +205,7 @@ impl HsDesc {
     /// # Example
     /// ```
     /// # use hex_literal::hex;
-    /// # use tor_checkable::{SelfSigned, Timebound};
+    /// # use tor_checkable::{SelfSigned, TimeBound};
     /// # use tor_netdoc::doc::hsdesc::HsDesc;
     /// # use tor_netdoc::Error;
     /// #
@@ -268,7 +273,7 @@ impl HsDesc {
         valid_at: SystemTime,
         subcredential: &Subcredential,
         hsc_desc_enc: Option<&HsClientDescEncKeypair>,
-    ) -> StdResult<TimerangeBound<Self>, HsDescError> {
+    ) -> StdResult<TimeRangeBound<Self>, HsDescError> {
         use HsDescError as E;
         let unchecked_desc = Self::parse(input, blinded_onion_id)
             .map_err(E::OuterParsing)?
@@ -305,9 +310,9 @@ impl HsDesc {
         // means the time bounds of the two layers definitely intersect, so new_bounds **must** be
         // Some. It is a bug if new_bounds is None.
         let new_bounds = new_bounds
-            .ok_or_else(|| internal!("failed to compute TimerangeBounds for a valid descriptor"))?;
+            .ok_or_else(|| internal!("failed to compute TimeRangeBounds for a valid descriptor"))?;
 
-        Ok(TimerangeBound::new(hsdesc, new_bounds))
+        Ok(TimeRangeBound::new(hsdesc, new_bounds))
     }
 
     /// One or more introduction points used to contact the onion service.
@@ -350,6 +355,18 @@ impl HsDesc {
     /// Return the revision counter of this descriptor
     pub fn revision(&self) -> RevisionCounter {
         self.idx_info.revision
+    }
+
+    /// Return the set of protocol capabilities declared in this descriptor.
+    pub fn declared_capabilities(&self) -> &tor_protover::Protocols {
+        &self.protos
+    }
+
+    /// Return the flow control protocols,
+    /// and the `sendme_inc` value declared for congestion control in this descriptor,
+    /// if they were present.
+    pub fn flow_control(&self) -> Option<(tor_protover::Protocols, NonZeroU8)> {
+        self.flow_control.as_ref().map(|(p, inc)| (p.clone(), *inc))
     }
 }
 
@@ -504,7 +521,7 @@ impl EncryptedHsDesc {
         &self,
         subcredential: &Subcredential,
         hsc_desc_enc: Option<&HsClientDescEncKeypair>,
-    ) -> StdResult<TimerangeBound<SignatureGated<HsDesc>>, HsDescError> {
+    ) -> StdResult<TimeRangeBound<SignatureGated<HsDesc>>, HsDescError> {
         use HsDescError as E;
         let blinded_id = self.outer_doc.blinded_id();
         let revision_counter = self.outer_doc.revision_counter();
@@ -547,6 +564,8 @@ impl EncryptedHsDesc {
                 is_single_onion_service: inner.single_onion_service,
                 intro_points: inner.intro_points,
                 pow_params: inner.pow_params,
+                flow_control: inner.flow_control.clone(),
+                protos: inner.protos,
             })
         });
         Ok(time_bound)

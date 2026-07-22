@@ -4,13 +4,13 @@
 
 use std::fmt::Display;
 use std::str::FromStr;
-use std::sync::Arc;
 
 use crate::encode::{ItemEncoder, ItemValueEncodable};
 use crate::parse2::{ErrorProblem as EP, ItemValueParseable, UnparsedItem};
 
-use super::{PolicyError, PortRanges, RuleKind};
-use tor_basic_utils::intern::InternCache;
+use super::{PolicyError, PortRange, PortRanges, RuleKind};
+use tor_basic_utils::derive_deftly_template_GloballyInternable;
+use tor_basic_utils::intern::{GloballyInternable, Intern};
 use tor_error::Bug;
 
 use derive_deftly::Deftly;
@@ -37,7 +37,8 @@ use derive_deftly::Deftly;
 /// assert!(! policy.allows_port(1024));
 /// assert!(! policy.allows_port(9000));
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, Deftly)]
+#[derive_deftly(GloballyInternable)]
 pub struct PortPolicy {
     /// A list of port ranges that this policy allows.
     ///
@@ -78,14 +79,42 @@ impl PortPolicy {
         }
     }
 
+    /// Create a PortPolicy from an iterator of allowed port ranges.
+    ///
+    /// All other ports will be rejected.
+    ///
+    /// The input iterator must yield increasing nonoverlapping ranges,
+    /// or it's a [`PolicyError`].
+    pub fn from_ordered_allowed_ranges(
+        allowed: impl IntoIterator<Item = PortRange>,
+    ) -> Result<Self, PolicyError> {
+        let allowed = allowed
+            .into_iter()
+            .try_fold(PortRanges::new(), |mut b, i| {
+                b.push_ordered(i)?;
+                Ok(b)
+            })?;
+        Ok(Self::from_allowed_port_ranges(allowed))
+    }
+
+    /// Create a PortPolicy from a set of allowed port ranges.
+    ///
+    /// All other ports will be rejected.
+    ///
+    /// Unlike `from_allowed_ranges`, `from_allowed_port_ranges` does not iterate
+    /// over the input (which is a `Vec` underneath) and collect into a new `Vec`.
+    pub(super) fn from_allowed_port_ranges(allowed: PortRanges) -> Self {
+        Self { allowed }
+    }
+
     /// Return true iff `port` is allowed by this policy.
     pub fn allows_port(&self, port: u16) -> bool {
         self.allowed.contains(port)
     }
 
     /// Replace this PortPolicy with an interned copy, to save memory.
-    pub fn intern(self) -> Arc<Self> {
-        POLICY_CACHE.intern(self)
+    pub fn intern(self) -> Intern<Self> {
+        Self::into_intern(self)
     }
 
     /// Return true if this policy allows any ports at all.
@@ -162,12 +191,6 @@ impl ItemValueEncodable for PortPolicy {
         Ok(())
     }
 }
-
-/// Cache of PortPolicy objects, for saving memory.
-//
-/// This only holds weak references to the policy objects, so we don't
-/// need to worry about running out of space because of stale entries.
-static POLICY_CACHE: InternCache<PortPolicy> = InternCache::new();
 
 #[cfg(test)]
 mod test {

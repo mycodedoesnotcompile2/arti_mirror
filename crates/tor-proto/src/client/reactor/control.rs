@@ -665,6 +665,8 @@ impl<'a> ControlHandler<'a> {
                     return Ok(());
                 };
 
+                trace!(circ=%self.reactor.tunnel_id, settings=?&settings,
+                    "Adding virtual hop to circuit");
                 leg.add_hop(peer_id, outbound, inbound, binding, &settings)?;
                 let _ = done.send(Ok(()));
 

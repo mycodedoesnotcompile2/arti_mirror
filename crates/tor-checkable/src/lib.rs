@@ -11,7 +11,7 @@
 #![deny(clippy::cargo_common_metadata)]
 #![deny(clippy::cast_lossless)]
 #![deny(clippy::checked_conversions)]
-#![warn(clippy::cognitive_complexity)]
+#![allow(clippy::cognitive_complexity)] // See arti#2556
 #![deny(clippy::debug_assert_with_mut_call)]
 #![deny(clippy::exhaustive_enums)]
 #![deny(clippy::exhaustive_structs)]
@@ -54,7 +54,7 @@ use web_time_compat::{SystemTime, SystemTimeExt};
 pub mod signed;
 pub mod timed;
 
-/// An error that can occur when checking whether a Timebound object is
+/// An error that can occur when checking whether a TimeBound object is
 /// currently valid.
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 #[non_exhaustive]
@@ -70,17 +70,21 @@ pub enum TimeValidityError {
     Unspecified,
 }
 
-/// A Timebound object is one that is only valid for a given range of time.
+/// A `TimeBound` object is one that is only valid for a given range of time.
 ///
 /// It's better to wrap things in a TimeBound than to give them an is_valid()
 /// valid method, so that you can make sure that nobody uses the object before
 /// checking it.
 ///
-/// [`Timebound`] implementations are required to be **inclusive** of the
+/// [`TimeBound`] implementations are required to be **inclusive** of the
 /// bounds when performing a verification.  Mathematically speaking, this means
 /// that implementations must check whether `x ∊ [start; end]` but *not*
 /// `x ∊ (start; end)`.
-pub trait Timebound<T>: Sized {
+//
+// TODO: We should really provide a method or something to obtain a
+// TimeBoundRange from a TimeBound, as TimeBound itself is not a nice type to
+// work with.
+pub trait TimeBound<T>: Sized {
     /// An error type that's returned when the object is _not_ timely.
     type Error;
 
@@ -92,13 +96,13 @@ pub trait Timebound<T>: Sized {
     /// Return the underlying object without checking whether it's valid.
     fn dangerously_assume_timely(self) -> T;
 
-    /// Unwrap this Timebound object if it is valid at a given time.
+    /// Unwrap this TimeBound object if it is valid at a given time.
     fn check_valid_at(self, t: &time::SystemTime) -> Result<T, Self::Error> {
         self.is_valid_at(t)?;
         Ok(self.dangerously_assume_timely())
     }
 
-    /// Unwrap this Timebound object if it is valid now.
+    /// Unwrap this TimeBound object if it is valid now.
     fn check_valid_now(self) -> Result<T, Self::Error> {
         self.check_valid_at(&SystemTime::get())
     }
@@ -112,6 +116,9 @@ pub trait Timebound<T>: Sized {
         }
     }
 }
+
+#[deprecated = "use the new name, TimeBound, instead"]
+pub use TimeBound as Timebound;
 
 /// A cryptographically signed object that can be validated without
 /// additional public keys.

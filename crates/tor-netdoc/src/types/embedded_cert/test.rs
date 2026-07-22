@@ -24,7 +24,7 @@ use crate::types::{B64, EmbeddableCertObject, EmbeddedCert, RetainedOrderVec};
 use derive_deftly::Deftly;
 use std::time::{Duration, SystemTime};
 use tor_cert::{Ed25519Cert, KeyUnknownCert};
-use tor_checkable::{SelfSigned, Timebound};
+use tor_checkable::{SelfSigned, TimeBound};
 use tor_error::{Bug, into_internal};
 use tor_llcrypto::pk::ed25519::{self, Ed25519Identity, Ed25519PublicKey};
 

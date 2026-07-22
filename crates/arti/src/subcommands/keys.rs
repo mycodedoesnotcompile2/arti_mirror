@@ -185,6 +185,7 @@ fn display_unrecognized_entry(
                 }
                 println!("Location: {path}");
                 println!("Error: {}", entry.error());
+                println!();
             }
         }
         // NOTE: For the time being Arti only supports
@@ -250,7 +251,6 @@ fn run_list_keys(args: ListArgs, client: &InertTorClient) -> Result<()> {
         println!("Broken entries\n");
         for entry in unrecognized_entries {
             display_unrecognized_entry(&entry, display_keystore_id, args.output_format.compact);
-            println!();
         }
         for entry in unrecognized_paths {
             let raw_id = entry.raw_id();
@@ -432,7 +432,7 @@ fn create_all_services(
     client_config: &TorClientConfig,
 ) -> Result<Vec<OnionService>> {
     let mut services = Vec::new();
-    for (_, cfg) in config.onion_services.iter() {
+    for cfg in config.onion_services.values() {
         services.push(
             TorClient::<tor_rtcompat::PreferredRuntime>::create_onion_service(
                 client_config,
