@@ -260,8 +260,9 @@ impl HsDesc {
     ///     is provided, we use it to decrypt the inner encryption layer;
     ///     otherwise, we require that
     ///     the inner document is encrypted using the "no restricted discovery" method.
-    ///   * checks if both layers are valid at the `valid_at` timestamp
     ///   * validates the signatures on both layers
+    ///   * returns the contents wrapped in a [`TimeRangeBound`]; the caller will need
+    ///     to check the validity time (using methods from [`TimeBound`]).
     ///
     /// Returns an error if the descriptor cannot be parsed, or if one of the validation steps
     /// fails.
