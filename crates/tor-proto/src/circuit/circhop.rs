@@ -226,7 +226,7 @@ impl HopSettings {
                 RelayCryptLayerProtocol::Tor1(RelayCellFormat::V0),
             ),
             (AlgorithmDiscriminants::FixedWindow, true) => {
-                return Err(HandshakeParamsError::InvalidParams(
+                return Err(HandshakeParamsError::IncompatibleParams(
                     "requested CGO but not congestion control",
                 ));
             }
@@ -353,9 +353,9 @@ pub(crate) struct HandshakeSubprotocols {
 /// circuit handshake.
 #[derive(Clone, Debug, thiserror::Error)]
 pub(crate) enum HandshakeParamsError {
-    /// The provided parameters are incompatible.
-    #[error("The provided handshake parameters are incompatible: {0}")]
-    InvalidParams(&'static str),
+    /// The provided parameters are incompatible with each other.
+    #[error("The provided handshake parameters are incompatible with each other: {0}")]
+    IncompatibleParams(&'static str),
     /// An internal error.
     #[error("Internal error")]
     Internal(#[from] tor_error::Bug),
@@ -364,7 +364,7 @@ pub(crate) enum HandshakeParamsError {
 impl HasKind for HandshakeParamsError {
     fn kind(&self) -> ErrorKind {
         match self {
-            Self::InvalidParams(_) => ErrorKind::TorProtocolViolation,
+            Self::IncompatibleParams(_) => ErrorKind::TorProtocolViolation,
             Self::Internal(_) => ErrorKind::Internal,
         }
     }
