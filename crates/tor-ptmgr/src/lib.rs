@@ -121,16 +121,17 @@ impl<R: Runtime> PtMgr<R> {
         binaries: Vec<TransportConfig>,
     ) -> Result<HashMap<PtTransportName, TransportOptions>, tor_error::Bug> {
         let mut ret = HashMap::new();
-        // FIXME(pryty26): 
+        // FIXME(pryty26):
         // We should perform this check much earlier, when the config is parsed.
         for thing in binaries {
             for tn in thing.protocols.iter() {
                 let key = tn.clone();
                 match ret.entry(key) {
                     Entry::Occupied(_) => {
-                        return Err(tor_error::internal!(
-                            "Multiple transports configured for protocol {tn}. This is not currently supported."
-                        ));
+                        warn!(
+                            "Multiple transports configured for protocol {tn}.
+                             This is not currently supported. The last one will be used."
+                        );
                     }
                     Entry::Vacant(entry) => {
                         entry.insert(thing.clone().try_into()?);
