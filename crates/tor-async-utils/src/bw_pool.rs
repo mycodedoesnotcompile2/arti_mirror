@@ -15,7 +15,7 @@
 //! task needs to get a [`BandwidthAcquirer`] from the [`BandwidthPool::new_acquirer`]
 //! method.
 //!
-//! The acquirer is designed to be allocated once and reused throughout the task
+//! The acquirer is designed to be allocated once and reused throughout the owner object
 //! lifetime, thereby reducing the number of allocations needed at runtime.
 //!
 //! In order to be granted permission to use a certain number of tokens, the task needs
