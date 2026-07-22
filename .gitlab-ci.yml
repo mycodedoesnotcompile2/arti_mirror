@@ -676,7 +676,7 @@ integration-chutney:
   artifacts:
     paths:
       # chutney network including tor logs etc
-      - nodes.*/
+      - chutney-net
 
 # Runs the chutney integration test under shadow.
 integration-chutney-shadow:
@@ -724,7 +724,7 @@ integration-chutney-shadow:
   artifacts:
     paths:
       # chutney network including tor logs etc
-      - nodes.*/
+      - chutney-net
     when: always
     expire_in: 1 week
 
