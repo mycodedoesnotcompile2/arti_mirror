@@ -401,6 +401,7 @@ dependencies = [
  "tor-config-path",
  "tor-dircommon",
  "tor-dirmgr",
+ "tor-dirserver",
  "tor-error",
  "tor-general-addr",
  "tor-guardmgr",

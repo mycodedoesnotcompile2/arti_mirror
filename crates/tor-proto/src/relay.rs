@@ -16,8 +16,8 @@ pub(crate) mod reactor;
 
 pub use channel::MaybeVerifiableRelayResponderChannel;
 pub use channel::create_handler::{
-    CircNetParameters, CongestionControlNetParams, CreateRequestHandler,
-    IncomingStreamRequestFilterFactory,
+    CircNetParameters, CircuitIncomingStreamReceiver, CongestionControlNetParams,
+    CreateRequestHandler, IncomingStreamRequestFilterFactory,
 };
 
 use derive_deftly::Deftly;
