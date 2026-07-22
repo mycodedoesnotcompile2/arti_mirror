@@ -9,6 +9,21 @@
 # This script can also be used to help test with a *complete* consensus or vote:
 # Run it, and then
 #     TOR_NETDOC_TESTDATA_LIVE_PREFIX=$PWD/crates/tor-netdoc/testdata-live/.entire. cargo test -p tor-netdoc --all-features roundtrip_live
+#
+# The actual downloaded files are .gitignored and should not be directly committed.
+# This script will download each file with `curl` only once, not re-downloading files
+# it already has.  It will copy and/or process these to non-ignored output files -
+# see list below.  *Those* should be committed.
+#
+#
+# Output, all in crates/tor-netdoc/testdata-live:
+#
+#     authority                         Vote
+#     consensus                         Consensus (plain)
+#     consensus-microdesc               Consensus (md)
+#
+#     NETSTATUS--entry--NICKNAME        Routerstatus entry for NICKNAME in NETSTATUS
+#     NETSTATUS--desc--NICKNAME         (Micro)descriptor referenced from NETSTATUS
 
 set -euo pipefail
 
@@ -27,9 +42,18 @@ cd "$out"
 
 files=(consensus authority consensus-microdesc)
 
+run-curl () {
+    local url="$1"
+    local file="$2"
+    if test -s "$file"; then return; fi
+    echo >&2 "fetching $url"
+    curl "http://$url" >"$file.tmp"
+    mv -f "$file"{.tmp,}
+}
+
 start () {
     for f in "${files[@]}"; do
-	curl "$auth/tor/status-vote/current/$f" >.entire."$f"
+        run-curl "$auth/tor/status-vote/current/$f" .entire."$f"
 
 	perl -ne 'print or die $! unless m/^r /..0' \
 	     <.entire."$f" >"$f.new"
@@ -39,11 +63,41 @@ start () {
 include_relay () {
     id=$1; nick=$2
     for f in "${files[@]}"; do
+	ent_file="$f--entry--$nick"
 	perl -ne '
               BEGIN { $exp = shift @ARGV; }
     	      $y = ($1 eq $exp) if m/^r (\S+ \S+) /;
 	      print or die $! if $y;
-        ' <.entire."$f" >>"$f.new" "$nick $id"
+        ' <.entire."$f" >"$ent_file" "$nick $id"
+	cat "$ent_file">>"$f.new" 
+
+	case "$f" in
+	    consensus|authority)
+		digest=$(perl <"$ent_file" -ne '
+		    use MIME::Base64;
+		    next unless m{^r \S+ \S+ (\S+) };
+		    print uc unpack "H*", decode_base64($1);
+		')
+		url="$auth/tor/server/d"
+		;;
+	    consensus-microdesc)
+		digest=$(perl <"$ent_file" -ne '
+                    next unless m{^m ([+/0-9a-zA-Z]+)\s};
+                    print $1;
+                ')
+		url="$auth/tor/micro/d"
+		;;
+	    *)
+		echo >&2 'Unknown file type!'
+		exit 1
+		;;
+	esac
+
+	# Use a temporary filename based on the digest, so that run-curl won't reuse
+	# a previously-downloaded file with a different digest.
+	desc_file_tmp=.tmp."$f--desc--$nick.${digest//\//_}"
+        run-curl "$url/$digest" "$desc_file_tmp"
+        cp "$desc_file_tmp" "$f--desc--$nick"
     done
 }
 
