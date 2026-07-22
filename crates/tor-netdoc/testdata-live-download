@@ -10,8 +10,10 @@
 # Run it, and then
 #     TOR_NETDOC_TESTDATA_LIVE_PREFIX=$PWD/crates/tor-netdoc/testdata-live/.entire. cargo test -p tor-netdoc --all-features roundtrip_live
 #
-# The downloaded files should not be directly committed.  This script will download each file
-# with `curl` only once, not re-downloading files it already has.
+# The actual downloaded files are .gitignored and should not be directly committed.
+# This script will download each file with `curl` only once, not re-downloading files
+# it already has.  It will copy and/or process these to non-ignored output files -
+# see list below.  *Those* should be committed.
 #
 #
 # Output, all in crates/tor-netdoc/testdata-live:
