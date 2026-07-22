@@ -34,7 +34,7 @@ use tor_error::{internal, into_internal};
 use tor_netdoc::{
     doc::{
         authcert::{AuthCertKeyIds, AuthCertUnverified},
-        netstatus::{md, plain, ConsensusFlavor},
+        netstatus::{ConsensusFlavor, md, plain},
     },
     parse2::{self, NetdocParseable, NetdocParseableUnverified, ParseInput},
 };
@@ -704,7 +704,7 @@ impl StaticEngine {
             Err(e) => {
                 return Err(AuthorityRequestError::Bug(internal!(
                     "unhandled dirclient error: {e}"
-                )))
+                )));
             }
         }?;
 
