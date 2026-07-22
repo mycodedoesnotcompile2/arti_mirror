@@ -253,7 +253,7 @@ mod test {
                     proxy_addr: None,
                     run_on_startup: true,
                 }
-            )
+            );
         };
         let config: TransportConfig = TransportConfigBuilder::default()
             .protocols(vec!["obfs4".parse().unwrap(), "snowflake".parse().unwrap()])
@@ -286,7 +286,7 @@ mod test {
                     assert_eq!(problem, "Indicates a managed transport, but support is not enabled by cargo features".to_string());
                 }
                 other => panic!("Expected NoCompileTimeSupport error, got {:?}", other),
-            }
+            };
         }
 
         #[cfg(feature = "managed-pts")]
@@ -308,7 +308,7 @@ mod test {
                     );
                 }
                 other => panic!("Expected Inconsistent error, got {:?}", other),
-            }
+            };
         }
     }
 }
