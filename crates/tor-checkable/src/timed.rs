@@ -313,7 +313,7 @@ impl TimeRange {
     /// This is normally a mistake.
     ///
     /// Provided only for `TimeRange`; to call on a general [`TimeRangeBound<T>`],
-    /// write `.bounds().start()`.
+    /// write `.bounds().end()`.
     //
     // We could forbid this but it would make everything much less orthogonal.
     pub fn end(&self) -> Option<time::SystemTime> {
