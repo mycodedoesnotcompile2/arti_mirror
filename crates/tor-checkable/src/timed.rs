@@ -297,7 +297,7 @@ impl TimeRange {
         TimeRangeBound::new(t, self.bounds())
     }
 
-    /// Get the end of the validity period
+    /// Get the start of the validity period
     ///
     /// `None` means there is no start: the object has been valid forever.
     ///
@@ -307,7 +307,7 @@ impl TimeRange {
         self.start
     }
 
-    /// Get the start of the validity period
+    /// Get the end of the validity period
     ///
     /// `None` means there is no end: the object will been valid forever.
     /// This is normally a mistake.
