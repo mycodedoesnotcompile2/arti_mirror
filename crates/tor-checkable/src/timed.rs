@@ -315,7 +315,8 @@ impl TimeRange {
     /// Provided only for `TimeRange`; to call on a general [`TimeRangeBound<T>`],
     /// write `.bounds().end()`.
     //
-    // We could forbid this but it would make everything much less orthogonal.
+    // We could forbid the lack of an expiry time,
+    // but it would make everything much less consistent.
     pub fn end(&self) -> Option<time::SystemTime> {
         self.end
     }
