@@ -8,7 +8,7 @@ pub(crate) use ipnet::{IpNet, Ipv4Net};
 pub(crate) use itertools::Itertools;
 pub(crate) use rangemap::RangeInclusiveMap;
 
-pub(crate) use tor_error::{internal, into_internal, Bug};
+pub(crate) use tor_error::{Bug, internal, into_internal};
 pub(crate) use tor_netdoc::{
     //
     doc::netstatus::ConsensusMethod,

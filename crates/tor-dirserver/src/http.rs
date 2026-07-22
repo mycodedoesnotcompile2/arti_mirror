@@ -11,7 +11,7 @@ use tor_error::internal;
 use std::{
     collections::VecDeque,
     convert::Infallible,
-    panic::{catch_unwind, AssertUnwindSafe},
+    panic::{AssertUnwindSafe, catch_unwind},
     str::FromStr,
     sync::Arc,
     task::{Context, Poll},
@@ -20,7 +20,7 @@ use std::{
 
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
-use http::{header, Method, Request, Response, StatusCode};
+use http::{Method, Request, Response, StatusCode, header};
 use http_body::{Body, Frame};
 use hyper::{
     body::Incoming,
@@ -28,7 +28,7 @@ use hyper::{
     service::service_fn,
 };
 use hyper_util::rt::TokioIo;
-use rusqlite::{params, Transaction};
+use rusqlite::{Transaction, params};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     task::JoinSet,
@@ -36,7 +36,7 @@ use tokio::{
 };
 use tracing::warn;
 
-use crate::database::{self, sql, ContentEncoding, DocumentId};
+use crate::database::{self, ContentEncoding, DocumentId, sql};
 
 mod cache;
 
@@ -583,8 +583,8 @@ pub(in crate::http) mod test {
     };
 
     use flate2::{
-        write::{DeflateDecoder, DeflateEncoder, GzEncoder},
         Compression,
+        write::{DeflateDecoder, DeflateEncoder, GzEncoder},
     };
     use http::Version;
     use http_body_util::{BodyExt, Empty};
