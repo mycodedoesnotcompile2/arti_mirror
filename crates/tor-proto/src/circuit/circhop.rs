@@ -812,7 +812,6 @@ impl CircHopOutbound {
             Some(StreamEntMut::EndSent(EndSentStreamEnt { expiry, .. })) if now >= *expiry => {
                 return Err(possible_proto_violation_err(streamid));
             }
-            #[cfg(feature = "hs-service")]
             Some(StreamEntMut::EndSent(_))
                 if matches!(
                     msg.cmd(),
@@ -835,7 +834,6 @@ impl CircHopOutbound {
                     }
                 }
             }
-            #[cfg(any(feature = "hs-service", feature = "relay"))]
             None if matches!(
                 msg.cmd(),
                 RelayCmd::BEGIN | RelayCmd::BEGIN_DIR | RelayCmd::RESOLVE

@@ -338,9 +338,7 @@ impl StreamReactor {
                     return self.handle_incoming_stream_request(streamid, msg);
                 } else {
                     return Err(
-                        tor_error::internal!(
-                            "incoming stream not rejected, but relay and hs-service features are disabled?!"
-                            ).into()
+                        Error::CircProto(format!("Cannot handle {} cells on this circuit", msg.cmd())).into(),
                     );
                 }
             }
