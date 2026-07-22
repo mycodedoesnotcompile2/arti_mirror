@@ -74,7 +74,7 @@ strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2"
 tokio = { version = "1.47.1", features = ["signal"] }
 tor-basic-utils = { path = "../tor-basic-utils", version = "0.44.0" }
-tor-cell = { path = "../tor-cell", version = "0.44.0" }
+tor-cell = { path = "../tor-cell", version = "0.44.0", features = ["relay"] }
 tor-cert = { path = "../tor-cert", version = "0.44.0" }
 tor-chanmgr = { path = "../tor-chanmgr", version = "0.44.0", features = ["relay"] }
 tor-circmgr = { version = "0.44.0", path = "../tor-circmgr", features = ["flowctl-cc"] }
@@ -82,6 +82,7 @@ tor-config = { path = "../tor-config", version = "0.44.0" }
 tor-config-path = { path = "../tor-config-path", version = "0.44.0" }
 tor-dircommon = { version = "0.44.0", path = "../tor-dircommon" }
 tor-dirmgr = { path = "../tor-dirmgr", version = "0.44.0" }
+tor-dirserver = { path = "../tor-dirserver", version = "0.44.0" }
 tor-error = { path = "../tor-error", version = "0.44.0" }
 tor-general-addr = { path = "../tor-general-addr", version = "0.44.0" }
 tor-guardmgr = { version = "0.44.0", path = "../tor-guardmgr" }

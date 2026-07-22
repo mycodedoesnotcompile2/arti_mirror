@@ -24,6 +24,9 @@ use crate::memquota::{ChannelAccount, CircuitAccount};
 use crate::relay::channel_provider::ChannelProvider;
 use crate::relay::reactor::Reactor;
 use crate::relay::{IncomingStreamRequestFilter, RelayCirc};
+use crate::stream::IncomingStream;
+use futures::channel::mpsc;
+use futures::{SinkExt, Stream};
 use smallvec::SmallVec;
 use std::sync::{Arc, RwLock, Weak};
 use tor_cell::chancell::ChanMsg as _;
@@ -32,7 +35,7 @@ use tor_cell::chancell::msg::{
     CreateFast, Created2, CreatedFast, Destroy, DestroyReason, HandshakeType,
 };
 use tor_cell::relaycell::RelayCmd;
-use tor_error::{Bug, ErrorKind, HasKind, debug_report, internal, into_internal};
+use tor_error::{Bug, ErrorKind, HasKind, debug_report, internal, into_internal, warn_report};
 use tor_linkspec::OwnedChanTarget;
 use tor_llcrypto::cipher::aes::Aes128Ctr;
 use tor_llcrypto::d::Sha1;
@@ -74,24 +77,59 @@ pub struct CreateRequestHandler {
     // if we decide to allow relays to opt out of being dir mirrors.
     // See https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4107/diffs#note_3426447
     allowed_stream_cmds: SmallVec<[RelayCmd; 3]>,
+    /// A sender for the [`Stream`]s of `IncomingStream` of all circuits.
+    ///
+    /// The receiver will receive one [`Stream`] (of tor streams) per circuit.
+    ///
+    /// This being a bounded MPSC might seem a bit risky, because in theory,
+    /// if the receiver is not reading fast enough, sending will block.
+    /// In practice, however, it should never block (or buffer very much at all,
+    /// for that matter), because the user (arti-relay) is expected to read from
+    /// this in a tight loop, and spawn a task for handling each [`Stream`].
+    ///
+    /// Note: because this MPSC is not associated with any particular circuit or channel,
+    /// it does not participate in the memquota system (see [crate::memquota]).
+    #[debug(skip)]
+    circuit_stream_tx: mpsc::Sender<Box<dyn Stream<Item = IncomingStream> + Send + Sync + Unpin>>,
 }
 
 impl CreateRequestHandler {
-    /// Build a new [`CreateRequestHandler`].
+    /// Build a new [`CreateRequestHandler`], and a [`CircuitIncomingStreamReceiver`]
+    /// for receiving new streams that are opened on any incoming circuits.
     pub fn new(
         chan_provider: Weak<dyn ChannelProvider<BuildSpec = OwnedChanTarget> + Send + Sync>,
         circ_net_params: CircNetParameters,
         ntor_keys: RelayNtorKeys,
         incoming_filter_factory: Box<dyn IncomingStreamRequestFilterFactory + Send + Sync>,
         allowed_stream_cmds: &[RelayCmd],
-    ) -> Self {
-        Self {
+    ) -> (Self, CircuitIncomingStreamReceiver) {
+        // TODO(relay-tuning): this MPSC can be a bottleneck,
+        // as all the channels on this relay will want to send one item on it
+        // each time a new circuit is created.
+        //
+        // The value set here is a guesstimate.
+        const CIRC_STREAM_BUF_SIZE: usize = 1024;
+
+        // This is not associated with any particular circuit
+        // (it is for *all* circuits), so it doesn't participate in memquota
+        // (see circuit_stream_tx docs)
+        #[allow(clippy::disallowed_methods)]
+        let (stream_tx, stream_rx) = mpsc::channel(CIRC_STREAM_BUF_SIZE);
+
+        let handler = Self {
             chan_provider,
             circ_net_params: RwLock::new(circ_net_params),
             ntor_keys: RwLock::new(ntor_keys),
             incoming_filter_factory,
             allowed_stream_cmds: allowed_stream_cmds.into(),
-        }
+            circuit_stream_tx: stream_tx,
+        };
+
+        let circuit_stream_rx = CircuitIncomingStreamReceiver {
+            circuit_stream_rx: stream_rx,
+        };
+
+        (handler, circuit_stream_rx)
     }
 
     /// Update the circuit parameters from a network consensus.
@@ -207,7 +245,7 @@ impl CreateRequestHandler {
         let incoming_filter = self.incoming_filter_factory.current_filter();
 
         // Build the relay circuit reactor.
-        let (reactor, circ, _incoming_streams) = Reactor::new(
+        let (reactor, circ, incoming_streams) = Reactor::new(
             runtime.clone(),
             channel,
             circ_id,
@@ -225,14 +263,26 @@ impl CreateRequestHandler {
         )
         .map_err(into_internal!("Failed to start circuit reactor"))?;
 
-        // TODO(relay): send the incoming_streams stream to the handler in arti-relay
-
+        let mut circuit_stream_tx = self.circuit_stream_tx.clone();
         // Start the reactor in a task.
-        let () = runtime.spawn(async {
-            match reactor.run().await {
-                Ok(()) => {}
-                Err(e) => {
-                    debug_report!(e, "Relay circuit reactor exited with an error");
+        let () = runtime.spawn(async move {
+            if let Err(e) = circuit_stream_tx.send(Box::new(incoming_streams)).await {
+                warn_report!(e, "IncomingStream handler disappeared?!");
+                // If we get here, it means the relay stream handler task has gone away,
+                // so there won't be anything handling the incoming streams.
+                //
+                // The reactor is dropped, making the RelayCirc returned below
+                // in the RelayCircComponents unusable
+                // (RelayCirc::is_closing() will return `true`).
+                drop(reactor);
+            } else {
+                // Only spawn the circuit reactor if the incoming stream handler was
+                // able to receive our message
+                match reactor.run().await {
+                    Ok(()) => {}
+                    Err(e) => {
+                        debug_report!(e, "Relay circuit reactor exited with an error");
+                    }
                 }
             }
         })?;
@@ -369,6 +419,45 @@ impl CreateRequestHandler {
             .flatten()
             .map(map)
             .collect::<SmallVec<[T; 2]>>()
+    }
+}
+
+/// A receiver of [`Stream`]s (one for each incoming circuit),
+/// where each `Stream` produces [`IncomingStream`]s for that circuit.
+///
+// Note: in theory, it would be nice if we could get rid of this type altogether.
+// In an ideal world, I would've instead
+//
+//   * added a `RelayCirc::take_incoming_streams()` method for obtaining
+//     the futures::Stream of IncomingStream of that circuit
+//   * made the CreateRequestHandler send each Arc<RelayCirc> over to arti-relay for handling
+//   * made arti-relay obtain the futures::Stream<Item = IncomingStream> of each RelayCirc
+//     by calling `RelayCirc::take_incoming_streams()`
+//
+// However, that would involve adding some locking/interior mutability within RelayCirc
+// (which is always behind an Arc), or extending mq_queue::Receiver to be Clone,
+// which would be tricky to pull off (see the comment on mq_queue::Receiver about this).
+pub struct CircuitIncomingStreamReceiver {
+    /// The receiver for the [`Stream`]s of `IncomingStream` of all circuits.
+    ///
+    /// Receives one [`Stream`] (of tor streams) per circuit.
+    /// Each of these will be handled in a new task.
+    circuit_stream_rx: mpsc::Receiver<<Self as Stream>::Item>,
+}
+
+impl Stream for CircuitIncomingStreamReceiver {
+    // TODO: it would be nice if we could return a type-erased Stream here
+    // (impl Stream<...>), but impl Trait in associated types is unstable.
+    // See rust issue #63063 <https://github.com/rust-lang/rust/issues/63063>
+    type Item = Box<dyn Stream<Item = IncomingStream> + Send + Sync + Unpin>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        use futures::StreamExt as _;
+
+        self.circuit_stream_rx.poll_next_unpin(cx)
     }
 }
 

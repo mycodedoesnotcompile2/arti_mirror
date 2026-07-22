@@ -1309,7 +1309,8 @@ pub(crate) mod test {
                     );
                     RelayNtorKeys::new(ntor)
                 };
-                let create_handler = Arc::new(CreateRequestHandler::new(
+
+                let (create_handler, _stream_rx) = CreateRequestHandler::new(
                     Arc::downgrade(&chan_provider) as Weak<_>,
                     new_circ_net_params(),
                     ntor_keys,
@@ -1317,7 +1318,7 @@ pub(crate) mod test {
                     // The incoming stream command allow list can be empty
                     // because this test doesn't actually open any streams
                     &[],
-                ));
+                );
                 let peer_target = OwnedChanTargetBuilder::default().build().unwrap();
                 let unverified = RelayInitiatorHandshake::new(
                     RelayMsgBuf(MsgBuf::new(input)),
@@ -1326,7 +1327,7 @@ pub(crate) mod test {
                     vec![SocketAddr::new(IpAddr::from([127, 0, 0, 1]), 6666)],
                     &peer_target,
                     fake_mq(),
-                    create_handler,
+                    Arc::new(create_handler),
                 )
                 .connect(move || now)
                 .await?;

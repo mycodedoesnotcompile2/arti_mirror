@@ -835,7 +835,7 @@ impl CircHopOutbound {
                     }
                 }
             }
-            #[cfg(feature = "hs-service")]
+            #[cfg(any(feature = "hs-service", feature = "relay"))]
             None if matches!(
                 msg.cmd(),
                 RelayCmd::BEGIN | RelayCmd::BEGIN_DIR | RelayCmd::RESOLVE
