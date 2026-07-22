@@ -14,13 +14,13 @@ import atexit
 import argparse
 import os
 import pathlib
-import shutil
 import subprocess
 import sys
 import yaml
 
 from pathlib import Path
 from typing import Any
+from chutney import TorNet
 
 import common
 from config import Config
@@ -28,9 +28,17 @@ from config import Config
 assert __name__ == "__main__", "Can't determine _SCRIPT_DIR"
 _SCRIPT_DIR = Path(sys.argv[0]).parent.resolve()
 
-SHADOW_DATA_DIR = "shadow.chutney.data"
-SHADOW_CONFIG_FILE = "shadow.chutney.yaml"
-SHADOW_LOG_FILE = "shadow.log"
+
+def _shadow_data_dir_path(n: TorNet.Network) -> Path:
+    return n.dir.joinpath("shadow.data")
+
+
+def _shadow_config_path(n: TorNet.Network) -> Path:
+    return n.dir.joinpath("shadow.yaml")
+
+
+def _shadow_log_path(n: TorNet.Network) -> Path:
+    return n.dir.joinpath("shadow.log")
 
 
 def _integration_e2e(args: argparse.Namespace) -> None:
@@ -142,6 +150,9 @@ def _configure_and_run_shadow(args: argparse.Namespace) -> None:
     # configure this test
     subprocess.check_call([_SCRIPT_DIR.joinpath("setup")])
 
+    config = Config.load_json(Path(_SCRIPT_DIR).joinpath("arti.run.json"))
+    config.export_env()
+
     # initialize the network
     subprocess.check_call(
         [_SCRIPT_DIR.joinpath("init")],
@@ -158,23 +169,22 @@ def _configure_and_run_shadow(args: argparse.Namespace) -> None:
         ),
     )
 
+    # Load the network we just initialized
+    network = TorNet.Network.from_data_dir()
+
     # Write out shadow config. We could just pipe it directly to the shadow
     # process below, but writing it out is useful for debugging.
     shadow_config = gen_shadow_config(args.seed)
-    with open(SHADOW_CONFIG_FILE, "w") as f:
+    with _shadow_config_path(network).open("w") as f:
         f.write(yaml.safe_dump(shadow_config))
-
-    # Remove shadow's data dir. (It will bail if the directory already exists)
-    if os.path.isdir(SHADOW_DATA_DIR):
-        shutil.rmtree(SHADOW_DATA_DIR)
 
     shadow_args = [
         "shadow",
-        "--data-directory=" + SHADOW_DATA_DIR,
+        "--data-directory=" + str(_shadow_data_dir_path(network)),
         "--progress=true",
-        SHADOW_CONFIG_FILE,
+        str(_shadow_config_path(network)),
     ]
-    with open(SHADOW_LOG_FILE, "w") as shadow_log_file:
+    with network.dir.joinpath(_shadow_log_path(network)).open("w") as shadow_log_file:
         subprocess.run(shadow_args, check=True, stdout=shadow_log_file)
 
 

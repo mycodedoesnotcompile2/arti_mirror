@@ -675,7 +675,6 @@ integration-chutney:
     - tests/chutney/integration-e2e
   artifacts:
     paths:
-      - benchmark_results.json
       # chutney network including tor logs etc
       - nodes.*/
 
@@ -724,10 +723,6 @@ integration-chutney-shadow:
     - tests/chutney/integration-e2e-shadow --seed="$SEED"
   artifacts:
     paths:
-      - benchmark_results.json
-      - shadow.chutney.yaml
-      - shadow.chutney.data/
-      - shadow.log
       # chutney network including tor logs etc
       - nodes.*/
     when: always
