@@ -203,7 +203,7 @@ impl HopSettings {
     pub(crate) fn from_handshake_params(
         circ_net_params: CircNetParameters,
         cc_algorithm: AlgorithmDiscriminants,
-        cgo_enabled: bool,
+        subprotos_requested: HandshakeSubprotocols,
     ) -> StdResult<Self, HandshakeParamsError> {
         // Unpack everything to make sure that we aren't missing anything
         // (otherwise clippy would warn).
@@ -218,7 +218,9 @@ impl HopSettings {
                 },
         } = circ_net_params;
 
-        let (cc_algorithm, relay_crypt_protocol) = match (cc_algorithm, cgo_enabled) {
+        let HandshakeSubprotocols { relay_crypt_cgo } = subprotos_requested;
+
+        let (cc_algorithm, relay_crypt_protocol) = match (cc_algorithm, relay_crypt_cgo) {
             (AlgorithmDiscriminants::FixedWindow, false) => (
                 Algorithm::FixedWindow(fixed_window),
                 RelayCryptLayerProtocol::Tor1(RelayCellFormat::V0),
@@ -297,6 +299,8 @@ impl HopSettings {
         // with this extension. For the current list, see
         // https://spec.torproject.org/tor-spec/create-created-cells.html#subproto-request)
         //
+        // TODO: Should this use `HandshakeSubprotocols` so that the above comment has some
+        // compile-time checks?
         #[allow(unused_mut)]
         let mut required_protocol_capabilities: Vec<tor_protover::NamedSubver> = Vec::new();
 
@@ -329,6 +333,20 @@ impl std::default::Default for CircParameters {
             n_outgoing_cells_permitted: None,
         }
     }
+}
+
+/// Subprotocols that are allowed to be requested through a subprotocol request during a circuit
+/// handshake.
+///
+/// The allowed subprotocols are defined in:
+/// <https://spec.torproject.org/tor-spec/create-created-cells.html#subproto-request>
+///
+/// Each field corresponds with one specific subprotocol version,
+/// and each has the same naming format as its corresponding named subprotocol version.
+#[derive(Copy, Clone, Debug, Default)]
+pub(crate) struct HandshakeSubprotocols {
+    /// The `RELAY_CRYPT_CGO` subprotocol version.
+    relay_crypt_cgo: bool,
 }
 
 /// An error that can occur when building a [`HopSettings`] using parameters requested during a
