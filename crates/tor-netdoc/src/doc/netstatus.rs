@@ -3099,7 +3099,7 @@ mod test {
         );
 
         // We don't manage proper numerical sorting of version numbers.
-        // Doing is is awkward.  See the (2nd) TODO on RecommendedTorVersions.
+        // Doing so is awkward.  See the (2nd) TODO on RecommendedTorVersions.
         regsub(
             //
             &mut exp,
