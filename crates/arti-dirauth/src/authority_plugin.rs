@@ -14,6 +14,14 @@ use utils::{FilenameOrStdio, map_range};
 
 /// Options and arguments to plugin invocation
 #[derive(Debug, clap::Parser)]
+#[command(after_help =
+//
+"For details of semantics, exit status, input/output formats, etc., see the spec:
+   arti-authority-plugin dump-spec
+Latest version:
+   https://gitlab.torproject.org/tpo/core/arti/-/blob/main/doc/dev/notes/authority-plugin.md
+"
+)]
 struct CliArgs {
     /// Operation verb and its arguments
     #[command(subcommand)]
@@ -29,6 +37,14 @@ enum CliOperation {
         #[arg(short = 'o')]
         output: FilenameOrStdio,
     },
+
+    /// Print the specification to stdout, in markdown format
+    //
+    // This is to save us from having to document everything again here.
+    // Instead, this can be regarded as part of the program's help output.
+    // Our help output has a link to the rendered version in gitlab
+    // (`after_help` attribute on `CliArgs`)
+    DumpSpec {},
 }
 
 /// Top-level error - program exits with this, or `Ok(())`
@@ -64,6 +80,11 @@ fn plugin_impl(args: CliArgs) -> Result<(), CliError> {
             }
             Ok(())
         }),
+
+        CliOperation::DumpSpec {} => {
+            print!("{}", include_str!("../authority-plugin.md"));
+            Ok(())
+        }
     }
 }
 
