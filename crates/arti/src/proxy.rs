@@ -655,16 +655,16 @@ fn report_proxy_error(e: anyhow::Error) {
         Some(e @ PE::NotConnected) => debug!(error = (e as &dyn std::error::Error), "Connection exited"),
         _ => {
             // TODO: See https://gitlab.torproject.org/tpo/core/arti/-/work_items/2632
-            // We use the root cause of the error as the activity key for rate-limiting.
+            // We use the root cause of the error as the activity key for rate-limiting
+            // because it provides only the original OS error without any wrappers on the text.
             // This avoids a manual if-else chain while maintaining separate buckets
             // for different errors.
             let bucket = e.root_cause().to_string();
             let r: Result<(), RateLimitError> = Err(e).wrap_for_ratelimit();
 
             log_ratelim!(
-                "{}", bucket;
+                "Connection exited (cause: {})", bucket;
                 r;
-                Err(_) => WARN, "Connection exited";
             );
         }
     }
