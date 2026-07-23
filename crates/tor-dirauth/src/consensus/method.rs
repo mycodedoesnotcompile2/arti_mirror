@@ -47,6 +47,13 @@ impl PartialEq<u32> for SupportedConsensusMethod {
     }
 }
 
+impl SupportedConsensusMethod {
+    /// Most recent method supported here
+    #[cfg(test)]
+    pub(crate) const MAX: SupportedConsensusMethod =
+        SupportedConsensusMethod(*SUPPORTED_METHODS.last().unwrap().end());
+}
+
 #[cfg(test)]
 mod test {
     // @@ begin test lint list maintained by maint/add_warning @@

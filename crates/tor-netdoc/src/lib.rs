@@ -67,6 +67,9 @@ pub mod types;
 #[cfg(test)]
 mod test2;
 
+#[cfg(any(test, feature = "testing"))]
+mod test_support;
+
 #[doc(hidden)]
 pub use derive_deftly;
 
@@ -78,6 +81,9 @@ pub use util::batching_split_before;
 pub use err::{BuildError, Error, ExpectedConstantString, NetdocErrorKind, Pos};
 
 pub use util::rangemap_ext::rangemap_mutate_range;
+
+#[cfg(any(test, feature = "testing"))]
+pub use test_support::parse_testcase_from_netdoc;
 
 pub use encode::NetdocBuilder;
 

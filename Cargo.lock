@@ -401,6 +401,7 @@ dependencies = [
  "tor-config-path",
  "tor-dircommon",
  "tor-dirmgr",
+ "tor-dirserver",
  "tor-error",
  "tor-general-addr",
  "tor-guardmgr",
@@ -7220,8 +7221,13 @@ dependencies = [
 name = "tor-dirauth"
 version = "0.44.0"
 dependencies = [
+ "derive-deftly",
  "derive_more",
+ "ipnet",
+ "itertools 0.15.0",
+ "rangemap",
  "thiserror 2.0.18",
+ "tor-error",
  "tor-netdoc",
 ]
 
