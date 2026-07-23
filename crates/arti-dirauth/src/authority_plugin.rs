@@ -19,7 +19,7 @@ use utils::{FilenameOrStdio, map_range};
 "For details of semantics, exit status, input/output formats, etc., see the spec:
    arti-authority-plugin dump-spec
 Latest version:
-   https://gitlab.torproject.org/tpo/core/arti/-/blob/main/doc/dev/notes/authority-plugin.md
+   https://gitlab.torproject.org/tpo/core/arti/-/blob/main/crates/arti-dirauth/authority-plugin.md
 "
 )]
 struct CliArgs {
