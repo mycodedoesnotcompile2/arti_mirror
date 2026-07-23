@@ -18,6 +18,7 @@ use super::CliError;
 // and replace open-coding in eg crates/arti/src/subcommands/hsc.rs display_service_discovery_key
 // If we do that:
 //   - consider whether we should preserve file permissions
+//   - see the comment about leftover `.tmp` files in `write`, below
 #[derive(Debug, Clone)]
 pub(super) enum FilenameOrStdio {
     /// Filename
@@ -42,6 +43,8 @@ impl FilenameOrStdio {
     ///
     /// `writer` should generate the actual output.
     /// It shouldn't fail other than for write errors.
+    ///
+    /// Makes no attempt to preserve file permissions.
     pub(super) fn write<W>(&self, writer: W) -> Result<(), CliError>
     where
         W: FnOnce(&mut dyn io::Write) -> io::Result<()>,
