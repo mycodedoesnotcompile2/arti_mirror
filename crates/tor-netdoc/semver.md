@@ -20,3 +20,4 @@ ADDED: `ConsensusMethod`'s field is now `pub`
 BREAKING: `NetdocParseableFields::Accumulator` must be `Default`
 ADDED: `types::policy::PortPolicy::from_ordered_allowed_ranges`
 BREAKING: `HsDesc::parse_decrypt_validate` no longer takes a `SystemTime` and **no longer checks validity time**
+BREAKING: `RouterStatus.port_policy` is `Intern`, not `Arc`
