@@ -53,6 +53,11 @@
 #![allow(clippy::print_stderr)]
 #![allow(clippy::print_stdout)]
 
+mod authority_plugin;
+
+/// Entrypoint for the Arti-in-C-Tor consensus method plugin
+pub use authority_plugin::plugin_main as authority_plugin_main;
+
 /// Entrypoint
 pub fn main() {
     panic!("nothing is implemented here yet!");
