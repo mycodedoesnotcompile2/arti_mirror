@@ -98,7 +98,7 @@ pub fn create_legacy_rsa_id_cert<Rng: CryptoRng>(
     if !public.exponent_is(EXPECT_ID_EXPONENT) {
         return Err(X509CertError::InvalidSigningKey("Invalid exponent".into()));
     }
-    if !public.bits() == EXPECT_ID_BITS {
+    if public.bits() != EXPECT_ID_BITS {
         return Err(X509CertError::InvalidSigningKey(
             "Invalid key length".into(),
         ));
@@ -442,7 +442,7 @@ mod test {
         let keypair = rsa::RsaPrivateKey::new(&mut RngCompat::new(&mut rng), 2048).unwrap();
         let keypair: RsaKeypair = keypair.into();
 
-        // XXXX: This should fail.
+        // This fails since it's not 1024 bits.
         assert!(
             create_legacy_rsa_id_cert(
                 &mut rng,
@@ -450,7 +450,9 @@ mod test {
                 "www.house-of-pancakes.example.com",
                 &keypair,
             )
-            .is_ok()
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid key length")
         );
     }
 
