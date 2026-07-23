@@ -732,7 +732,9 @@ impl Circuit {
                 if #[cfg(feature = "hs-service")] {
                     return self.handle_incoming_stream_request(handlers, msg, streamid, hopnum, leg);
                 } else {
-                    return Err(internal!("incoming stream not rejected, but hs-service feature is disabled?!").into());
+                    return Err(
+                        Error::CircProto(format!("Cannot handle {} cells on this circuit", msg.cmd())).into(),
+                    );
                 }
             }
         }
