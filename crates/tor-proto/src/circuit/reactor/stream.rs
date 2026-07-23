@@ -376,9 +376,11 @@ impl StreamReactor {
     ) -> StdResult<Option<AnyRelayMsgOuter>, ReactorError> {
         let mut lock = self.incoming.lock().expect("poisoned lock");
         let Some(handler) = lock.as_mut() else {
-            return Err(
-                Error::CircProto("Cannot handle BEGIN cells on this circuit".into()).into(),
-            );
+            return Err(Error::CircProto(format!(
+                "Cannot handle {} cells on this circuit",
+                msg.cmd()
+            ))
+            .into());
         };
 
         if self.hopnum != handler.hop_num {
