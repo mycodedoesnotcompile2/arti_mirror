@@ -54,7 +54,9 @@ mod sink_try_send;
 mod sinkext;
 mod watch;
 
+pub mod bw_pool;
 pub mod counting_streams;
+pub mod global_rate_limit;
 pub mod peekable_stream;
 pub mod rate_limited_writer;
 pub mod stream_peek;
