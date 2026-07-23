@@ -332,7 +332,7 @@ mod test {
 
         let desc = desc
             .check_signature()?
-            .check_valid_at(&humantime::parse_rfc3339("2023-01-23T15:00:00Z").unwrap())
+            .if_valid_at(&humantime::parse_rfc3339("2023-01-23T15:00:00Z").unwrap())
             .unwrap();
 
         assert_eq!(desc.lifetime.as_minutes(), 180);

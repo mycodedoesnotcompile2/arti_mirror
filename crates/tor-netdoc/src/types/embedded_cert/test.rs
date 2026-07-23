@@ -71,7 +71,7 @@ impl FamilyCert {
             .should_have_signing_key()
             .map_err(|_| VerifyFailed::Inconsistent)?
             .check_signature()?
-            .check_valid_at(&now)?;
+            .if_valid_at(&now)?;
         let family = cert
             .signing_key()
             .expect("we just checked that it had signing key");

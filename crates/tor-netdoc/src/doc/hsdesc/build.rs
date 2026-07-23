@@ -400,13 +400,13 @@ mod test {
             .unwrap()
             .check_signature()
             .unwrap()
-            .check_valid_at(&humantime::parse_rfc3339(TIMESTAMP).unwrap())
+            .if_valid_at(&humantime::parse_rfc3339(TIMESTAMP).unwrap())
             .unwrap();
 
         enc_desc
             .decrypt(subcredential, hsc_desc_enc)
             .unwrap()
-            .check_valid_at(&humantime::parse_rfc3339(TIMESTAMP).unwrap())
+            .if_valid_at(&humantime::parse_rfc3339(TIMESTAMP).unwrap())
             .unwrap()
             .check_signature()
             .unwrap()

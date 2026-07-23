@@ -56,9 +56,9 @@ pub use tor_cert_x509 as x509;
 use caret::caret_int;
 use tor_bytes::{Error as BytesError, Result as BytesResult};
 use tor_bytes::{Readable, Reader, Writeable, Writer};
+use tor_checkable::{TimeRange, TimeRangeBound};
 use tor_llcrypto::pk::*;
 
-use saturating_time::SaturatingTime;
 use web_time_compat as time;
 
 pub use err::CertError;
@@ -621,17 +621,11 @@ impl tor_checkable::SelfSigned<SigCheckedCert> for UncheckedCert {
     }
 }
 
-impl tor_checkable::TimeBound<Ed25519Cert> for Ed25519Cert {
-    type Error = tor_checkable::TimeValidityError;
+impl tor_checkable::TimeBound for Ed25519Cert {
+    type Inner = Ed25519Cert;
 
-    #[allow(unstable_name_collisions)]
-    fn is_valid_at(&self, t: &time::SystemTime) -> Result<(), Self::Error> {
-        if self.is_expired_at(*t) {
-            let expiry = self.expiry();
-            Err(Self::Error::Expired(t.saturating_duration_since(expiry)))
-        } else {
-            Ok(())
-        }
+    fn bounds(&self) -> TimeRange {
+        TimeRangeBound::new((), ..=self.expiry())
     }
 
     fn dangerously_assume_timely(self) -> Ed25519Cert {
@@ -639,10 +633,11 @@ impl tor_checkable::TimeBound<Ed25519Cert> for Ed25519Cert {
     }
 }
 
-impl tor_checkable::TimeBound<Ed25519Cert> for SigCheckedCert {
-    type Error = tor_checkable::TimeValidityError;
-    fn is_valid_at(&self, t: &time::SystemTime) -> std::result::Result<(), Self::Error> {
-        self.cert.is_valid_at(t)
+impl tor_checkable::TimeBound for SigCheckedCert {
+    type Inner = Ed25519Cert;
+
+    fn bounds(&self) -> TimeRange {
+        self.cert.bounds()
     }
 
     fn dangerously_assume_timely(self) -> Ed25519Cert {

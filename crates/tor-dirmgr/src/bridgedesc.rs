@@ -1140,12 +1140,13 @@ fn process_document<R: Runtime>(
     let desc = desc.check_signature().map_err(Arc::new)?;
 
     let now = runtime.wallclock();
-    desc.is_valid_at(&now)?;
+    desc.check_valid_at(&now)?;
 
     // Justification that use of "dangerously" is correct:
     // 1. We have checked this just above, so it is valid now.
     // 2. We are extracting the timeout and implement our own refetch logic using expires.
-    let (desc, (_, expires)) = desc.dangerously_into_parts();
+    let (desc, expires) = desc.dangerously_into_parts();
+    let expires = expires.end();
 
     // Our refetch schedule, and enforcement of descriptor expiry, is somewhat approximate.
     // The following situations can result in a nominally-expired descriptor being used:

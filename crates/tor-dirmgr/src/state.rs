@@ -365,7 +365,7 @@ impl<R: Runtime> GetConsensusState<R> {
             let parsed = self.filter.filter_consensus(parsed)?;
             let parsed = self.config.tolerance.extend_tolerance(parsed);
             let now = self.rt.wallclock();
-            let timely = parsed.check_valid_at(&now)?;
+            let timely = parsed.if_valid_at(&now)?;
             if let Some(cutoff) = cutoff {
                 if timely.peek_lifetime().valid_after() < cutoff {
                     return Err(Error::Unwanted("consensus was older than requested"));
@@ -496,7 +496,7 @@ impl<R: Runtime> GetCertsState<R> {
             .config
             .tolerance
             .extend_tolerance(wellsigned)
-            .check_valid_at(&now)?;
+            .if_valid_at(&now)?;
         Ok((timely_cert, cert_text))
     }
 

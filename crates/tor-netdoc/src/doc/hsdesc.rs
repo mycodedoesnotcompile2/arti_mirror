@@ -18,8 +18,6 @@ mod outer;
 pub mod pow;
 
 pub use desc_enc::DecryptionError;
-use tor_basic_utils::rangebounds::RangeBoundsExt;
-use tor_error::internal;
 
 use crate::{NetdocErrorKind as EK, Result};
 
@@ -221,12 +219,12 @@ impl HsDesc {
     /// // Validate the signature and timeliness of the outer document
     /// let checked_desc = unchecked_desc
     ///     .check_signature()?
-    ///     .check_valid_at(&timestamp)?;
+    ///     .if_valid_at(&timestamp)?;
     /// // Decrypt the outer and inner layers of the descriptor
     /// let unchecked_decrypted_desc = checked_desc.decrypt(&subcredential, None)?;
     /// // Validate the signature and timeliness of the inner document
     /// let hsdesc = unchecked_decrypted_desc
-    ///     .check_valid_at(&timestamp)?
+    ///     .if_valid_at(&timestamp)?
     ///     .check_signature()?;
     /// # Ok::<(), anyhow::Error>(())
     /// ```
@@ -262,15 +260,15 @@ impl HsDesc {
     ///     is provided, we use it to decrypt the inner encryption layer;
     ///     otherwise, we require that
     ///     the inner document is encrypted using the "no restricted discovery" method.
-    ///   * checks if both layers are valid at the `valid_at` timestamp
     ///   * validates the signatures on both layers
+    ///   * returns the contents wrapped in a [`TimeRangeBound`]; the caller will need
+    ///     to check the validity time (using methods from [`TimeBound`]).
     ///
     /// Returns an error if the descriptor cannot be parsed, or if one of the validation steps
     /// fails.
     pub fn parse_decrypt_validate(
         input: &str,
         blinded_onion_id: &HsBlindId,
-        valid_at: SystemTime,
         subcredential: &Subcredential,
         hsc_desc_enc: Option<&HsClientDescEncKeypair>,
     ) -> StdResult<TimeRangeBound<Self>, HsDescError> {
@@ -280,39 +278,18 @@ impl HsDesc {
             .check_signature()
             .map_err(|e| E::OuterValidation(e.into()))?;
 
-        let (inner_desc, new_bounds) = {
-            // We use is_valid_at and dangerously_into_parts instead of check_valid_at because we
-            // need the time bounds of the outer layer (for computing the intersection with the
-            // time bounds of the inner layer).
-            unchecked_desc
-                .is_valid_at(&valid_at)
-                .map_err(|e| E::OuterValidation(e.into()))?;
-            // It's safe to use dangerously_peek() as we've just checked if unchecked_desc is
-            // valid at the current time
+        TimeRangeBound::build_intersect(|bounds| {
             let inner_timerangebound = unchecked_desc
-                .dangerously_peek()
+                .unwrap_with(bounds)
                 .decrypt(subcredential, hsc_desc_enc)?;
 
-            let new_bounds = unchecked_desc
-                .intersect(&inner_timerangebound)
-                .map(|(b1, b2)| (b1.cloned(), b2.cloned()));
+            let hsdesc = inner_timerangebound
+                .unwrap_with(bounds)
+                .check_signature()
+                .map_err(|e| E::InnerValidation(e.into()))?;
 
-            (inner_timerangebound, new_bounds)
-        };
-
-        let hsdesc = inner_desc
-            .check_valid_at(&valid_at)
-            .map_err(|e| E::InnerValidation(e.into()))?
-            .check_signature()
-            .map_err(|e| E::InnerValidation(e.into()))?;
-
-        // If we've reached this point, it means the descriptor is valid at specified time. This
-        // means the time bounds of the two layers definitely intersect, so new_bounds **must** be
-        // Some. It is a bug if new_bounds is None.
-        let new_bounds = new_bounds
-            .ok_or_else(|| internal!("failed to compute TimeRangeBounds for a valid descriptor"))?;
-
-        Ok(TimeRangeBound::new(hsdesc, new_bounds))
+            Ok(hsdesc)
+        })
     }
 
     /// One or more introduction points used to contact the onion service.
@@ -644,12 +621,12 @@ pub mod test_data {
 
         let desc = HsDesc::parse(TEST_DATA, &blinded_id)?
             .check_signature()?
-            .check_valid_at(&humantime::parse_rfc3339("2023-01-23T15:00:00Z").unwrap())
+            .if_valid_at(&humantime::parse_rfc3339("2023-01-23T15:00:00Z").unwrap())
             .unwrap()
             .decrypt(&TEST_SUBCREDENTIAL.into(), None)
             .unwrap();
         let desc = desc
-            .check_valid_at(&humantime::parse_rfc3339("2023-01-24T03:00:00Z").unwrap())
+            .if_valid_at(&humantime::parse_rfc3339("2023-01-24T03:00:00Z").unwrap())
             .unwrap();
         let desc = desc.check_signature().unwrap();
         Ok(desc)
@@ -685,7 +662,7 @@ mod test {
     fn parse_meta_good() -> Result<()> {
         let meta = StoredHsDescMeta::parse(TEST_DATA)?
             .check_signature()?
-            .check_valid_at(&humantime::parse_rfc3339("2023-01-23T15:00:00Z").unwrap())
+            .if_valid_at(&humantime::parse_rfc3339("2023-01-23T15:00:00Z").unwrap())
             .unwrap();
 
         assert_eq!(meta.blinded_id.as_ref(), &TEST_DATA_HS_BLIND_ID);
@@ -755,7 +732,7 @@ mod test {
             .unwrap()
             .check_signature()
             .unwrap()
-            .check_valid_at(&humantime::parse_rfc3339("2023-02-09T12:00:00Z").unwrap())
+            .if_valid_at(&humantime::parse_rfc3339("2023-02-09T12:00:00Z").unwrap())
             .unwrap()
     }
 
@@ -782,7 +759,7 @@ mod test {
             .decrypt(&subcredential, Some(&HsClientDescEncKeypair::new(pk, sk)))
             .unwrap();
         let desc = desc
-            .check_valid_at(&humantime::parse_rfc3339("2023-01-24T03:00:00Z").unwrap())
+            .if_valid_at(&humantime::parse_rfc3339("2023-01-24T03:00:00Z").unwrap())
             .unwrap();
         let desc = desc.check_signature().unwrap();
         assert_eq!(desc.intro_points.len(), 3);

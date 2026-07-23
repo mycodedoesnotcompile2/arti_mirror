@@ -80,7 +80,8 @@ fn encode_pow_params(
 
     // It's safe to call dangerously_into_parts here, since we encode the
     // expiration alongside the value.
-    let (seed, (_, expiration)) = pow_params.seed().clone().dangerously_into_parts();
+    let (seed, expiration) = pow_params.seed().clone().dangerously_into_parts();
+    let expiration = expiration.end();
 
     seed.write_arg_onto(&mut pow_params_enc)?;
 

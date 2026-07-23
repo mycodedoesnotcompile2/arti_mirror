@@ -106,7 +106,7 @@ mod test {
         let parsed = parsed
             .check_signature(&keypair.to_public_key())
             .unwrap()
-            .check_valid_at(&now)
+            .if_valid_at(&now)
             .unwrap();
 
         assert!(parsed.subject_key_matches(&ed_id));
