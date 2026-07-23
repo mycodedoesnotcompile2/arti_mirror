@@ -113,7 +113,7 @@ shellcheck:
     - ./maint/common/shellcheck-all
 
 python3-checks:
-  needs: []
+  needs: ["build-shadow"]
   stage: build
   variables:
     # Updated 2026-01-21
@@ -143,6 +143,8 @@ python3-checks:
         black=="$BLACK_VERSION"
         flake8=="$FLAKE8_VERSION"
         mypy=="$MYPY_VERSION"
+    # Install shadowtools, built in build-shadow
+    - pip3 install --no-index --find-links=./wheels shadowtools
     - ./maint/python-lints
 
 maint-checks:
@@ -719,6 +721,9 @@ integration-chutney-shadow:
     # Set up shadow, built in build-shadow
     - maint/common/apt-install libglib2.0-0
     - stow -d opt -t $HOME/.local shadow
+
+    # Install shadowtools, built in build-shadow
+    - python3 -m pip install --no-index --find-links=./wheels shadowtools
 
     # Select a random simulation seed to avoid "dooming"
     # an unlucky MR that hits a low-probability bug.
