@@ -48,6 +48,8 @@ enum CliError {
     OperationalError(#[source] anyhow::Error),
 }
 
+//==================== implementations ====================
+
 /// Actual implementation of the plugin's invocations
 ///
 /// Split off for ease of testing.
