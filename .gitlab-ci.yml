@@ -627,6 +627,7 @@ build-shadow:
   artifacts:
     paths:
       - opt/shadow
+      - wheels
     # Intended for consumption later in the pipeline; no need to keep them
     # around for longer.
     expire_in: 1 day
@@ -652,6 +653,9 @@ build-shadow:
         export PATH="$HOME/.cargo/bin:${PATH}"
         ./setup build --jobs $(nproc) --prefix $CI_PROJECT_DIR/opt/shadow
         ./setup install
+
+        mkdir $CI_PROJECT_DIR/wheels
+        pip wheel --wheel-dir=$CI_PROJECT_DIR/wheels ./shadowtools
       fi
 
 integration-chutney:
