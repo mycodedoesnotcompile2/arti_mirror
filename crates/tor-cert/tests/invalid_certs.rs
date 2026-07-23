@@ -119,7 +119,7 @@ fn expired_cert() {
         .unwrap()
         .check_signature()
         .unwrap()
-        .check_valid_at(&expired_time)
+        .if_valid_at(&expired_time)
         .unwrap_err();
 
     assert_eq!(

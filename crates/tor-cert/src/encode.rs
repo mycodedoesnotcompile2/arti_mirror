@@ -245,7 +245,7 @@ mod test {
             .unwrap()
             .check_signature()
             .unwrap(); // Well-signed?
-        let cert = validated.check_valid_at(&(now + day * 20)).unwrap();
+        let cert = validated.if_valid_at(&(now + day * 20)).unwrap();
         assert_eq!(cert.cert_type(), 7.into());
         if let CertifiedKey::Ed25519(found) = cert.subject_key() {
             assert_eq!(found, &keypair.verifying_key().into());

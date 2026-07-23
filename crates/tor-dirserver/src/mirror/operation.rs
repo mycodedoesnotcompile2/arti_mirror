@@ -601,7 +601,7 @@ impl StaticEngine {
                         Ok(self
                             .tolerance
                             .extend_tolerance(v)
-                            .check_valid_at(&now.into())?)
+                            .if_valid_at(&now.into())?)
                     });
                 let verified = match verified {
                     Ok(v) => v,

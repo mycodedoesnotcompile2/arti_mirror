@@ -573,7 +573,7 @@ mod test {
                     v1.seed().to_owned().dangerously_assume_timely(),
                     expected_seed
                 );
-                assert_eq!(v1.seed().bounds().1, expected_expiry);
+                assert_eq!(v1.seed().bounds_start_end().1, expected_expiry);
             }
             #[allow(unreachable_patterns)]
             _ => unreachable!(),
@@ -704,7 +704,7 @@ mod test {
         let inner_body = std::str::from_utf8(&inner_body).unwrap();
         let (ed_id, inner) = HsDescInner::parse(inner_body)?;
         let inner = inner
-            .check_valid_at(&humantime::parse_rfc3339("2023-01-23T15:00:00Z").unwrap())
+            .if_valid_at(&humantime::parse_rfc3339("2023-01-23T15:00:00Z").unwrap())
             .unwrap()
             .check_signature()
             .unwrap();

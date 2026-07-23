@@ -550,7 +550,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
                 .expect("Some but now None")
                 .desc
                 .as_ref()
-                .check_valid_at(&now)
+                .if_valid_at(&now)
                 .expect("Ok but now Err")
         };
 
@@ -566,7 +566,7 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         let now = self.runtime.wallclock();
 
         let stored_revision = data.as_ref().and_then(|previously| {
-            if let Ok(desc) = previously.desc.as_ref().check_valid_at(&now) {
+            if let Ok(desc) = previously.desc.as_ref().if_valid_at(&now) {
                 // Ideally we would just return desc but that confuses borrowck,
                 // so we have to use unwrap_valid_desc() each time
                 // we need the known-to-be-Some descriptor instead.
@@ -825,11 +825,12 @@ impl<'c, R: Runtime, M: MocksForConnect<R>> Context<'c, R, M> {
         let desc = HsDesc::parse_decrypt_validate(
             &desc_text,
             &self.hs_blind_id,
-            now,
             &self.subcredential,
             hsc_desc_enc,
-        )
-        .map_err(DescriptorErrorDetail::from)?;
+        )?;
+
+        // Check the validity time (relied on by descriptor_ensure)
+        desc.check_valid_at(&now)?;
 
         // Validate cc_sendme_inc, if present, is within ±1 of params.cc_sendme_inc.
         ensure_descriptor_compatible_with_params(desc.dangerously_peek(), params)?;
@@ -2143,12 +2144,12 @@ mod test {
         HsDesc::parse_decrypt_validate(
             test_data::TEST_DATA_2,
             &hs_blind_id,
-            now,
             &subcredential,
             Some(&ks_hsc_desc_enc()),
         )
         .unwrap()
-        .dangerously_assume_timely()
+        .if_valid_at(&now)
+        .unwrap()
     }
 
     fn build_test_netdir() -> Arc<NetDir> {
@@ -2264,7 +2265,7 @@ mod test {
         }
 
         // Check how long the descriptor is valid for
-        let (start_time, end_time) = data.desc.as_ref().unwrap().desc.bounds();
+        let (start_time, end_time) = data.desc.as_ref().unwrap().desc.bounds_start_end();
         assert_eq!(start_time, None);
 
         let desc_valid_until = humantime::parse_rfc3339("2023-02-11T20:00:00Z").unwrap();
@@ -2307,7 +2308,7 @@ mod test {
                 );
             }
 
-            let (start_time, end_time) = data.desc.as_ref().unwrap().desc.bounds();
+            let (start_time, end_time) = data.desc.as_ref().unwrap().desc.bounds_start_end();
             assert_eq!(start_time, None);
 
             let desc_valid_until = humantime::parse_rfc3339("2023-02-11T20:00:00Z").unwrap();
