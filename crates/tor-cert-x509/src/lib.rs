@@ -437,6 +437,24 @@ mod test {
     }
 
     #[test]
+    fn identity_cert_generation_size_check() {
+        let mut rng = testing_rng();
+        let keypair = rsa::RsaPrivateKey::new(&mut RngCompat::new(&mut rng), 2048).unwrap();
+        let keypair: RsaKeypair = keypair.into();
+
+        // XXXX: This should fail.
+        assert!(
+            create_legacy_rsa_id_cert(
+                &mut rng,
+                SystemTime::get(),
+                "www.house-of-pancakes.example.com",
+                &keypair,
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
     fn tls_cert_info() {
         let mut rng = testing_rng();
         let certified = TlsKeyAndCert::create(
