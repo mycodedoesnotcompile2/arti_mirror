@@ -283,7 +283,7 @@ pub(crate) mod test {
             let (mut tx, mut rx) = fake_mpsc(BUFFER_SIZE);
 
             tx.send(relay_msg()).await.unwrap();
-            tx.send(destroy_msg(DestroyReason::NONE)).await.unwrap();
+            tx.send(destroy_msg(DestroyReason::HIBERNATING)).await.unwrap();
 
             // Destroy skips the queue
             let destroy = rx.next().await.unwrap();
@@ -299,7 +299,7 @@ pub(crate) mod test {
         MockRuntime::test_with_various(|_rt| async move {
             let (mut tx, mut rx) = fake_mpsc(BUFFER_SIZE);
 
-            tx.send(destroy_msg(DestroyReason::NONE)).await.unwrap();
+            tx.send(destroy_msg(DestroyReason::HIBERNATING)).await.unwrap();
             let destroy = rx.next().await.unwrap();
 
             assert!(matches!(destroy, AnyChanMsg::Destroy(_)));
@@ -326,7 +326,7 @@ pub(crate) mod test {
             // The queue is now empty
             assert!(rx.poll_next_unpin(&mut noop_cx).is_pending());
 
-            tx.send(destroy_msg(DestroyReason::NONE)).await.unwrap();
+            tx.send(destroy_msg(DestroyReason::PROTOCOL)).await.unwrap();
 
             let destroy = rx.next().await.unwrap();
             assert!(matches!(destroy, AnyChanMsg::Destroy(_)));
@@ -354,7 +354,7 @@ pub(crate) mod test {
                 }
             }
             // ...followed by a destroy
-            tx.send(destroy_msg(DestroyReason::NONE)).await.unwrap();
+            tx.send(destroy_msg(DestroyReason::INTERNAL)).await.unwrap();
 
             // The destroy cell goes through even though the queue is full,
             // ahead of all the queued data
