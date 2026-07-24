@@ -379,3 +379,61 @@ impl<R: Runtime> tor_chanmgr::factory::AbstractPtMgr for PtMgr<R> {
         Ok(Some(Arc::new(factory)))
     }
 }
+
+#[cfg(test)]
+// Note(pryty26):
+// I think this could be a good example of how to use the PtMgr too.
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    #![allow(unused)]
+    use super::*;
+    use crate::config::{TransportConfig, TransportConfigBuilder};
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use tor_config_path::CfgPath;
+    use tor_rtcompat::PreferredRuntime;
+
+    #[test]
+    fn transform_config_test() {
+        // obfs4 is a managed transport, snowflake is an unmanaged transport.
+        #[cfg(feature = "managed-pts")]
+        let obfs4_config = TransportConfigBuilder::default()
+            .protocols(vec!["obfs4".parse().unwrap()])
+            .path(CfgPath::new("/usr/bin/obfs4proxy".into()))
+            .arguments(vec!["--log-min-severity=info".into()])
+            .run_on_startup(true)
+            .build()
+            .unwrap();
+        let snowflake_config = TransportConfigBuilder::default()
+            .protocols(vec!["snowflake".parse().unwrap()])
+            .proxy_addr("127.0.0.1:9050".parse().unwrap())
+            .build()
+            .unwrap();
+        #[cfg(not(feature = "managed-pts"))]
+        let obfs4_config = snowflake_config.clone();
+        let config: Vec<TransportConfig> = vec![obfs4_config.clone(), snowflake_config.clone()];
+
+        let result = PtMgr::<PreferredRuntime>::transform_config(config).unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(
+            result.get(&"obfs4".parse().unwrap()),
+            Some(&obfs4_config.try_into().unwrap())
+        );
+        assert_eq!(
+            result.get(&"snowflake".parse().unwrap()),
+            Some(&snowflake_config.try_into().unwrap())
+        );
+    }
+}
