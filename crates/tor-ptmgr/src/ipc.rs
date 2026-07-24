@@ -1346,6 +1346,18 @@ mod test {
             })
         );
 
+        let msg = format!("LOG SEVERITY=debug MESSAGE=\"\\141\\142c\"");
+        let c1 = char::from_u32(u32::from_str_radix("141", 8).unwrap()).unwrap();
+        let c2 = char::from_u32(u32::from_str_radix("142", 8).unwrap()).unwrap();
+        let excepted_msg = format!("{}{}c", c1, c2);
+        assert_eq!(
+            msg.parse::<PtMessage>(),
+            Ok(PtMessage::Log {
+                severity: "debug".to_string(),
+                message: excepted_msg.to_string()
+            })
+        );
+
         assert_eq!(
             "SMETHOD obfs4 198.51.100.1:43734 ARGS:iat-mode=0\\".parse::<PtMessage>(),
             Err(Cow::from(
