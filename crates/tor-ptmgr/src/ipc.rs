@@ -177,9 +177,12 @@ fn parse_one_value(from: &str) -> Result<(String, &str), &'static str> {
                                 }
                                 let code_point: u32 = u32::from_str_radix(&octal_digits, 8)
                                     .map_err(|_| "invalid octal number")?;
-                                let c = char::from_u32(code_point)
-                                    .ok_or("invalid Unicode code point")?;
-                                ret.push(c);
+                                if code_point > 127 {
+                                    return Err("octal number out of range");
+                                }
+                                // Make sure that the code point is not larger than 127,
+                                // because we are only supporting ASCII characters here.
+                                ret.push(code_point as u8 as char);
                             }
                             '\\' => {
                                 // We need to reparse it.
@@ -1331,9 +1334,9 @@ mod test {
             })
         );
 
-        let msg = format!("LOG SEVERITY=debug MESSAGE=\"\\141\\242\\c\"");
+        let msg = format!("LOG SEVERITY=debug MESSAGE=\"\\141\\142\\c\"");
         let c1 = char::from_u32(u32::from_str_radix("141", 8).unwrap()).unwrap();
-        let c2 = char::from_u32(u32::from_str_radix("242", 8).unwrap()).unwrap();
+        let c2 = char::from_u32(u32::from_str_radix("142", 8).unwrap()).unwrap();
         let excepted_msg = format!("{}{}c", c1, c2);
         assert_eq!(
             msg.parse::<PtMessage>(),
@@ -1342,7 +1345,7 @@ mod test {
                 message: excepted_msg.to_string()
             })
         );
-        println!("msg: {}", msg);
+
         assert_eq!(
             "SMETHOD obfs4 198.51.100.1:43734 ARGS:iat-mode=0\\".parse::<PtMessage>(),
             Err(Cow::from(
