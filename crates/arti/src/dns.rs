@@ -4,6 +4,7 @@
 //! `DnsProxy::run_dns_proxy` then listens for
 //! DNS requests, and sends back replies in response.
 
+use futures::TryStreamExt;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
 use hickory_proto::op::{Message, OpCode, Query, ResponseCode};
@@ -15,7 +16,7 @@ use std::sync::Arc;
 use tor_rtcompat::{SpawnExt, UdpProvider};
 use tracing::{debug, error, info, warn};
 
-use arti_client::{Error, HasKind, StreamPrefs, TorClient};
+use arti_client::{StreamPrefs, TorClient};
 use safelog::sensitive as sv;
 use tor_config::Listen;
 use tor_error::{error_report, warn_report};
@@ -27,6 +28,9 @@ use crate::proxy::port_info;
 
 /// Maximum length for receiving a single datagram
 const MAX_DATAGRAM_SIZE: usize = 1536;
+
+/// Maxium number of DNS queries that can be processed concurrently
+const MAX_CONCURRENT_DNS_QUERY: usize = 32;
 
 /// A Key used to isolate dns requests.
 ///
@@ -68,86 +72,144 @@ struct DnsResponseTarget<U> {
     socket: Arc<U>,
 }
 
-/// Run a DNS query over tor, returning either a list of answers, or a DNS error code.
-async fn do_query<R>(
-    tor_client: &TorClient<R>,
-    queries: &[Query],
+/// Convert a Tor Error into to DNS ResponseCode.
+// Takes `error` by value so it can be used directly as a `Result::map_err` callback.
+#[allow(clippy::needless_pass_by_value)]
+fn err_conv<E: tor_error::HasKind>(error: E) -> ResponseCode {
+    if tor_error::ErrorKind::RemoteHostNotFound == error.kind() {
+        // NoError without any body is considered to be NODATA as per rfc2308 section-2.2
+        ResponseCode::NoError
+    } else {
+        ResponseCode::ServFail
+    }
+}
+
+/// Generic client used to perform lookup and reverse lookup.
+trait DnsLookupClient {
+    /// Defines a generic error type that we can mock more easily.
+    type Error: tor_error::HasKind;
+
+    /// Performs DNS resolution.
+    async fn resolve_with_prefs(
+        &self,
+        hostname: &str,
+        prefs: &StreamPrefs,
+    ) -> Result<Vec<IpAddr>, Self::Error>;
+
+    /// Performs reverse DNS resolution.
+    async fn resolve_ptr_with_prefs(
+        &self,
+        addr: IpAddr,
+        prefs: &StreamPrefs,
+    ) -> Result<Vec<String>, Self::Error>;
+}
+
+impl<R: Runtime> DnsLookupClient for TorClient<R> {
+    type Error = arti_client::Error;
+
+    /// Performs DNS resolution.
+    async fn resolve_with_prefs(
+        &self,
+        hostname: &str,
+        prefs: &StreamPrefs,
+    ) -> Result<Vec<IpAddr>, Self::Error> {
+        TorClient::resolve_with_prefs(self, hostname, prefs).await
+    }
+
+    /// Performs reverse DNS resolution.
+    async fn resolve_ptr_with_prefs(
+        &self,
+        addr: IpAddr,
+        prefs: &StreamPrefs,
+    ) -> Result<Vec<String>, Self::Error> {
+        TorClient::resolve_ptr_with_prefs(self, addr, prefs).await
+    }
+}
+
+/// Performs a dns resolution.
+async fn resolve_query<D: DnsLookupClient>(
+    tor_client: &D,
+    query: &Query,
     prefs: &StreamPrefs,
-) -> Result<Vec<Record>, ResponseCode>
-where
-    R: Runtime,
-{
-    let mut answers = Vec::new();
+) -> Result<Vec<Record>, ResponseCode> {
+    let mut records = Vec::new();
+    let mut a = Vec::new();
+    let mut ptr = Vec::new();
 
-    let err_conv = |error: Error| {
-        if tor_error::ErrorKind::RemoteHostNotFound == error.kind() {
-            // NoError without any body is considered to be NODATA as per rfc2308 section-2.2
-            ResponseCode::NoError
-        } else {
-            ResponseCode::ServFail
-        }
-    };
-    for query in queries {
-        let mut a = Vec::new();
-        let mut ptr = Vec::new();
-
-        // TODO if there are N questions, this would take N rtt to answer. By joining all futures it
-        // could take only 1 rtt, but having more than 1 question is actually very rare.
-        match query.query_class() {
-            DNSClass::IN => {
-                match query.query_type() {
-                    typ @ RecordType::A | typ @ RecordType::AAAA => {
-                        let mut name = query.name().clone();
-                        // name would be "torproject.org." without this
-                        name.set_fqdn(false);
-                        let res = tor_client
-                            .resolve_with_prefs(&name.to_utf8(), prefs)
-                            .await
-                            .map_err(err_conv)?;
-                        for ip in res {
-                            a.push((query.name().clone(), ip, typ));
-                        }
-                    }
-                    RecordType::PTR => {
-                        let addr = query
-                            .name()
-                            .parse_arpa_name()
-                            .map_err(|_| ResponseCode::FormErr)?
-                            .addr();
-                        let res = tor_client
-                            .resolve_ptr_with_prefs(addr, prefs)
-                            .await
-                            .map_err(err_conv)?;
-                        for domain in res {
-                            let domain =
-                                Name::from_utf8(domain).map_err(|_| ResponseCode::ServFail)?;
-                            ptr.push((query.name().clone(), domain));
-                        }
-                    }
-                    _ => {
-                        return Err(ResponseCode::NotImp);
+    match query.query_class() {
+        DNSClass::IN => {
+            match query.query_type() {
+                typ @ RecordType::A | typ @ RecordType::AAAA => {
+                    let mut name = query.name().clone();
+                    // name would be "torproject.org." without this
+                    name.set_fqdn(false);
+                    let res = tor_client
+                        .resolve_with_prefs(&name.to_utf8(), prefs)
+                        .await
+                        .map_err(err_conv)?;
+                    for ip in res {
+                        a.push((query.name().clone(), ip, typ));
                     }
                 }
-            }
-            _ => {
-                return Err(ResponseCode::NotImp);
+                RecordType::PTR => {
+                    let addr = query
+                        .name()
+                        .parse_arpa_name()
+                        .map_err(|_| ResponseCode::FormErr)?
+                        .addr();
+                    let res = tor_client
+                        .resolve_ptr_with_prefs(addr, prefs)
+                        .await
+                        .map_err(err_conv)?;
+                    for domain in res {
+                        let domain = Name::from_utf8(domain).map_err(|_| ResponseCode::ServFail)?;
+                        ptr.push((query.name().clone(), domain));
+                    }
+                }
+                _ => {
+                    return Err(ResponseCode::NotImp);
+                }
             }
         }
-        for (name, ip, typ) in a {
-            match (ip, typ) {
-                (IpAddr::V4(v4), RecordType::A) => {
-                    answers.push(Record::from_rdata(name, 3600, RData::A(rdata::A(v4))));
-                }
-                (IpAddr::V6(v6), RecordType::AAAA) => {
-                    answers.push(Record::from_rdata(name, 3600, RData::AAAA(rdata::AAAA(v6))));
-                }
-                _ => (),
-            }
-        }
-        for (ptr, name) in ptr {
-            answers.push(Record::from_rdata(ptr, 3600, RData::PTR(rdata::PTR(name))));
+        _ => {
+            return Err(ResponseCode::NotImp);
         }
     }
+    for (name, ip, typ) in a {
+        match (ip, typ) {
+            (IpAddr::V4(v4), RecordType::A) => {
+                records.push(Record::from_rdata(name, 3600, RData::A(rdata::A(v4))));
+            }
+            (IpAddr::V6(v6), RecordType::AAAA) => {
+                records.push(Record::from_rdata(name, 3600, RData::AAAA(rdata::AAAA(v6))));
+            }
+            _ => (),
+        }
+    }
+    for (ptr, name) in ptr {
+        records.push(Record::from_rdata(ptr, 3600, RData::PTR(rdata::PTR(name))));
+    }
+    Ok(records)
+}
+
+/// Run a DNS query over tor, returning either a list of answers, or a DNS error code.
+/// The error format has been kept the same with the (previous) synchronous version
+/// which was processing the queries sequentially and returning as soon as an error
+/// was raised. Now this version returns on the first error raised asynchronously.
+async fn do_query<D: DnsLookupClient>(
+    tor_client: &D,
+    queries: &[Query],
+    prefs: &StreamPrefs,
+) -> Result<Vec<Record>, ResponseCode> {
+    let futures: Vec<_> = queries
+        .iter()
+        .map(|query| resolve_query(tor_client, query, prefs))
+        .collect();
+
+    // We put an upper bound to the amount of queries that can be process concurrently.
+    let stream = futures::stream::iter(futures).buffered(MAX_CONCURRENT_DNS_QUERY);
+    let result: Vec<Vec<Record>> = stream.try_collect().await?;
+    let answers = result.into_iter().flatten().collect();
 
     Ok(answers)
 }
@@ -381,4 +443,114 @@ async fn run_dns_resolver_with_listeners<R: Runtime>(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use futures::executor;
+    use std::{net::Ipv4Addr, str::FromStr};
+
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    enum MockTorError {
+        RemoteHostNotFound,
+    }
+
+    impl tor_error::HasKind for MockTorError {
+        fn kind(&self) -> tor_error::ErrorKind {
+            tor_error::ErrorKind::RemoteHostNotFound
+        }
+    }
+
+    struct MockDnsLookupClient {
+        hostnames: HashMap<String, Vec<IpAddr>>,
+        ips: HashMap<IpAddr, Vec<String>>,
+    }
+
+    impl MockDnsLookupClient {
+        fn new<const M: usize, const N: usize>(
+            hostnames: [(String, Vec<IpAddr>); M],
+            ips: [(IpAddr, Vec<String>); N],
+        ) -> Self {
+            Self {
+                hostnames: HashMap::from(hostnames),
+                ips: HashMap::from(ips),
+            }
+        }
+    }
+
+    impl DnsLookupClient for MockDnsLookupClient {
+        type Error = MockTorError;
+        async fn resolve_with_prefs(
+            &self,
+            hostname: &str,
+            _prefs: &StreamPrefs,
+        ) -> Result<Vec<IpAddr>, Self::Error> {
+            match self.hostnames.get(hostname) {
+                Some(ips) => Ok(ips.clone()),
+                None => Err(MockTorError::RemoteHostNotFound),
+            }
+        }
+
+        async fn resolve_ptr_with_prefs(
+            &self,
+            addr: IpAddr,
+            _prefs: &StreamPrefs,
+        ) -> Result<Vec<String>, Self::Error> {
+            match self.ips.get(&addr) {
+                Some(addrs) => Ok(addrs.clone()),
+                None => Err(MockTorError::RemoteHostNotFound),
+            }
+        }
+    }
+
+    #[test]
+    fn test_do_query() {
+        let lookup_table = [
+            (
+                "www.arti.com".to_string(),
+                vec![
+                    IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)),
+                    IpAddr::V4(Ipv4Addr::new(2, 2, 2, 2)),
+                ],
+            ),
+            (
+                "www.tor.com".to_string(),
+                vec![IpAddr::V4(Ipv4Addr::new(3, 3, 3, 3))],
+            ),
+        ];
+
+        let reverse_lookup_table = [(
+            IpAddr::V4(Ipv4Addr::new(4, 4, 4, 4)),
+            vec![
+                "www.onion-router.com".to_string(),
+                "www.artichoke.com".to_string(),
+            ],
+        )];
+
+        let client = MockDnsLookupClient::new(lookup_table, reverse_lookup_table);
+
+        let queries = [
+            Query::query(Name::from_str("www.arti.com").unwrap(), RecordType::A),
+            Query::query(
+                Name::from_str("4.4.4.4.in-addr.arpa.").unwrap(),
+                RecordType::PTR,
+            ),
+        ];
+
+        let future = async {
+            do_query(&client, &queries, &StreamPrefs::new())
+                .await
+                .unwrap()
+        };
+
+        let res = executor::block_on(future);
+
+        assert_eq!(res.len(), 4);
+        assert!(res.iter().all(|r| r.name.to_string() == "www.arti.com"
+            || r.name.to_string() == "4.4.4.4.in-addr.arpa."));
+    }
 }
