@@ -7,6 +7,7 @@
 use crate::PtClientMethod;
 use crate::err;
 use crate::err::PtError;
+use crate::next_with_pos;
 use futures::StreamExt;
 use futures::channel::mpsc::Receiver;
 use itertools::Itertools;
@@ -120,86 +121,12 @@ fn parse_one_value(from: &str) -> Result<(String, &str), &'static str> {
         (String::new(), "")
     } else if let Some('"') = first_char {
         // This is a CString, so we're going to need to parse it char-by-char.
-        let mut ret = String::new();
-        let mut chars = from.chars();
-        assert_eq!(chars.next(), Some('"')); // discard "
-        'l: loop {
-            let ch = chars.next().ok_or("ran out of input parsing CString")?;
-            match ch {
-                '\\' =>
-                // Note(pryty26):
-                // We need that loop, because sometimes we need to reparse the octal
-                // If we found a \ and then we found a \ again during parsing the octal,
-                // we need to reparse it.
-                {
-                    'm: loop {
-                        match chars
-                            .next()
-                            .ok_or("encountered trailing backslash in CString")?
-                        {
-                            'n' => ret.push('\n'),
-                            'r' => ret.push('\r'),
-                            't' => ret.push('\t'),
-                            ch if ch.is_digit(8) => {
-                                // Note(pryty26): We will parse up to 3 octal digits,
-                                // so push the first digit and then consume up to 2 more. And then parse them all.
-                                // But if there is a str which is not a valid octal digit,
-                                // we will break and append those to the ret,
-                                // including collected numbers, just like we are parsing normal chars.
-                                // Of course, if there is a double quote we will break and not append it.
-                                let mut octal_digits: String = String::new();
-                                octal_digits.push(ch);
-                                for _ in 0..2 {
-                                    let ch: char = match chars.next() {
-                                        Some('\"') => {
-                                            ret.push_str(&octal_digits);
-                                            return Ok((ret, chars.as_str()));
-                                        } // append the digits, then break and don't append the double quote
-                                        Some('\\') => {
-                                            // We need to reparse it.
-                                            ret.push_str(&octal_digits);
-                                            ret.push('\\');
-                                            continue 'm;
-                                        }
-                                        Some(ch) => ch,
-                                        None => return Err("ran out of input parsing CString"),
-                                    };
-
-                                    if ch.is_digit(8) {
-                                        octal_digits.push(ch);
-                                    } else {
-                                        // Not valid octal digit,
-                                        // so break and append the collected octal digits and the current char to ret.
-                                        ret.push_str(&octal_digits);
-                                        ret.push(ch);
-                                        continue 'l;
-                                    }
-                                }
-                                let code_point: u32 = u32::from_str_radix(&octal_digits, 8)
-                                    .map_err(|_| "invalid octal number")?;
-                                if code_point > 127 {
-                                    return Err("octal number out of range");
-                                }
-                                // Make sure that the code point is not larger than 127,
-                                // because we are only supporting ASCII characters here.
-                                ret.push(code_point as u8 as char);
-                            }
-                            '\\' => {
-                                // We need to reparse it.
-                                ret.push('\\');
-                                continue 'm;
-                            }
-                            ch => ret.push(ch),
-                        }
-                        // it will automatically break to the outer loop.
-                        break 'm;
-                    }
-                }
-                '"' => break,
-                _ => ret.push(ch),
-            }
-        }
-        (ret, chars.as_str())
+        let mut ret: String = String::new();
+        let chars = match parse_string(&mut ret, from) {
+            Ok(chars) => chars,
+            Err(e) => return Err(e),
+        };
+        (ret, chars)
     } else {
         // Simple: just find the space
         if let Some((start, rest)) = from.split_once(' ') {
@@ -210,6 +137,119 @@ fn parse_one_value(from: &str) -> Result<(String, &str), &'static str> {
     })
 }
 
+/// A function to parse a string.
+fn parse_string<'a>(ret: &mut String, from: &'a str) -> Result<&'a str, &'static str> {
+    let mut chars = from.chars().peekable();
+    let mut pos: usize = 0;
+    assert_eq!(next_with_pos!(chars, pos), '"'); // discard "
+    #[allow(irrefutable_let_patterns)]
+    // Note(pryty26):
+    // This is not a mistake. Because we will break/return manually,
+    // and if chars.next() is None the macro! will return an error.
+    'l: while let ch = next_with_pos!(chars, pos) {
+        match ch {
+            '\\' => {
+                match chars
+                    .peek()
+                    .ok_or("encountered trailing backslash in CString")?
+                {
+                    // We know that chars.next() is Some()
+                    &'n' => ret.push(next_with_pos!(chars, pos, '\n')),
+                    &'r' => ret.push(next_with_pos!(chars, pos, '\r')),
+                    &'t' => ret.push(next_with_pos!(chars, pos, '\t')),
+                    ch if ch.is_digit(8) => {
+                        // Note(pryty26): We will parse up to 3 octal digits,
+                        // so push the first digit and then consume up to 2 more. And then parse them all.
+                        // But if there is a str which is not a valid octal digit,
+                        // we will break and append those to the ret,
+                        // including collected numbers, just like we are parsing normal chars.
+                        // Of course, if there is a double quote we will break and not append it.
+                        let mut octal_digits: String = String::new();
+                        octal_digits.push(next_with_pos!(chars, pos));
+                        while octal_digits.len() < 3 {
+                            let ch: char = match chars.peek() {
+                                Some(&'\"') => {
+                                    ret.push_str(&octal_digits);
+                                    return Ok(&from[pos..]);
+                                } // append the digits, then break and don't append the double quote
+                                Some(&'\\') => {
+                                    // We need to reparse it.
+                                    ret.push_str(&octal_digits);
+                                    ret.push(next_with_pos!(chars, pos));
+                                    continue; // Back to the 'while' loop
+                                }
+                                Some(&_) => next_with_pos!(chars, pos),
+                                None => return Err("ran out of input parsing CString"),
+                            };
+
+                            if ch.is_digit(8) {
+                                octal_digits.push(ch);
+                            } else {
+                                // Not valid octal digit,
+                                // so break and append the collected octal digits and the current char to ret.
+                                ret.push_str(&octal_digits);
+                                ret.push(ch);
+                                continue 'l;
+                            }
+                        }
+                        let code_point: u32 = u32::from_str_radix(&octal_digits, 8)
+                            .map_err(|_| "invalid octal number")?;
+                        if code_point > 127 {
+                            return Err("octal number out of range");
+                        }
+                        // Make sure that the code point is not larger than 127,
+                        // because we are only supporting ASCII characters here.
+                        ret.push(code_point as u8 as char);
+                    }
+                    '\\' => {
+                        // We need to reparse it.
+                        ret.push('\\');
+                    }
+                    _ => ret.push(next_with_pos!(chars, pos)),
+                }
+            }
+            '"' => break,
+            _ => ret.push(ch),
+        }
+    }
+    Ok(&from[pos..])
+}
+
+#[macro_export]
+/// A macro to get the next char from an iterator and update the position counter.
+/// You can also return a char which you want.
+/// #example
+/// ```rust
+/// use tor_ptmgr::next_with_pos;
+/// fn main() -> Result<(), &'static str> {
+///     // return a char which you want.
+///     let mut chars = "abc\ndef".chars();
+///     let mut pos = 0;
+///     next_with_pos!(chars, pos, '\n');
+///
+///     // return the next char
+///     next_with_pos!(chars, pos);
+///     Ok(())
+/// }
+/// ```
+macro_rules! next_with_pos {
+    ($iter:expr, $pos:expr) => {{
+        let _ch = match $iter.next() {
+            Some(x) => x,
+            None => return Err("ran out of input parsing CString"),
+        };
+        $pos += _ch.len_utf8();
+        _ch
+    }};
+    ($iter:expr, $pos:expr, $escaped:literal) => {{
+        let _ch = match $iter.next() {
+            Some(x) => x,
+            None => return Err("ran out of input parsing CString"),
+        };
+        $pos += _ch.len_utf8();
+        $escaped
+    }};
+}
 /// Chomp one key/value pair off a list of smethod args.
 /// Returns (k, v, unparsed rest of string).
 /// Will also chomp the comma at the end, if there is one.
