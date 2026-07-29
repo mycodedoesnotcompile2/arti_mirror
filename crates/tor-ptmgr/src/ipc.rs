@@ -203,7 +203,7 @@ fn parse_string<'a>(ret: &mut String, from: &'a str) -> Result<&'a str, &'static
                     }
                     '\\' => {
                         // We need to reparse it.
-                        ret.push('\\');
+                        ret.push(next_with_pos!(chars, pos, '\\'));
                     }
                     _ => ret.push(next_with_pos!(chars, pos)),
                 }
