@@ -3,6 +3,7 @@
 use crate::{TimeBound, TimeValidityError};
 use itertools::chain;
 use std::ops::{Bound, Deref, RangeBounds};
+use tor_basic_utils::rangebounds::RangeBoundsExt;
 use web_time_compat as time;
 
 /// A `TimeBound` object that is valid for a specified range of time.
@@ -440,6 +441,67 @@ impl<T> crate::TimeBound for TimeRangeBound<T> {
 
     fn dangerously_assume_timely(self) -> T {
         self.obj
+    }
+}
+
+/// Accumulator for [`TimeBound`] ranges.
+///
+/// Multiple [`TimeBound`] ranges can be accumulated using
+/// [`TimeBoundAccumulator::intersect_with()`] before being applied to
+/// a final value using [`TimeBoundAccumulator::apply_to()`].
+///
+/// Special care is taken to properly deal with empty intersections,
+/// which eventually always result in an invalid [`TimeRangeBound`].
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+pub struct TimeBoundAccumulator(Option<TimeRange>);
+
+impl TimeBoundAccumulator {
+    /// Creates a new [`TimeBoundAccumulator`] with a given initial range.
+    pub fn new(range: &impl TimeBound) -> Self {
+        Self(Some(range.bounds()))
+    }
+
+    /// Intersects `b` with the previous intersected values.
+    ///
+    /// This either keeps the set the same or narrows it further down, but never
+    /// broadens it.  Special care is taken by this implementation to ensure
+    /// that empty intersections are handled properly.
+    pub fn intersect_with(&mut self, b: &impl TimeBound) {
+        // A None here means, that at least one previous invocation yielded
+        // the empty set as the result.  In this case, we return early and
+        // leave the None unchanged, as an intersection with at least one
+        // empty set always results in the entire expression evaluating to
+        // the empty set.  In other words: A ∩ ∅ ∩ B = ∅.
+        let Some(a) = &mut self.0 else {
+            return;
+        };
+
+        // We use the intersection method from tor-basic-utils, as the
+        // .intersect_bounds() method only returns an invalid bound in
+        // the case of an empty intersection, which may be accumulated into a
+        // valid bound again, if we would not manually check (start > end) after
+        // every accumulation.  This feels to error prone, so we go by the
+        // tor-basic-utils method instead.
+        self.0 = a.intersect(&b.bounds()).map(|x| TimeRange::new((), x));
+    }
+
+    /// Consumes the [`TimeBoundAccumulator`], returning a [`TimeRangeBound`]
+    /// with a provided `obj`.
+    ///
+    /// In the case that the given values accumulated into an empty set, the
+    /// resulting [`TimeRangeBound`] will have an invalid range.
+    pub fn apply_to<T>(self, obj: T) -> TimeRangeBound<T> {
+        // A simple invalid range, with invalid meaning start > end with both
+        // values being Some.  The 32 here is meaningless.
+        let invalid = (time::SystemTime::UNIX_EPOCH + time::Duration::from_secs(32))
+            ..time::SystemTime::UNIX_EPOCH;
+
+        let range = match self.0 {
+            Some(range) => range,
+            None => TimeRange::new((), invalid),
+        };
+        range.apply_to(obj)
     }
 }
 
