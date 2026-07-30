@@ -1201,10 +1201,7 @@ mod test {
     }
     fn check_string_deescape_err(quoted: &str, expected_output: &str) {
         let msg = format!("LOG SEVERITY=debug MESSAGE=\"{}\"", quoted);
-        assert_eq!(
-            msg.parse::<PtMessage>(),
-            Err(Cow::from(expected_output))
-        );
+        assert_eq!(msg.parse::<PtMessage>(), Err(Cow::from(expected_output)));
     }
     #[test]
     fn octal_parsing_tests() {
@@ -1217,9 +1214,10 @@ mod test {
         check_string_deescape("\\177", "\u{7f}");
         // Short octal escapes terminated by 8 or 9.
         check_string_deescape("\\191", "191");
-        // Short octal string terminated by non-octal escapes. 
+        // Short octal string terminated by non-octal escapes.
         check_string_deescape("\\1pryty26 wrote that", "1pryty26 wrote that");
         // Short octal escapes terminated by the end of the "-string.
+        check_string_deescape("\\2\"30 Jinitaimei-kunkun cxk", "2");
         check_string_deescape("\\1\"12Ian is the best reviewer", "1");
         check_string_deescape("\\11\"note_2812945Ian is a good guy", "11");
     }
