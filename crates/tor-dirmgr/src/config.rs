@@ -166,7 +166,9 @@ mod test {
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     #![allow(clippy::unnecessary_wraps)]
     use super::*;
+    use fs_mistrust::Mistrust;
     use tempfile::tempdir;
+    use tor_netdoc::doc::netstatus::NetParams;
 
     #[test]
     fn simplest_config() -> Result<()> {
@@ -179,8 +181,10 @@ mod test {
 
         assert!(dir.authorities().v3idents().len() >= 3);
         assert!(dir.fallbacks().len() >= 3);
-
-        // TODO: verify other defaults.
+        assert_eq!(dir.cache_trust, Mistrust::default());
+        assert_eq!(dir.override_net_params, NetParams::<i32>::default());
+        #[cfg(feature = "dirfilter")]
+        assert!(dir.extensions.filter.is_none());
 
         Ok(())
     }
