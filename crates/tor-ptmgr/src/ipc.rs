@@ -123,7 +123,7 @@ fn parse_one_value(from: &str) -> Result<(String, &str), &'static str> {
         let mut ret: String = String::new();
         let mut chars = from.chars();
         assert_eq!(chars.next(), Some('"')); // We already know it.
-        'l: loop {
+        loop {
             match chars.next().ok_or("ran out of input parsing CString")? {
                 '\\' => {
                     match chars.next().ok_or("run out of input parsing CString")? {
@@ -148,21 +148,14 @@ fn parse_one_value(from: &str) -> Result<(String, &str), &'static str> {
                                     ch if ch.is_digit(8) => octal_digits.push(
                                         chars.next().ok_or("ran out of input parsing CString")?,
                                     ),
-                                    '\\' => continue 'l,
-                                    '\"' => {
-                                        ret.push_str(&octal_digits);
-                                        break 'l;
-                                    }
-                                    _ => {
-                                        ret.push_str(&octal_digits);
-                                        ret.push(
-                                            chars
-                                                .next()
-                                                .ok_or("ran out of input parsing CString")?,
-                                        );
-                                        continue 'l;
-                                    }
+                                    _ => break,
                                 }
+                            }
+                            if octal_digits.len() != 3 {
+                                ret.push_str(&octal_digits);
+                                continue;
+                                // continue to the main loop we haven't consumed the unvalid digits yet
+                                // So we can let main loop handle it
                             }
                             let code_point: u32 = u32::from_str_radix(&octal_digits, 8)
                                 .map_err(|_| "invalid octal number")?;
@@ -1212,6 +1205,7 @@ mod test {
         check_string_deescape("pryty26\\111DEF", "pryty26IDEF");
         check_string_deescape_err("\\777\\111", "octal number out of range");
         check_string_deescape("\\177", "\u{7f}");
+        check_string_deescape("\\1\\111", "1I");
         // Short octal escapes terminated by 8 or 9.
         check_string_deescape("\\191", "191");
         // Short octal string terminated by non-octal escapes.
