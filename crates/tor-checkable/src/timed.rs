@@ -853,4 +853,45 @@ mod test {
         intersect(&end_open, &end2_open, &end2_open);
         intersect(&end_open, &closed2, &closed2);
     }
+
+    /// Intersects invalid ranges.
+    #[test]
+    fn test_accumulator_invalid() {
+        let start = parse_rfc3339("2000-01-01T00:00:00Z").unwrap();
+        let end = parse_rfc3339("2000-02-01T00:00:00Z").unwrap();
+        let valid = TimeRange::new((), start..end);
+        let invalid = TimeRange::new((), end..start);
+        let half_open = TimeRange::new((), end..);
+        let full_open = TimeRange::new((), ..);
+
+        // Intersecting invalid with invalid is an empty set.
+        let mut accumulator = TimeBoundAccumulator::new(&invalid);
+        accumulator.intersect_with(&TimeRange::new((), end..start));
+        assert_eq!(accumulator.0, None);
+        let res = accumulator.apply_to(());
+        assert!(res.start > res.end);
+
+        // Creating an invalid set is not marked as empty though, but the
+        // effective result should be the same.
+        let res = TimeBoundAccumulator::new(&invalid).apply_to(());
+        assert!(res.start > res.end);
+
+        // Intersecting valid with invalid is also an empty set.
+        let mut accumulator = TimeBoundAccumulator::new(&valid);
+        accumulator.intersect_with(&invalid);
+        assert_eq!(accumulator.0, None);
+
+        // Likewise, it will stay invalid if we intersect it with something
+        // valid again.
+        accumulator.intersect_with(&valid);
+        assert_eq!(accumulator.0, None);
+
+        // We can also not intersect something invalid with half or full open.
+        let mut accumulator = TimeBoundAccumulator::new(&invalid);
+        accumulator.intersect_with(&half_open);
+        assert_eq!(accumulator.0, None);
+        let mut accumulator = TimeBoundAccumulator::new(&invalid);
+        accumulator.intersect_with(&full_open);
+        assert_eq!(accumulator.0, None);
+    }
 }
