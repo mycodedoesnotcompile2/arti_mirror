@@ -524,7 +524,6 @@ mod test {
     use super::*;
     use crate::{TimeBound, TimeValidityError};
     use humantime::parse_rfc3339;
-    use tor_basic_utils::rangebounds::RangeBoundsExt as _;
     use web_time_compat::{Duration, SystemTime, SystemTimeExt};
 
     #[test]
