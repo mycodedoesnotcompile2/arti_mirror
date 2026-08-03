@@ -3,6 +3,7 @@
 use crate::{TimeBound, TimeValidityError};
 use itertools::chain;
 use std::ops::{Bound, Deref, RangeBounds};
+use tor_basic_utils::rangebounds::RangeBoundsExt;
 use web_time_compat as time;
 
 /// A `TimeBound` object that is valid for a specified range of time.
@@ -443,6 +444,67 @@ impl<T> crate::TimeBound for TimeRangeBound<T> {
     }
 }
 
+/// Accumulator for [`TimeBound`] ranges.
+///
+/// Multiple [`TimeBound`] ranges can be accumulated using
+/// [`TimeBoundAccumulator::intersect_with()`] before being applied to
+/// a final value using [`TimeBoundAccumulator::apply_to()`].
+///
+/// Special care is taken to properly deal with empty intersections,
+/// which eventually always result in an invalid [`TimeRangeBound`].
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+pub struct TimeBoundAccumulator(Option<TimeRange>);
+
+impl TimeBoundAccumulator {
+    /// Creates a new [`TimeBoundAccumulator`] with a given initial range.
+    pub fn new(range: &impl TimeBound) -> Self {
+        Self(Some(range.bounds()))
+    }
+
+    /// Intersects `b` with the previous intersected values.
+    ///
+    /// This either keeps the set the same or narrows it further down, but never
+    /// broadens it.  Special care is taken by this implementation to ensure
+    /// that empty intersections are handled properly.
+    pub fn intersect_with(&mut self, b: &impl TimeBound) {
+        // A None here means, that at least one previous invocation yielded
+        // the empty set as the result.  In this case, we return early and
+        // leave the None unchanged, as an intersection with at least one
+        // empty set always results in the entire expression evaluating to
+        // the empty set.  In other words: A ∩ ∅ ∩ B = ∅.
+        let Some(a) = &mut self.0 else {
+            return;
+        };
+
+        // We use the intersection method from tor-basic-utils, as the
+        // .intersect_bounds() method only returns an invalid bound in
+        // the case of an empty intersection, which may be accumulated into a
+        // valid bound again, if we would not manually check (start > end) after
+        // every accumulation.  This feels to error prone, so we go by the
+        // tor-basic-utils method instead.
+        self.0 = a.intersect(&b.bounds()).map(|x| TimeRange::new((), x));
+    }
+
+    /// Consumes the [`TimeBoundAccumulator`], returning a [`TimeRangeBound`]
+    /// with a provided `obj`.
+    ///
+    /// In the case that the given values accumulated into an empty set, the
+    /// resulting [`TimeRangeBound`] will have an invalid range.
+    pub fn apply_to<T>(self, obj: T) -> TimeRangeBound<T> {
+        // A simple invalid range, with invalid meaning start > end with both
+        // values being Some.  The 32 here is meaningless.
+        let invalid = (time::SystemTime::UNIX_EPOCH + time::Duration::from_secs(32))
+            ..time::SystemTime::UNIX_EPOCH;
+
+        let range = match self.0 {
+            Some(range) => range,
+            None => TimeRange::new((), invalid),
+        };
+        range.apply_to(obj)
+    }
+}
+
 #[cfg(test)]
 mod test {
     // @@ begin test lint list maintained by maint/add_warning @@
@@ -462,7 +524,6 @@ mod test {
     use super::*;
     use crate::{TimeBound, TimeValidityError};
     use humantime::parse_rfc3339;
-    use tor_basic_utils::rangebounds::RangeBoundsExt as _;
     use web_time_compat::{Duration, SystemTime, SystemTimeExt};
 
     #[test]
@@ -645,5 +706,192 @@ mod test {
                 }
             }
         }
+    }
+
+    /// Tests the [`TimeBoundAccumulator`] with closed intervals.
+    #[test]
+    fn test_accumulator_closed() {
+        // One month; Jan. 2000 to Feb. 2000.
+        let a_start = parse_rfc3339("2000-01-01T00:00:00Z").unwrap();
+        let a_end = parse_rfc3339("2000-02-01T00:00:00Z").unwrap();
+        let a = TimeRange::new((), a_start..a_end);
+
+        let mut accumulator = TimeBoundAccumulator::new(&a);
+        assert_eq!(accumulator.0, Some(a.clone()));
+
+        // One week in Jan. 2000; test with a full overlap.
+        let b_start = parse_rfc3339("2000-01-07T00:00:00Z").unwrap();
+        let b_end = parse_rfc3339("2000-01-14T00:00:00Z").unwrap();
+        let b = TimeRange::new((), b_start..b_end);
+        {
+            let mut accumulator = accumulator.clone();
+            accumulator.intersect_with(&b);
+            assert_eq!(accumulator.0, Some(b.clone()));
+        }
+
+        // 2000-01-14 until 2000-02-14; check partial overlap.
+        let c_start = parse_rfc3339("2000-01-14T00:00:00Z").unwrap();
+        let c_end = parse_rfc3339("2000-02-14T00:00:00Z").unwrap();
+        let c = TimeRange::new((), c_start..c_end);
+        {
+            let mut accumulator = accumulator.clone();
+            accumulator.intersect_with(&c);
+            assert_eq!(accumulator.0, Some(TimeRange::new((), c_start..a_end)));
+        }
+
+        // 2000-02-01 to 2000-02-02; check edge overlap.
+        let d_start = parse_rfc3339("2000-02-01T00:00:00Z").unwrap();
+        let d_end = parse_rfc3339("2000-02-02T00:00:00Z").unwrap();
+        let d = TimeRange::new((), d_start..d_end);
+        {
+            let mut accumulator = accumulator.clone();
+            accumulator.intersect_with(&d);
+            assert_eq!(d_start, a_end);
+            assert_eq!(accumulator.0, Some(TimeRange::new((), d_start..d_start)));
+        }
+
+        // 2000-02-02 to 2000-02-03; check very much no overlap.
+        let e_start = parse_rfc3339("2000-02-02T00:00:00Z").unwrap();
+        let e_end = parse_rfc3339("2000-02-03T00:00:00Z").unwrap();
+        let e = TimeRange::new((), e_start..e_end);
+        {
+            let mut accumulator = accumulator.clone();
+            accumulator.intersect_with(&e);
+            assert_eq!(accumulator.0, None);
+        }
+
+        // 1999-12-14 to 2000-01-14; check overlap from "behind".
+        let f_start = parse_rfc3339("1999-12-14T00:00:00Z").unwrap();
+        let f_end = parse_rfc3339("2000-01-14T00:00:00Z").unwrap();
+        let f = TimeRange::new((), f_start..f_end);
+        {
+            let mut accumulator = accumulator.clone();
+            accumulator.intersect_with(&f);
+            assert_eq!(accumulator.0, Some(TimeRange::new((), a_start..f_end)));
+        }
+
+        // Verify that an empty set as an intermediate result will yield a
+        // final empty set.
+        // A ∩ E ∩ B = ∅.
+        assert!(accumulator.0.is_some());
+        accumulator.intersect_with(&e);
+        assert!(accumulator.0.is_none());
+        accumulator.intersect_with(&b);
+        assert!(accumulator.0.is_none());
+
+        // A ∩ B ∩ C = 2000-01-14T00:00:00Z.
+        let mut accumulator = TimeBoundAccumulator::new(&a);
+        accumulator.intersect_with(&b);
+        accumulator.intersect_with(&c);
+        assert_eq!(accumulator.0, Some(TimeRange::new((), b_end..b_end)));
+
+        // A ∩ A = A
+        let mut accumulator = TimeBoundAccumulator::new(&a);
+        accumulator.intersect_with(&a);
+        assert_eq!(accumulator.0, Some(a.clone()));
+
+        // Check apply_to().
+        assert_eq!(
+            accumulator.clone().apply_to(42),
+            TimeRangeBound::new(42, accumulator.0.unwrap())
+        );
+    }
+
+    /// Tests the [`TimeBoundAccumulator`] with (half-) open intervals.
+    #[test]
+    fn test_accumulator_open() {
+        /// Intersects a with b and compares it against res.
+        fn intersect(a: &impl TimeBound, b: &impl TimeBound, res: &TimeRange) {
+            let mut accumulator = TimeBoundAccumulator::new(a);
+            accumulator.intersect_with(b);
+            assert_eq!(accumulator.0.as_ref(), Some(res));
+        }
+
+        // The variable naming in this test is a bit unfortunate.
+        // For example, start_open refers to ..end, because the start is open.
+        // Unfortunately, names like open_end (which could be seen as ..end) are
+        // not better, because open_end can also be understood like an "open end",
+        // i.e. "start..".
+
+        let start = parse_rfc3339("2000-01-01T00:00:00Z").unwrap();
+        let end = parse_rfc3339("2000-02-01T00:00:00Z").unwrap();
+        let full_open = TimeRange::new((), ..);
+        let start_open = TimeRange::new((), ..end);
+        let end_open = TimeRange::new((), start..);
+        let closed = TimeRange::new((), start..end);
+
+        // Intersecting open with anything should always yield the other.
+        intersect(&full_open, &full_open, &full_open);
+        intersect(&full_open, &start_open, &start_open);
+        intersect(&full_open, &end_open, &end_open);
+        intersect(&full_open, &closed, &closed);
+
+        // Intersecting start_open should always narrow down or stay the same.
+        intersect(&start_open, &start_open, &start_open);
+        intersect(&start_open, &end_open, &closed);
+        intersect(&start_open, &closed, &closed);
+
+        // Same with end_open.
+        intersect(&end_open, &end_open, &end_open);
+        intersect(&end_open, &start_open, &closed);
+        intersect(&end_open, &closed, &closed);
+
+        // Now intersect the previous values with other (half-)open intervals.
+        let start2 = parse_rfc3339("2000-01-14T00:00:00Z").unwrap();
+        let end2 = parse_rfc3339("2000-02-14T00:00:00Z").unwrap();
+        let start2_open = TimeRange::new((), ..end2);
+        let end2_open = TimeRange::new((), start2..);
+        let closed2 = TimeRange::new((), start2..end2);
+
+        // Combine start_open with other (half-)open intervals.
+        intersect(&start_open, &start2_open, &start_open);
+        intersect(&start_open, &end2_open, &TimeRange::new((), start2..end));
+        intersect(&start_open, &closed2, &TimeRange::new((), start2..end));
+
+        // Now the same but for end_open.
+        intersect(&end_open, &start2_open, &TimeRange::new((), start..end2));
+        intersect(&end_open, &end2_open, &end2_open);
+        intersect(&end_open, &closed2, &closed2);
+    }
+
+    /// Intersects invalid ranges.
+    #[test]
+    fn test_accumulator_invalid() {
+        let start = parse_rfc3339("2000-01-01T00:00:00Z").unwrap();
+        let end = parse_rfc3339("2000-02-01T00:00:00Z").unwrap();
+        let valid = TimeRange::new((), start..end);
+        let invalid = TimeRange::new((), end..start);
+        let half_open = TimeRange::new((), end..);
+        let full_open = TimeRange::new((), ..);
+
+        // Intersecting invalid with invalid is an empty set.
+        let mut accumulator = TimeBoundAccumulator::new(&invalid);
+        accumulator.intersect_with(&TimeRange::new((), end..start));
+        assert_eq!(accumulator.0, None);
+        let res = accumulator.apply_to(());
+        assert!(res.start > res.end);
+
+        // Creating an invalid set is not marked as empty though, but the
+        // effective result should be the same.
+        let res = TimeBoundAccumulator::new(&invalid).apply_to(());
+        assert!(res.start > res.end);
+
+        // Intersecting valid with invalid is also an empty set.
+        let mut accumulator = TimeBoundAccumulator::new(&valid);
+        accumulator.intersect_with(&invalid);
+        assert_eq!(accumulator.0, None);
+
+        // Likewise, it will stay invalid if we intersect it with something
+        // valid again.
+        accumulator.intersect_with(&valid);
+        assert_eq!(accumulator.0, None);
+
+        // We can also not intersect something invalid with half or full open.
+        let mut accumulator = TimeBoundAccumulator::new(&invalid);
+        accumulator.intersect_with(&half_open);
+        assert_eq!(accumulator.0, None);
+        let mut accumulator = TimeBoundAccumulator::new(&invalid);
+        accumulator.intersect_with(&full_open);
+        assert_eq!(accumulator.0, None);
     }
 }
