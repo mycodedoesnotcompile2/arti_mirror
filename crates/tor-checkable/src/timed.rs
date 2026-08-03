@@ -796,4 +796,61 @@ mod test {
             TimeRangeBound::new(42, accumulator.0.unwrap())
         );
     }
+
+    /// Tests the [`TimeBoundAccumulator`] with (half-) open intervals.
+    #[test]
+    fn test_accumulator_open() {
+        /// Intersects a with b and compares it against res.
+        fn intersect(a: &impl TimeBound, b: &impl TimeBound, res: &TimeRange) {
+            let mut accumulator = TimeBoundAccumulator::new(a);
+            accumulator.intersect_with(b);
+            assert_eq!(accumulator.0.as_ref(), Some(res));
+        }
+
+        // The variable naming in this test is a bit unfortunate.
+        // For example, start_open refers to ..end, because the start is open.
+        // Unfortunately, names like open_end (which could be seen as ..end) are
+        // not better, because open_end can also be understood like an "open end",
+        // i.e. "start..".
+
+        let start = parse_rfc3339("2000-01-01T00:00:00Z").unwrap();
+        let end = parse_rfc3339("2000-02-01T00:00:00Z").unwrap();
+        let full_open = TimeRange::new((), ..);
+        let start_open = TimeRange::new((), ..end);
+        let end_open = TimeRange::new((), start..);
+        let closed = TimeRange::new((), start..end);
+
+        // Intersecting open with anything should always yield the other.
+        intersect(&full_open, &full_open, &full_open);
+        intersect(&full_open, &start_open, &start_open);
+        intersect(&full_open, &end_open, &end_open);
+        intersect(&full_open, &closed, &closed);
+
+        // Intersecting start_open should always narrow down or stay the same.
+        intersect(&start_open, &start_open, &start_open);
+        intersect(&start_open, &end_open, &closed);
+        intersect(&start_open, &closed, &closed);
+
+        // Same with end_open.
+        intersect(&end_open, &end_open, &end_open);
+        intersect(&end_open, &start_open, &closed);
+        intersect(&end_open, &closed, &closed);
+
+        // Now intersect the previous values with other (half-)open intervals.
+        let start2 = parse_rfc3339("2000-01-14T00:00:00Z").unwrap();
+        let end2 = parse_rfc3339("2000-02-14T00:00:00Z").unwrap();
+        let start2_open = TimeRange::new((), ..end2);
+        let end2_open = TimeRange::new((), start2..);
+        let closed2 = TimeRange::new((), start2..end2);
+
+        // Combine start_open with other (half-)open intervals.
+        intersect(&start_open, &start2_open, &start_open);
+        intersect(&start_open, &end2_open, &TimeRange::new((), start2..end));
+        intersect(&start_open, &closed2, &TimeRange::new((), start2..end));
+
+        // Now the same but for end_open.
+        intersect(&end_open, &start2_open, &TimeRange::new((), start..end2));
+        intersect(&end_open, &end2_open, &end2_open);
+        intersect(&end_open, &closed2, &closed2);
+    }
 }
