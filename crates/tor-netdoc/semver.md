@@ -25,3 +25,5 @@ BREAKING: `HsDesc::parse_decrypt_validate` no longer takes a `SystemTime` and **
 ADDED: `encode::encode_netdoc_unsigned` and `encode_netdoc_fields`
 ADDED: impl `Hash` for `netstatus::ConsensusMethods`
 BREAKING: `RouterStatus.port_policy` is `Intern`, not `Arc`
+BREAKING: Removed `RouterDesc::onion_key`.
+BREAKING: Removed the default impl for `StrExt::strip_end_counted()`.
