@@ -707,4 +707,93 @@ mod test {
             }
         }
     }
+
+    /// Tests the [`TimeBoundAccumulator`] with closed intervals.
+    #[test]
+    fn test_accumulator_closed() {
+        // One month; Jan. 2000 to Feb. 2000.
+        let a_start = parse_rfc3339("2000-01-01T00:00:00Z").unwrap();
+        let a_end = parse_rfc3339("2000-02-01T00:00:00Z").unwrap();
+        let a = TimeRange::new((), a_start..a_end);
+
+        let mut accumulator = TimeBoundAccumulator::new(&a);
+        assert_eq!(accumulator.0, Some(a.clone()));
+
+        // One week in Jan. 2000; test with a full overlap.
+        let b_start = parse_rfc3339("2000-01-07T00:00:00Z").unwrap();
+        let b_end = parse_rfc3339("2000-01-14T00:00:00Z").unwrap();
+        let b = TimeRange::new((), b_start..b_end);
+        {
+            let mut accumulator = accumulator.clone();
+            accumulator.intersect_with(&b);
+            assert_eq!(accumulator.0, Some(b.clone()));
+        }
+
+        // 2000-01-14 until 2000-02-14; check partial overlap.
+        let c_start = parse_rfc3339("2000-01-14T00:00:00Z").unwrap();
+        let c_end = parse_rfc3339("2000-02-14T00:00:00Z").unwrap();
+        let c = TimeRange::new((), c_start..c_end);
+        {
+            let mut accumulator = accumulator.clone();
+            accumulator.intersect_with(&c);
+            assert_eq!(accumulator.0, Some(TimeRange::new((), c_start..a_end)));
+        }
+
+        // 2000-02-01 to 2000-02-02; check edge overlap.
+        let d_start = parse_rfc3339("2000-02-01T00:00:00Z").unwrap();
+        let d_end = parse_rfc3339("2000-02-02T00:00:00Z").unwrap();
+        let d = TimeRange::new((), d_start..d_end);
+        {
+            let mut accumulator = accumulator.clone();
+            accumulator.intersect_with(&d);
+            assert_eq!(d_start, a_end);
+            assert_eq!(accumulator.0, Some(TimeRange::new((), d_start..d_start)));
+        }
+
+        // 2000-02-02 to 2000-02-03; check very much no overlap.
+        let e_start = parse_rfc3339("2000-02-02T00:00:00Z").unwrap();
+        let e_end = parse_rfc3339("2000-02-03T00:00:00Z").unwrap();
+        let e = TimeRange::new((), e_start..e_end);
+        {
+            let mut accumulator = accumulator.clone();
+            accumulator.intersect_with(&e);
+            assert_eq!(accumulator.0, None);
+        }
+
+        // 1999-12-14 to 2000-01-14; check overlap from "behind".
+        let f_start = parse_rfc3339("1999-12-14T00:00:00Z").unwrap();
+        let f_end = parse_rfc3339("2000-01-14T00:00:00Z").unwrap();
+        let f = TimeRange::new((), f_start..f_end);
+        {
+            let mut accumulator = accumulator.clone();
+            accumulator.intersect_with(&f);
+            assert_eq!(accumulator.0, Some(TimeRange::new((), a_start..f_end)));
+        }
+
+        // Verify that an empty set as an intermediate result will yield a
+        // final empty set.
+        // A ∩ E ∩ B = ∅.
+        assert!(accumulator.0.is_some());
+        accumulator.intersect_with(&e);
+        assert!(accumulator.0.is_none());
+        accumulator.intersect_with(&b);
+        assert!(accumulator.0.is_none());
+
+        // A ∩ B ∩ C = 2000-01-14T00:00:00Z.
+        let mut accumulator = TimeBoundAccumulator::new(&a);
+        accumulator.intersect_with(&b);
+        accumulator.intersect_with(&c);
+        assert_eq!(accumulator.0, Some(TimeRange::new((), b_end..b_end)));
+
+        // A ∩ A = A
+        let mut accumulator = TimeBoundAccumulator::new(&a);
+        accumulator.intersect_with(&a);
+        assert_eq!(accumulator.0, Some(a.clone()));
+
+        // Check apply_to().
+        assert_eq!(
+            accumulator.clone().apply_to(42),
+            TimeRangeBound::new(42, accumulator.0.unwrap())
+        );
+    }
 }
