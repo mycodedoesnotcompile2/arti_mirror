@@ -111,35 +111,66 @@ pub enum PtMessage {
     /// A line containing an unknown command.
     Unknown(String),
 }
-
 /// Parse a value (something on the RHS of an =), which could be a CString as defined by
 /// control-spec.txt §2. Returns (value, unparsed rest of string).
+// TODO(pryty26): Adding some octal parsing tests for this function would be nice.
 fn parse_one_value(from: &str) -> Result<(String, &str), &'static str> {
     let first_char = from.chars().next();
     Ok(if first_char.is_none() {
         (String::new(), "")
     } else if let Some('"') = first_char {
         // This is a CString, so we're going to need to parse it char-by-char.
-        // FIXME(eta): This currently doesn't parse octal escape codes, even though the spec says
-        //             we should. That's finicky, though, and probably not used.
-        let mut ret = String::new();
+        let mut ret: String = String::new();
         let mut chars = from.chars();
-        assert_eq!(chars.next(), Some('"')); // discard "
+        assert_eq!(chars.next(), Some('"')); // We already know it.
         loop {
-            let ch = chars.next().ok_or("ran out of input parsing CString")?;
-            match ch {
-                '\\' => match chars
-                    .next()
-                    .ok_or("encountered trailing backslash in CString")?
-                {
-                    'n' => ret.push('\n'),
-                    'r' => ret.push('\r'),
-                    't' => ret.push('\t'),
-                    '0'..='8' => return Err("attempted unsupported octal escape code"),
-                    ch2 => ret.push(ch2),
-                },
+            match chars.next().ok_or("ran out of input parsing CString")? {
+                '\\' => {
+                    match chars.next().ok_or("run out of input parsing CString")? {
+                        'n' => ret.push('\n'),
+                        'r' => ret.push('\r'),
+                        't' => ret.push('\t'),
+                        ch if ch.is_digit(8) => {
+                            // Note(pryty26): We will parse up to 3 octal digits,
+                            // so push the first digit and then consume up to 2 more. And then parse them all.
+                            // But if there is a str which is not a valid octal digit,
+                            // we will break and append those to the ret,
+                            // including collected numbers, just like we are parsing normal chars.
+                            // Of course, if there is a double quote we will break and not append it.
+                            let mut octal_digits: String = String::with_capacity(3);
+                            octal_digits.push(ch);
+                            for _ in 1..3 {
+                                match chars
+                                    .clone()
+                                    .next()
+                                    .ok_or("ran out of input parsing CString")?
+                                {
+                                    ch if ch.is_digit(8) => octal_digits.push(
+                                        chars.next().ok_or("ran out of input parsing CString")?,
+                                    ),
+                                    _ => break,
+                                }
+                            }
+                            if octal_digits.len() != 3 {
+                                ret.push_str(&octal_digits);
+                                continue;
+                                // continue to the main loop we haven't consumed the unvalid digits yet
+                                // So we can let main loop handle it
+                            }
+                            let code_point: u32 = u32::from_str_radix(&octal_digits, 8)
+                                .map_err(|_| "invalid octal number")?;
+                            if code_point > 127 {
+                                return Err("octal number out of range");
+                            }
+                            // Make sure that the code point is not larger than 127,
+                            // because we are only supporting ASCII characters here.
+                            ret.push(code_point as u8 as char);
+                        }
+                        ch => ret.push(ch),
+                    }
+                }
                 '"' => break,
-                _ => ret.push(ch),
+                ch => ret.push(ch),
             }
         }
         (ret, chars.as_str())
@@ -1151,6 +1182,39 @@ mod test {
     use std::collections::HashMap;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+    fn check_string_deescape(quoted: &str, expected_output: &str) {
+        let msg = format!("LOG SEVERITY=debug MESSAGE=\"{}\"", quoted);
+        assert_eq!(
+            msg.parse::<PtMessage>(),
+            Ok(PtMessage::Log {
+                severity: "debug".to_string(),
+                message: expected_output.to_string()
+            })
+        );
+    }
+    fn check_string_deescape_err(quoted: &str, expected_output: &str) {
+        let msg = format!("LOG SEVERITY=debug MESSAGE=\"{}\"", quoted);
+        assert_eq!(msg.parse::<PtMessage>(), Err(Cow::from(expected_output)));
+    }
+    #[test]
+    fn octal_parsing_tests() {
+        check_string_deescape("\\0", "0"); // "\0"->"0"
+        check_string_deescape("\\123F", "SF"); // "\83" -> S
+        check_string_deescape("\\0000", "\00"); // "\000" -> NULL/"\0"
+        check_string_deescape("\\0123", "\n3");
+        check_string_deescape("pryty26\\111DEF", "pryty26IDEF");
+        check_string_deescape_err("\\777\\111", "octal number out of range");
+        check_string_deescape("\\177", "\u{7f}");
+        check_string_deescape("\\1\\111", "1I");
+        // Short octal escapes terminated by 8 or 9.
+        check_string_deescape("\\191", "191");
+        // Short octal string terminated by non-octal escapes.
+        check_string_deescape("\\1pryty26 wrote that", "1pryty26 wrote that");
+        // Short octal escapes terminated by the end of the "-string.
+        check_string_deescape("\\2\"30 Jinitaimei-kunkun cxk", "2");
+        check_string_deescape("\\1\"12Ian is the best reviewer", "1");
+        check_string_deescape("\\11\"note_2812945Ian is a good guy", "11");
+    }
     #[test]
     fn it_parses_spec_examples() {
         assert_eq!(
@@ -1259,9 +1323,13 @@ mod test {
             let msg = format!("LOG SEVERITY=debug MESSAGE=\"\\{i}\"");
             assert_eq!(
                 msg.parse::<PtMessage>(),
-                Err(Cow::from("attempted unsupported octal escape code"))
+                Ok(PtMessage::Log {
+                    severity: "debug".to_string(),
+                    message: i.to_string()
+                })
             );
         }
+
         assert_eq!(
             "SMETHOD obfs4 198.51.100.1:43734 ARGS:iat-mode=0\\".parse::<PtMessage>(),
             Err(Cow::from(
