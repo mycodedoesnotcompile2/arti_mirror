@@ -2286,7 +2286,17 @@ mod nickname {
     ///
     /// Nicknames are required to be ASCII, alphanumeric, and between 1 and 19
     /// characters inclusive.
-    #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+    #[derive(
+        Clone,
+        Debug,
+        PartialEq,
+        Eq,
+        Ord,
+        PartialOrd,
+        Hash,
+        serde_with::SerializeDisplay,
+        serde_with::DeserializeFromStr,
+    )]
     pub struct Nickname(tinystr::TinyAsciiStr<MAX_NICKNAME_LEN>);
 
     /// Invalid nickname
