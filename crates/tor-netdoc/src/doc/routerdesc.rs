@@ -1756,6 +1756,7 @@ mod test {
         let expired = expiration + Duration::from_secs(60 * 60 * 24);
 
         // Very boilerplatey construction of a router descriptor.
+        // TODO: Probably best to use constructor logic here.
         let mut rd = RouterDesc {
             router: RouterDescIntroItem {
                 nickname: "foo".parse().unwrap(),
