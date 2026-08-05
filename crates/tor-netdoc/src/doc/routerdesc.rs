@@ -117,6 +117,7 @@ pub struct RouterAnnotation {
 #[derive(Clone, Debug, Deftly, PartialEq)]
 #[derive_deftly(Constructor)]
 #[derive_deftly(NetdocParseableUnverified, NetdocEncodable)]
+#[allow(clippy::exhaustive_structs)]
 pub struct RouterDesc {
     /// `router` --- Introduce a router descriptor.
     ///
