@@ -20,6 +20,15 @@ use {crate::PtClientMethod, tor_socksproto::SocksVersion};
 /// A pluggable transport can be either _managed_ (run as an external process
 /// that we launch and monitor), or _unmanaged_ (running on a local port, not
 /// controlled by Arti).
+/// Example:
+/// ``` rust
+///     use tor_ptmgr::config::{TransportConfigBuilder, TransportConfig};
+///     use tor_config_path::CfgPath;
+///     let config: TransportConfig = TransportConfigBuilder::default()
+///            .protocols(vec!["obfs4".parse().unwrap(), "snowflake".parse().unwrap()])
+///            .path(CfgPath::new("/usr/bin/obfs4proxy".into()))
+///            .build().unwrap();
+/// ```
 #[derive(Clone, Debug, Deftly, Eq, PartialEq)]
 #[derive_deftly(TorConfig)]
 #[deftly(tor_config(no_default_trait, pre_build = "Self::validate"))]

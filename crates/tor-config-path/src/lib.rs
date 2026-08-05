@@ -240,9 +240,10 @@ impl CfgPath {
     }
 
     /// Return the path on disk designated by this `CfgPath`.
-    ///
-    /// Variables may or may not be resolved using `path_resolver`, depending on whether the
-    /// `expand-paths` feature is enabled or not.
+    /// If `cfg_path` is `PathInner::Shell`,
+    /// this function may expands it via `path_resolver` if the `expand-paths` feature is enabled;
+    /// (See `tor_config_path::expand`.)
+    /// if it is `PathInner::Literal`, it returns the path as-is.
     pub fn path(&self, path_resolver: &CfgPathResolver) -> Result<PathBuf, CfgPathError> {
         match &self.0 {
             PathInner::Shell(s) => expand(s, path_resolver),
