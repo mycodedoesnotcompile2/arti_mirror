@@ -6,6 +6,7 @@
 
 mod dns;
 mod listen;
+mod relay;
 
 use std::borrow::Cow;
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
@@ -30,6 +31,7 @@ use tor_dircommon::fallback::FallbackList;
 use tor_guardmgr::bridge::BridgeConfig;
 use tor_guardmgr::{VanguardConfig, VanguardConfigBuilder, VanguardMode};
 use tor_keymgr::config::{ArtiKeystoreConfig, ArtiKeystoreConfigBuilder};
+use tor_netdoc::types::Nickname;
 use tracing::metadata::Level;
 use tracing_subscriber::filter::EnvFilter;
 
@@ -231,6 +233,17 @@ impl tor_guardmgr::GuardMgrConfig for TorRelayConfig {
 #[derive_deftly(TorConfig)]
 #[deftly(tor_config(no_default_trait))]
 pub(crate) struct RelayConfig {
+    /// The nickname of this relay.
+    ///
+    /// Nicknames are a legacy (and fun!) mechanism that is occasionally useful for
+    /// debugging. They should never be used to uniquely identify a relay. Nothing
+    /// prevents two relays from having the same nickname.
+    ///
+    /// It must be between 1 and 19 ASCII alphanumeric characters inclusive. Default
+    /// value is `Unnamed`.
+    #[deftly(tor_config(default = "relay::default_nickname()"))]
+    pub(crate) nickname: Nickname,
+
     /// Addresses to listen on for incoming OR connections.
     #[deftly(tor_config(no_default))]
     pub(crate) listen: Listen,
