@@ -1804,6 +1804,7 @@ mod test {
             or_address: Default::default(),
             tunnelled_dir_server: Some(Default::default()),
             proto: tor_protover::Protocols::new(),
+            __non_exhaustive: (),
         };
         let rd_original = rd.clone();
 
