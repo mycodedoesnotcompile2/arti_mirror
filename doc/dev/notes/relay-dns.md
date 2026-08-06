@@ -636,10 +636,9 @@ From the "timeless timing attack" paper:
 > probability.
 
 Assuming the size of a cached DNS response is ~512 bytes, the per-circuit cache size
-will be ~1 KB, so the total size of the cache will be 1 GB.
+will be ~10 KB, so the total size of the cache will be 10 GB.
 About 20% of each of the per-circ caches is duplicated,
-so we would be wasting about ~200 MB in total by not using a global cache.
-It's not great, but it seems tolerable.
+so we would be wasting about ~2 GB in total by not using a global cache, which is not great.
 
 Tentative plan:
 
