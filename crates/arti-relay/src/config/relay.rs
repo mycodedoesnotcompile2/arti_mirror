@@ -25,6 +25,32 @@ mod test {
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
 
     use super::*;
+    use tor_netdoc::types::ContactInfo;
+
+    #[test]
+    fn contact_valid() {
+        for info in [
+            "Arti relay team",
+            "8096R/13371337 Rosa Park<rosa.park@awesome.com>",
+            "trailing whitespace is fine  ",
+            "Du français avec accent ééé, on aime!",
+        ] {
+            let contact: ContactInfo = info.parse().unwrap();
+            assert_eq!(contact.to_string(), info);
+        }
+    }
+
+    #[test]
+    fn contact_invalid() {
+        for info in [
+            " leading whitespace", // Leading whitespace
+            "\tleading tab",       // Same but with a tab
+            "two\nlines",          // New line
+            "trailing newline\n",  // Trailing new line
+        ] {
+            assert!(info.parse::<ContactInfo>().is_err());
+        }
+    }
 
     #[test]
     fn nickname_valid() {

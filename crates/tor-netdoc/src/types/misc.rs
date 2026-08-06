@@ -2481,7 +2481,14 @@ mod contact_info {
     ///
     /// Also used for authority entries in netstatus documents.
     #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Deftly)] //
-    #[derive(derive_more::Into, derive_more::AsRef, derive_more::Deref, derive_more::Display)]
+    #[derive(
+        derive_more::Into,
+        derive_more::AsRef,
+        derive_more::Deref,
+        derive_more::Display,
+        serde_with::SerializeDisplay,
+        serde_with::DeserializeFromStr,
+    )]
     #[derive_deftly(ItemValueEncodable)]
     #[non_exhaustive]
     pub struct ContactInfo(#[deftly(netdoc(rest))] String);
