@@ -36,7 +36,7 @@ use tracing_subscriber::filter::EnvFilter;
 use crate::util::NonEmptyList;
 
 use self::listen::Listen;
-use self::relay::Nickname;
+use self::relay::{Contact, Nickname};
 
 /// Paths used for default configuration files.
 pub(crate) fn default_config_paths() -> Result<Vec<PathBuf>, CfgPathError> {
@@ -241,6 +241,16 @@ pub(crate) struct RelayConfig {
     /// value is `Unamed`.
     #[deftly(tor_config(default = "relay::default_nickname()"))]
     pub(crate) nickname: Nickname,
+
+    /// Contact information for the operator(s) of this relay.
+    ///
+    /// This is published in the descriptor so that the network health team can reach you
+    /// if there is a problem with the relay. It is free-form text but it must be a
+    /// single line and must not start with whitespace.
+    ///
+    /// If unset, the descriptor is published without a contact information.
+    #[deftly(tor_config(default))]
+    pub(crate) contact: Option<Contact>,
 
     /// Addresses to listen on for incoming OR connections.
     #[deftly(tor_config(no_default))]

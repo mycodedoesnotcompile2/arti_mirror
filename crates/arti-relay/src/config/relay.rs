@@ -8,6 +8,9 @@ pub(crate) enum RelayConfigError {
     /// The nickname failed validation.
     #[error("Relay nickname must be between 1 and 19 ASCII alphanumeric characters")]
     InvalidNickname,
+    /// The contact information failed validation.
+    #[error("Relay contact information must be a single line not starting with whitespace")]
+    InvalidContact,
 }
 
 /// The nickname of a relay set by an operator in the configuration.
@@ -44,6 +47,40 @@ impl From<&Nickname> for tor_netdoc::types::Nickname {
     }
 }
 
+/// The contact information of a relay set by an operator in the configuration.
+///
+/// This is free form text with the restriction that it must be a single line and must
+/// not start with whitespace.
+///
+/// This wraps tor-netdoc's contact info type so we can easily deleguate validation to
+/// that internal type. It prevents us from duplicating the validation rules but still
+/// keeping a wrapper to avoid exposing the tor-netdoc's internals.
+#[derive(Clone, Debug, Eq, PartialEq, derive_more::Display, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub(crate) struct Contact(tor_netdoc::types::ContactInfo);
+
+impl TryFrom<String> for Contact {
+    type Error = RelayConfigError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Ok(Self(
+            s.parse().map_err(|_| RelayConfigError::InvalidContact)?,
+        ))
+    }
+}
+
+impl From<Contact> for String {
+    fn from(contact: Contact) -> String {
+        contact.0.to_string()
+    }
+}
+
+impl From<&Contact> for tor_netdoc::types::ContactInfo {
+    fn from(contact: &Contact) -> Self {
+        contact.0.clone()
+    }
+}
+
 /// Return the default relay nickname. Again, taken from C-tor.
 pub(crate) fn default_nickname() -> Nickname {
     Nickname("Unnamed".parse().expect("Default nickname is invalid"))
@@ -67,6 +104,31 @@ mod test {
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
 
     use super::*;
+
+    #[test]
+    fn contact_valid() {
+        for info in [
+            "Arti relay team",
+            "8096R/DEADBEEF Bob Burger<bob@burger.com>",
+            "trailing whitespace is fine  ",
+            "Du français avec accent ééé c'est OK",
+        ] {
+            let contact = Contact::try_from(info.to_string()).unwrap();
+            assert_eq!(contact.to_string(), info);
+        }
+    }
+
+    #[test]
+    fn contact_invalid() {
+        for info in [
+            " leading whitespace", // No leading whitespace
+            "\tleading tab",       // Same but tab
+            "two\nlines",          // No new line
+            "trailing newline\n",  // Trailing new line
+        ] {
+            assert!(Contact::try_from(info.to_string()).is_err());
+        }
+    }
 
     #[test]
     fn nickname_valid() {
