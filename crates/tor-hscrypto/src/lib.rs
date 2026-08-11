@@ -1,17 +1,6 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![doc = include_str!("../README.md")]
 // @@ begin lint list maintained by maint/add_warning @@
-#![allow(renamed_and_removed_lints)] // @@REMOVE_WHEN(ci_arti_stable)
-#![allow(unknown_lints)] // @@REMOVE_WHEN(ci_arti_nightly)
-#![allow(clippy::cognitive_complexity)] // See arti#2556
-#![allow(clippy::collapsible_if)] // See arti#2342
-#![allow(clippy::let_unit_value)] // This can reasonably be done for explicitness
-#![allow(clippy::needless_lifetimes)] // See arti#1765
-#![allow(clippy::needless_raw_string_hashes)] // complained-about code is fine, often best
-#![allow(clippy::result_large_err)] // temporary workaround for arti#587
-#![allow(clippy::significant_drop_in_scrutinee)] // arti/-/merge_requests/588/#note_2812945
-#![allow(clippy::uninlined_format_args)]
-#![allow(mismatched_lifetime_syntaxes)] // temporary workaround for arti#2060
 #![warn(missing_docs)]
 #![warn(noop_method_call)]
 #![warn(unreachable_pub)]
@@ -45,6 +34,17 @@
 #![deny(clippy::unnecessary_wraps)]
 #![deny(clippy::unused_async)]
 #![deny(clippy::unwrap_used)]
+#![allow(renamed_and_removed_lints)] // @@REMOVE_WHEN(ci_arti_stable)
+#![allow(unknown_lints)] // @@REMOVE_WHEN(ci_arti_nightly)
+#![allow(clippy::cognitive_complexity)] // See arti#2556
+#![allow(clippy::collapsible_if)] // See arti#2342
+#![allow(clippy::let_unit_value)] // This can reasonably be done for explicitness
+#![allow(clippy::needless_lifetimes)] // See arti#1765
+#![allow(clippy::needless_raw_string_hashes)] // complained-about code is fine, often best
+#![allow(clippy::result_large_err)] // temporary workaround for arti#587
+#![allow(clippy::significant_drop_in_scrutinee)] // arti/-/merge_requests/588/#note_2812945
+#![allow(clippy::uninlined_format_args)]
+#![allow(mismatched_lifetime_syntaxes)] // temporary workaround for arti#2060
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 #![allow(dead_code, unused_variables)]
 
