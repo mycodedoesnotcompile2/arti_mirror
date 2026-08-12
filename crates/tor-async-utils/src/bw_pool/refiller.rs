@@ -20,7 +20,7 @@ use futures::StreamExt as _;
 use futures::channel::mpsc;
 use futures::task::AtomicWaker;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::Waker;
 
 use tor_basic_utils::token_bucket::{TokenBucket, TokenBucketConfig};
@@ -28,11 +28,17 @@ use tor_rtcompat::SleepProvider;
 
 use super::bucket::AtomicTokenBucket;
 
+/// A bandwidth request sent on the queue to the [`BandwidthRefiller`].
+///
+/// The amount of tokens wanted is fixed for the lifetime of a request and is only read
+/// by the refiller and thus why is travels along the waiter.
+pub(super) type BwRequest = (u64, Arc<RefillWaiter>);
+
 /// A refill waiter object through which the [`BandwidthRefiller`] signals a blocked
 /// acquirer.
 ///
 /// A [`std::task::Waker`] doesn't carry any information back to the task so this waiter
-/// is not indicating how much was granted but rather "was I granted what I asked".
+/// carries the number of granted tokens which doubles as the "was I granted" flag.
 ///
 /// This lives in a [`super::BandwidthAcquirer`] and is reused at every acquire which
 /// means that once the task is launched, the steady state has no extra allocation.
@@ -41,62 +47,66 @@ use super::bucket::AtomicTokenBucket;
 /// before cancellation (drop) is forfeited.
 #[derive(Debug)]
 pub(super) struct RefillWaiter {
-    /// Set by the refiller once it has funded this request. Read by the acquirer on each
-    /// poll to distinguish a grant from a spurious wakeup.
+    /// How many tokens the refiller has granted this request with. Read by the acquirer
+    /// on each poll to distinguish a grant from a spurious wakeup.
     ///
-    /// Reset by the acquirer (while no request is in flight) before each new request is
-    /// sent.
-    granted: AtomicBool,
+    /// A zero means "not granted yet" where a non-zero value is the grant itself. A
+    /// request is only queued for a non-zero amount.
+    ///
+    /// Taken by the acquirer which then resets it to zero when it emits a permit.
+    granted: AtomicU64,
     /// The blocked acquirer's task waker. Re-registered on every poll so it is always
     /// current, and woken by the refiller on grant.
     waker: AtomicWaker,
-    /// How many tokens the acquirer is wanting. Set by the acquirer before the waiter is
-    /// sent and read by the refiller to decide when it can be funded.
-    needed: AtomicU64,
 }
 
 impl RefillWaiter {
     /// Constructor.
     pub(super) fn new() -> Self {
         Self {
-            granted: AtomicBool::new(false),
+            granted: AtomicU64::new(0),
             waker: AtomicWaker::new(),
-            needed: AtomicU64::new(0),
         }
+    }
+
+    /// Return the number of tokens granted to this waiter. A value of zero meaning it
+    /// wasn't granted yet.
+    ///
+    /// The [`Ordering::Acquire`] load paired with the [`Ordering::Release`] store in
+    /// [`Self::set_granted`] (see the comment of that function for more details).
+    fn granted(&self) -> u64 {
+        self.granted.load(Ordering::Acquire)
     }
 
     /// Return true iff this waiter was granted permission to use the requested
     /// bandwidth.
-    ///
-    /// The [`Ordering::Acquire`] load paired with the [`Ordering::Release`] store in
-    /// [`Self::set_granted`] (see the comment of that function for more details).
     fn is_granted(&self) -> bool {
-        self.granted.load(Ordering::Acquire)
+        self.granted() != 0
     }
 
-    /// Prepare this waiter for a new request of `tokens` tokens with the given `waker`.
+    /// Prepare this waiter for a new request with the given `waker`.
     ///
     /// This must be called before the waiter is enqueued with the refiller.
-    pub(super) fn prepare(&self, waker: &Waker, tokens: u64) {
+    pub(super) fn prepare(&self, waker: &Waker) {
         // Reset the waiter with this new waker.
-        self.set_granted(false);
+        self.set_granted(0);
         self.set_waker(waker);
-        // Remember the in-flight amount so we can grant the permit later from it.
-        self.set_needed(tokens);
     }
 
     /// Grant a number of tokens for this waiter.
     ///
-    /// The `granted` value is given because it might be clamped so we simply set the
-    /// needed value to what was granted.
+    /// The `granted` value is given because it might be clamped so we record what was
+    /// actually granted rather than what was asked.
     ///
     /// This function does the atomic work in the proper order the caller doesn't need to
     /// bother about. The concurrency handling logic is contained.
+    ///
+    /// A `granted` value of 0 is not possible as such value indicate that the permit has
+    /// not been granted yet.
     pub(super) fn grant(&self, granted: u64) {
-        // Set the clamped value before the flag so the needed value is correct when the
-        // flag is read as true.
-        self.set_needed(granted);
-        self.set_granted(true);
+        debug_assert_ne!(granted, 0, "a queued request can't be 0 tokens");
+        // A single store publishes both the amount and the fact that we were funded.
+        self.set_granted(granted);
         // We are granted, wake up the waiter!
         self.wake();
     }
@@ -134,9 +144,16 @@ impl RefillWaiter {
     ///
     /// This is used by the acquirer to build the permit once granted.
     pub(super) fn take_granted(&self) -> u64 {
-        let granted = self.needed();
-        self.set_needed(0);
-        granted
+        // Acquire on the read half of the swap so it pairs with the refiller's Release
+        // store in `set_granted`.
+        //
+        // Strictly speaking, Relaxed would be enough. The grant is the value of this
+        // counter, it gates no other memory in the refiller.
+        //
+        // We keep Acquire so that every read of this counter so that way the ordering is
+        // a property of the counter and not something that one has to figure out per
+        // call site. This is the slow path so the cost is negligible.
+        self.granted.swap(0, Ordering::Acquire)
     }
 
     /// Set atomically the given `val` as the granted value.
@@ -147,7 +164,7 @@ impl RefillWaiter {
     /// before the acquirer has (re-)registered its waker:
     ///
     /// ```text
-    ///     refiller:  set_granted(true)      // grant
+    ///     refiller:  set_granted(n)         // grant
     ///     refiller:  waker.wake()           // no waker registered yet => wakes nobody
     ///     acquirer:  set_waker(cx)          // register, too late for the wake above
     ///     acquirer:  is_granted() -> ???    // must observe the grant or stuck forever
@@ -157,11 +174,11 @@ impl RefillWaiter {
     /// That happens-before is actually provided by the [`AtomicWaker`].
     ///
     /// We still publish it `Release` along side the `Acquire` load in
-    /// [`Self::is_granted`] so the flag's visibility is explicit rather than relying on
+    /// [`Self::granted`] so the counter's visibility is explicit rather than relying on
     /// solely on the [`AtomicWaker`] internal ordering.
     ///
     /// This is in the slow path so the performance cost is negligible.
-    fn set_granted(&self, val: bool) {
+    fn set_granted(&self, val: u64) {
         self.granted.store(val, Ordering::Release);
     }
 
@@ -173,20 +190,6 @@ impl RefillWaiter {
     /// Wake the waker.
     fn wake(&self) {
         self.waker.wake();
-    }
-
-    /// Return how many tokens this waiter is wanting.
-    fn needed(&self) -> u64 {
-        self.needed.load(Ordering::Acquire)
-    }
-
-    /// Set how many tokens this waiter needs.
-    ///
-    /// Stored [`Ordering::Release`] to match with the refiller's [`Ordering::Acquire`]
-    /// load. It is not gating any memory but for thoroughness and synchronization
-    /// between our methods.
-    fn set_needed(&self, val: u64) {
-        self.needed.store(val, Ordering::Release);
     }
 }
 
@@ -204,12 +207,12 @@ pub struct BandwidthRefiller {
     /// The shared token bucket which comes from the [`super::BandwidthPool`].
     bucket: Arc<AtomicTokenBucket>,
     /// Receiving end of the request channel
-    rx: mpsc::UnboundedReceiver<Arc<RefillWaiter>>,
+    rx: mpsc::UnboundedReceiver<BwRequest>,
     /// A single request we have taken off the channel to inspect but cannot yet fund. If
     /// only mpsc channels had an "is_empty()".
     ///
     /// This is populated by the [`Self::wait`] function
-    head: Option<Arc<RefillWaiter>>,
+    head: Option<BwRequest>,
     /// Tokens that have been drained out of the fast-path bucket or handed in via
     /// [`Self::refill`] but not yet distributed.
     ///
@@ -222,7 +225,7 @@ impl BandwidthRefiller {
     /// Constructor.
     pub(super) fn new(
         bucket: Arc<AtomicTokenBucket>,
-        rx: mpsc::UnboundedReceiver<Arc<RefillWaiter>>,
+        rx: mpsc::UnboundedReceiver<BwRequest>,
     ) -> Self {
         Self {
             bucket,
@@ -352,7 +355,7 @@ impl BandwidthRefiller {
         // tokens in the pool's fast path. We use the snapshot capacity here so it is the
         // same value used for the serve.
         match &self.head {
-            Some(front) => Some(front.needed().min(capacity).saturating_sub(self.held)),
+            Some((needed, _)) => Some((*needed).min(capacity).saturating_sub(self.held)),
             None => {
                 self.publish_held();
                 None
@@ -368,7 +371,7 @@ impl BandwidthRefiller {
     /// can't serve which indicates the caller we are in deficit.
     fn serve(&mut self, capacity: u64) {
         loop {
-            let req = match self.head.take() {
+            let (wanted, waiter) = match self.head.take() {
                 Some(req) => req,
                 None => match self.rx.try_recv() {
                     Ok(req) => req,
@@ -377,10 +380,10 @@ impl BandwidthRefiller {
                 },
             };
 
-            let needed = req.needed().min(capacity);
+            let needed = wanted.min(capacity);
             if needed > self.held {
                 // Unable to permit this request, keep it for next round.
-                self.head = Some(req);
+                self.head = Some((wanted, waiter));
                 return;
             }
 
@@ -388,7 +391,7 @@ impl BandwidthRefiller {
             // down, the grant is forfeited but that is a documented limitation.
             self.held -= needed;
             // Just in case it was clamped.
-            req.grant(needed);
+            waiter.grant(needed);
         }
     }
 
@@ -406,11 +409,11 @@ impl Drop for BandwidthRefiller {
         // Close the receiver so any new waiter gets a pool closed error.
         self.rx.close();
         // The waiter we pulled off the channel as the head but never served.
-        if let Some(head) = self.head.take() {
+        if let Some((_, head)) = self.head.take() {
             head.wake();
         }
         // Wake any enqueued waiters.
-        while let Ok(waiter) = self.rx.try_recv() {
+        while let Ok((_, waiter)) = self.rx.try_recv() {
             waiter.wake();
         }
     }
@@ -441,9 +444,7 @@ mod test {
 
     /// Build a new drained refiller of `capacity` and the request channel sender used to
     /// enqueue requests.
-    fn drained_refiller(
-        capacity: u64,
-    ) -> (mpsc::UnboundedSender<Arc<RefillWaiter>>, BandwidthRefiller) {
+    fn drained_refiller(capacity: u64) -> (mpsc::UnboundedSender<BwRequest>, BandwidthRefiller) {
         let (tx, rx) = mpsc::unbounded();
         let bucket = Arc::new(AtomicTokenBucket::new(capacity));
         assert!(bucket.claim(capacity)); // the bucket starts full; empty it
@@ -453,10 +454,9 @@ mod test {
     /// Enqueue a request for `needed` tokens.
     ///
     /// Return its waiter so the test can observe the grant.
-    fn enqueue(tx: &mpsc::UnboundedSender<Arc<RefillWaiter>>, needed: u64) -> Arc<RefillWaiter> {
+    fn enqueue(tx: &mpsc::UnboundedSender<BwRequest>, needed: u64) -> Arc<RefillWaiter> {
         let waiter = Arc::new(RefillWaiter::new());
-        waiter.set_needed(needed);
-        tx.unbounded_send(Arc::clone(&waiter)).unwrap();
+        tx.unbounded_send((needed, Arc::clone(&waiter))).unwrap();
         waiter
     }
 
