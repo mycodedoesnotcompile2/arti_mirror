@@ -316,6 +316,10 @@ impl BandwidthRefiller {
     /// `Self::serve` for that.
     #[cfg_attr(feature = "bench", visibility::make(pub))]
     pub(crate) async fn wait(&mut self) -> bool {
+        // Avoid overwriting an existing request.
+        if self.head.is_some() {
+            return true;
+        }
         match self.rx.next().await {
             Some(req) => {
                 self.head = Some(req);
