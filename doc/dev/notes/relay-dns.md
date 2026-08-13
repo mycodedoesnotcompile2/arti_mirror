@@ -212,7 +212,7 @@ with 100% success rate. Mike summarized it well in
 Arti will process each incoming RESOLVE stream in a new task.
 So while we won't have a lot of control over the order
 in which the RESOLVE requests are handled,
-the actual ordering will be less determinsitic than it is in C Tor,
+the actual ordering will be less predictable than it is in C Tor,
 which in theory, turns the "timeless timing attach" into more of a timing attack.
 That said, it's very likely that in practice, the cached responses will consistently
 resolve before the non-cached ones, so Arti would likely still be vulnerable
