@@ -399,7 +399,7 @@ impl BandwidthPool {
 
     /// Unit tests helper: The number of tokens currently available to the fast path.
     #[cfg(test)]
-    pub fn available(&self) -> u64 {
+    pub(crate) fn available(&self) -> u64 {
         self.bucket.available()
     }
 }
