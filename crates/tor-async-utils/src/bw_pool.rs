@@ -389,7 +389,7 @@ impl BandwidthPool {
 
     /// Unit tests helper: async acquire wrapping a throwaway [`BandwidthAcquirer`].
     #[cfg(test)]
-    pub async fn acquire(&self, tokens: u64) -> Result<Permit, BwPoolError> {
+    async fn acquire(&self, tokens: u64) -> Result<Permit, BwPoolError> {
         if let Some(permit) = self.try_acquire(tokens) {
             return Ok(permit);
         }
