@@ -13,7 +13,7 @@
 //! ```ignore
 //! let (pool, refiller) = BandwidthPool::new(capacity);
 //! let config = TokenBucketConfig { rate, bucket_max: capacity };
-//! runtime.spawn(refiller.start(runtime.clone(), config))?;
+//! runtime.spawn(refiller.run(runtime.clone(), config))?;
 //! ```
 
 use futures::StreamExt as _;
