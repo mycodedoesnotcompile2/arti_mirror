@@ -87,9 +87,10 @@ impl DirectionState {
     ///
     /// The permit is consumed so whatever is left unclaimed is refunded on drop.
     fn commit(mut permit: Permit, tokens: usize) {
-        // The claim should always succeed but if the inner misbehaves and reports a bigger
-        // value than was granted, we claim it all to avoid refunding what was actually used.
-        if permit.claim(to_u64(tokens)).is_ok() {
+        let claimed = permit.claim(to_u64(tokens));
+        debug_assert!(claimed.is_ok(), "IO reported more than the permit granted");
+        if claimed.is_err() {
+            // The inner misbehaved. Claim it all to avoid refunding what was used.
             permit.claim_all();
         }
     }
