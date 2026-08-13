@@ -85,6 +85,9 @@ impl DirectionState {
 
     /// Claim `tokens` on `permit` after a successful IO.
     ///
+    /// `tokens` must not exceed what the permit was granted. Callers get that by capping
+    /// the IO to [`Permit::granted`].
+    ///
     /// The permit is consumed so whatever is left unclaimed is refunded on drop.
     fn commit(mut permit: Permit, tokens: usize) {
         let claimed = permit.claim(to_u64(tokens));
