@@ -70,7 +70,7 @@ impl<I: TokenBucketInstant> TokenBucket<I> {
 
     /// Drain all tokens in the bucket.
     ///
-    /// Return how many where removed.
+    /// Return how many were removed.
     pub fn drain_all(&mut self) -> u64 {
         let count = self.bucket;
         self.bucket = 0;
