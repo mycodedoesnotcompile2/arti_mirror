@@ -261,7 +261,7 @@ impl BandwidthRefiller {
     ///
     /// Returns when the pool is closed or if the config rate is zero or if the requested
     /// amount of token is above the pool capacity.
-    pub async fn start<SP: SleepProvider>(mut self, sleep: SP, config: TokenBucketConfig) {
+    pub async fn run<SP: SleepProvider>(mut self, sleep: SP, config: TokenBucketConfig) {
         let mut bucket = TokenBucket::new(&config, sleep.now());
         // Start empty. The pool's first start full. This avoids adding a second burst to
         // the pool after the fast path is depleted.
