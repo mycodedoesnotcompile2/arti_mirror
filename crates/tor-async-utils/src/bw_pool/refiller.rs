@@ -5,7 +5,7 @@
 //! # Driving a pool
 //!
 //! The refiller must live in its own task that owns the clock and the rate. Simply call
-//! [`BandwidthRefiller::start`] into a spawned task. It builds a token bucket from the given
+//! [`BandwidthRefiller::run`] into a spawned task. It builds a token bucket from the given
 //! rate + burst and a [`tor_rtcompat::SleepProvider`].
 //!
 //! # Example
