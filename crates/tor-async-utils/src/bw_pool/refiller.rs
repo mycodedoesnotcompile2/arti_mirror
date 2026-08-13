@@ -309,6 +309,8 @@ impl BandwidthRefiller {
     /// Returns `true` once a request is received or `false` if the pool has been closed
     /// meaning the tx end is closed.
     ///
+    /// Returns `true` immediately if a request is already held as the head.
+    ///
     /// This should only be used as a "doorbell" that is indicating someone is at the
     /// door with a request rather than waiting for the next request. One should use
     /// `Self::serve` for that.
