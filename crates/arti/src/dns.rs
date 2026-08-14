@@ -266,10 +266,8 @@ pub(crate) async fn bind_dns_resolver<R: Runtime>(
     match listen.ip_addrs() {
         Ok(addrgroups) => {
             for addrgroup in addrgroups {
-                let mut failure_count: u32 = 0;
-                let mut addr_count: u32 = 0;
+                let mut any_success: bool = false;
                 for addr in addrgroup {
-                    addr_count += 1;
                     // NOTE: Our logs here displays the local address. We allow this, since
                     // knowing the address is basically essential for diagnostics.
                     match runtime.bind(&addr).await {
@@ -277,10 +275,10 @@ pub(crate) async fn bind_dns_resolver<R: Runtime>(
                             let bound_addr = listener.local_addr()?;
                             info!("Listening on {:?}.", bound_addr);
                             listeners.push(listener);
+                            any_success = true;
                         }
                         #[cfg(unix)]
                         Err(ref e) if e.raw_os_error() == Some(libc::EAFNOSUPPORT) => {
-                            failure_count += 1;
                             warn_report!(e, "Address family not supported {}", addr);
                         }
                         Err(ref e) => {
@@ -289,7 +287,7 @@ pub(crate) async fn bind_dns_resolver<R: Runtime>(
                     }
                 }
 
-                if failure_count >= addr_count {
+                if !any_success {
                     return Err(anyhow!("All addresses failed to bind in a group"));
                 }
             }
