@@ -87,6 +87,8 @@ impl DnsResponse {
         }
     }
 
+
+    // Note: there are some errors that shouldn't be cached (e.g. transient errors)
     fn from_error(query: Arc<String>, lookup: NetError, now: Instant) -> Self {
         let valid_until = now + Duration::from_secs(clip_and_fuzz_ttl(TTL_FOR_ERRORS).into());
 
