@@ -92,6 +92,11 @@ impl DnsResponse {
    }
 
    /// Increment the popularity counter of this entry
+   //
+   // TODO: to introduce some FPs, we could randomize the value
+   // we increment by?
+   //
+   // See https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4259#note_3450928
    fn inc_popularity_counter(&mut self) {
         self.popularity_counter += 1;
         if self.popularity_counter >= POPULARITY_THRESHOLD {
