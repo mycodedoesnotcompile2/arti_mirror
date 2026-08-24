@@ -176,6 +176,14 @@ where
             "Handshake complete; circuit extended."
         );
 
+        trace!(
+            onionperf = true,
+            circ_uniq_id = %self.unique_id,
+            forward_circ_id = %self.circ_id,
+            event = "CIRC",
+            status = "EXTENDED",
+        );
+
         // If we get here, it succeeded.  Add a new hop to the circuit.
         circ.add_hop(
             path::HopDetail::Relay(self.peer_id.clone()),

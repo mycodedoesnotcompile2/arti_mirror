@@ -1098,6 +1098,14 @@ impl Circuit {
             "Handshake complete; circuit created."
         );
 
+        trace!(
+            onionperf = true,
+            circ_uniq_id = %self.unique_id,
+            forward_circ_id = %self.circ_id,
+            event = "CIRC",
+            status = "EXTENDED"
+        );
+
         let peer_id = self.channel.target().clone();
 
         self.add_hop(

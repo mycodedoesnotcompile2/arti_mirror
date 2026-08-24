@@ -714,6 +714,8 @@ impl Reactor {
             }
         };
 
+        tracing::trace!(onionperf = true, tid = %self.tunnel_id, event = "CIRC", status = "CLOSE");
+
         // Log that the reactor stopped, possibly with the associated error as a report.
         // May log at a higher level depending on the error kind.
         const MSG: &str = "Tunnel reactor stopped";

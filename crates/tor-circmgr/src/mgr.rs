@@ -1031,7 +1031,17 @@ impl<B: AbstractTunnelBuilder<R> + 'static, R: Runtime> AbstractTunnelMgr<B, R> 
                         .await;
 
                     match outcome {
-                        Ok(Ok(circ)) => return Ok(circ),
+                        Ok(Ok(circ)) => {
+                            // TODO: Give usage as Value, probably once tracing valuable feature is
+                            // stable.
+                            tracing::trace!(
+                                onionperf = true,
+                                usage = format!("{:?}", usage),
+                                event = "CIRC",
+                                status = "BUILT",
+                            );
+                            return Ok(circ);
+                        }
                         Ok(Err(e)) => {
                             debug!("Circuit attempt {} failed.", attempt_num);
                             Error::RequestFailed(e)
@@ -1456,7 +1466,6 @@ impl<B: AbstractTunnelBuilder<R> + 'static, R: Runtime> AbstractTunnelMgr<B, R> 
         usage: &TargetTunnelUsage,
         plan: TunnelBuildPlan<B, R>,
     ) -> Shared<oneshot::Receiver<PendResult<B, R>>> {
-        let _ = usage; // Currently unused.
         let TunnelBuildPlan {
             mut plan,
             sender,
@@ -1475,6 +1484,8 @@ impl<B: AbstractTunnelBuilder<R> + 'static, R: Runtime> AbstractTunnelMgr<B, R> 
         // During tests, the `FakeBuilder` will need to release the block in order to fake a timeout
         // correctly.
         plan.add_blocked_advance_reason(reason);
+
+        let usage = usage.clone();
 
         runtime
             .spawn(async move {
@@ -1496,6 +1507,23 @@ impl<B: AbstractTunnelBuilder<R> + 'static, R: Runtime> AbstractTunnelMgr<B, R> 
                 // (We ignore any errors from `send`: That just means that nobody
                 // was waiting for this tunnel.)
                 let _ = sender.send(reply.clone());
+
+                // TODO: Give usage as Value, probably once tracing valuable feature is stable.
+                if reply.is_ok() {
+                    tracing::trace!(
+                        onionperf = true,
+                        usage = format!("{:?}", usage),
+                        event = "CIRC",
+                        status = "LAUNCHED",
+                    );
+                } else {
+                    tracing::trace!(
+                        onionperf = true,
+                        usage = format!("{:?}", usage),
+                        event = "CIRC",
+                        status = "FAILED",
+                    );
+                }
 
                 if let Some(new_spec) = new_spec {
                     // Wait briefly before we notify opportunistically.  This
