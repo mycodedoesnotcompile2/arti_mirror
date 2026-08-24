@@ -345,6 +345,11 @@ where
             };
             match addr {
                 Ok(addr) => {
+                    tracing::trace!(
+                        onionperf = true,
+                        event = "STREAM",
+                        status = "NEW",
+                    );
                     let reply = request
                         .reply(
                             tor_socksproto::SocksStatus::SUCCEEDED,
