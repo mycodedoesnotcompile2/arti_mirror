@@ -729,6 +729,7 @@ impl Guard {
             // TODO-SPEC: The "max" above isn't specified by guard-spec,
             // but I think it's wise.
             trace!(guard_id = ?self.id, "Newly confirmed");
+            trace!(onionperf = true, event = "GUARD", status = "UP");
             NewlyConfirmed::Yes
         } else {
             NewlyConfirmed::No
