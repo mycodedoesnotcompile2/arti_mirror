@@ -7,7 +7,7 @@
 use tor_netdoc::{
     doc::{
         authcert::AuthCertKeyIds,
-        netstatus::{ConsensusFlavor, md, plain},
+        netstatus::{ConsensusFlavor, Lifetime, md, plain},
     },
     parse2::{NetdocParseable, NetdocParseableUnverified},
 };
@@ -15,7 +15,10 @@ use tor_netdoc::{
 /// Generic trait representing a flavored verified consensus.
 ///
 /// Similar to [`FlavoredConsensusUnverified`] and obtained from it.
-pub(crate) trait FlavoredConsensusBody: Clone {}
+pub(crate) trait FlavoredConsensusBody: Clone {
+    /// Returns the [`Lifetime`] of this body.
+    fn lifetime(&self) -> &Lifetime;
+}
 
 /// Generic trait representing the signatures of a consensus.
 ///
@@ -55,9 +58,17 @@ pub(crate) trait FlavoredConsensusUnverified:
     }
 }
 
-impl FlavoredConsensusBody for plain::NetworkStatus {}
+impl FlavoredConsensusBody for plain::NetworkStatus {
+    fn lifetime(&self) -> &Lifetime {
+        &self.preamble.lifetime
+    }
+}
 
-impl FlavoredConsensusBody for md::NetworkStatus {}
+impl FlavoredConsensusBody for md::NetworkStatus {
+    fn lifetime(&self) -> &Lifetime {
+        &self.preamble.lifetime
+    }
+}
 
 impl FlavoredConsensusSignatures for plain::NetworkStatusSignatures {
     fn signatories(&self) -> Vec<AuthCertKeyIds> {
