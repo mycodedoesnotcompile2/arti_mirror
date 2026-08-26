@@ -65,13 +65,16 @@ use rusqlite::{
 use saturating_time::SaturatingTime;
 use tor_basic_utils::RngExt;
 use tor_dircommon::config::DirTolerance;
-use tor_error::into_internal;
+use tor_error::{internal, into_internal};
 use tor_netdoc::doc::{
     authcert::{AuthCert, AuthCertKeyIds},
     netstatus::ConsensusFlavor,
 };
 
-use crate::{err::DatabaseError, types::FlavoredConsensusUnverified};
+use crate::{
+    err::DatabaseError,
+    types::{FlavoredConsensusBody, FlavoredConsensusSignatures, FlavoredConsensusUnverified},
+};
 
 /// Version 1 of the database schema.
 ///
@@ -530,6 +533,133 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
             .query_map(named_params! {":docid": self.docid}, |row| row.get(0))?
             .collect::<Result<HashSet<_>, _>>()?;
         Ok(missing)
+    }
+
+    /// Inserts a verified consensus into the database.
+    ///
+    /// This method *DOES NOT* compute any consensus diffs but populates
+    /// associated meta tables such as `consensus_router_descriptor_member`
+    /// and `consensus_authority_voter` properly.
+    pub(crate) fn insert<I>(
+        tx: &Transaction<'_>,
+        encodings: I,
+        (body, sigs): (&T::Body, &T::Signatures),
+        data: &str,
+    ) -> Result<ConsensusMeta<T>, DatabaseError>
+    where
+        I: Iterator<Item = ContentEncoding>,
+    {
+        // Insert a consensus into the consensus meta table.
+        //
+        // This requires the consensus to already be present in the `store`
+        // table.
+        //
+        // Parameters:
+        // :docid - The docid of the consensus.
+        // :unsigned_sha3_256 - The SHA3-256 sum of the part of the consensus
+        //   without signatures but a trailing `\ndirectory-signature<SPACE>`.
+        // :flavor - The consensus flavor to use.
+        // :valid_after, :fresh_until, :valid_until - The respective validities.
+        let mut cons_stmt = tx.prepare_cached(sql!(
+            "
+            INSERT INTO consensus
+            (docid, unsigned_sha3_256, flavor, valid_after, fresh_until, valid_until)
+            VALUES
+            (:docid, :unsigned_sha3_256, :flavor, :valid_after, :fresh_until, :valid_until)
+            ON CONFLICT DO NOTHING
+            "
+        ))?;
+
+        // Insert the relationship between a router status to a consensus.
+        //
+        // Parameters:
+        // :docid - The consensus docid.
+        // :sha1 - The server descriptor digest (plain consensus only, NULL otherwise).
+        // :sha2 - The micro descriptor digest (microdesc consensus only, NULL otherwise).
+        let mut cons_rs_member_stmt = tx.prepare_cached(sql!(
+            "
+            INSERT INTO consensus_router_descriptor_member
+            (consensus_docid, unsigned_sha1, unsigned_sha2)
+            VALUES
+            (:docid, :sha1, :sha2)
+            ON CONFLICT DO NOTHING
+            "
+        ))?;
+
+        // Insert the relationship between authority certificate to consensus votes.
+        //
+        // Parameters:
+        // :cons - The consensus docid.
+        // :auth - The authority certificate docid.
+        let mut cons_auth_voter = tx.prepare_cached(sql!(
+            "
+            INSERT INTO consensus_authority_voter
+            (consensus_docid, kp_auth_id_rsa_sha1)
+            VALUES
+            (:consensus_docid, :id_rsa)
+            ON CONFLICT DO NOTHING
+            "
+        ))?;
+
+        // First, insert the consensus as is.
+        let docid = store_insert(tx, data.as_bytes(), encodings)?;
+
+        // TODO DIRMIRROR: We *need* this in tor-netdoc!!!
+        let unsigned_sha3_256 = Sha3_256::digest(
+            data.split_inclusive("\ndirectory-signature ")
+                .next()
+                .ok_or(internal!("verified document without signatures?"))?
+                .as_bytes(),
+        );
+
+        let lifetime = body.lifetime();
+        let meta = ConsensusMeta {
+            docid,
+            unsigned_sha3_256,
+            valid_after: lifetime.valid_after.0.into(),
+            fresh_until: lifetime.fresh_until.0.into(),
+            valid_until: lifetime.valid_until.0.into(),
+            flavor: Default::default(),
+        };
+        cons_stmt.execute(named_params! {
+            ":docid": meta.docid,
+            ":unsigned_sha3_256": meta.unsigned_sha3_256,
+            ":valid_after": meta.valid_after,
+            ":fresh_until": meta.fresh_until,
+            ":valid_until": meta.valid_until,
+            ":flavor": T::flavor().name(),
+        })?;
+
+        // Insert all router descriptor member relationships.
+        //
+        // Yes, many inserts are potentially slower than one large insert.
+        // However, given that all of this is a single transaction, the
+        // performance gap is not that much of a big deal.
+        //
+        // Depending on the flavor, we map the document digests to an iterator
+        // of a tuple of Option's, where one of the values is always None.
+        // This represents the fact that router descriptors use SHA-1 and micro
+        // descriptors SHA-256.
+        let doc_digests = body.doc_digests().into_iter().map(|d| match T::flavor() {
+            ConsensusFlavor::Plain => (Some(d), None),
+            ConsensusFlavor::Microdesc => (None, Some(d)),
+        });
+        for (sha1, sha2) in doc_digests {
+            cons_rs_member_stmt.execute(named_params! {
+                ":docid": docid,
+                ":sha1": sha1,
+                ":sha2": sha2,
+            })?;
+        }
+
+        for sig in sigs.signatories() {
+            cons_auth_voter.execute(named_params! {
+                ":consensus_docid": docid,
+                ":id_rsa": Sha1(sig.id_fingerprint.to_bytes()),
+            })?;
+        }
+
+        Ok(meta)
     }
 }
 
