@@ -4,6 +4,8 @@
 //! directory server that are not related to the database, in which case they
 //! belong to the respective [`crate::database`] module.
 
+use std::collections::HashSet;
+
 use tor_netdoc::{
     doc::{
         authcert::AuthCertKeyIds,
@@ -12,12 +14,22 @@ use tor_netdoc::{
     parse2::{NetdocParseable, NetdocParseableUnverified},
 };
 
+use crate::database::{Sha1, Sha256};
+
 /// Generic trait representing a flavored verified consensus.
 ///
 /// Similar to [`FlavoredConsensusUnverified`] and obtained from it.
 pub(crate) trait FlavoredConsensusBody: Clone {
     /// Returns the [`Lifetime`] of this body.
     fn lifetime(&self) -> &Lifetime;
+
+    /// Returns the doc digests for every router.
+    // TODO DIRMIRROR: This module should probably be moved into a submodule
+    // of database.rs alongside other types found in database.rs.
+    //
+    // Orginally, the types here had no relation to database implementations,
+    // but this does not work out long-term, as we see by this signature.
+    fn doc_digests(&self) -> HashSet<impl rusqlite::ToSql>;
 }
 
 /// Generic trait representing the signatures of a consensus.
@@ -62,11 +74,25 @@ impl FlavoredConsensusBody for plain::NetworkStatus {
     fn lifetime(&self) -> &Lifetime {
         &self.preamble.lifetime
     }
+
+    fn doc_digests(&self) -> HashSet<impl rusqlite::ToSql> {
+        self.routers
+            .iter()
+            .map(|r| Sha1::from(*r.doc_digest()))
+            .collect()
+    }
 }
 
 impl FlavoredConsensusBody for md::NetworkStatus {
     fn lifetime(&self) -> &Lifetime {
         &self.preamble.lifetime
+    }
+
+    fn doc_digests(&self) -> HashSet<impl rusqlite::ToSql> {
+        self.routers
+            .iter()
+            .map(|r| Sha256::from(*r.doc_digest()))
+            .collect()
     }
 }
 
