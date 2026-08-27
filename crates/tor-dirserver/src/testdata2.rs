@@ -66,14 +66,14 @@ const POST_TOLERANCE: Duration = Duration::from_secs(60 * 60 * 24);
 /// We assume the consensus is valid to avoid circular dependencies with other
 /// functions here.  This should be okay because these things are not intended
 /// to test tor-netdoc itself.
-pub(crate) fn current_consensus_ns() -> (plain::NetworkStatus, &'static str) {
+pub(crate) fn current_consensus_ns() -> (plain::NetworkStatus, plain::NetworkStatusSignatures, &'static str) {
     let raw = include_str!("../testdata2/cached-consensus");
     current_consensus::<plain::NetworkStatusUnverified>(raw)
 }
 
 /// [`current_consensus_ns()`] but for microdescriptor consensuses.
 // TODO: Merge with current_consensus_ns() because it is repetitive.
-pub(crate) fn current_consensus_md() -> (md::NetworkStatus, &'static str) {
+pub(crate) fn current_consensus_md() -> (md::NetworkStatus, md::NetworkStatusSignatures, &'static str) {
     let raw = include_str!("../testdata2/cached-microdesc-consensus");
     current_consensus::<md::NetworkStatusUnverified>(raw)
 }
@@ -81,9 +81,10 @@ pub(crate) fn current_consensus_md() -> (md::NetworkStatus, &'static str) {
 /// Internal function for obtaining a consensus from a text file.
 fn current_consensus<T: NetdocParseableUnverified + NetdocParseable>(
     raw: &'static str,
-) -> (T::Body, &'static str) {
+) -> (T::Body, T::Signatures, &'static str) {
     let consensus = parse2::parse_netdoc::<T>(&ParseInput::new(raw, "consensus")).unwrap();
-    (consensus.unwrap_unverified().0, raw)
+    let (body, sigs) = consensus.unwrap_unverified();
+    (body, sigs.sigs, raw)
 }
 
 /// Returns the unsigned SHA-3 of a given consensus as a string.
@@ -250,8 +251,8 @@ pub(crate) fn test_db() -> Pool<SqliteConnectionManager> {
 
     // Insert the plain consensus.
     let ns = current_consensus_ns();
-    let docid = store_insert(&tx, ns.1.as_bytes(), iter::once(ContentEncoding::Identity)).unwrap();
-    let unsigned_sha3_256 = consensus_sha3(ns.1);
+    let docid = store_insert(&tx, ns.2.as_bytes(), iter::once(ContentEncoding::Identity)).unwrap();
+    let unsigned_sha3_256 = consensus_sha3(ns.2);
     tx.execute(
         sql!(
             "
@@ -323,8 +324,8 @@ pub(crate) fn test_db() -> Pool<SqliteConnectionManager> {
     // Yes, this is not super nice but will hopefully be solved when we have
     // a ConsensusMeta::insert() method.
     let md = current_consensus_md();
-    let docid = store_insert(&tx, md.1.as_bytes(), iter::once(ContentEncoding::Identity)).unwrap();
-    let unsigned_sha3_256 = consensus_sha3(md.1);
+    let docid = store_insert(&tx, md.2.as_bytes(), iter::once(ContentEncoding::Identity)).unwrap();
+    let unsigned_sha3_256 = consensus_sha3(md.2);
     tx.execute(
         sql!(
             "

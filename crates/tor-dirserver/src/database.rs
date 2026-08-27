@@ -1458,9 +1458,9 @@ mod test {
             .build()
             .unwrap();
 
-        let docid = Sha256::digest(testdata2::current_consensus_ns().1.as_bytes());
+        let docid = Sha256::digest(testdata2::current_consensus_ns().2.as_bytes());
         let lifetime = testdata2::current_consensus_ns().0.preamble.lifetime;
-        let unsigned_sha3_256 = testdata2::consensus_sha3(testdata2::current_consensus_ns().1);
+        let unsigned_sha3_256 = testdata2::consensus_sha3(testdata2::current_consensus_ns().2);
 
         read_tx(&pool, move |tx| {
             // Get None by being way before valid-after.
@@ -1582,9 +1582,9 @@ mod test {
     #[test]
     fn sync_timeout() {
         // We repeat the tests a few thousand times to go over many random values.
-        let docid = Sha256::digest(testdata2::current_consensus_ns().1.as_bytes());
+        let docid = Sha256::digest(testdata2::current_consensus_ns().2.as_bytes());
         let lifetime = testdata2::current_consensus_ns().0.preamble.lifetime;
-        let unsigned_sha3_256 = testdata2::consensus_sha3(testdata2::current_consensus_ns().1);
+        let unsigned_sha3_256 = testdata2::consensus_sha3(testdata2::current_consensus_ns().2);
         let cons = ConsensusMeta::<Plain> {
             docid,
             unsigned_sha3_256,
@@ -1738,7 +1738,7 @@ mod test {
         // Ensure that the returned consensus matches the one from testdata2.
         assert_eq!(
             meta.docid,
-            DocumentId::digest(testdata2::current_consensus_ns().1.as_bytes())
+            DocumentId::digest(testdata2::current_consensus_ns().2.as_bytes())
         );
 
         // Delete a single router descriptor, so we can determine a missing one
@@ -1806,7 +1806,7 @@ mod test {
         // Ensure that the returned consensus matches the one from testdata2.
         assert_eq!(
             meta.docid,
-            DocumentId::digest(testdata2::current_consensus_ns().1.as_bytes())
+            DocumentId::digest(testdata2::current_consensus_ns().2.as_bytes())
         );
 
         // We should have no missing extra-infos.
@@ -1840,7 +1840,7 @@ mod test {
         // Ensure that the returned consensus matches the one from testdata2.
         assert_eq!(
             meta.docid,
-            DocumentId::digest(testdata2::current_consensus_md().1.as_bytes())
+            DocumentId::digest(testdata2::current_consensus_md().2.as_bytes())
         );
 
         // Delete a single router descriptor, so we can determine a missing one
