@@ -1092,6 +1092,7 @@ mod test {
     use std::{
         collections::HashSet,
         io::Read,
+        iter,
         sync::{Arc, Once},
     };
 
@@ -1104,7 +1105,7 @@ mod test {
     use tor_llcrypto::pk::rsa::RsaIdentity;
     use tor_netdoc::doc::netstatus::{md, plain};
 
-    use crate::testdata2;
+    use crate::testdata2::{self, current_consensus_ns};
 
     use super::*;
 
@@ -1572,6 +1573,43 @@ mod test {
             // requires the test database to contain more than one.
         })
         .unwrap();
+    }
+
+    /// Verify that the insertion of a consensus works.
+    ///
+    /// For this, we do not use the test database but rather a fresh one and
+    /// call ConsensusMeta::insert().  After, we verify that the consensus
+    /// can be queried as well as that the missing descriptors are properly
+    /// calculated.
+    #[test]
+    fn consensus_insert() {
+        let pool = open("").unwrap();
+        let mut conn = pool.get().unwrap();
+        let tx = conn.transaction().unwrap();
+        let (body, sigs, data) = current_consensus_ns();
+        let meta = ConsensusMeta::<Plain>::insert(
+            &tx,
+            iter::once(ContentEncoding::Identity),
+            (&body, &sigs),
+            data
+        ).unwrap();
+
+        assert_eq!(
+            meta,
+            ConsensusMeta::<Plain> {
+                docid: Sha256::digest(data.as_bytes()),
+                unsigned_sha3_256: testdata2::consensus_sha3(data),
+                valid_after: body.preamble.lifetime.valid_after.0.into(),
+                fresh_until: body.preamble.lifetime.fresh_until.0.into(),
+                valid_until: body.preamble.lifetime.valid_until.0.into(),
+                flavor: Default::default()
+            }
+        );
+        let meta2 = ConsensusMeta::<Plain>::query(&tx, &DirTolerance::default(), None).unwrap();
+        assert_eq!(meta2, vec![meta]);
+        let missing_descs = meta.missing_servers(&tx).unwrap();
+        let missing_descs2 = body.routers.iter().map(|r| Sha1(*r.doc_digest())).collect();
+        assert_eq!(missing_descs, missing_descs2);
     }
 
     /// Tests whether the timeout computation lies within the proper interval.
