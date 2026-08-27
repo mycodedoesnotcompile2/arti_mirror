@@ -52,7 +52,8 @@ use tor_netdoc::{
 };
 
 use crate::database::{
-    self as db, AuthCertMeta, ConsensusMeta, ContentEncoding, Sha1, Sha3_256, Sha256, sql, store_insert,
+    self as db, AuthCertMeta, ConsensusMeta, ContentEncoding, Sha1, Sha3_256, Sha256, sql,
+    store_insert,
 };
 
 /// Plain unverified consensus.
@@ -72,14 +73,19 @@ const POST_TOLERANCE: Duration = Duration::from_secs(60 * 60 * 24);
 /// We assume the consensus is valid to avoid circular dependencies with other
 /// functions here.  This should be okay because these things are not intended
 /// to test tor-netdoc itself.
-pub(crate) fn current_consensus_ns() -> (plain::NetworkStatus, plain::NetworkStatusSignatures, &'static str) {
+pub(crate) fn current_consensus_ns() -> (
+    plain::NetworkStatus,
+    plain::NetworkStatusSignatures,
+    &'static str,
+) {
     let raw = include_str!("../testdata2/cached-consensus");
     current_consensus::<plain::NetworkStatusUnverified>(raw)
 }
 
 /// [`current_consensus_ns()`] but for microdescriptor consensuses.
 // TODO: Merge with current_consensus_ns() because it is repetitive.
-pub(crate) fn current_consensus_md() -> (md::NetworkStatus, md::NetworkStatusSignatures, &'static str) {
+pub(crate) fn current_consensus_md()
+-> (md::NetworkStatus, md::NetworkStatusSignatures, &'static str) {
     let raw = include_str!("../testdata2/cached-microdesc-consensus");
     current_consensus::<md::NetworkStatusUnverified>(raw)
 }
@@ -256,7 +262,8 @@ pub(crate) fn test_db() -> Pool<SqliteConnectionManager> {
         iter::once(ContentEncoding::Identity),
         (&plain_body, &plain_sigs),
         plain_data,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Insert the router descriptors.
     for (rd, rd_sigs, raw) in current_router_descs() {
@@ -292,7 +299,8 @@ pub(crate) fn test_db() -> Pool<SqliteConnectionManager> {
         iter::once(ContentEncoding::Identity),
         (&md_body, &md_sigs),
         md_data,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Insert the actual micro descriptors.
     for (_md, raw) in current_micro_descs() {

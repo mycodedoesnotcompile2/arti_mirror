@@ -1591,8 +1591,9 @@ mod test {
             &tx,
             iter::once(ContentEncoding::Identity),
             (&body, &sigs),
-            data
-        ).unwrap();
+            data,
+        )
+        .unwrap();
 
         assert_eq!(
             meta,
