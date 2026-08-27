@@ -52,8 +52,14 @@ use tor_netdoc::{
 };
 
 use crate::database::{
-    self as db, AuthCertMeta, ContentEncoding, Sha1, Sha3_256, Sha256, Timestamp, sql, store_insert,
+    self as db, AuthCertMeta, ConsensusMeta, ContentEncoding, Sha1, Sha3_256, Sha256, sql, store_insert,
 };
+
+/// Plain unverified consensus.
+type Plain = plain::NetworkStatusUnverified;
+
+/// Microdesc unverified consensus.
+type Md = md::NetworkStatusUnverified;
 
 /// Pre-tolerance, 3 days.
 const PRE_TOLERANCE: Duration = Duration::from_secs(60 * 60 * 72);
@@ -244,53 +250,13 @@ pub(crate) fn test_db() -> Pool<SqliteConnectionManager> {
         AuthCertMeta::insert(&tx, iter::once(ContentEncoding::Identity), &cert, &raw).unwrap();
     }
 
-    // TODO DIRMIRROR: Everything below here is very boilerplate and C&P.
-    // This is because we currently lack proper insertion methods for
-    // documents beside AuthCert.  Once we have them, we can replace this
-    // monster with those.
-
-    // Insert the plain consensus.
-    let ns = current_consensus_ns();
-    let docid = store_insert(&tx, ns.2.as_bytes(), iter::once(ContentEncoding::Identity)).unwrap();
-    let unsigned_sha3_256 = consensus_sha3(ns.2);
-    tx.execute(
-        sql!(
-            "
-            INSERT INTO consensus
-            (docid, unsigned_sha3_256, flavor, valid_after, fresh_until, valid_until)
-            VALUES
-            (:docid, :unsigned_sha3_256, :flavor, :valid_after, :fresh_until, :valid_until)
-            "
-        ),
-        named_params! {
-            ":docid": docid,
-            ":unsigned_sha3_256": unsigned_sha3_256,
-            ":flavor": ConsensusFlavor::Plain.name(),
-            ":valid_after": Timestamp::from(ns.0.preamble.lifetime.valid_after.0),
-            ":fresh_until": Timestamp::from(ns.0.preamble.lifetime.fresh_until.0),
-            ":valid_until": Timestamp::from(ns.0.preamble.lifetime.valid_until.0),
-        },
-    )
-    .unwrap();
-
-    // Insert the consensus/desc relationship.
-    for relay in &ns.0.routers {
-        tx.execute(
-            sql!(
-                "
-                INSERT INTO consensus_router_descriptor_member
-                (consensus_docid, unsigned_sha1, unsigned_sha2)
-                VALUES
-                (:consensus_docid, :unsigned_sha1, NULL)
-                "
-            ),
-            named_params! {
-                ":consensus_docid": docid,
-                ":unsigned_sha1": Sha1::from(relay.doc_digest().clone())
-            },
-        )
-        .unwrap();
-    }
+    let (plain_body, plain_sigs, plain_data) = current_consensus_ns();
+    ConsensusMeta::<Plain>::insert(
+        &tx,
+        iter::once(ContentEncoding::Identity),
+        (&plain_body, &plain_sigs),
+        plain_data,
+    ).unwrap();
 
     // Insert the router descriptors.
     for (rd, rd_sigs, raw) in current_router_descs() {
@@ -320,52 +286,13 @@ pub(crate) fn test_db() -> Pool<SqliteConnectionManager> {
         .unwrap();
     }
 
-    // Insert the microdesc consensus (mostly a copy of the above code).
-    // Yes, this is not super nice but will hopefully be solved when we have
-    // a ConsensusMeta::insert() method.
-    let md = current_consensus_md();
-    let docid = store_insert(&tx, md.2.as_bytes(), iter::once(ContentEncoding::Identity)).unwrap();
-    let unsigned_sha3_256 = consensus_sha3(md.2);
-    tx.execute(
-        sql!(
-            "
-            INSERT INTO consensus
-            (docid, unsigned_sha3_256, flavor, valid_after, fresh_until, valid_until)
-            VALUES
-            (:docid, :unsigned_sha3_256, :flavor, :valid_after, :fresh_until, :valid_until)
-            "
-        ),
-        named_params! {
-            ":docid": docid,
-            ":unsigned_sha3_256": unsigned_sha3_256,
-            ":flavor": ConsensusFlavor::Microdesc.name(),
-            ":valid_after": Timestamp::from(md.0.preamble.lifetime.valid_after.0),
-            ":fresh_until": Timestamp::from(md.0.preamble.lifetime.fresh_until.0),
-            ":valid_until": Timestamp::from(md.0.preamble.lifetime.valid_until.0),
-        },
-    )
-    .unwrap();
-
-    // Insert the consensus-md/desc relationship.
-    for relay in &md.0.routers {
-        tx.execute(
-            sql!(
-                "
-                -- TODO DIRMIRROR: Change table name to descriptor only, as it
-                -- obviously also contains microdesc relationships.
-                INSERT INTO consensus_router_descriptor_member
-                (consensus_docid, unsigned_sha1, unsigned_sha2)
-                VALUES
-                (:consensus_docid, NULL, :unsigned_sha2)
-                "
-            ),
-            named_params! {
-                ":consensus_docid": docid,
-                ":unsigned_sha2": Sha256::from(relay.doc_digest().clone())
-            },
-        )
-        .unwrap();
-    }
+    let (md_body, md_sigs, md_data) = current_consensus_md();
+    ConsensusMeta::<Md>::insert(
+        &tx,
+        iter::once(ContentEncoding::Identity),
+        (&md_body, &md_sigs),
+        md_data,
+    ).unwrap();
 
     // Insert the actual micro descriptors.
     for (_md, raw) in current_micro_descs() {
