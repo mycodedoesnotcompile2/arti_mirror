@@ -115,6 +115,7 @@ pub use req::{RendRequest, StreamRequest};
 pub use tor_hscrypto::pk::HsId;
 use tor_keymgr::KeystoreEntry;
 pub use tor_persist::hsnickname::{HsNickname, InvalidNickname};
+pub use tor_proto::client::circuit::CircuitBinding;
 
 pub use helpers::handle_rend_requests;
 

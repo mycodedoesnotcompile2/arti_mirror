@@ -9,6 +9,7 @@ use tor_cell::relaycell::msg::{Connected, End, Introduce2};
 use tor_circmgr::ServiceOnionServiceDataTunnel;
 use tor_hscrypto::Subcredential;
 use tor_keymgr::ArtiPath;
+use tor_proto::client::circuit::CircuitBinding;
 use tor_proto::stream::{IncomingStream, IncomingStreamRequest};
 
 /// Request to complete an introduction/rendezvous handshake.
@@ -290,5 +291,18 @@ impl StreamRequest {
         Ok(())
     }
 
-    // TODO various accessors, including for circuit.
+    /// Return the channel binding key for the rendezvous (virtual) hop this request arrived on.
+    ///
+    /// Returns `Ok(Some(CircuitBinding))` if the binding key exists for the virtual hop,
+    /// `Ok(None)` if no binding key is associated with that hop, or an error if
+    /// querying the hop failed.
+    pub async fn binding_key(&self) -> Result<Option<CircuitBinding>, tor_circmgr::Error> {
+        let hop = self.on_tunnel.last_hop()?;
+        self.on_tunnel.binding_key(hop).await
+    }
+
+    /// Return a reference to the underlying [`ServiceOnionServiceDataTunnel`] for this request.
+    pub fn tunnel(&self) -> &Arc<ServiceOnionServiceDataTunnel> {
+        &self.on_tunnel
+    }
 }
