@@ -76,6 +76,24 @@ enum State {
     // such as junk data?  The normal retry logic sounds reasonable here.
     FetchConsensus,
 
+    /// Loads authority certificates from the database.
+    ///
+    /// Transitions from:
+    // XXX
+    ///
+    /// Transitions into:
+    // XXX
+    LoadAuthCerts,
+
+    /// Fetches authority certificates from the network.
+    ///
+    /// Transitions from:
+    // XXX
+    ///
+    /// Transitions into:
+    // XXX
+    FetchAuthCerts,
+
     /// Downloads, validates, and stores the missing authority certificates from
     /// the downloaded unvalidated consensus into the database.
     ///
@@ -342,6 +360,8 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         match state {
             State::LoadConsensus => self.load_consensus(pool, data, now, rng),
             State::FetchConsensus => Ok(self.fetch_consensus(data, endpoint).await?),
+            State::LoadAuthCerts => self.load_auth_certs(pool, data, now),
+            State::FetchAuthCerts => self.fetch_auth_certs(pool, data, endpoint, now).await,
             State::LegacyAuthCerts => self.legacy_auth_certs(pool, data, endpoint, now).await,
             State::StoreConsensus => todo!(),
             State::Descriptors => todo!(),
@@ -452,6 +472,27 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         *data = ConsensusBoundData::Unverified { consensus, raw };
 
         Ok(())
+    }
+
+    /// Loads authority certificates from the database.
+    fn load_auth_certs(
+        &self,
+        pool: &Pool<SqliteConnectionManager>,
+        data: &mut ConsensusBoundData<T>,
+        now: Timestamp,
+    ) -> Result<(), OperationError> {
+        todo!()
+    }
+
+    /// Fetches authority certificates from the network.
+    async fn fetch_auth_certs(
+        &self,
+        pool: &Pool<SqliteConnectionManager>,
+        data: &mut ConsensusBoundData<T>,
+        endpoint: &[SocketAddr],
+        now: Timestamp,
+    ) -> Result<(), OperationError> {
+        todo!()
     }
 
     /// Fetches, validates, and stores authority certificates.
