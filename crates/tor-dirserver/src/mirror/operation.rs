@@ -520,7 +520,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
         // Obtain all raw certificates from the database.
         let raw_certs = db::read_tx(pool, |tx| {
-            AuthCertMeta::query2(tx)?
+            AuthCertMeta::query(tx)?
                 .into_iter()
                 .map(|meta| meta.data(tx))
                 .collect::<Result<Vec<_>, _>>()
