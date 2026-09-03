@@ -573,6 +573,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     }
 
     /// Fetches authority certificates from the network.
+    #[allow(clippy::string_slice)] // TODO
     async fn fetch_auth_certs(
         &self,
         pool: &Pool<SqliteConnectionManager>,
@@ -580,36 +581,21 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         endpoint: &[SocketAddr],
         now: Timestamp,
     ) -> Result<(), OperationError> {
-        todo!()
-    }
-
-    /// Fetches, validates, and stores authority certificates.
-    // XXX: Remove this.
-    #[allow(clippy::string_slice)] // TODO
-    async fn legacy_auth_certs(
-        &self,
-        pool: &Pool<SqliteConnectionManager>,
-        data: &mut ConsensusBoundData<T>,
-        endpoint: &[SocketAddr],
-        now: Timestamp,
-    ) -> Result<(), OperationError> {
-        // Obtain the signatories of the current unverified consensus.
-        let signatories = match data {
-            ConsensusBoundData::Unverified { consensus, .. } => consensus.sigs().signatories(),
-            _ => return Err(OperationError::Bug(internal!("data is not unverified"))),
+        let ConsensusBoundData::Unverified {
+            consensus,
+            certs_already: Some(certs_already),
+            verifiability_error,
+            ..
+        } = data
+        else {
+            return Err(OperationError::Bug(internal!("not unverified?")));
         };
 
-        // Obtain the missing certificate identifiers.
-        let (_, missing) = db::read_tx(pool, |tx| {
-            AuthCertMeta::query(tx, &signatories, &self.tolerance, now)
-        })??;
-        if missing.is_empty() {
-            // Although not technically fatal, retrying when the database was
-            // externally modified does not make much sense.
-            return Err(OperationError::Bug(internal!(
-                "database externally modified?"
-            )));
-        }
+        let Some(ConsensusVerifiabilityError::MissingAuthCerts { missing, .. }) =
+            &*verifiability_error
+        else {
+            return Err(OperationError::Bug(internal!("not missing auth certs?")));
+        };
 
         // Compose the request.
         let mut requ = AuthCertRequest::new();
@@ -625,6 +611,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // Verify each certificate.  Invalid certificates and other problems get
         // logged and filtered out, with the result being then inserted into
         // the database.
+        // XXX: Refactor this.
         let certs = certs
             .into_iter()
             .filter_map(|(unverified, start, end)| {
@@ -678,11 +665,28 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         db::rw_tx(pool, |tx| {
             for (cert, data) in certs {
                 AuthCertMeta::insert(tx, ContentEncoding::iter(), &cert, data)?;
+                certs_already.push(cert);
             }
             Ok::<_, DatabaseError>(())
         })??;
 
+        *verifiability_error = consensus
+            .can_verify(self.authorities.v3idents(), certs_already)
+            .err();
+
         Ok(())
+    }
+
+    /// Fetches, validates, and stores authority certificates.
+    // XXX: Remove this.
+    async fn legacy_auth_certs(
+        &self,
+        pool: &Pool<SqliteConnectionManager>,
+        data: &mut ConsensusBoundData<T>,
+        endpoint: &[SocketAddr],
+        now: Timestamp,
+    ) -> Result<(), OperationError> {
+        todo!()
     }
 
     /// Hibernates for the remaining lifetime of the consensus.
