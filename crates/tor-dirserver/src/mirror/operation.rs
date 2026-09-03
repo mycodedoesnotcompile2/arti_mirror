@@ -616,18 +616,14 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             .into_iter()
             .filter_map(|(unverified, start, end)| {
                 let unverified_body = unverified.inspect_unverified().0;
-                let kp = AuthCertKeyIds {
-                    id_fingerprint: unverified_body.dir_identity_key.to_rsa_identity(),
-                    sk_fingerprint: unverified_body.dir_signing_key.to_rsa_identity(),
-                };
 
                 // Skip certificates we did not asked for.
                 //
                 // Not much of an issue because certificate verification will
                 // usually fail anyways, except for this weird edge-case where we
                 // actually have that id fingerprint in the v3idents.
-                if !missing.contains(&kp) {
-                    debug!("authority returned certificate we did not asked for: {kp:?}");
+                if !missing.contains(&unverified_body.key_ids()) {
+                    debug!("authority returned certificate we did not asked for: {:?}", unverified_body.key_ids());
                     return None;
                 }
 
