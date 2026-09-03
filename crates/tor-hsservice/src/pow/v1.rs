@@ -574,11 +574,19 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             }
 
             for (seed, verifier) in new_verifiers {
-                let replay_log = Mutex::new(
-                    PowNonceReplayLog::new_logged(&state.instance_dir, &seed)
-                        .expect("Couldn't make ReplayLog."),
-                );
-                state.verifiers.insert(seed.head(), (verifier, replay_log));
+                let replay_log = match PowNonceReplayLog::new_logged(&state.instance_dir, &seed) {
+                    Ok(replay_log) => replay_log,
+                    Err(err) => {
+                        warn_report!(
+                            err,
+                            "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses..."
+                        );
+                        continue;
+                    }
+                };
+                state
+                    .verifiers
+                    .insert(seed.head(), (verifier, Mutex::new(replay_log)));
             }
 
             for seed_head in expired_verifiers {
