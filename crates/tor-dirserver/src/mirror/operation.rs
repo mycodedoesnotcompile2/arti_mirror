@@ -631,24 +631,23 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                     return None;
                 }
 
-                let verified = unverified
-                    .verify(self.authorities.v3idents())
-                    .and_then(|v| {
-                        Ok(self
-                            .tolerance
-                            .extend_tolerance(v)
-                            .if_valid_at(&now.into())?)
-                    });
-                let verified = match verified {
-                    Ok(v) => v,
-                    Err(e) => {
-                        // TODO DIRMIRROR: Log the actual cert.
-                        warn!("received invalid auth cert: {e}",);
-                        return None;
-                    }
+                // Check validity and timeliness, skipping invalid certificates here
+                // is fine because the design of the query function expects us to
+                // do this work here.
+                let Ok(verified) = unverified.verify(self.authorities.v3idents()) else {
+                    warn!("received invalid auth cert");
+                    return None;
+                };
+                let Ok(timely) = self
+                    .tolerance
+                    .extend_tolerance(verified)
+                    .if_valid_at(&now.into())
+                else {
+                    warn!("received expired auth cert");
+                    return None;
                 };
 
-                Some((verified, &resp[start..end]))
+                Some((timely, &resp[start..end]))
             })
             .collect::<Vec<_>>();
 
