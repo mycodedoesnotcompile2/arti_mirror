@@ -33,7 +33,8 @@ use tor_dirclient::request::{AuthCertRequest, ConsensusRequest, Requestable};
 use tor_dircommon::{authority::AuthorityContacts, config::DirTolerance};
 use tor_error::{internal, into_internal};
 use tor_netdoc::{
-    doc::authcert::{AuthCertKeyIds, AuthCertUnverified},
+    doc::authcert::{AuthCert, AuthCertKeyIds, AuthCertUnverified},
+    doc::netstatus::ConsensusVerifiabilityError,
     parse2::{self, NetdocParseable, NetdocParseableUnverified, ParseInput},
 };
 use tor_rtcompat::PreferredRuntime;
@@ -199,6 +200,21 @@ enum ConsensusBoundData<T: FlavoredConsensusUnverified> {
 
         /// The unparsed raw consensus we have.
         raw: String,
+
+        /// The valid authority certificates we have already loaded into memory.
+        ///
+        /// [`None`] means we have never queried the database, whereas
+        /// [`Some(vec![])`] means that the database returned no matching
+        /// authority certificates.
+        ///
+        /// Because we only query the database once per lifetime, we use this
+        /// information to determine where to obtain the authority certificates
+        /// from.
+        certs_already: Option<Vec<AuthCert>>,
+
+        /// The most recent verifiability error, indicating which authority
+        /// certificates we are still missing.
+        verifiability_error: Option<ConsensusVerifiabilityError>,
     },
 
     /// We have downloaded and verified a consensus.
@@ -451,7 +467,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     ) -> Result<(), AuthorityRequestError> {
         // Obtain the consensus.
         let (raw, consensus) = self
-            .send_request(endpoint, ConsensusRequest::new(T::flavor()))
+            .send_request::<_, T>(endpoint, ConsensusRequest::new(T::flavor()))
             .await?;
         let mut consensus = consensus
             .into_iter()
@@ -468,8 +484,21 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // expect is fine because we checked the length for one above.
         let (raw, consensus) = consensus.pop_front().expect("pop_front");
 
+        // Determine the missing authority certificates and if we can verify
+        // the consensus at all.  Because we have neither queried the database,
+        // nor the network yet, we pass an empty slice to the list of already
+        // stored certificates.
+        let verifiability_error = consensus
+            .can_verify(self.authorities.v3idents(), &[])
+            .err();
+
         // And store it.
-        *data = ConsensusBoundData::Unverified { consensus, raw };
+        *data = ConsensusBoundData::Unverified {
+            consensus,
+            raw,
+            verifiability_error,
+            certs_already: None,
+        };
 
         Ok(())
     }
