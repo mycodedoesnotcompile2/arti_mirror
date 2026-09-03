@@ -457,9 +457,9 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
-    use crate::RelayIds;
+    use crate::{OwnedChanTarget, RelayIds};
     use hex_literal::hex;
-    use std::net::IpAddr;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
     use tor_llcrypto::pk::{self, ed25519::Ed25519Identity, rsa::RsaIdentity};
 
     struct Example {
@@ -709,5 +709,82 @@ mod test {
         use crate::RelayIds;
         assert!(example().has_any_identity());
         assert!(!RelayIds::empty().has_any_identity());
+    }
+
+    #[test]
+    fn allowed_for_outgoing_channels() {
+        fn build_target(addrs: &[SocketAddr]) -> OwnedChanTarget {
+            OwnedChanTarget::builder()
+                .addrs(addrs.to_vec())
+                .build()
+                .unwrap()
+        }
+
+        /// Convert an IPv4 socket address to an IPv4-mapped IPv6 socket address.
+        fn to_mapped(addr: &SocketAddrV4) -> SocketAddrV6 {
+            SocketAddrV6::new(addr.ip().to_ipv6_mapped(), addr.port(), 0, 0)
+        }
+
+        // Some not-allowed addresses.
+        let localhost_v4 = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1234);
+        let localhost_v4_mapped = to_mapped(&localhost_v4);
+        let localhost_v6 = SocketAddrV6::new(Ipv6Addr::LOCALHOST, 1234, 0, 0);
+        let unspecified_v4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 1234);
+        let unspecified_v4_mapped = to_mapped(&unspecified_v4);
+        let unspecified_v6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 1234, 0, 0);
+        let private_v4 = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 1234);
+        let private_v4_mapped = to_mapped(&private_v4);
+
+        let not_allowed = [
+            localhost_v4.into(),
+            localhost_v6.into(),
+            unspecified_v4.into(),
+            unspecified_v6.into(),
+            private_v4.into(),
+        ];
+
+        // Some globally accessible addresses.
+        let google_dns_v4 = SocketAddrV4::new(Ipv4Addr::new(8, 8, 8, 8), 1234);
+        let google_dns_v4_mapped = to_mapped(&google_dns_v4);
+
+        let allowed = [
+            google_dns_v4.into(),
+            google_dns_v4_mapped.into(),
+            // TODO: These are wrong. See arti#2679.
+            localhost_v4_mapped.into(),
+            unspecified_v4_mapped.into(),
+            private_v4_mapped.into(),
+        ];
+
+        let target = build_target(&[]);
+        assert!(target.all_addrs_allowed_for_outgoing_channels());
+
+        for addr in not_allowed {
+            let target = build_target(&[addr]);
+            assert!(
+                !target.all_addrs_allowed_for_outgoing_channels(),
+                "addr: {addr}",
+            );
+        }
+
+        for addr in allowed {
+            let target = build_target(&[addr]);
+            assert!(
+                target.all_addrs_allowed_for_outgoing_channels(),
+                "addr: {addr}",
+            );
+        }
+
+        // Try some combinations of multiple addresses.
+
+        let target = build_target(&[google_dns_v4.into(), google_dns_v4_mapped.into()]);
+        assert!(target.all_addrs_allowed_for_outgoing_channels());
+
+        // TODO: This is wrong. See arti#2679.
+        let target = build_target(&[google_dns_v4.into(), localhost_v4_mapped.into()]);
+        assert!(target.all_addrs_allowed_for_outgoing_channels());
+
+        let target = build_target(&[localhost_v4.into(), localhost_v4_mapped.into()]);
+        assert!(!target.all_addrs_allowed_for_outgoing_channels());
     }
 }
