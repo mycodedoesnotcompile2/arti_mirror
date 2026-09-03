@@ -64,7 +64,7 @@ struct State<R, Q> {
     seeds: HashMap<TimePeriod, SeedsForTimePeriod>,
 
     /// Verifiers for all the seeds that exist in `seeds`.
-    verifiers: HashMap<SeedHead, (Verifier, Mutex<PowNonceReplayLog>)>,
+    verifiers: HashMap<SeedHead, (Verifier, Option<Mutex<PowNonceReplayLog>>)>,
 
     /// The nickname for this hidden service.
     ///
@@ -267,16 +267,16 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                     }
                 };
                 let replay_log = match PowNonceReplayLog::new_logged(&instance_dir, &seed) {
-                    Ok(replay_log) => replay_log,
+                    Ok(replay_log) => Some(Mutex::new(replay_log)),
                     Err(err) => {
                         warn_report!(
                             err,
                             "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses..."
                         );
-                        continue;
+                        None
                     }
                 };
-                verifiers.insert(seed.head(), (verifier, Mutex::new(replay_log)));
+                verifiers.insert(seed.head(), (verifier, replay_log));
             }
         }
 
@@ -575,18 +575,16 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
 
             for (seed, verifier) in new_verifiers {
                 let replay_log = match PowNonceReplayLog::new_logged(&state.instance_dir, &seed) {
-                    Ok(replay_log) => replay_log,
+                    Ok(replay_log) => Some(Mutex::new(replay_log)),
                     Err(err) => {
                         warn_report!(
                             err,
                             "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses..."
                         );
-                        continue;
+                        None
                     }
                 };
-                state
-                    .verifiers
-                    .insert(seed.head(), (verifier, Mutex::new(replay_log)));
+                state.verifiers.insert(seed.head(), (verifier, replay_log));
             }
 
             for seed_head in expired_verifiers {
@@ -659,8 +657,16 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                 )
                 .ok_or(PowError::MissingKey)?;
 
-                let replay_log =
-                    Mutex::new(PowNonceReplayLog::new_logged(&state.instance_dir, &seed)?);
+                let replay_log = match PowNonceReplayLog::new_logged(&state.instance_dir, &seed) {
+                    Ok(replay_log) => Some(Mutex::new(replay_log)),
+                    Err(err) => {
+                        warn_report!(
+                            err,
+                            "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses..."
+                        );
+                        None
+                    }
+                };
                 state.verifiers.insert(seed.head(), (verifier, replay_log));
 
                 let record = state.to_record();
@@ -683,13 +689,21 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
         // See commit bc5b313028 for a more full explanation.
         {
             let state = self.0.write().expect("Lock poisoned");
-            let mut replay_log = match state.verifiers.get(&solve.seed_head()) {
-                Some((_, replay_log)) => replay_log.lock().expect("Lock poisoned"),
+            match state.verifiers.get(&solve.seed_head()) {
+                Some((_, Some(replay_log))) => {
+                    replay_log
+                        .lock()
+                        .expect("Lock poisoned")
+                        .check_for_replay(solve.nonce())
+                        .map_err(PowSolveError::NonceReplay)?;
+                }
+                Some((_, None)) => {
+                    // Due to an earlier error, we don't have a replay log for this seed.
+                    // We already warned when we were unable to create the replay log,
+                    // so there's no need to warn here, as that would just create log spam.
+                }
                 None => return Err(PowSolveError::InvalidSeedHead),
             };
-            replay_log
-                .check_for_replay(solve.nonce())
-                .map_err(PowSolveError::NonceReplay)?;
         }
 
         // TODO: Once RwLock::downgrade is stabilized, it would make sense to use it here...
