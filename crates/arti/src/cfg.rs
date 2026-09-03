@@ -138,9 +138,6 @@ pub(crate) struct ProxyConfig {
 
     /// If true, and the `http-connect` feature is enabled,
     /// all members of `socks_listen` also support HTTP CONNECT.
-    //
-    // TODO:
-    // At some point in the future we might want per-port configuration, like Tor has.
     #[deftly(tor_config(
         cfg = r#" feature="http-connect" "#,
         cfg_desc = "with HTTP CONNECT support"
