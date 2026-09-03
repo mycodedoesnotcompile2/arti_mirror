@@ -70,9 +70,8 @@ enum State {
     /// * [`State::Hibernate`], if lifetime is over.
     ///
     /// Transitions into:
-    /// * [`State::LegacyAuthCerts`], if we miss authority certificates.
-    /// * [`State::StoreConsensus`], if all authority certificates exist in the
-    ///   database.
+    /// * [`State::LoadAuthCerts`], if the consensus has enough trusted sigs.
+    /// * [`State::Hibernate`], if the consensus lacks enough trusted sigs.
     // TODO DIRMIRROR: What to do in the case of getting an invalid consensus
     // such as junk data?  The normal retry logic sounds reasonable here.
     FetchConsensus,
@@ -80,39 +79,30 @@ enum State {
     /// Loads authority certificates from the database.
     ///
     /// Transitions from:
-    // XXX
+    /// * [`State::FetchConsensus`]
     ///
     /// Transitions into:
-    // XXX
+    /// * [`State::FetchAuthCerts`], if we need more certs from the network.
+    /// * [`State::StoreConsensus`], if can verify the consensus.
     LoadAuthCerts,
 
     /// Fetches authority certificates from the network.
     ///
     /// Transitions from:
-    // XXX
+    /// * [`State::LoadAuthCerts`], if we need more certs from the network.
+    /// * [`State::FetchAuthCerts`], if we need more certs from the network.
     ///
     /// Transitions into:
-    // XXX
+    /// * [`State::FetchAuthCerts`], if we need more certs from the network.
+    /// * [`State::StoreConsensus`], if we can verify the consensus.
     FetchAuthCerts,
-
-    /// Downloads, validates, and stores the missing authority certificates from
-    /// the downloaded unvalidated consensus into the database.
-    ///
-    /// Transitions from:
-    /// * [`State::FetchConsensus`], if we miss authority certificates.
-    /// * [`State::LegacyAuthCerts`], if we still miss authority certificates.
-    ///
-    /// Transitions into:
-    /// * [`State::LegacyAuthCerts`], if we still miss authority certificates.
-    /// * [`State::StoreConsensus`], if we got all authority certificates.
-    LegacyAuthCerts,
 
     /// Validates and stores the downloaded unvalidated consensus into the
     /// database.
     ///
     /// Transitions from:
-    /// * [`State::FetchConsensus`], if we have all authority certificates.
-    /// * [`State::LegacyAuthCerts`], if we have all authority certificates.
+    /// * [`State::LoadAuthCerts`], if we have all authority certificates.
+    /// * [`State::FetchAuthCerts`], if we have all authority certificates.
     ///
     /// Transitions into:
     /// * [`State::LoadConsensus`]
@@ -134,7 +124,8 @@ enum State {
     /// Hibernate because nothing is left.
     ///
     /// Transitions from:
-    /// * [`State::Descriptors`]
+    /// * [`State::FetchConsensus`], if we cannot verify the current consensus.
+    /// * [`State::Descriptors`], if we are done with the current consensus.
     ///
     /// Transitions into:
     /// * [`State::FetchConsensus`], if the lifetime is over.
@@ -286,32 +277,39 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 }
             }
 
-            // ConsensusBoundData::Unverified means that we recently downloaded
-            // a consensus through State::FetchConsensus.  It is not fully
-            // validated yet and we may not even be able due to missing
-            // authority certificates.
-            ConsensusBoundData::Unverified { consensus, .. } => {
-                // Check whether there any missing authority certificates that
-                // have signed the consensus.
-                let missing_certs = !AuthCertMeta::query(
-                    tx,
-                    &consensus.sigs().signatories(),
-                    &self.tolerance,
-                    now,
-                )?
-                .1
-                .is_empty();
+            // We have downloaded a consensus and cannot verify it yet, but have
+            // not queried the database for the relevant authority certificates
+            // yet.
+            ConsensusBoundData::Unverified {
+                certs_already: None,
+                verifiability_error: Some(ConsensusVerifiabilityError::MissingAuthCerts { .. }),
+                ..
+            } => State::LoadAuthCerts,
 
-                if missing_certs {
-                    // Missing authority certificates means we must download
-                    // them.
-                    State::LegacyAuthCerts
-                } else {
-                    // If we have all authority certificates, we can validate
-                    // and store it inside the database.
-                    State::StoreConsensus
-                }
-            }
+            // We have downloaded a consensus and cannot verify it yet and we
+            // already have queried the database for the relevant authority
+            // certificates with limited success, so we are downloading the
+            // missing ones over the network.
+            ConsensusBoundData::Unverified {
+                certs_already: Some(_),
+                verifiability_error: Some(ConsensusVerifiabilityError::MissingAuthCerts { .. }),
+                ..
+            } => State::FetchAuthCerts,
+
+            // We have downloaded the consensus and will never be able to verify
+            // it, because we do not trust it, let's hope the next consensus
+            // will be better.
+            ConsensusBoundData::Unverified {
+                verifiability_error: Some(ConsensusVerifiabilityError::InsufficientTrustedSigners),
+                ..
+            } => State::Hibernate,
+
+            // We have downloaded the consensus and have obtained enough
+            // authority certificates so we can verify it.
+            ConsensusBoundData::Unverified {
+                verifiability_error: None,
+                ..
+            } => State::StoreConsensus,
 
             // ConsensusBoundData::Verified means that we have successfully
             // loaded a recent valid consensus from the database using
@@ -378,7 +376,6 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             State::FetchConsensus => Ok(self.fetch_consensus(data, endpoint).await?),
             State::LoadAuthCerts => self.load_auth_certs(pool, data, now),
             State::FetchAuthCerts => self.fetch_auth_certs(pool, data, endpoint, now).await,
-            State::LegacyAuthCerts => self.legacy_auth_certs(pool, data, endpoint, now).await,
             State::StoreConsensus => todo!(),
             State::Descriptors => todo!(),
             State::Hibernate => self.hibernate(data, now).await,
@@ -665,18 +662,6 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         Ok(())
     }
 
-    /// Fetches, validates, and stores authority certificates.
-    // XXX: Remove this.
-    async fn legacy_auth_certs(
-        &self,
-        pool: &Pool<SqliteConnectionManager>,
-        data: &mut ConsensusBoundData<T>,
-        endpoint: &[SocketAddr],
-        now: Timestamp,
-    ) -> Result<(), OperationError> {
-        todo!()
-    }
-
     /// Hibernates for the remaining lifetime of the consensus.
     async fn hibernate(
         &self,
@@ -684,15 +669,21 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         now: Timestamp,
     ) -> Result<(), OperationError> {
         match data {
-            ConsensusBoundData::None | ConsensusBoundData::Unverified { .. } => {
-                // This should not happen, we only enter hibernation in a state
-                // that already has a verified consensus.
-                return Err(internal!("hibernating without a verified consensus?").into());
+            ConsensusBoundData::Unverified {
+                verifiability_error: Some(ConsensusVerifiabilityError::InsufficientTrustedSigners),
+                ..
+            } => {
+                // TODO DIRMIRROR: What to do here? We can definitely not use
+                // the lifetime of the untrusted consensus.
+                todo!()
             }
             ConsensusBoundData::Verified { lifetime, .. } => {
                 let timeout = *lifetime - now;
                 debug!("hibernating for {}s", timeout.as_secs());
                 tokio::time::sleep(timeout).await;
+            }
+            _ => {
+                return Err(internal!("hibernating in wrong state?").into());
             }
         }
 
