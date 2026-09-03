@@ -69,7 +69,7 @@ enum State {
     /// * [`State::Hibernate`], if lifetime is over.
     ///
     /// Transitions into:
-    /// * [`State::AuthCerts`], if we miss authority certificates.
+    /// * [`State::LegacyAuthCerts`], if we miss authority certificates.
     /// * [`State::StoreConsensus`], if all authority certificates exist in the
     ///   database.
     // TODO DIRMIRROR: What to do in the case of getting an invalid consensus
@@ -81,19 +81,19 @@ enum State {
     ///
     /// Transitions from:
     /// * [`State::FetchConsensus`], if we miss authority certificates.
-    /// * [`State::AuthCerts`], if we still miss authority certificates.
+    /// * [`State::LegacyAuthCerts`], if we still miss authority certificates.
     ///
     /// Transitions into:
-    /// * [`State::AuthCerts`], if we still miss authority certificates.
+    /// * [`State::LegacyAuthCerts`], if we still miss authority certificates.
     /// * [`State::StoreConsensus`], if we got all authority certificates.
-    AuthCerts,
+    LegacyAuthCerts,
 
     /// Validates and stores the downloaded unvalidated consensus into the
     /// database.
     ///
     /// Transitions from:
     /// * [`State::FetchConsensus`], if we have all authority certificates.
-    /// * [`State::AuthCerts`], if we have all authority certificates.
+    /// * [`State::LegacyAuthCerts`], if we have all authority certificates.
     ///
     /// Transitions into:
     /// * [`State::LoadConsensus`]
@@ -271,7 +271,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 if missing_certs {
                     // Missing authority certificates means we must download
                     // them.
-                    State::AuthCerts
+                    State::LegacyAuthCerts
                 } else {
                     // If we have all authority certificates, we can validate
                     // and store it inside the database.
@@ -342,7 +342,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         match state {
             State::LoadConsensus => self.load_consensus(pool, data, now, rng),
             State::FetchConsensus => Ok(self.fetch_consensus(data, endpoint).await?),
-            State::AuthCerts => self.auth_certs(pool, data, endpoint, now).await,
+            State::LegacyAuthCerts => self.legacy_auth_certs(pool, data, endpoint, now).await,
             State::StoreConsensus => todo!(),
             State::Descriptors => todo!(),
             State::Hibernate => self.hibernate(data, now).await,
@@ -455,8 +455,9 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     }
 
     /// Fetches, validates, and stores authority certificates.
+    // XXX: Remove this.
     #[allow(clippy::string_slice)] // TODO
-    async fn auth_certs(
+    async fn legacy_auth_certs(
         &self,
         pool: &Pool<SqliteConnectionManager>,
         data: &mut ConsensusBoundData<T>,
