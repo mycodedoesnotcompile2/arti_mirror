@@ -891,7 +891,12 @@ mod test {
 
         engine.fetch_consensus(&mut data, &[saddr]).await.unwrap();
         match data {
-            ConsensusBoundData::Unverified { raw, .. } => {
+            ConsensusBoundData::Unverified {
+                raw,
+                certs_already: None,
+                verifiability_error: Some(ConsensusVerifiabilityError::MissingAuthCerts { .. }),
+                ..
+            } => {
                 assert_eq!(raw, testdata2::current_consensus_ns().1);
             }
             _ => panic!("data is not unverified"),
