@@ -326,21 +326,23 @@ pub trait ChanTarget: HasRelayIds + HasAddrs + HasChanMethod {
     /// be a check that yields the same result regardless of the Rust library version. HOWEVER, it
     /// doesn't mean that each relay/client on the network uses the same set of checks.
     fn all_addrs_allowed_for_outgoing_channels(&self) -> bool {
-        self.addrs().all(|addr| match addr.ip() {
-            IpAddr::V4(v4) => {
-                !(v4.is_loopback() // RFC 1122 (127.0.0.0/8)
-                    || v4.is_private() // RFC1918
-                    || v4.is_unspecified() // 0.0.0.0
-                    || v4.is_documentation() // RFC 5737
-                    || v4.is_multicast() // RFC 5771 (224.0.0.0/4)
-                    || v4.is_link_local()) // RFC 3927 (169.254.0.0/16)
-            }
-            IpAddr::V6(v6) => {
-                !(v6.is_loopback() // RFC 4291 (::1)
-                    || v6.is_multicast() // RFC 4291 (ff00::/8)
-                    || v6.is_unspecified() // RFC 4291 (::)
-                    || v6.is_unique_local() // RFC 4193 (fc00::/7)
-                    || v6.is_unicast_link_local()) // RFC 4291 (2001:db8::/32, fe80::/10)
+        self.addrs().all(|addr| {
+            match addr.ip() {
+                IpAddr::V4(v4) => {
+                    !(v4.is_loopback() // RFC 1122 (127.0.0.0/8)
+                        || v4.is_private() // RFC1918
+                        || v4.is_unspecified() // 0.0.0.0
+                        || v4.is_documentation() // RFC 5737
+                        || v4.is_multicast() // RFC 5771 (224.0.0.0/4)
+                        || v4.is_link_local()) // RFC 3927 (169.254.0.0/16)
+                }
+                IpAddr::V6(v6) => {
+                    !(v6.is_loopback() // RFC 4291 (::1)
+                        || v6.is_multicast() // RFC 4291 (ff00::/8)
+                        || v6.is_unspecified() // RFC 4291 (::)
+                        || v6.is_unique_local() // RFC 4193 (fc00::/7)
+                        || v6.is_unicast_link_local()) // RFC 4291 (2001:db8::/32, fe80::/10)
+                }
             }
         })
     }
