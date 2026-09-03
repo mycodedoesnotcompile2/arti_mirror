@@ -11,6 +11,7 @@ use crate::{
 };
 use crate::{FirstHop, GuardSetSelector};
 use tor_basic_utils::iter::{FilterCount, IteratorExt as _};
+use tor_basic_utils::onionperf_types::{OnionperfEvent, OnionperfGuardStatus};
 use tor_linkspec::{ByRelayIds, HasRelayIds};
 
 use itertools::Itertools;
@@ -473,8 +474,7 @@ impl GuardSet {
         // but if it does, add it here.
         trace!(
             onionperf = true,
-            event = "GUARD",
-            status = "NEW",
+            event = ?OnionperfEvent::Guard(OnionperfGuardStatus::New),
             guard_id = ?id,
         );
         let guard = Guard::from_candidate(relay, now, params);
@@ -589,8 +589,7 @@ impl GuardSet {
             if guard.is_expired(params, now) {
                 tracing::trace!(
                     onionperf = true,
-                    event = "GUARD",
-                    status = "DROPPED",
+                    event = ?OnionperfEvent::Guard(OnionperfGuardStatus::Dropped),
                     guard_id = ?guard.guard_id(),
                 );
             }
@@ -755,8 +754,7 @@ impl GuardSet {
     ) {
         trace!(
             onionperf = true,
-            event = "GUARD",
-            status = "DOWN",
+            event = ?OnionperfEvent::Guard(OnionperfGuardStatus::Down),
             ?guard_id,
         );
         // TODO use instant uniformly for in-process, and systemtime for storage?

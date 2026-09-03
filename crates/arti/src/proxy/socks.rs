@@ -9,6 +9,7 @@ use tracing::{debug, instrument, warn};
 #[allow(unused)]
 use arti_client::HasKind;
 use arti_client::{ErrorKind, IntoTorAddr as _, StreamPrefs};
+use tor_basic_utils::onionperf_types::{OnionperfEvent, OnionperfStreamStatus};
 #[cfg(feature = "rpc")]
 use tor_rpcbase::{self as rpc};
 use tor_rtcompat::Runtime;
@@ -347,8 +348,7 @@ where
                 Ok(addr) => {
                     tracing::trace!(
                         onionperf = true,
-                        event = "STREAM",
-                        status = "NEW",
+                        event = ?OnionperfEvent::Stream(OnionperfStreamStatus::New),
                     );
                     let reply = request
                         .reply(

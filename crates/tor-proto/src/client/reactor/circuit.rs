@@ -38,6 +38,7 @@ use crate::util::timeout::TimeoutEstimator;
 use crate::{ClockSkew, Error, Result};
 
 use tor_async_utils::{SinkTrySend as _, SinkTrySendError as _};
+use tor_basic_utils::onionperf_types::{OnionperfCircuitStatus, OnionperfEvent};
 use tor_cell::chancell::msg::{AnyChanMsg, HandshakeType, Relay};
 use tor_cell::chancell::{AnyChanCell, ChanCmd, CircId};
 use tor_cell::chancell::{BoxedCellBody, ChanMsg};
@@ -1102,8 +1103,7 @@ impl Circuit {
             onionperf = true,
             circ_uniq_id = %self.unique_id,
             forward_circ_id = %self.circ_id,
-            event = "CIRC",
-            status = "EXTENDED"
+            event = ?OnionperfEvent::Circuit(OnionperfCircuitStatus::Extended),
         );
 
         let peer_id = self.channel.target().clone();

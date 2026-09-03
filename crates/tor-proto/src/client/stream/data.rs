@@ -43,6 +43,7 @@ use crate::stream::flow_ctrl::xon_xoff::reader::{BufferIsEmpty, XonXoffReader, X
 use tor_async_utils::rate_limited_writer::{
     DynamicRateLimitedWriter, RateLimitedWriter, RateLimitedWriterConfig,
 };
+use tor_basic_utils::onionperf_types::{OnionperfEvent, OnionperfStreamStatus};
 use tor_basic_utils::skip_fmt;
 use tor_cell::relaycell::msg::Data;
 use tor_error::internal;
@@ -602,8 +603,7 @@ impl DataStream {
 
         tracing::trace!(
             onionperf = true,
-            event = "STREAM",
-            status = "NEW",
+            event = ?OnionperfEvent::Stream(OnionperfStreamStatus::New),
             stream_id = ?target.stream_id,
             circ_id = ?match target.clone().tunnel {
                 Tunnel::Client(client) => Some(client.circ.unique_id()),
@@ -874,8 +874,7 @@ impl DataWriterInner {
                     Error::NotConnected => (),
                     _ => tracing::trace!(
                         onionperf = true,
-                        event = "STREAM",
-                        status = "FAILED",
+                        event = ?OnionperfEvent::Stream(OnionperfStreamStatus::Failed),
                         stream_id = ?imp.s.stream_id,
                         reason = ?e,
                     ),
@@ -901,8 +900,7 @@ impl DataWriterInner {
                     }
                     tracing::trace!(
                         onionperf = true,
-                        event = "STREAM",
-                        status = "CLOSED",
+                        event = ?OnionperfEvent::Stream(OnionperfStreamStatus::Closed),
                         stream_id = ?imp.s.stream_id,
                     );
                     self.state = Some(DataWriterState::Closed);

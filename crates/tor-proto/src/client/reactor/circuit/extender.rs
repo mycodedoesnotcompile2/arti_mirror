@@ -12,6 +12,7 @@ use crate::{Error, Result};
 use crate::{HopLocation, congestion};
 use oneshot_fused_workaround as oneshot;
 use std::borrow::Borrow;
+use tor_basic_utils::onionperf_types::{OnionperfCircuitStatus, OnionperfEvent};
 use tor_cell::chancell::CircId;
 use tor_cell::chancell::msg::HandshakeType;
 use tor_cell::relaycell::msg::{Extend2, Extended2};
@@ -180,8 +181,7 @@ where
             onionperf = true,
             circ_uniq_id = %self.unique_id,
             forward_circ_id = %self.circ_id,
-            event = "CIRC",
-            status = "EXTENDED",
+            event = ?OnionperfEvent::Circuit(OnionperfCircuitStatus::Extended),
         );
 
         // If we get here, it succeeded.  Add a new hop to the circuit.
