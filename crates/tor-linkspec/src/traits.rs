@@ -348,7 +348,7 @@ pub trait ChanTarget: HasRelayIds + HasAddrs + HasChanMethod {
                         || v6.is_multicast() // RFC 4291 (ff00::/8)
                         || v6.is_unspecified() // RFC 4291 (::)
                         || v6.is_unique_local() // RFC 4193 (fc00::/7)
-                        || v6.is_unicast_link_local()) // RFC 4291 (2001:db8::/32, fe80::/10)
+                        || v6.is_unicast_link_local()) // RFC 4291 (fe80::/10)
                 }
             }
         })
