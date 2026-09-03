@@ -615,18 +615,6 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         let certs = certs
             .into_iter()
             .filter_map(|(unverified, start, end)| {
-                let unverified_body = unverified.inspect_unverified().0;
-
-                // Skip certificates we did not asked for.
-                //
-                // Not much of an issue because certificate verification will
-                // usually fail anyways, except for this weird edge-case where we
-                // actually have that id fingerprint in the v3idents.
-                if !missing.contains(&unverified_body.key_ids()) {
-                    debug!("authority returned certificate we did not asked for: {:?}", unverified_body.key_ids());
-                    return None;
-                }
-
                 // Check validity and timeliness, skipping invalid certificates here
                 // is fine because the design of the query function expects us to
                 // do this work here.
@@ -642,6 +630,12 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                     warn!("received expired auth cert");
                     return None;
                 };
+
+                // Skip certificates we did not asked for.
+                if !missing.contains(&timely.key_ids()) {
+                    debug!("authority returned certificate we did not asked for: {:?}", timely.key_ids());
+                    return None;
+                }
 
                 Some((timely, &resp[start..end]))
             })
