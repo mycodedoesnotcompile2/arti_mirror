@@ -43,7 +43,7 @@ use tracing::{debug, warn};
 use crate::{
     database::{self as db, AuthCertMeta, ConsensusMeta, ContentEncoding, Timestamp},
     err::{AuthorityRequestError, DatabaseError, OperationError},
-    types::{FlavoredConsensusUnverified},
+    types::FlavoredConsensusUnverified,
 };
 
 mod poc;
@@ -485,9 +485,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // the consensus at all.  Because we have neither queried the database,
         // nor the network yet, we pass an empty slice to the list of already
         // stored certificates.
-        let verifiability_error = consensus
-            .can_verify(self.authorities.v3idents(), &[])
-            .err();
+        let verifiability_error = consensus.can_verify(self.authorities.v3idents(), &[]).err();
 
         // And store it.
         *data = ConsensusBoundData::Unverified {
@@ -629,7 +627,10 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
                 // Skip certificates we did not asked for.
                 let Some(_) = missing.get(&timely.key_ids()) else {
-                    debug!("authority returned certificate we did not asked for: {:?}", timely.key_ids());
+                    debug!(
+                        "authority returned certificate we did not asked for: {:?}",
+                        timely.key_ids()
+                    );
                     return None;
                 };
 

@@ -66,10 +66,7 @@ use saturating_time::SaturatingTime;
 use tor_basic_utils::RngExt;
 use tor_dircommon::config::DirTolerance;
 use tor_error::into_internal;
-use tor_netdoc::doc::{
-    authcert::{AuthCert},
-    netstatus::ConsensusFlavor,
-};
+use tor_netdoc::doc::{authcert::AuthCert, netstatus::ConsensusFlavor};
 
 use crate::{err::DatabaseError, types::FlavoredConsensusUnverified};
 
