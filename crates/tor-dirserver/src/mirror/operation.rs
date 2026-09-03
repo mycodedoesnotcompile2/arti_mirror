@@ -33,9 +33,9 @@ use tor_dirclient::request::{AuthCertRequest, ConsensusRequest, Requestable};
 use tor_dircommon::{authority::AuthorityContacts, config::DirTolerance};
 use tor_error::{internal, into_internal};
 use tor_netdoc::{
-    doc::authcert::{AuthCert, AuthCertKeyIds, AuthCertUnverified},
+    doc::authcert::{AuthCert, AuthCertUnverified},
     doc::netstatus::ConsensusVerifiabilityError,
-    parse2::{self, NetdocParseable, NetdocParseableUnverified, ParseInput},
+    parse2::{self, NetdocParseable, ParseInput},
 };
 use tor_rtcompat::PreferredRuntime;
 use tracing::{debug, warn};
@@ -43,7 +43,7 @@ use tracing::{debug, warn};
 use crate::{
     database::{self as db, AuthCertMeta, ConsensusMeta, ContentEncoding, Timestamp},
     err::{AuthorityRequestError, DatabaseError, OperationError},
-    types::{FlavoredConsensusSignatures, FlavoredConsensusUnverified},
+    types::{FlavoredConsensusUnverified},
 };
 
 mod poc;

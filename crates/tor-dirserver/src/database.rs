@@ -59,7 +59,7 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rand::Rng;
 use rusqlite::{
-    OptionalExtension, ToSql, Transaction, TransactionBehavior, named_params, params,
+    ToSql, Transaction, TransactionBehavior, named_params, params,
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
 };
 use saturating_time::SaturatingTime;
@@ -67,7 +67,7 @@ use tor_basic_utils::RngExt;
 use tor_dircommon::config::DirTolerance;
 use tor_error::into_internal;
 use tor_netdoc::doc::{
-    authcert::{AuthCert, AuthCertKeyIds},
+    authcert::{AuthCert},
     netstatus::ConsensusFlavor,
 };
 
@@ -921,7 +921,6 @@ mod test {
     use tempfile::tempdir;
     use tor_basic_utils::test_rng::testing_rng;
     use tor_dircommon::config::DirToleranceBuilder;
-    use tor_llcrypto::pk::rsa::RsaIdentity;
     use tor_netdoc::doc::netstatus::{md, plain};
 
     use crate::testdata2;
