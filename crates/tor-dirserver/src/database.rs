@@ -664,12 +664,14 @@ impl AuthCertMeta {
     ///
     /// Keep in mind that the data in the [`AuthCert`] should correspond to the
     /// data found in `data`, as this method performs no parsing.
+    ///
+    /// Returns the [`AuthCertMeta`] of the just inserted authority certificate.
     pub(crate) fn insert<I: Iterator<Item = ContentEncoding>>(
         tx: &Transaction<'_>,
         encodings: I,
         cert: &AuthCert,
         data: &str,
-    ) -> Result<(), DatabaseError> {
+    ) -> Result<Self, DatabaseError> {
         // Inserts a new certificate into the meta table.
         //
         // Parameters:
@@ -688,16 +690,22 @@ impl AuthCertMeta {
             "
         ))?;
 
-        let docid = store_insert(tx, data.as_bytes(), encodings)?;
+        let meta = Self {
+            docid: store_insert(tx, data.as_bytes(), encodings)?,
+            kp_auth_id_rsa_sha1: Sha1(cert.dir_identity_key.to_rsa_identity().to_bytes()),
+            kp_auth_sign_rsa_sha1: Sha1(cert.dir_signing_key.to_rsa_identity().to_bytes()),
+            dir_key_published: Timestamp::from(cert.dir_key_published.0),
+            dir_key_expires: Timestamp::from(cert.dir_key_expires.0),
+        };
         stmt.execute(named_params! {
-            ":docid": docid,
-            ":id_rsa": cert.dir_identity_key.to_rsa_identity().as_hex_upper(),
-            ":sign_rsa": cert.dir_signing_key.to_rsa_identity().as_hex_upper(),
-            ":published": Timestamp::from(cert.dir_key_published.0),
-            ":expires": Timestamp::from(cert.dir_key_expires.0),
+            ":docid": meta.docid,
+            ":id_rsa": meta.kp_auth_id_rsa_sha1,
+            ":sign_rsa": meta.kp_auth_sign_rsa_sha1,
+            ":published": meta.dir_key_published,
+            ":expires": meta.dir_key_expires,
         })?;
 
-        Ok(())
+        Ok(meta)
     }
 }
 
