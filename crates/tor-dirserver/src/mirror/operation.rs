@@ -510,7 +510,66 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         now: Timestamp,
     ) -> Result<(), OperationError> {
-        todo!()
+        // Obtain the required variables from data.
+        let ConsensusBoundData::Unverified {
+            consensus,
+            certs_already,
+            verifiability_error,
+            ..
+        } = data
+        else {
+            return Err(OperationError::Bug(internal!("not unverified?")));
+        };
+
+        // Obtain all raw certificates from the database.
+        let raw_certs = db::read_tx(pool, |tx| {
+            AuthCertMeta::query2(tx)?
+                .into_iter()
+                .map(|meta| meta.data(tx))
+                .collect::<Result<Vec<_>, _>>()
+        })??;
+
+        // We have successfully queried the database, which we do only once.
+        // Now, initialize certs_already with an empty Vec to save this fact.
+        // We then access the inner Vec.  Using unwrap is fine, because we just
+        // initialized it.
+        debug_assert!(certs_already.is_none());
+        *certs_already = Some(Vec::new());
+        #[allow(clippy::unwrap_used)]
+        let certs_already = certs_already.as_mut().unwrap();
+
+        for raw in raw_certs {
+            // Parse, verify, and time-check every certificate.
+            let unverified =
+                parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(&raw, "<database>"))
+                    // TODO DIRMIRROR: We originally decided to require every
+                    // certificate to be valid from a parsing POV.  Maybe we
+                    // should reconsider this, as we can trivially skip such
+                    // cases here?
+                    .map_err(into_internal!("invalid auth cert in database?"))?;
+
+            // Check validity and timeliness, skipping invalid certificates here
+            // is fine because the design of the query function expects us to
+            // do this work here.
+            let Ok(verified) = unverified.verify(self.authorities.v3idents()) else {
+                continue;
+            };
+            let Ok(timely) = self
+                .tolerance
+                .extend_tolerance(verified)
+                .if_valid_at(&now.into())
+            else {
+                continue;
+            };
+            certs_already.push(timely);
+        }
+
+        // Now, check again which certificates are missing.
+        *verifiability_error = consensus
+            .can_verify(self.authorities.v3idents(), certs_already)
+            .err();
+
+        Ok(())
     }
 
     /// Fetches authority certificates from the network.
