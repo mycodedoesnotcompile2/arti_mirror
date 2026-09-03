@@ -611,7 +611,6 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // Verify each certificate.  Invalid certificates and other problems get
         // logged and filtered out, with the result being then inserted into
         // the database.
-        // XXX: Refactor this.
         let certs = certs
             .into_iter()
             .filter_map(|(unverified, start, end)| {
@@ -632,10 +631,10 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 };
 
                 // Skip certificates we did not asked for.
-                if !missing.contains(&timely.key_ids()) {
+                let Some(_) = missing.get(&timely.key_ids()) else {
                     debug!("authority returned certificate we did not asked for: {:?}", timely.key_ids());
                     return None;
-                }
+                };
 
                 Some((timely, &resp[start..end]))
             })
