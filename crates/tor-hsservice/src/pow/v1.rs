@@ -4,6 +4,8 @@
 //! * <https://spec.torproject.org/hspow-spec/common-protocol.html>
 //! * <https://spec.torproject.org/hspow-spec/v1-equix.html>
 
+use crate::err::StateExpiryError;
+
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     sync::{Arc, Mutex, RwLock},
@@ -30,6 +32,7 @@ use tor_hscrypto::{
     time::TimePeriod,
 };
 use tor_keymgr::KeyMgr;
+use tor_log_ratelim::log_ratelim;
 use tor_netdir::{NetDirProvider, NetdirProviderShutdown, params::NetParameters};
 use tor_netdoc::doc::hsdesc::pow::{PowParams, v1::PowParamsV1};
 use tor_persist::{
@@ -591,6 +594,8 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                 state.verifiers.remove(&seed_head);
             }
 
+            Self::expire_old_replay_logs(&state);
+
             let record = state.to_record();
             if let Err(err) = state.storage_handle.store(&record) {
                 warn_report!(err, "Error saving PoW state");
@@ -606,6 +611,66 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
         }
 
         update_times.iter().min().cloned()
+    }
+
+    /// Remove expired replay log files from disk.
+    fn expire_old_replay_logs(state: &State<R, Q>) {
+        let handle_rl_err = |operation, path: &std::path::Path| {
+            let path = path.to_owned();
+            move |source| StateExpiryError::ReplayLog {
+                operation,
+                path,
+                source: Arc::new(source),
+            }
+        };
+
+        let replay_logs = state.instance_dir.as_path();
+        let replay_logs_dir = match std::fs::read_dir(replay_logs)
+            .map_err(handle_rl_err("open dir", replay_logs))
+        {
+            Ok(replay_logs_dir) => replay_logs_dir,
+            Err(err) => {
+                log_ratelim!("Error removing state for old PoW seed"; Result::<(), _>::Err(err));
+                return;
+            }
+        };
+        for ent in replay_logs_dir {
+            match ent.map_err(handle_rl_err("read dir", replay_logs)) {
+                Ok(ent) => {
+                    let leaf = ent.file_name();
+                    match PowNonceReplayLog::parse_log_leafname(&leaf) {
+                        Ok(seed) => {
+                            if state
+                                .verifiers
+                                .iter()
+                                .filter(|(seed_head, _)| seed.head() == **seed_head)
+                                .collect::<Vec<_>>()
+                                .is_empty()
+                            {
+                                tracing::trace!(
+                                    leaf = leaf.to_string_lossy().as_ref(),
+                                    "deleting replay log for old PoW seed"
+                                );
+                                let path = ent.path();
+                                if let Err(err) = std::fs::remove_file(&path)
+                                    .map_err(handle_rl_err("remove", &path))
+                                {
+                                    log_ratelim!("Error removing state for old PoW seed"; Result::<(), _>::Err(err));
+                                }
+                            }
+                        }
+                        Err(bad) => tracing::info!(
+                            "deleting garbage in PoW replay log dir: {} ({})",
+                            leaf.to_string_lossy(),
+                            bad
+                        ),
+                    }
+                }
+                Err(err) => {
+                    log_ratelim!("Error removing state for old PoW seed"; Result::<(), _>::Err(err));
+                }
+            }
+        }
     }
 
     /// Get [`PowParams`] for a given [`TimePeriod`].
