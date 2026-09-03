@@ -6,6 +6,7 @@
 // but doing so would create a circular dependency,
 // as the crates that define those types depend on rot-basic-utils.
 #[derive(Debug)]
+#[non_exhaustive]
 /// An event that is intended to be ingested by onionperf.
 pub enum OnionperfEvent {
     /// A stream-related event.
@@ -23,6 +24,7 @@ pub enum OnionperfEvent {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 /// A stream status that is intended to be ingested by onionperf.
 pub enum OnionperfStreamStatus {
     /// A stream was newly created.
@@ -34,6 +36,7 @@ pub enum OnionperfStreamStatus {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 /// A circuit status that is intended to be ingested by onionperf.
 pub enum OnionperfCircuitStatus {
     /// A new circuit was built.
@@ -49,6 +52,7 @@ pub enum OnionperfCircuitStatus {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 /// A guard status that is intended to be ingested by onionperf.
 pub enum OnionperfGuardStatus {
     /// A new guard has been added to the set of available guards.
