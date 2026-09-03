@@ -327,7 +327,14 @@ pub trait ChanTarget: HasRelayIds + HasAddrs + HasChanMethod {
     /// doesn't mean that each relay/client on the network uses the same set of checks.
     fn all_addrs_allowed_for_outgoing_channels(&self) -> bool {
         self.addrs().all(|addr| {
-            match addr.ip() {
+            // We need to canonicalize any IPv4-mapped IPv6 addresses,
+            // since for example:
+            //   IpAddr::V6(Ipv4Addr::LOCALHOST.to_ipv6_mapped()).is_loopback()
+            // returns `false`,
+            // even though a `connect()` to that address would connect to loopback.
+            let addr = addr.ip().to_canonical();
+
+            match addr {
                 IpAddr::V4(v4) => {
                     !(v4.is_loopback() // RFC 1122 (127.0.0.0/8)
                         || v4.is_private() // RFC1918
@@ -743,20 +750,16 @@ mod test {
             unspecified_v4.into(),
             unspecified_v6.into(),
             private_v4.into(),
+            localhost_v4_mapped.into(),
+            unspecified_v4_mapped.into(),
+            private_v4_mapped.into(),
         ];
 
         // Some globally accessible addresses.
         let google_dns_v4 = SocketAddrV4::new(Ipv4Addr::new(8, 8, 8, 8), 1234);
         let google_dns_v4_mapped = to_mapped(&google_dns_v4);
 
-        let allowed = [
-            google_dns_v4.into(),
-            google_dns_v4_mapped.into(),
-            // TODO: These are wrong. See arti#2679.
-            localhost_v4_mapped.into(),
-            unspecified_v4_mapped.into(),
-            private_v4_mapped.into(),
-        ];
+        let allowed = [google_dns_v4.into(), google_dns_v4_mapped.into()];
 
         let target = build_target(&[]);
         assert!(target.all_addrs_allowed_for_outgoing_channels());
@@ -782,9 +785,8 @@ mod test {
         let target = build_target(&[google_dns_v4.into(), google_dns_v4_mapped.into()]);
         assert!(target.all_addrs_allowed_for_outgoing_channels());
 
-        // TODO: This is wrong. See arti#2679.
         let target = build_target(&[google_dns_v4.into(), localhost_v4_mapped.into()]);
-        assert!(target.all_addrs_allowed_for_outgoing_channels());
+        assert!(!target.all_addrs_allowed_for_outgoing_channels());
 
         let target = build_target(&[localhost_v4.into(), localhost_v4_mapped.into()]);
         assert!(!target.all_addrs_allowed_for_outgoing_channels());
