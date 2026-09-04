@@ -324,7 +324,9 @@ mod b64impl {
 
     impl NormalItemArgument for B64 {}
 
-    /// A byte array encoded in a hexadecimal with a fixed length.
+    /// A byte array encoded in base64 with a fixed length.
+    ///
+    /// As with [`B64`], padding is optional when parsing, but omitted when encoding.
     #[derive(Clone, Hash, Deftly)]
     #[derive_deftly(BytesTransparent)]
     #[allow(clippy::derived_hash_with_manual_eq)]
@@ -1293,7 +1295,15 @@ mod timeimpl {
     ///
     /// The timezone is not included in the string representation; `+0000` is implicit.
     ///
-    /// (Example: "2020-10-09T17:38:12")
+    /// # Example
+    ///
+    /// ```
+    /// use tor_netdoc::types::Iso8601TimeNoSp;
+    ///
+    /// let s = "2020-10-09T17:38:12";
+    /// let t: Iso8601TimeNoSp = s.parse().unwrap();
+    /// assert_eq!(t.to_string(), s);
+    /// ```
     #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Deftly)]
     #[derive_deftly(Transparent)]
     #[allow(clippy::exhaustive_structs)]
@@ -2279,7 +2289,7 @@ mod nickname {
 
     impl Nickname {
         /// Return a view of this nickname as a string slice.
-        pub(crate) fn as_str(&self) -> &str {
+        pub fn as_str(&self) -> &str {
             self.0.as_str()
         }
     }
@@ -2301,6 +2311,12 @@ mod nickname {
             } else {
                 Err(InvalidNickname {})
             }
+        }
+    }
+
+    impl AsRef<str> for Nickname {
+        fn as_ref(&self) -> &str {
+            self.as_str()
         }
     }
 

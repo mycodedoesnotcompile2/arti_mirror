@@ -21,7 +21,8 @@ use arti_client::TorClientConfig;
 #[cfg(feature = "onion-service-service")]
 use tor_config::define_list_builder_accessors;
 use tor_config::derive::prelude::*;
-pub(crate) use tor_config::{ConfigBuildError, Listen, MetricsConfig, MetricsConfigBuilder};
+pub(crate) use tor_config::{ConfigBuildError, Listen};
+pub(crate) use tor_config_shared::metrics::{MetricsConfig, MetricsConfigBuilder};
 
 use crate::{LoggingConfig, LoggingConfigBuilder};
 
@@ -127,8 +128,6 @@ pub(crate) struct ApplicationConfig {
 #[cfg_attr(feature = "experimental-api", deftly(tor_config(vis = "pub")))]
 pub(crate) struct ProxyConfig {
     /// Addresses to listen on for incoming SOCKS connections.
-    //
-    // TODO: Once http-connect is non-experimental, we should rename this option in a backward-compatible way.
     #[deftly(tor_config(default = "Listen::new_localhost(9150)"))]
     pub(crate) socks_listen: Listen,
 
@@ -138,6 +137,9 @@ pub(crate) struct ProxyConfig {
 
     /// If true, and the `http-connect` feature is enabled,
     /// all members of `socks_listen` also support HTTP CONNECT.
+    ///
+    /// TODO:
+    /// At some point in the future we might want per-port configuration, like Tor has.
     #[deftly(tor_config(
         cfg = r#" feature="http-connect" "#,
         cfg_desc = "with HTTP CONNECT support"
