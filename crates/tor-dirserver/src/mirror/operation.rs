@@ -998,4 +998,109 @@ mod test {
             _ => panic!("ConsensusBounDdata is not as expected"),
         }
     }
+
+    /// Fetches, verifies, and stores certificates from a local dummy server.
+    /// The test verifies whether the download and insertion works as expected.
+    #[tokio::test]
+    async fn state_fetch_auth_certs() {
+        // Work on an empty database.
+        let pool = db::open("").unwrap();
+        let unverified: Plain =
+            parse2::parse_netdoc(&ParseInput::new(testdata2::current_consensus_ns().1, ""))
+                .unwrap();
+        let engine = StaticEngine::<Plain> {
+            authorities: testdata2::current_auth_cert_contacts(),
+            tolerance: DirTolerance::default(),
+            rt: PreferredRuntime::current().unwrap(),
+            _phantom: Default::default(),
+        };
+        let mut data = ConsensusBoundData::<Plain>::Unverified {
+            consensus: unverified.clone(),
+            raw: testdata2::current_consensus_ns().1.to_string(),
+            certs_already: Some(Vec::new()),
+            verifiability_error: Some(
+                unverified
+                    .can_verify(engine.authorities.v3idents(), &[])
+                    .unwrap_err(),
+            ),
+        };
+        let now = Timestamp::from(testdata2::valid_system_time());
+
+        // Ensure the state transition works.
+        let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state, State::FetchAuthCerts);
+
+        // Simple server process that just returns all authority certificates
+        // we have, regardless of what the client asked for.
+        let server = TcpListener::bind("[::1]:0").await.unwrap();
+        let saddr = server.local_addr().unwrap();
+        tokio::spawn(async move {
+            let mut buf = [0; 1024];
+            let (mut stream, _) = server.accept().await.unwrap();
+            let _ = stream.read(&mut buf).await.unwrap();
+
+            let authcerts = testdata2::current_auth_certs()
+                .into_iter()
+                .map(|x| x.1)
+                .collect::<String>();
+
+            stream.write_all(format!(
+                "HTTP/1.0 200 OK\r\nContent-Encoding: identity\r\nContent-Length: {}\r\n\r\n{authcerts}",
+                authcerts.len()
+            ).as_bytes()).await.unwrap();
+        });
+
+        engine
+            .fetch_auth_certs(&pool, &mut data, &[saddr], now)
+            .await
+            .unwrap();
+
+        match &data {
+            ConsensusBoundData::Unverified {
+                certs_already: Some(certs_already),
+                verifiability_error: None,
+                ..
+            } => {
+                let mut got = certs_already.clone();
+                got.sort_by(|a, b| {
+                    a.dir_signing_key
+                        .to_rsa_identity()
+                        .cmp(&b.dir_signing_key.to_rsa_identity())
+                });
+                let mut expect = testdata2::current_auth_certs()
+                    .into_iter()
+                    .map(|c| c.0)
+                    .collect::<Vec<_>>();
+                expect.sort_by(|a, b| {
+                    a.dir_signing_key
+                        .to_rsa_identity()
+                        .cmp(&b.dir_signing_key.to_rsa_identity())
+                });
+                assert_eq!(got, expect);
+
+                // Because this function also inserts into the database, it
+                // means that querying the database should return these certs.
+                let certs = db::read_tx(&pool, AuthCertMeta::query).unwrap().unwrap();
+                for meta in certs {
+                    // Check whether each certificate now returned from the
+                    // database corresponds to one of the ones we just queried.
+                    got.iter().find(|c| {
+                        db::Sha1::from(c.dir_identity_key.to_rsa_identity().to_bytes())
+                            == meta.kp_auth_id_rsa_sha1
+                            && db::Sha1::from(c.dir_signing_key.to_rsa_identity().to_bytes())
+                                == meta.kp_auth_sign_rsa_sha1
+                    });
+                }
+            }
+            _ => panic!("ConsensusBoundData is not unverified"),
+        }
+
+        // The next state must now be StoreConsensus.
+        let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state, State::StoreConsensus);
+    }
 }
