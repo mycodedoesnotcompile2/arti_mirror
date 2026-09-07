@@ -1,48 +1,47 @@
 //! Utility to return a random hostname.
 
 use crate::RngExt as _;
-use rand::{Rng, seq::IndexedRandom as _};
+use rand::{
+    Rng,
+    distr::{SampleString as _, slice::Choose},
+};
 
-/// The prefixes we put at the front of every random hostname, with terminating `.`.
-const PREFIXES: &[&str] = &["www."];
+/// The prefix that C Tor uses for fake hostnames, with terminating `.`.
+const PREFIX: &str = "www.";
 
-/// The suffixes that we use when picking a random hostname, with preceding `.`.
-const SUFFIXES: &[&str] = &[".com", ".net", ".org"];
+/// The suffix that C Tor uses for fake hostnames, with preceding `.`.
+const SUFFIX: &str = ".com";
 
-/// The characters that we use for the middle part of a hostname.
-// NOTE: Some characters have restrictions.
-// For example `-` isn't allowed as the first or last character of a subdomain,
-// so we don't include it here (see arti#2597).
-const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+/// Base32 characters as used by C Tor's fake hostname generator.
+const BASE32_CHARS: &[char] = &[
+    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
+    't', 'u', 'v', 'w', 'x', 'y', 'z', '2', '3', '4', '5', '6', '7',
+];
 
-/// Lowest permissible hostname length.
-const MIN_LEN: usize = 16;
-/// Highest permissible hostname length.
-const MAX_LEN: usize = 32;
+/// Smallest random-label length that C Tor uses.
+const MIN_RANDOM_LABEL_LEN: usize = 4;
+/// Largest random-label length that C Tor uses.
+const MAX_RANDOM_LABEL_LEN: usize = 25;
 
 /// Return a somewhat random-looking hostname.
 ///
 /// The specific format of the hostname is not guaranteed.
 pub fn random_hostname<R: Rng>(rng: &mut R) -> String {
-    // TODO: This is, roughly, what C tor does.
-    // But that doesn't mean it's remotely clever.
-    let prefix = PREFIXES.choose(rng).expect("TLDS was empty!?");
-    let suffix = SUFFIXES.choose(rng).expect("TLDS was empty!?");
-
-    let length: usize = rng
-        .gen_range_checked(MIN_LEN..=MAX_LEN)
+    // Mirror C Tor's fake-SNI shape so these names are valid by construction
+    // and do not stand out from C Tor's hostnames at the SNI string layer.
+    let random_label_len = rng
+        .gen_range_checked(MIN_RANDOM_LABEL_LEN..=MAX_RANDOM_LABEL_LEN)
         .expect("Somehow MIN..=MAX wasn't a valid range?");
-    let center_length = length
-        .checked_sub(prefix.len() + suffix.len())
-        .expect("prefix and suffix exceeded MIN_LEN");
+    let random_label = Choose::new(BASE32_CHARS)
+        .expect("BASE32_CHARS was empty!?")
+        .sample_string(rng, random_label_len);
 
-    let mut output = String::from(*prefix);
-    for _ in 0..center_length {
-        output.push(*CHARSET.choose(rng).expect("CHARSET was empty!?") as char);
-    }
-    output.push_str(suffix);
+    let mut output = String::with_capacity(PREFIX.len() + random_label_len + SUFFIX.len());
+    output.push_str(PREFIX);
+    output.push_str(&random_label);
+    output.push_str(SUFFIX);
 
-    assert_eq!(length, output.len());
+    assert_eq!(output.len(), PREFIX.len() + random_label_len + SUFFIX.len());
     output
 }
 
@@ -72,13 +71,19 @@ mod test {
 
         for _ in 0..100 {
             let name = random_hostname(&mut rng);
-            assert!(PREFIXES.iter().any(|tld| name.starts_with(tld)));
-            assert!(SUFFIXES.iter().any(|tld| name.ends_with(tld)));
-            assert!(name.len() >= MIN_LEN);
-            assert!(name.len() <= MAX_LEN);
-            for ch in name.chars() {
-                assert!(matches!(ch, '.' | '0'..='9' | 'a'..='z'));
+            let mut labels = name.split('.');
+
+            assert_eq!(labels.next(), Some("www"));
+
+            let random_label = labels.next().expect("missing random label");
+            assert!(random_label.len() >= MIN_RANDOM_LABEL_LEN);
+            assert!(random_label.len() <= MAX_RANDOM_LABEL_LEN);
+            for ch in random_label.chars() {
+                assert!(BASE32_CHARS.contains(&ch));
             }
+
+            assert_eq!(labels.next(), Some("com"));
+            assert_eq!(labels.next(), None);
         }
     }
 }
