@@ -902,4 +902,100 @@ mod test {
             _ => panic!("data is not unverified"),
         }
     }
+
+    /// Tests the querying of certificates from the database.
+    ///
+    /// Performs a normal check with pre-cached certificates, as well as a
+    /// check with the database having no authority certificates stored.
+    #[tokio::test]
+    async fn state_load_auth_certs() {
+        // Test normally and load all certs from the db.
+        let pool = testdata2::test_db();
+        let unverified: Plain =
+            parse2::parse_netdoc(&ParseInput::new(testdata2::current_consensus_ns().1, ""))
+                .unwrap();
+        let engine = StaticEngine::<Plain> {
+            authorities: testdata2::current_auth_cert_contacts(),
+            tolerance: DirTolerance::default(),
+            rt: PreferredRuntime::current().unwrap(),
+            _phantom: Default::default(),
+        };
+        let mut data = ConsensusBoundData::<Plain>::Unverified {
+            consensus: unverified.clone(),
+            raw: testdata2::current_consensus_ns().1.to_string(),
+            certs_already: None,
+            verifiability_error: Some(
+                unverified
+                    .can_verify(engine.authorities.v3idents(), &[])
+                    .unwrap_err(),
+            ),
+        };
+        let now = Timestamp::from(testdata2::valid_system_time());
+
+        let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state, State::LoadAuthCerts);
+        engine.load_auth_certs(&pool, &mut data, now).unwrap();
+
+        match &mut data {
+            ConsensusBoundData::Unverified {
+                certs_already,
+                verifiability_error: verifiability_error @ None,
+                ..
+            } => {
+                // The order may be different, so sort by signing keys.
+                let mut got = certs_already.as_ref().unwrap().clone();
+                got.sort_by(|a, b| {
+                    a.dir_signing_key
+                        .to_rsa_identity()
+                        .cmp(&b.dir_signing_key.to_rsa_identity())
+                });
+                let mut expect = testdata2::current_auth_certs()
+                    .into_iter()
+                    .map(|c| c.0)
+                    .collect::<Vec<_>>();
+                expect.sort_by(|a, b| {
+                    a.dir_signing_key
+                        .to_rsa_identity()
+                        .cmp(&b.dir_signing_key.to_rsa_identity())
+                });
+
+                assert_eq!(got, expect);
+                // ... and we can indeed verify :-)
+                unverified
+                    .clone()
+                    .verify(engine.authorities.v3idents(), &got)
+                    .unwrap();
+
+                // Reset for the next run.
+                *certs_already = None;
+                *verifiability_error = Some(
+                    unverified
+                        .can_verify(engine.authorities.v3idents(), &[])
+                        .unwrap_err(),
+                );
+            }
+            _ => panic!("ConsensusBoundData is not as expected"),
+        }
+
+        // Now, let's delete all certificates and try again.
+        db::rw_tx(&pool, |tx| {
+            tx.execute(sql!("DELETE FROM authority_key_certificate"), ())
+        })
+        .unwrap()
+        .unwrap();
+
+        engine.load_auth_certs(&pool, &mut data, now).unwrap();
+        match &data {
+            ConsensusBoundData::Unverified {
+                certs_already: Some(certs_already),
+                verifiability_error: Some(ConsensusVerifiabilityError::MissingAuthCerts { .. }),
+                ..
+            } => {
+                assert!(certs_already.is_empty());
+            }
+            _ => panic!("ConsensusBounDdata is not as expected"),
+        }
+    }
 }
