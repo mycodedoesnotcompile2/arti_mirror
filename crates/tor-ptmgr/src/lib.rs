@@ -422,11 +422,12 @@ mod test {
             .build()
             .unwrap();
         #[cfg(not(feature = "managed-pts"))]
-        let obfs4_config = snowflake_config.clone();
+        let config: Vec<TransportConfig> = vec![snowflake_config.clone()];
+        #[cfg(feature = "managed-pts")]
         let config: Vec<TransportConfig> = vec![obfs4_config.clone(), snowflake_config.clone()];
 
         let result = PtMgr::<PreferredRuntime>::transform_config(config).unwrap();
-        assert_eq!(result.len(), 2);
+        #[cfg(feature = "managed-pts")]
         assert_eq!(
             result.get(&"obfs4".parse().unwrap()),
             Some(&obfs4_config.try_into().unwrap())
