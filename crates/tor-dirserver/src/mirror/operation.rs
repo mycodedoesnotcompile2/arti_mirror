@@ -18,6 +18,7 @@
 use std::{
     collections::{HashSet, VecDeque},
     marker::PhantomData,
+    mem,
     net::SocketAddr,
 };
 
@@ -33,8 +34,10 @@ use tor_dirclient::request::{AuthCertRequest, ConsensusRequest, Requestable};
 use tor_dircommon::{authority::AuthorityContacts, config::DirTolerance};
 use tor_error::{internal, into_internal};
 use tor_netdoc::{
-    doc::authcert::{AuthCert, AuthCertUnverified},
-    doc::netstatus::ConsensusVerifiabilityError,
+    doc::{
+        authcert::{AuthCert, AuthCertUnverified},
+        netstatus::{ConsensusVerifiabilityError, ConsensusVerifyFailed},
+    },
     parse2::{self, NetdocParseable, ParseInput},
 };
 use tor_rtcompat::PreferredRuntime;
@@ -376,7 +379,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             State::FetchConsensus => Ok(self.fetch_consensus(data, endpoint).await?),
             State::LoadAuthCerts => self.load_auth_certs(pool, data, now),
             State::FetchAuthCerts => self.fetch_auth_certs(pool, data, endpoint, now).await,
-            State::StoreConsensus => todo!(),
+            State::StoreConsensus => self.store_consensus(pool, data, now),
             State::Descriptors => todo!(),
             State::Hibernate => self.hibernate(data, now).await,
         }
@@ -659,6 +662,56 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         *verifiability_error = consensus
             .can_verify(self.authorities.v3idents(), certs_already)
             .err();
+
+        Ok(())
+    }
+
+    /// Verifies a consensus and inserts it into the database.
+    fn store_consensus(
+        &self,
+        pool: &Pool<SqliteConnectionManager>,
+        data: &mut ConsensusBoundData<T>,
+        now: Timestamp,
+    ) -> Result<(), OperationError> {
+        // It is fine to replace data with ConsensusBoundData::None because in
+        // both cases, the following state of this will always be LoadConsensus
+        // or FetchConsensus, both of them no longer requiring the previous data.
+        //
+        // Yes, we want to explicitly discard this in the case of a recoverable
+        // error in order to retry again by fetching a new consensus.
+        let (consensus, raw, certs_already) = match mem::replace(data, ConsensusBoundData::None) {
+            ConsensusBoundData::Unverified {
+                consensus,
+                raw,
+                certs_already: Some(certs_already),
+                verifiability_error: None,
+            } => (consensus, raw, certs_already),
+            _ => return Err(OperationError::Bug(internal!("data is not unverified"))),
+        };
+
+        // Verify the actual consensus and check that it is timely.  A failure
+        // here leads to an early return but is not considered fatal.
+        let sigs = consensus.sigs().clone();
+        let verified = consensus
+            .verify(self.authorities.v3idents(), &certs_already)
+            .map_err(|e| match e {
+                ConsensusVerifyFailed::CertificationInsufficient(_) => OperationError::Bug(
+                    internal!("cannot verify despite no recent verifiability error?"),
+                ),
+                ConsensusVerifyFailed::InvalidSignature(vf) => vf.into(),
+            })?;
+        let timely = self
+            .tolerance
+            .extend_tolerance(verified)
+            .if_valid_at(&now.into())
+            .map_err(|e| OperationError::VerifyFailed(e.into()))?;
+
+        // TODO DIRMIRROR: Generate consensus diffs here.
+
+        // Finally, insert the consensus into the database.
+        db::rw_tx(pool, |tx| {
+            ConsensusMeta::<T>::insert(tx, ContentEncoding::iter(), (&timely, &sigs), &raw)
+        })??;
 
         Ok(())
     }
