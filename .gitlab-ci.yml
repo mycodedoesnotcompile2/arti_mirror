@@ -299,7 +299,7 @@ rust-dev-recent:
     - rustup component add clippy
     - rustup show
     - ./maint/add_warning --ci-stable
-    - cargo clippy --all-features --all-targets -- -D warnings
+    - CARGO_BUILD_WARNINGS=deny cargo clippy --all-features --all-targets
 
     - section_start "build docs"
     - RUSTDOCFLAGS="-Dwarnings" cargo doc --all-features --document-private-items --no-deps
@@ -419,7 +419,7 @@ rust-clippy-nontest:
     - rustup show
     - rustup component add clippy
     - mv -f clippy-nontest.toml clippy.toml
-    - cargo clippy --all-features --workspace -- -D warnings
+    - CARGO_BUILD_WARNINGS=deny cargo clippy --all-features --workspace
 
 rust-nightly:
   needs: []
