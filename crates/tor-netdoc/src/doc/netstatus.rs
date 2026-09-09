@@ -918,7 +918,7 @@ pub enum ConsensusVerifiabilityError {
 ///
 /// Can be converted to a `VerifyFailed` (which, in effect, summarises the error).
 #[derive(Clone, Debug, thiserror::Error)]
-#[non_exhaustive]
+#[allow(clippy::exhaustive_enums)]
 pub enum ConsensusVerifyFailed {
     /// Certificates or signatures insufficient
     #[error("certs/sigs insufficient")]
