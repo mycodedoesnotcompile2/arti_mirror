@@ -46,7 +46,6 @@
 #![deny(clippy::unused_async)]
 #![deny(clippy::string_slice)] // See arti#2571
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
-
 pub mod config;
 pub mod err;
 
@@ -58,7 +57,8 @@ mod managed;
 
 use crate::config::{TransportConfig, TransportOptions};
 use crate::err::PtError;
-use std::collections::HashMap;
+use oneshot_fused_workaround as oneshot;
+use std::collections::{HashMap, hash_map::Entry};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -121,13 +121,22 @@ impl<R: Runtime> PtMgr<R> {
         binaries: Vec<TransportConfig>,
     ) -> Result<HashMap<PtTransportName, TransportOptions>, tor_error::Bug> {
         let mut ret = HashMap::new();
-        // FIXME(eta): You can currently specify overlapping protocols, and it'll
-        //             just use the last transport specified.
-        //             I attempted to fix this, but decided I didn't want to stare into the list
-        //             builder macro void after trying it for 15 minutes.
+        // TODO
+        // We should perform this check much earlier, when the config is parsed.
         for thing in binaries {
             for tn in thing.protocols.iter() {
-                ret.insert(tn.clone(), thing.clone().try_into()?);
+                let key = tn.clone();
+                match ret.entry(key) {
+                    Entry::Occupied(_) => {
+                        warn!(
+                            "Multiple transports configured for protocol {tn}.
+                             This is not currently supported. The last one will be used."
+                        );
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(thing.clone().try_into()?);
+                    }
+                }
             }
         }
         for opt in ret.values() {
