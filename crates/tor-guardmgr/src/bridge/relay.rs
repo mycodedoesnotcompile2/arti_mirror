@@ -144,3 +144,118 @@ impl<'a> CircTarget for BridgeRelayWithDesc<'a> {
         self.desc().as_ref().protocols()
     }
 }
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use super::*;
+    use crate::bridge::test_util::*;
+    use std::net::SocketAddr;
+
+    fn addr(s: &str) -> SocketAddr {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn without_descriptor() {
+        let cfg = bridge(BRIDGE_LINE);
+        let relay = BridgeRelay::new(&cfg, None);
+
+        assert!(!relay.has_descriptor());
+        assert!(relay.as_relay_with_desc().is_none());
+
+        // Everything we know comes from the bridge line.
+        assert!(relay.same_relay_ids(&cfg));
+        assert!(relay.identity(RelayIdType::Ed25519).is_none());
+        assert_eq!(relay.addrs().collect_vec(), cfg.addrs().collect_vec());
+        assert_eq!(relay.chan_method(), cfg.chan_method());
+    }
+
+    #[test]
+    fn with_descriptor() {
+        let cfg = bridge(BRIDGE_LINE);
+        let desc = bridge_desc();
+        let relay = BridgeRelay::new(&cfg, Some(desc.clone()));
+
+        assert!(relay.has_descriptor());
+
+        // The RSA identity comes from the bridge line; the ed25519 identity is
+        // learned from the descriptor.
+        assert!(relay.has_all_relay_ids_from(&cfg));
+        assert!(relay.same_relay_ids(&desc));
+        assert_eq!(
+            relay.identity(RelayIdType::Ed25519),
+            desc.identity(RelayIdType::Ed25519)
+        );
+
+        // The bridge line and the descriptor list the same address, so we
+        // should see it exactly once.
+        assert_eq!(relay.addrs().collect_vec(), vec![addr("51.68.172.83:9001")]);
+
+        // With a descriptor we can act as a CircTarget.
+        let with_desc = relay.as_relay_with_desc().unwrap();
+        assert_eq!(with_desc.chan_method(), cfg.chan_method());
+        assert_eq!(with_desc.ntor_onion_key(), desc.as_ref().ntor_onion_key());
+        assert_eq!(with_desc.protovers(), desc.as_ref().protocols());
+    }
+
+    #[test]
+    fn descriptor_addresses_are_merged() {
+        // The bridge line says to contact the bridge at an address other than
+        // the one in its descriptor (say, it is behind a NAT).
+        let cfg = bridge("192.0.2.1:443 EB6EFB27F29AC9511A4246D7ABE1AFABFB416FF1");
+        let relay = BridgeRelay::new(&cfg, Some(bridge_desc()));
+
+        // `addrs()` is for things like GeoIP and family lookup, so it should
+        // include both.  (This is the current rule; #956 asks whether it is the
+        // right one.  If that changes, this test should change with it.)
+        assert_eq!(
+            relay.addrs().collect_vec(),
+            vec![addr("192.0.2.1:443"), addr("51.68.172.83:9001")]
+        );
+        // But we only ever contact the bridge the way the bridge line says.
+        assert_eq!(relay.chan_method(), cfg.chan_method());
+        assert_eq!(
+            relay.chan_method().addrs().collect_vec(),
+            vec![addr("192.0.2.1:443")]
+        );
+    }
+
+    #[cfg(feature = "pt-client")]
+    #[test]
+    fn pluggable_transport() {
+        // A bridge behind a pluggable transport, addressed by hostname: the
+        // bridge line contributes no socket address at all.
+        let cfg = bridge(
+            "obfs4 bridge.example.com:443 EB6EFB27F29AC9511A4246D7ABE1AFABFB416FF1 iat-mode=0",
+        );
+        assert_eq!(cfg.addrs().count(), 0);
+
+        let relay = BridgeRelay::new(&cfg, None);
+        assert_eq!(relay.addrs().count(), 0);
+        assert_eq!(relay.chan_method(), cfg.chan_method());
+        assert!(matches!(
+            relay.chan_method(),
+            tor_linkspec::ChannelMethod::Pluggable(_)
+        ));
+
+        // The descriptor's OR port becomes known as an address, but we still
+        // reach the bridge through the transport.
+        let relay = BridgeRelay::new(&cfg, Some(bridge_desc()));
+        assert_eq!(relay.addrs().collect_vec(), vec![addr("51.68.172.83:9001")]);
+        assert_eq!(relay.chan_method(), cfg.chan_method());
+    }
+}

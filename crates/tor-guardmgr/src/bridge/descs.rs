@@ -316,3 +316,288 @@ impl Universe for BridgeSet {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use super::*;
+    use crate::GuardFilter;
+    use crate::bridge::test_util::*;
+    use crate::guard::DisplayRule;
+    use tor_linkspec::{ByRelayIds, OwnedChanTargetBuilder};
+
+    /// [`BRIDGE_3`], with an ed25519 identity in the bridge line too.
+    const BRIDGE_3_WITH_ED: &str = "192.0.2.3:9001 3333333333333333333333333333333333333333 ed25519:MzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM";
+
+    /// An error that a `BridgeDescProvider` might report for a bridge.
+    #[derive(Clone, Debug, thiserror::Error)]
+    #[error("could not fetch descriptor")]
+    struct FetchFailed;
+    impl HasKind for FetchFailed {
+        fn kind(&self) -> tor_error::ErrorKind {
+            tor_error::ErrorKind::TorAccessFailed
+        }
+    }
+    impl HasRetryTime for FetchFailed {
+        fn retry_time(&self) -> tor_error::RetryTime {
+            tor_error::RetryTime::AfterWaiting
+        }
+    }
+    impl BridgeDescError for FetchFailed {}
+
+    /// One entry in a [`BridgeDescList`].
+    type DescEntry = (BridgeConfig, Result<BridgeDesc, Box<dyn BridgeDescError>>);
+
+    /// Build a `BridgeSet` from bridge lines and a list of descriptor results.
+    fn bridge_set(lines: &[&str], descs: Option<Vec<DescEntry>>) -> BridgeSet {
+        let config: Arc<[BridgeConfig]> = lines.iter().map(|l| bridge(l)).collect();
+        let descs = descs.map(|d| Arc::new(d.into_iter().collect::<BridgeDescList>()));
+        BridgeSet::new(config, descs)
+    }
+
+    /// A guard with the identities and channel method of `cfg`, optionally
+    /// with an extra ed25519 identity.
+    fn guard(cfg: &BridgeConfig, ed_id: Option<&str>) -> OwnedChanTarget {
+        let mut b = OwnedChanTargetBuilder::default();
+        b.ids().rsa_identity(*cfg.rsa_identity().unwrap());
+        if let Some(ed) = cfg.ed_identity() {
+            b.ids().ed_identity(*ed);
+        }
+        if let Some(ed) = ed_id {
+            let ed = match ed.parse().unwrap() {
+                tor_linkspec::RelayId::Ed25519(ed) => ed,
+                _ => panic!("not an ed25519 id: {ed}"),
+            };
+            b.ids().ed_identity(ed);
+        }
+        b.method(cfg.chan_method());
+        b.build().unwrap()
+    }
+
+    /// The wrong ed25519 identity for our descriptor.
+    const WRONG_ED_ID: &str = "ed25519:d3JvbmcgZWQyNTUxOSBpZGVudGl0eSEhISEhISEhISE";
+
+    #[test]
+    fn bridge_by_guard() {
+        let set = bridge_set(&[BRIDGE_LINE, BRIDGE_2, BRIDGE_3_WITH_ED], None);
+        let (b1, b2, b3) = (
+            bridge(BRIDGE_LINE),
+            bridge(BRIDGE_2),
+            bridge(BRIDGE_3_WITH_ED),
+        );
+
+        // Exact matches.
+        assert_eq!(set.bridge_by_guard(&guard(&b1, None)), Some(&b1));
+        assert_eq!(set.bridge_by_guard(&guard(&b2, None)), Some(&b2));
+        assert_eq!(set.bridge_by_guard(&guard(&b3, None)), Some(&b3));
+
+        // A guard may know more identities than the bridge line does.
+        assert_eq!(set.bridge_by_guard(&guard(&b1, Some(ED_ID))), Some(&b1));
+
+        // But it must know every identity from the line.
+        assert_eq!(set.bridge_by_guard(&guard(&bridge(BRIDGE_3), None)), None);
+
+        // Same identities, different way of reaching the bridge: no match.
+        let b1_other_port = bridge("51.68.172.83:443 EB6EFB27F29AC9511A4246D7ABE1AFABFB416FF1");
+        assert_eq!(set.bridge_by_guard(&guard(&b1_other_port, None)), None);
+
+        // Unknown bridge.
+        let unknown = bridge("192.0.2.9:9001 9999999999999999999999999999999999999999");
+        assert_eq!(set.bridge_by_guard(&guard(&unknown, None)), None);
+    }
+
+    #[test]
+    fn bridge_relay_by_guard_without_descriptors() {
+        let set = bridge_set(&[BRIDGE_LINE, BRIDGE_2], None);
+        let b1 = bridge(BRIDGE_LINE);
+
+        // The guard knows exactly what the bridge line knows: present.
+        match set.bridge_relay_by_guard(&guard(&b1, None)) {
+            CandidateStatus::Present(relay) => {
+                assert!(!relay.has_descriptor());
+                assert!(relay.same_relay_ids(&b1));
+            }
+            other => panic!("expected Present, got {other:?}"),
+        }
+        assert_eq!(set.contains(&guard(&b1, None)), Some(true));
+
+        // The guard knows an ed25519 identity that the bridge line does not.
+        // Without a descriptor we can't tell whether it is the same bridge.
+        assert!(matches!(
+            set.bridge_relay_by_guard(&guard(&b1, Some(ED_ID))),
+            CandidateStatus::Uncertain
+        ));
+        assert_eq!(set.contains(&guard(&b1, Some(ED_ID))), None);
+
+        // Nothing in the set has these identities.
+        let unknown = bridge("192.0.2.9:9001 9999999999999999999999999999999999999999");
+        assert!(matches!(
+            set.bridge_relay_by_guard(&guard(&unknown, None)),
+            CandidateStatus::Absent
+        ));
+        assert_eq!(set.contains(&guard(&unknown, None)), Some(false));
+    }
+
+    #[test]
+    fn bridge_relay_by_guard_with_descriptors() {
+        let b1 = bridge(BRIDGE_LINE);
+        let b2 = bridge(BRIDGE_2);
+        let set = bridge_set(
+            &[BRIDGE_LINE, BRIDGE_2],
+            Some(vec![
+                (b1.clone(), Ok(bridge_desc())),
+                (b2.clone(), Err(Box::new(FetchFailed))),
+            ]),
+        );
+
+        // With the descriptor, the relay has the ed25519 identity too.
+        match set.bridge_relay_by_guard(&guard(&b1, Some(ED_ID))) {
+            CandidateStatus::Present(relay) => {
+                assert!(relay.has_descriptor());
+                assert!(relay.same_relay_ids(&bridge_desc()));
+            }
+            other => panic!("expected Present, got {other:?}"),
+        }
+        // A guard that only knows the RSA identity still matches.
+        assert_eq!(set.contains(&guard(&b1, None)), Some(true));
+
+        // The descriptor tells us this guard's ed25519 identity is wrong, so
+        // it is definitely not this bridge.
+        assert!(matches!(
+            set.bridge_relay_by_guard(&guard(&b1, Some(WRONG_ED_ID))),
+            CandidateStatus::Absent
+        ));
+        assert_eq!(set.contains(&guard(&b1, Some(WRONG_ED_ID))), Some(false));
+
+        // A failed descriptor fetch is the same as having no descriptor.
+        match set.bridge_relay_by_guard(&guard(&b2, None)) {
+            CandidateStatus::Present(relay) => assert!(!relay.has_descriptor()),
+            other => panic!("expected Present, got {other:?}"),
+        }
+        assert_eq!(set.contains(&guard(&b2, Some(WRONG_ED_ID))), None);
+    }
+
+    #[test]
+    fn status() {
+        let b1 = bridge(BRIDGE_LINE);
+        let b2 = bridge(BRIDGE_2);
+        let set = bridge_set(
+            &[BRIDGE_LINE, BRIDGE_2],
+            Some(vec![(b1.clone(), Ok(bridge_desc()))]),
+        );
+
+        // A bridge with a descriptor: full information.
+        match set.status(&guard(&b1, None)) {
+            CandidateStatus::Present(c) => {
+                assert!(c.listed_as_guard);
+                assert!(c.is_dir_cache);
+                assert!(c.full_dir_info);
+                assert!(matches!(c.sensitivity, DisplayRule::Redacted));
+                // The candidate carries the identity we learned from the descriptor.
+                assert!(c.owned_target.same_relay_ids(&bridge_desc()));
+                assert_eq!(c.owned_target.chan_method(), b1.chan_method());
+            }
+            other => panic!("expected Present, got {other:?}"),
+        }
+
+        // A bridge without a descriptor: still a candidate, but we know less.
+        match set.status(&guard(&b2, None)) {
+            CandidateStatus::Present(c) => {
+                assert!(c.listed_as_guard);
+                assert!(c.is_dir_cache);
+                assert!(!c.full_dir_info);
+                assert!(c.owned_target.same_relay_ids(&b2));
+            }
+            other => panic!("expected Present, got {other:?}"),
+        }
+
+        assert!(matches!(
+            set.status(&guard(&b2, Some(WRONG_ED_ID))),
+            CandidateStatus::Uncertain
+        ));
+        assert!(matches!(
+            set.status(&guard(&b1, Some(WRONG_ED_ID))),
+            CandidateStatus::Absent
+        ));
+    }
+
+    #[test]
+    fn timestamp_is_now() {
+        let set = bridge_set(&[BRIDGE_LINE], None);
+        let before = SystemTime::get();
+        let ts = set.timestamp();
+        let after = SystemTime::get();
+        assert!(before <= ts && ts <= after);
+    }
+
+    #[test]
+    fn weight_threshold_is_unlimited() {
+        // We have no bandwidth information about bridges, so the answer does
+        // not depend on the sample or the parameters.
+        let set = bridge_set(&[BRIDGE_LINE, BRIDGE_2], None);
+        let sample: ByRelayIds<BridgeConfig> = ByRelayIds::new();
+        let params = crate::GuardParams::default();
+
+        let threshold = set.weight_threshold(&sample, &params);
+        assert_eq!(threshold.current_weight, RelayWeight::from(0));
+        assert_eq!(threshold.maximum_weight, RelayWeight::from(u64::MAX));
+    }
+
+    #[test]
+    fn sample() {
+        let b1 = bridge(BRIDGE_LINE);
+        let set = bridge_set(
+            &[BRIDGE_LINE, BRIDGE_2, BRIDGE_3],
+            Some(vec![(b1.clone(), Ok(bridge_desc()))]),
+        );
+        let no_filter = GuardFilter::unfiltered();
+        let nothing: ByRelayIds<BridgeConfig> = ByRelayIds::new();
+
+        // Asking for more than we have gives us everything, each with zero
+        // weight (we have no bandwidth information about bridges).
+        let all = set.sample(&nothing, &no_filter, 10);
+        assert_eq!(all.len(), 3);
+        for (candidate, weight) in &all {
+            assert_eq!(*weight, RelayWeight::from(0));
+            assert!(candidate.listed_as_guard);
+            assert!(candidate.is_dir_cache);
+            // Only the first bridge has a descriptor.
+            let is_b1 = candidate.owned_target.has_all_relay_ids_from(&b1);
+            assert_eq!(candidate.full_dir_info, is_b1);
+        }
+
+        // Asking for fewer gives us that many.
+        assert_eq!(set.sample(&nothing, &no_filter, 2).len(), 2);
+        assert_eq!(set.sample(&nothing, &no_filter, 0).len(), 0);
+
+        // Bridges we already have are not offered again.
+        let mut have_b1 = ByRelayIds::new();
+        have_b1.insert(b1.clone());
+        let rest = set.sample(&have_b1, &no_filter, 10);
+        assert_eq!(rest.len(), 2);
+        assert!(
+            rest.iter()
+                .all(|(c, _)| !c.owned_target.has_any_relay_id_from(&b1))
+        );
+
+        // The filter applies.
+        let mut filter = GuardFilter::unfiltered();
+        filter.push_reachable_addresses(vec!["192.0.2.3/32:*".parse().unwrap()]);
+        let filtered = set.sample(&nothing, &filter, 10);
+        assert_eq!(filtered.len(), 1);
+        assert!(filtered[0].0.owned_target.same_relay_ids(&bridge(BRIDGE_3)));
+    }
+}
