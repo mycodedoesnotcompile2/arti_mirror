@@ -7570,6 +7570,7 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "tor-async-utils",
  "tor-basic-utils",
+ "tor-checkable",
  "tor-config",
  "tor-dircommon",
  "tor-error",

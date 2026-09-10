@@ -1987,11 +1987,21 @@ mod test {
     }
 
     fn init<R: Runtime>(rt: R) -> (GuardMgr<R>, TestingStateMgr, NetDir) {
-        use tor_netdir::{MdReceiver, PartialNetDir, testnet};
         let statemgr = TestingStateMgr::new();
         let have_lock = statemgr.try_lock().unwrap();
         assert!(have_lock.held());
         let guardmgr = GuardMgr::new(rt, statemgr.clone(), &TestConfig::default()).unwrap();
+        (guardmgr, statemgr, test_netdir())
+    }
+
+    /// Return a small test network with parameters tuned for these tests.
+    fn test_netdir() -> NetDir {
+        test_netdir_with_params(&[])
+    }
+
+    /// As `test_netdir`, but with `extra_params` overriding the network parameters too.
+    fn test_netdir_with_params(extra_params: &[&str]) -> NetDir {
+        use tor_netdir::{MdReceiver, PartialNetDir, testnet};
         let (con, mds) = testnet::construct_network().unwrap();
         let param_overrides = vec![
             // We make the sample size smaller than usual to compensate for the
@@ -2004,15 +2014,16 @@ mod test {
             // so that we can test the "restrictive" guard sample behavior, and to avoid
             "guard-meaningful-restriction-percent=75",
         ];
-        let param_overrides: String = param_overrides.into_iter().join(" ");
+        let param_overrides: String = param_overrides
+            .into_iter()
+            .chain(extra_params.iter().copied())
+            .join(" ");
         let override_p = param_overrides.parse().unwrap();
         let mut netdir = PartialNetDir::new(con, Some(&override_p));
         for md in mds {
             netdir.add_microdesc(md);
         }
-        let netdir = netdir.unwrap_if_sufficient().unwrap();
-
-        (guardmgr, statemgr, netdir)
+        netdir.unwrap_if_sufficient().unwrap()
     }
 
     #[test]
@@ -2165,5 +2176,288 @@ mod test {
         assert!(VanguardMode::Disabled < VanguardMode::Lite);
         assert!(VanguardMode::Disabled < VanguardMode::Full);
         assert!(VanguardMode::Lite < VanguardMode::Full);
+    }
+
+    /// Tests for using bridges, rather than relays from the directory, as guards.
+    #[cfg(feature = "bridge-client")]
+    mod bridges {
+        use super::*;
+        use crate::bridge::test_util::*;
+        use crate::bridge::{
+            BridgeConfig, BridgeDesc, BridgeDescEvent, BridgeDescList, BridgeDescProvider,
+        };
+        use futures::channel::mpsc;
+        use futures::stream::BoxStream;
+        use std::sync::Mutex;
+        use tor_linkspec::CircTarget;
+        use tor_netdir::testprovider::TestNetDirProvider;
+        use tor_rtmock::MockRuntime;
+
+        /// A [`BridgeDescProvider`] whose descriptors the test controls.
+        ///
+        /// The real one is `BridgeDescMgr` in tor-dirmgr; here we only need to
+        /// see what the `GuardMgr` asks for, and to hand it descriptors.
+        #[derive(Clone)]
+        struct FakeProvider(Arc<FakeProviderInner>);
+
+        struct FakeProviderInner {
+            /// The descriptors we currently have.
+            descs: Mutex<Arc<BridgeDescList>>,
+            /// The bridges the `GuardMgr` most recently asked us to fetch.
+            wanted: Mutex<Vec<BridgeConfig>>,
+            /// Where we announce changes to `descs`.
+            events_tx: mpsc::UnboundedSender<BridgeDescEvent>,
+            /// The other end, which `events()` hands out.
+            events_rx: Mutex<Option<mpsc::UnboundedReceiver<BridgeDescEvent>>>,
+        }
+
+        impl FakeProvider {
+            fn new() -> Self {
+                let (events_tx, events_rx) = mpsc::unbounded();
+                FakeProvider(Arc::new(FakeProviderInner {
+                    descs: Mutex::new(Arc::new(BridgeDescList::new())),
+                    wanted: Mutex::new(Vec::new()),
+                    events_tx,
+                    events_rx: Mutex::new(Some(events_rx)),
+                }))
+            }
+
+            /// Replace our descriptors with `descs`, and announce the change.
+            fn publish(&self, descs: impl IntoIterator<Item = (BridgeConfig, BridgeDesc)>) {
+                let descs: BridgeDescList = descs.into_iter().map(|(b, d)| (b, Ok(d))).collect();
+                *self.0.descs.lock().unwrap() = Arc::new(descs);
+                self.0
+                    .events_tx
+                    .unbounded_send(BridgeDescEvent::SomethingChanged)
+                    .unwrap();
+            }
+
+            /// Return the bridges we were most recently asked to fetch.
+            fn wanted(&self) -> Vec<BridgeConfig> {
+                self.0.wanted.lock().unwrap().clone()
+            }
+        }
+
+        impl BridgeDescProvider for FakeProvider {
+            fn bridges(&self) -> Arc<BridgeDescList> {
+                self.0.descs.lock().unwrap().clone()
+            }
+            fn events(&self) -> BoxStream<'static, BridgeDescEvent> {
+                let rx = self.0.events_rx.lock().unwrap().take();
+                Box::pin(rx.expect("events() called more than once"))
+            }
+            fn set_bridges(&self, bridges: &[BridgeConfig]) {
+                *self.0.wanted.lock().unwrap() = bridges.to_vec();
+            }
+        }
+
+        /// A configuration using our three test bridges.
+        fn bridge_config() -> TestConfig {
+            TestConfig {
+                bridges: vec![bridge(BRIDGE_LINE), bridge(BRIDGE_2), bridge(BRIDGE_3)],
+                ..TestConfig::default()
+            }
+        }
+
+        /// The netdir for these tests.
+        ///
+        /// We only ever consider one guard at a time for directory requests,
+        /// so that tests can predict which bridge they will get.
+        fn netdir() -> NetDir {
+            test_netdir_with_params(&["guard-n-primary-dir-guards-to-use=1"])
+        }
+
+        /// Things a test must keep alive while it runs.
+        ///
+        /// The `GuardMgr` holds only `Weak` references to its providers.  (We
+        /// don't use `install_test_netdir` here, since it drops its provider
+        /// right away: that is fine for the other tests, but these tests need
+        /// the netdir to still be there when they switch bridges off.)
+        struct Providers {
+            _netdir: Arc<dyn NetDirProvider>,
+            _bridge_descs: Arc<dyn BridgeDescProvider>,
+        }
+
+        /// Make a `GuardMgr` configured with `config`, with a netdir installed
+        /// and a `FakeProvider` for bridge descriptors.
+        async fn init_with_bridges(
+            rt: &MockRuntime,
+            statemgr: &TestingStateMgr,
+            config: &TestConfig,
+        ) -> (GuardMgr<MockRuntime>, Providers, FakeProvider) {
+            let guardmgr = GuardMgr::new(rt.clone(), statemgr.clone(), config).unwrap();
+
+            let netdir_provider: Arc<dyn NetDirProvider> =
+                Arc::new(TestNetDirProvider::from(netdir()));
+            guardmgr.install_netdir_provider(&netdir_provider).unwrap();
+
+            let provider = FakeProvider::new();
+            let bridge_desc_provider: Arc<dyn BridgeDescProvider> = Arc::new(provider.clone());
+            guardmgr
+                .install_bridge_desc_provider(&bridge_desc_provider)
+                .unwrap();
+            rt.progress_until_stalled().await;
+
+            let keep = Providers {
+                _netdir: netdir_provider,
+                _bridge_descs: bridge_desc_provider,
+            };
+            (guardmgr, keep, provider)
+        }
+
+        fn dir_usage() -> GuardUsage {
+            GuardUsageBuilder::new()
+                .kind(GuardUsageKind::OneHopDirectory)
+                .build()
+                .unwrap()
+        }
+
+        #[test]
+        fn descriptors_make_bridges_usable() {
+            MockRuntime::test_with_various(|rt| async move {
+                let statemgr = TestingStateMgr::new();
+                let _lock = statemgr.try_lock().unwrap();
+                let config = bridge_config();
+                let (guardmgr, _keep, provider) = init_with_bridges(&rt, &statemgr, &config).await;
+
+                // Once we are using bridges, the netdir is not what decides
+                // whether we can proceed.
+                assert!(guardmgr.netdir_is_sufficient(&netdir()));
+
+                // Without descriptors we can still use a bridge as a directory
+                // cache: we know how to reach it, just not how to extend
+                // circuits through it.
+                let (hop, mon, _usable) = guardmgr.select_guard(dir_usage()).unwrap();
+                assert!(hop.is_bridge());
+                assert!(hop.as_circ_target().is_none());
+                assert!(hop.get_relay(&netdir()).is_none());
+                assert!(config.bridges.iter().any(|b| hop.has_all_relay_ids_from(b)));
+                mon.succeeded();
+
+                // But nothing is usable for a multi-hop circuit yet.
+                match guardmgr.select_guard(GuardUsage::default()) {
+                    Err(PickGuardError::AllGuardsDown { .. }) => {}
+                    Err(other) => panic!("unexpected error {other:?}"),
+                    Ok(_) => panic!("selected a bridge with no descriptor for a data circuit"),
+                }
+
+                // We should have asked the provider for the descriptors of our
+                // preferred bridges: at least two, so that we have a fallback.
+                let wanted = provider.wanted();
+                assert_eq!(wanted.len(), 2);
+                assert!(wanted.iter().all(|b| config.bridges.contains(b)));
+
+                // Now the provider learns the first bridge's descriptor.
+                let desc = bridge_desc();
+                provider.publish([(bridge(BRIDGE_LINE), desc.clone())]);
+                rt.progress_until_stalled().await;
+
+                // That bridge is now usable for data circuits, with everything
+                // a CircTarget needs, and with the identity we learned from
+                // the descriptor.
+                let (hop, mon, usable) = guardmgr.select_guard(GuardUsage::default()).unwrap();
+                assert!(hop.is_bridge());
+                assert!(hop.same_relay_ids(&desc));
+                let circ_target = hop.as_circ_target().unwrap();
+                assert_eq!(circ_target.ntor_onion_key(), desc.as_ref().ntor_onion_key());
+                assert_eq!(circ_target.protovers(), desc.as_ref().protocols());
+                mon.succeeded();
+                assert!(usable.await.unwrap());
+            });
+        }
+
+        #[test]
+        fn reconfigure() {
+            MockRuntime::test_with_various(|rt| async move {
+                let statemgr = TestingStateMgr::new();
+                let _lock = statemgr.try_lock().unwrap();
+                let config = bridge_config();
+                let (guardmgr, _keep, provider) = init_with_bridges(&rt, &statemgr, &config).await;
+                provider.publish([(bridge(BRIDGE_LINE), bridge_desc())]);
+                rt.progress_until_stalled().await;
+
+                // Reconfiguring with the same bridges changes nothing.
+                assert_eq!(guardmgr.reconfigure(&config).unwrap(), RetireCircuits::None);
+
+                // Turning bridges off: our circuits through them are no good,
+                // and guards come from the directory again.
+                let no_bridges = TestConfig::default();
+                assert_eq!(
+                    guardmgr.reconfigure(&no_bridges).unwrap(),
+                    RetireCircuits::All
+                );
+                let (hop, mon, _usable) = guardmgr.select_guard(GuardUsage::default()).unwrap();
+                assert!(!hop.is_bridge());
+                assert!(hop.get_relay(&netdir()).is_some());
+                mon.succeeded();
+                assert_eq!(
+                    guardmgr.reconfigure(&no_bridges).unwrap(),
+                    RetireCircuits::None
+                );
+
+                // Turning them back on: same story in reverse.  The descriptor
+                // we already had is still good.
+                assert_eq!(guardmgr.reconfigure(&config).unwrap(), RetireCircuits::All);
+                let (hop, mon, _usable) = guardmgr.select_guard(GuardUsage::default()).unwrap();
+                assert!(hop.is_bridge());
+                assert!(hop.same_relay_ids(&bridge_desc()));
+                mon.succeeded();
+
+                // Changing to a different set of bridges also retires circuits,
+                // and we ask the provider for the new bridges' descriptors.
+                let other = TestConfig {
+                    bridges: vec![bridge(BRIDGE_2)],
+                    ..TestConfig::default()
+                };
+                assert_eq!(guardmgr.reconfigure(&other).unwrap(), RetireCircuits::All);
+                assert_eq!(provider.wanted(), vec![bridge(BRIDGE_2)]);
+                let (hop, _mon, _usable) = guardmgr.select_guard(dir_usage()).unwrap();
+                assert!(hop.same_relay_ids(&bridge(BRIDGE_2)));
+            });
+        }
+
+        #[test]
+        fn bridges_need_exclusive_state() {
+            MockRuntime::test_with_various(|rt| async move {
+                // We never take the lock, so we can't store guard state...
+                let statemgr = TestingStateMgr::new();
+                // ...which is fine without bridges...
+                let guardmgr = GuardMgr::new(rt.clone(), statemgr.clone(), &TestConfig::default());
+                assert!(guardmgr.is_ok());
+                // ...but with bridges, we refuse to start.
+                match GuardMgr::new(rt.clone(), statemgr.clone(), &bridge_config()) {
+                    Err(GuardMgrError::InvalidConfig(GuardMgrConfigError::NoLock(_))) => {}
+                    Err(other) => panic!("unexpected error {other:?}"),
+                    Ok(_) => panic!("started with bridges but without the state lock"),
+                }
+            });
+        }
+
+        #[test]
+        fn bridge_guards_persist() {
+            MockRuntime::test_with_various(|rt| async move {
+                let statemgr = TestingStateMgr::new();
+                let _lock = statemgr.try_lock().unwrap();
+                let config = bridge_config();
+
+                let (guardmgr, _keep, _provider) = init_with_bridges(&rt, &statemgr, &config).await;
+                let (hop, mon, usable) = guardmgr.select_guard(dir_usage()).unwrap();
+                mon.succeeded();
+                assert!(usable.await.unwrap());
+                // A primary guard is usable immediately, so awaiting `usable`
+                // did not run the daemon; let it record the success before we
+                // store the state.
+                rt.progress_until_stalled().await;
+                guardmgr.store_persistent_state().unwrap();
+                drop(guardmgr);
+
+                // A new GuardMgr with the same state should prefer the bridge we
+                // confirmed, just as it would for a regular guard.
+                let (guardmgr, _keep, _provider) = init_with_bridges(&rt, &statemgr, &config).await;
+                let (hop2, _mon, _usable) = guardmgr.select_guard(dir_usage()).unwrap();
+                assert!(hop2.is_bridge());
+                assert!(hop2.same_relay_ids(&hop));
+            });
+        }
     }
 }
