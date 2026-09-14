@@ -971,7 +971,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
         let decay_adjustment_fraction = net_params.hs_pow_v1_default_decay_adjustment.as_fraction();
 
         let update_period_duration = inner.runtime.now() - inner.update_period_start;
-        if inner.num_dequeued != 0 && update_period_duration.as_millis() != 0 {
+        if inner.num_dequeued != 0 {
             let avg_request_duration = update_period_duration / inner.num_dequeued;
             let num_dequeued = f64::from(inner.num_dequeued);
             if inner.queue.is_empty() {
@@ -984,6 +984,12 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                 avg_request_duration * inner.queue.len().try_into().expect("Queue too large."),
             );
             // TODO: use as_millis_f64 when stable
+            // `update_period_duration` should always be greater than zero, since this function is
+            // called at intervals of `HS_UPDATE_PERIOD`. This really checks that it's greater than
+            // or equal to 1ms, since there's rounding in order to get the types that we need.
+            debug_assert!(
+                f64::from_u128(update_period_duration.as_millis()).expect("Conversion error") > 0.0
+            );
             let idle_fraction = f64::from_u128(adjusted_idle_time.as_millis())
                 .expect("Conversion error")
                 / f64::from_u128(update_period_duration.as_millis()).expect("Conversion error");
