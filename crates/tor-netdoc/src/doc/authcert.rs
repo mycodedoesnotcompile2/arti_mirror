@@ -94,10 +94,9 @@ static AUTHCERT_RULES: LazyLock<SectionRules<AuthCertKwd>> = LazyLock::new(|| {
 /// <https://spec.torproject.org/dir-spec/creating-key-certificates.html>
 ///
 /// To make a fresh `AuthCert`, use [`AuthCertConstructor`].
-#[derive(Clone, Debug, Deftly)]
+#[derive(Clone, Debug, PartialEq, Eq, Deftly)]
 #[derive_deftly(Constructor)]
 #[derive_deftly(NetdocParseableUnverified, NetdocEncodable)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
 #[allow(clippy::exhaustive_structs)]
 pub struct AuthCert {
     /// Intro line
