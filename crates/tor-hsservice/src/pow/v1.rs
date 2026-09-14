@@ -1003,10 +1003,13 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                         .expect("Conversion error");
                 *suggested_effort = Effort::from(new_suggested_effort);
             } else {
-                // The rust `as` operator is used here to provide saturating conversions,
-                // to avoid panicking if the effort calculation would be lossy due to extremely
-                // large values. In practice, the values should be low enough that this shouldn't
-                // come up, but it is worth being defensive.
+                // The Rust `as` operator provides infallible integer to float conversions [1].
+                // We use this below to avoid panicking in the case that the average per-request
+                // effort is greater than `u32::MAX`. This is highly unlikely to happen, as it
+                // would require a patched Tor client to make an extremely large number of
+                // extremely high-effort requests, but it is best to be safe.
+                //
+                // [1]: https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.numeric.int-as-float
                 let theoretical_num_dequeued = num_dequeued * (1.0 / busy_fraction);
                 let num_enqueued_gte_suggested_f64 = inner.num_enqueued_gte_suggested as f64;
 
