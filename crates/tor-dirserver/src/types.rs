@@ -4,18 +4,37 @@
 //! directory server that are not related to the database, in which case they
 //! belong to the respective [`crate::database`] module.
 
+use std::collections::HashSet;
+use tor_checkable::TimeRangeBound;
+use tor_llcrypto::pk::rsa::RsaIdentity;
 use tor_netdoc::{
     doc::{
-        authcert::AuthCertKeyIds,
-        netstatus::{ConsensusFlavor, md, plain},
+        authcert::{AuthCert, AuthCertKeyIds},
+        netstatus::{
+            ConsensusFlavor, ConsensusVerifiabilityError, ConsensusVerifyFailed, Lifetime, md,
+            plain,
+        },
     },
     parse2::{NetdocParseable, NetdocParseableUnverified},
 };
 
+use crate::database::{Sha1, Sha256};
+
 /// Generic trait representing a flavored verified consensus.
 ///
 /// Similar to [`FlavoredConsensusUnverified`] and obtained from it.
-pub(crate) trait FlavoredConsensusBody: Clone {}
+pub(crate) trait FlavoredConsensusBody: Clone {
+    /// Returns the [`Lifetime`] of this body.
+    fn lifetime(&self) -> &Lifetime;
+
+    /// Returns the doc digests for every router.
+    // TODO DIRMIRROR: This module should probably be moved into a submodule
+    // of database.rs alongside other types found in database.rs.
+    //
+    // Orginally, the types here had no relation to database implementations,
+    // but this does not work out long-term, as we see by this signature.
+    fn doc_digests(&self) -> HashSet<impl rusqlite::ToSql>;
+}
 
 /// Generic trait representing the signatures of a consensus.
 ///
@@ -42,6 +61,21 @@ pub(crate) trait FlavoredConsensusUnverified:
     /// Returns the [`ConsensusFlavor`] of this type.
     fn flavor() -> ConsensusFlavor;
 
+    /// Whether or not we have all required authority certificates to verify
+    /// the consensus.
+    fn can_verify(
+        &self,
+        trusted_authorities: &[RsaIdentity],
+        certs_already: &[AuthCert],
+    ) -> Result<(), ConsensusVerifiabilityError>;
+
+    /// Verifies the consensus, returning the body.
+    fn verify(
+        self,
+        trusted_authorities: &[RsaIdentity],
+        certs_already: &[AuthCert],
+    ) -> Result<TimeRangeBound<Self::Body>, ConsensusVerifyFailed>;
+
     /// Returns the signatures contained inside.
     ///
     /// It corresponds to accessing the publicly available T::sigs which is
@@ -55,9 +89,31 @@ pub(crate) trait FlavoredConsensusUnverified:
     }
 }
 
-impl FlavoredConsensusBody for plain::NetworkStatus {}
+impl FlavoredConsensusBody for plain::NetworkStatus {
+    fn lifetime(&self) -> &Lifetime {
+        &self.preamble.lifetime
+    }
 
-impl FlavoredConsensusBody for md::NetworkStatus {}
+    fn doc_digests(&self) -> HashSet<impl rusqlite::ToSql> {
+        self.routers
+            .iter()
+            .map(|r| Sha1::from(*r.doc_digest()))
+            .collect()
+    }
+}
+
+impl FlavoredConsensusBody for md::NetworkStatus {
+    fn lifetime(&self) -> &Lifetime {
+        &self.preamble.lifetime
+    }
+
+    fn doc_digests(&self) -> HashSet<impl rusqlite::ToSql> {
+        self.routers
+            .iter()
+            .map(|r| Sha256::from(*r.doc_digest()))
+            .collect()
+    }
+}
 
 impl FlavoredConsensusSignatures for plain::NetworkStatusSignatures {
     fn signatories(&self) -> Vec<AuthCertKeyIds> {
@@ -81,10 +137,42 @@ impl FlavoredConsensusUnverified for plain::NetworkStatusUnverified {
     fn flavor() -> ConsensusFlavor {
         ConsensusFlavor::Plain
     }
+
+    fn can_verify(
+        &self,
+        trusted_authorities: &[RsaIdentity],
+        certs_already: &[AuthCert],
+    ) -> Result<(), ConsensusVerifiabilityError> {
+        self.can_verify(trusted_authorities, certs_already)
+    }
+
+    fn verify(
+        self,
+        trusted_authorities: &[RsaIdentity],
+        certs_already: &[AuthCert],
+    ) -> Result<TimeRangeBound<Self::Body>, ConsensusVerifyFailed> {
+        self.verify(trusted_authorities, certs_already)
+    }
 }
 
 impl FlavoredConsensusUnverified for md::NetworkStatusUnverified {
     fn flavor() -> ConsensusFlavor {
         ConsensusFlavor::Microdesc
+    }
+
+    fn can_verify(
+        &self,
+        trusted_authorities: &[RsaIdentity],
+        certs_already: &[AuthCert],
+    ) -> Result<(), ConsensusVerifiabilityError> {
+        self.can_verify(trusted_authorities, certs_already)
+    }
+
+    fn verify(
+        self,
+        trusted_authorities: &[RsaIdentity],
+        certs_already: &[AuthCert],
+    ) -> Result<TimeRangeBound<Self::Body>, ConsensusVerifyFailed> {
+        self.verify(trusted_authorities, certs_already)
     }
 }

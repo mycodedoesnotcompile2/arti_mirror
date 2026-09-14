@@ -1,7 +1,7 @@
 //! Error module for `tor-dirserver`.
 
 use thiserror::Error;
-use tor_netdoc::parse2;
+use tor_netdoc::parse2::{self, VerifyFailed};
 
 /// Indicates that an error variant is fatal.
 ///
@@ -115,6 +115,15 @@ pub(crate) enum OperationError {
     /// Access to the database failed for good.
     #[error("database error: {0}")]
     Database(#[from] DatabaseError),
+
+    /// Verificaton of a network document has failed.
+    ///
+    /// This also includes checks for timeliness.
+    ///
+    /// We do not consider this fatal but simply discard the unverified network
+    /// document.
+    #[error("verification error: {0}")]
+    VerifyFailed(#[from] VerifyFailed),
 
     /// An internal error.
     #[error("Internal error")]

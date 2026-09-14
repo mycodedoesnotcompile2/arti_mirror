@@ -18,6 +18,7 @@
 use std::{
     collections::{HashSet, VecDeque},
     marker::PhantomData,
+    mem,
     net::SocketAddr,
 };
 
@@ -33,8 +34,11 @@ use tor_dirclient::request::{AuthCertRequest, ConsensusRequest, Requestable};
 use tor_dircommon::{authority::AuthorityContacts, config::DirTolerance};
 use tor_error::{internal, into_internal};
 use tor_netdoc::{
-    doc::authcert::{AuthCertKeyIds, AuthCertUnverified},
-    parse2::{self, NetdocParseable, NetdocParseableUnverified, ParseInput},
+    doc::{
+        authcert::{AuthCert, AuthCertUnverified},
+        netstatus::{ConsensusVerifiabilityError, ConsensusVerifyFailed},
+    },
+    parse2::{self, NetdocParseable, ParseInput},
 };
 use tor_rtcompat::PreferredRuntime;
 use tracing::{debug, warn};
@@ -42,7 +46,7 @@ use tracing::{debug, warn};
 use crate::{
     database::{self as db, AuthCertMeta, ConsensusMeta, ContentEncoding, Timestamp},
     err::{AuthorityRequestError, DatabaseError, OperationError},
-    types::{FlavoredConsensusSignatures, FlavoredConsensusUnverified},
+    types::FlavoredConsensusUnverified,
 };
 
 mod poc;
@@ -69,37 +73,39 @@ enum State {
     /// * [`State::Hibernate`], if lifetime is over.
     ///
     /// Transitions into:
-    /// * [`State::AuthCerts`], if we miss authority certificates.
-    /// * [`State::StoreConsensus`], if all authority certificates exist in the
-    ///   database.
+    /// * [`State::LoadAuthCerts`], if the consensus has enough trusted sigs.
+    /// * [`State::Hibernate`], if the consensus lacks enough trusted sigs.
     // TODO DIRMIRROR: What to do in the case of getting an invalid consensus
     // such as junk data?  The normal retry logic sounds reasonable here.
     FetchConsensus,
 
-    /// Downloads, validates, and stores the missing authority certificates from
-    /// the downloaded unvalidated consensus into the database.
+    /// Loads authority certificates from the database.
     ///
     /// Transitions from:
-    /// * [`State::FetchConsensus`], if we miss authority certificates.
-    /// * [`State::AuthCerts`], if we still miss authority certificates.
+    /// * [`State::FetchConsensus`]
     ///
     /// Transitions into:
-    /// * [`State::AuthCerts`], if we still miss authority certificates.
-    /// * [`State::StoreConsensus`], if we got all authority certificates.
-    // TODO DIRMIRROR: What to do in the case of a MITM attack where an attacker
-    // adds lots of invalid signature items at the bottom, leading to lots of
-    // queries for directory authority certificates, which may succeed or not?
-    // Best idea is probably to only download authcerts whose id fingerprints
-    // are configured in our AuthorityContacts, because then we have an upper
-    // limit.
-    AuthCerts,
+    /// * [`State::FetchAuthCerts`], if we need more certs from the network.
+    /// * [`State::StoreConsensus`], if can verify the consensus.
+    LoadAuthCerts,
+
+    /// Fetches authority certificates from the network.
+    ///
+    /// Transitions from:
+    /// * [`State::LoadAuthCerts`], if we need more certs from the network.
+    /// * [`State::FetchAuthCerts`], if we need more certs from the network.
+    ///
+    /// Transitions into:
+    /// * [`State::FetchAuthCerts`], if we need more certs from the network.
+    /// * [`State::StoreConsensus`], if we can verify the consensus.
+    FetchAuthCerts,
 
     /// Validates and stores the downloaded unvalidated consensus into the
     /// database.
     ///
     /// Transitions from:
-    /// * [`State::FetchConsensus`], if we have all authority certificates.
-    /// * [`State::AuthCerts`], if we have all authority certificates.
+    /// * [`State::LoadAuthCerts`], if we have all authority certificates.
+    /// * [`State::FetchAuthCerts`], if we have all authority certificates.
     ///
     /// Transitions into:
     /// * [`State::LoadConsensus`]
@@ -121,7 +127,8 @@ enum State {
     /// Hibernate because nothing is left.
     ///
     /// Transitions from:
-    /// * [`State::Descriptors`]
+    /// * [`State::FetchConsensus`], if we cannot verify the current consensus.
+    /// * [`State::Descriptors`], if we are done with the current consensus.
     ///
     /// Transitions into:
     /// * [`State::FetchConsensus`], if the lifetime is over.
@@ -187,6 +194,21 @@ enum ConsensusBoundData<T: FlavoredConsensusUnverified> {
 
         /// The unparsed raw consensus we have.
         raw: String,
+
+        /// The valid authority certificates we have already loaded into memory.
+        ///
+        /// [`None`] means we have never queried the database, whereas
+        /// [`Some(vec![])`] means that the database returned no matching
+        /// authority certificates.
+        ///
+        /// Because we only query the database once per lifetime, we use this
+        /// information to determine where to obtain the authority certificates
+        /// from.
+        certs_already: Option<Vec<AuthCert>>,
+
+        /// The most recent verifiability error, indicating which authority
+        /// certificates we are still missing.
+        verifiability_error: Option<ConsensusVerifiabilityError>,
     },
 
     /// We have downloaded and verified a consensus.
@@ -258,32 +280,39 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 }
             }
 
-            // ConsensusBoundData::Unverified means that we recently downloaded
-            // a consensus through State::FetchConsensus.  It is not fully
-            // validated yet and we may not even be able due to missing
-            // authority certificates.
-            ConsensusBoundData::Unverified { consensus, .. } => {
-                // Check whether there any missing authority certificates that
-                // have signed the consensus.
-                let missing_certs = !AuthCertMeta::query(
-                    tx,
-                    &consensus.sigs().signatories(),
-                    &self.tolerance,
-                    now,
-                )?
-                .1
-                .is_empty();
+            // We have downloaded a consensus and cannot verify it yet, but have
+            // not queried the database for the relevant authority certificates
+            // yet.
+            ConsensusBoundData::Unverified {
+                certs_already: None,
+                verifiability_error: Some(ConsensusVerifiabilityError::MissingAuthCerts { .. }),
+                ..
+            } => State::LoadAuthCerts,
 
-                if missing_certs {
-                    // Missing authority certificates means we must download
-                    // them.
-                    State::AuthCerts
-                } else {
-                    // If we have all authority certificates, we can validate
-                    // and store it inside the database.
-                    State::StoreConsensus
-                }
-            }
+            // We have downloaded a consensus and cannot verify it yet and we
+            // already have queried the database for the relevant authority
+            // certificates with limited success, so we are downloading the
+            // missing ones over the network.
+            ConsensusBoundData::Unverified {
+                certs_already: Some(_),
+                verifiability_error: Some(ConsensusVerifiabilityError::MissingAuthCerts { .. }),
+                ..
+            } => State::FetchAuthCerts,
+
+            // We have downloaded the consensus and will never be able to verify
+            // it, because we do not trust it, let's hope the next consensus
+            // will be better.
+            ConsensusBoundData::Unverified {
+                verifiability_error: Some(ConsensusVerifiabilityError::InsufficientTrustedSigners),
+                ..
+            } => State::Hibernate,
+
+            // We have downloaded the consensus and have obtained enough
+            // authority certificates so we can verify it.
+            ConsensusBoundData::Unverified {
+                verifiability_error: None,
+                ..
+            } => State::StoreConsensus,
 
             // ConsensusBoundData::Verified means that we have successfully
             // loaded a recent valid consensus from the database using
@@ -348,8 +377,9 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         match state {
             State::LoadConsensus => self.load_consensus(pool, data, now, rng),
             State::FetchConsensus => Ok(self.fetch_consensus(data, endpoint).await?),
-            State::AuthCerts => self.auth_certs(pool, data, endpoint, now).await,
-            State::StoreConsensus => todo!(),
+            State::LoadAuthCerts => self.load_auth_certs(pool, data, now),
+            State::FetchAuthCerts => self.fetch_auth_certs(pool, data, endpoint, now).await,
+            State::StoreConsensus => self.store_consensus(pool, data, now),
             State::Descriptors => todo!(),
             State::Hibernate => self.hibernate(data, now).await,
         }
@@ -437,7 +467,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     ) -> Result<(), AuthorityRequestError> {
         // Obtain the consensus.
         let (raw, consensus) = self
-            .send_request(endpoint, ConsensusRequest::new(T::flavor()))
+            .send_request::<_, T>(endpoint, ConsensusRequest::new(T::flavor()))
             .await?;
         let mut consensus = consensus
             .into_iter()
@@ -454,47 +484,116 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // expect is fine because we checked the length for one above.
         let (raw, consensus) = consensus.pop_front().expect("pop_front");
 
+        // Determine the missing authority certificates and if we can verify
+        // the consensus at all.  Because we have neither queried the database,
+        // nor the network yet, we pass an empty slice to the list of already
+        // stored certificates.
+        let verifiability_error = consensus.can_verify(self.authorities.v3idents(), &[]).err();
+
         // And store it.
-        *data = ConsensusBoundData::Unverified { consensus, raw };
+        *data = ConsensusBoundData::Unverified {
+            consensus,
+            raw,
+            verifiability_error,
+            certs_already: None,
+        };
 
         Ok(())
     }
 
-    /// Fetches, validates, and stores authority certificates.
-    //
-    // TODO DIRMIRROR: Right now, there is a torspec DoS issue.
-    // An attacker may add lots of garbage signatures and we will fetch them
-    // Even checking the ID PK against v3idents is not useful because an
-    // attacker may still use the same ID PK dozens of times with various
-    // SK PKs.  A good fix would include checking that no ID PK is duplicate
-    // AND to ignore all ID PKs we do not recognize.  Also, it would probably
-    // be best to move the v3idents structure to a HashMap based implementation,
-    // as well as the signatories result.
+    /// Loads authority certificates from the database.
+    fn load_auth_certs(
+        &self,
+        pool: &Pool<SqliteConnectionManager>,
+        data: &mut ConsensusBoundData<T>,
+        now: Timestamp,
+    ) -> Result<(), OperationError> {
+        // Obtain the required variables from data.
+        let ConsensusBoundData::Unverified {
+            consensus,
+            certs_already,
+            verifiability_error,
+            ..
+        } = data
+        else {
+            return Err(OperationError::Bug(internal!("not unverified?")));
+        };
+
+        // Obtain all raw certificates from the database.
+        let raw_certs = db::read_tx(pool, |tx| {
+            AuthCertMeta::query(tx)?
+                .into_iter()
+                .map(|meta| meta.data(tx))
+                .collect::<Result<Vec<_>, _>>()
+        })??;
+
+        // We have successfully queried the database, which we do only once.
+        // Now, initialize certs_already with an empty Vec to save this fact.
+        // We then access the inner Vec.  Using unwrap is fine, because we just
+        // initialized it.
+        debug_assert!(certs_already.is_none());
+        *certs_already = Some(Vec::new());
+        #[allow(clippy::unwrap_used)]
+        let certs_already = certs_already.as_mut().unwrap();
+
+        for raw in raw_certs {
+            // Parse, verify, and time-check every certificate.
+            let unverified =
+                parse2::parse_netdoc::<AuthCertUnverified>(&ParseInput::new(&raw, "<database>"))
+                    // TODO DIRMIRROR: We originally decided to require every
+                    // certificate to be valid from a parsing POV.  Maybe we
+                    // should reconsider this, as we can trivially skip such
+                    // cases here?
+                    .map_err(into_internal!("invalid auth cert in database?"))?;
+
+            // Check validity and timeliness, skipping invalid certificates here
+            // is fine because the design of the query function expects us to
+            // do this work here.
+            let Ok(verified) = unverified.verify(self.authorities.v3idents()) else {
+                continue;
+            };
+            let Ok(timely) = self
+                .tolerance
+                .extend_tolerance(verified)
+                .if_valid_at(&now.into())
+            else {
+                continue;
+            };
+            certs_already.push(timely);
+        }
+
+        // Now, check again which certificates are missing.
+        *verifiability_error = consensus
+            .can_verify(self.authorities.v3idents(), certs_already)
+            .err();
+
+        Ok(())
+    }
+
+    /// Fetches authority certificates from the network.
     #[allow(clippy::string_slice)] // TODO
-    async fn auth_certs(
+    async fn fetch_auth_certs(
         &self,
         pool: &Pool<SqliteConnectionManager>,
         data: &mut ConsensusBoundData<T>,
         endpoint: &[SocketAddr],
         now: Timestamp,
     ) -> Result<(), OperationError> {
-        // Obtain the signatories of the current unverified consensus.
-        let signatories = match data {
-            ConsensusBoundData::Unverified { consensus, .. } => consensus.sigs().signatories(),
-            _ => return Err(OperationError::Bug(internal!("data is not unverified"))),
+        let ConsensusBoundData::Unverified {
+            consensus,
+            certs_already: Some(certs_already),
+            verifiability_error,
+            ..
+        } = data
+        else {
+            return Err(OperationError::Bug(internal!("not unverified?")));
         };
 
-        // Obtain the missing certificate identifiers.
-        let (_, missing) = db::read_tx(pool, |tx| {
-            AuthCertMeta::query(tx, &signatories, &self.tolerance, now)
-        })??;
-        if missing.is_empty() {
-            // Although not technically fatal, retrying when the database was
-            // externally modified does not make much sense.
-            return Err(OperationError::Bug(internal!(
-                "database externally modified?"
-            )));
-        }
+        let Some(ConsensusVerifiabilityError::MissingAuthCerts { missing, .. }) =
+            &*verifiability_error
+        else {
+            return Err(OperationError::Bug(internal!("not missing auth certs?")));
+        };
 
         // Compose the request.
         let mut requ = AuthCertRequest::new();
@@ -513,40 +612,32 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         let certs = certs
             .into_iter()
             .filter_map(|(unverified, start, end)| {
-                let unverified_body = unverified.inspect_unverified().0;
-                let kp = AuthCertKeyIds {
-                    id_fingerprint: unverified_body.dir_identity_key.to_rsa_identity(),
-                    sk_fingerprint: unverified_body.dir_signing_key.to_rsa_identity(),
+                // Check validity and timeliness, skipping invalid certificates here
+                // is fine because the design of the query function expects us to
+                // do this work here.
+                let Ok(verified) = unverified.verify(self.authorities.v3idents()) else {
+                    warn!("received invalid auth cert");
+                    return None;
+                };
+                let Ok(timely) = self
+                    .tolerance
+                    .extend_tolerance(verified)
+                    .if_valid_at(&now.into())
+                else {
+                    warn!("received expired auth cert");
+                    return None;
                 };
 
                 // Skip certificates we did not asked for.
-                //
-                // Not much of an issue because certificate verification will
-                // usually fail anyways, except for this weird edge-case where we
-                // actually have that id fingerprint in the v3idents.
-                if !missing.contains(&kp) {
-                    debug!("authority returned certificate we did not asked for: {kp:?}");
+                let Some(_) = missing.get(&timely.key_ids()) else {
+                    debug!(
+                        "authority returned certificate we did not asked for: {:?}",
+                        timely.key_ids()
+                    );
                     return None;
-                }
-
-                let verified = unverified
-                    .verify(self.authorities.v3idents())
-                    .and_then(|v| {
-                        Ok(self
-                            .tolerance
-                            .extend_tolerance(v)
-                            .if_valid_at(&now.into())?)
-                    });
-                let verified = match verified {
-                    Ok(v) => v,
-                    Err(e) => {
-                        // TODO DIRMIRROR: Log the actual cert.
-                        warn!("received invalid auth cert: {e}",);
-                        return None;
-                    }
                 };
 
-                Some((verified, &resp[start..end]))
+                Some((timely, &resp[start..end]))
             })
             .collect::<Vec<_>>();
 
@@ -563,8 +654,63 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         db::rw_tx(pool, |tx| {
             for (cert, data) in certs {
                 AuthCertMeta::insert(tx, ContentEncoding::iter(), &cert, data)?;
+                certs_already.push(cert);
             }
             Ok::<_, DatabaseError>(())
+        })??;
+
+        *verifiability_error = consensus
+            .can_verify(self.authorities.v3idents(), certs_already)
+            .err();
+
+        Ok(())
+    }
+
+    /// Verifies a consensus and inserts it into the database.
+    fn store_consensus(
+        &self,
+        pool: &Pool<SqliteConnectionManager>,
+        data: &mut ConsensusBoundData<T>,
+        now: Timestamp,
+    ) -> Result<(), OperationError> {
+        // It is fine to replace data with ConsensusBoundData::None because in
+        // both cases, the following state of this will always be LoadConsensus
+        // or FetchConsensus, both of them no longer requiring the previous data.
+        //
+        // Yes, we want to explicitly discard this in the case of a recoverable
+        // error in order to retry again by fetching a new consensus.
+        let (consensus, raw, certs_already) = match mem::replace(data, ConsensusBoundData::None) {
+            ConsensusBoundData::Unverified {
+                consensus,
+                raw,
+                certs_already: Some(certs_already),
+                verifiability_error: None,
+            } => (consensus, raw, certs_already),
+            _ => return Err(OperationError::Bug(internal!("data is not unverified"))),
+        };
+
+        // Verify the actual consensus and check that it is timely.  A failure
+        // here leads to an early return but is not considered fatal.
+        let sigs = consensus.sigs().clone();
+        let verified = consensus
+            .verify(self.authorities.v3idents(), &certs_already)
+            .map_err(|e| match e {
+                ConsensusVerifyFailed::CertificationInsufficient(_) => OperationError::Bug(
+                    internal!("cannot verify despite no recent verifiability error?"),
+                ),
+                ConsensusVerifyFailed::InvalidSignature(vf) => vf.into(),
+            })?;
+        let timely = self
+            .tolerance
+            .extend_tolerance(verified)
+            .if_valid_at(&now.into())
+            .map_err(|e| OperationError::VerifyFailed(e.into()))?;
+
+        // TODO DIRMIRROR: Generate consensus diffs here.
+
+        // Finally, insert the consensus into the database.
+        db::rw_tx(pool, |tx| {
+            ConsensusMeta::<T>::insert(tx, ContentEncoding::iter(), (&timely, &sigs), &raw)
         })??;
 
         Ok(())
@@ -577,15 +723,21 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         now: Timestamp,
     ) -> Result<(), OperationError> {
         match data {
-            ConsensusBoundData::None | ConsensusBoundData::Unverified { .. } => {
-                // This should not happen, we only enter hibernation in a state
-                // that already has a verified consensus.
-                return Err(internal!("hibernating without a verified consensus?").into());
+            ConsensusBoundData::Unverified {
+                verifiability_error: Some(ConsensusVerifiabilityError::InsufficientTrustedSigners),
+                ..
+            } => {
+                // TODO DIRMIRROR: What to do here? We can definitely not use
+                // the lifetime of the untrusted consensus.
+                todo!()
             }
             ConsensusBoundData::Verified { lifetime, .. } => {
                 let timeout = *lifetime - now;
                 debug!("hibernating for {}s", timeout.as_secs());
                 tokio::time::sleep(timeout).await;
+            }
+            _ => {
+                return Err(internal!("hibernating in wrong state?").into());
             }
         }
 
@@ -782,7 +934,7 @@ mod test {
             let mut buf = vec![0; 1024];
             let _ = stream.read(&mut buf).await.unwrap();
 
-            let consensus = testdata2::current_consensus_ns().1;
+            let consensus = testdata2::current_consensus_ns().2;
             let resp = format!(
                 "HTTP/1.0 200 OK\r\nContent-Encoding: identity\r\nContent-Length: {}\r\n\r\n{consensus}",
                 consensus.len()
@@ -792,63 +944,149 @@ mod test {
 
         engine.fetch_consensus(&mut data, &[saddr]).await.unwrap();
         match data {
-            ConsensusBoundData::Unverified { raw, .. } => {
-                assert_eq!(raw, testdata2::current_consensus_ns().1);
+            ConsensusBoundData::Unverified {
+                raw,
+                certs_already: None,
+                verifiability_error: Some(ConsensusVerifiabilityError::MissingAuthCerts { .. }),
+                ..
+            } => {
+                assert_eq!(raw, testdata2::current_consensus_ns().2);
             }
             _ => panic!("data is not unverified"),
         }
     }
 
-    /// Tests the download, verification, and insertion of authority certificates.
+    /// Tests the querying of certificates from the database.
     ///
-    /// For this, it starts by removing an existing one from the test database
-    /// to see it getting re-downloaded, re-verified, and re-inserted again.
+    /// Performs a normal check with pre-cached certificates, as well as a
+    /// check with the database having no authority certificates stored.
     #[tokio::test]
-    async fn state_auth_certs() {
+    async fn state_load_auth_certs() {
+        // Test normally and load all certs from the db.
         let pool = testdata2::test_db();
-        let mut data = ConsensusBoundData::<Plain>::Unverified {
-            consensus: parse2::parse_netdoc(&ParseInput::new(
-                testdata2::current_consensus_ns().1,
-                "",
-            ))
-            .unwrap(),
-            raw: testdata2::current_consensus_ns().1.to_owned(),
-        };
-        let engine = StaticEngine {
+        let unverified: Plain =
+            parse2::parse_netdoc(&ParseInput::new(testdata2::current_consensus_ns().2, ""))
+                .unwrap();
+        let engine = StaticEngine::<Plain> {
             authorities: testdata2::current_auth_cert_contacts(),
             tolerance: DirTolerance::default(),
             rt: PreferredRuntime::current().unwrap(),
             _phantom: Default::default(),
         };
+        let mut data = ConsensusBoundData::<Plain>::Unverified {
+            consensus: unverified.clone(),
+            raw: testdata2::current_consensus_ns().2.to_string(),
+            certs_already: None,
+            verifiability_error: Some(
+                unverified
+                    .can_verify(engine.authorities.v3idents(), &[])
+                    .unwrap_err(),
+            ),
+        };
+        let now = Timestamp::from(testdata2::valid_system_time());
 
-        // We want to download authority certificates; for this, remove
-        // one of them from the database.
-        pool.get()
+        let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
             .unwrap()
-            .execute(
-                sql!(
-                    "
-                    DELETE FROM authority_key_certificate
-                    WHERE :kp_auth_id_rsa_sha1 = ?1
-                    "
-                ),
-                params![db::Sha1::from(
-                    testdata2::current_auth_cert_ids()[0].to_bytes()
-                )],
-            )
             .unwrap();
+        assert_eq!(state, State::LoadAuthCerts);
+        engine.load_auth_certs(&pool, &mut data, now).unwrap();
 
-        assert_eq!(
-            db::read_tx(&pool, |tx| engine.determine_state(
-                tx,
-                &data,
-                testdata2::valid_system_time().into()
-            ))
+        match &mut data {
+            ConsensusBoundData::Unverified {
+                certs_already,
+                verifiability_error: verifiability_error @ None,
+                ..
+            } => {
+                // The order may be different, so sort by signing keys.
+                let mut got = certs_already.as_ref().unwrap().clone();
+                got.sort_by(|a, b| {
+                    a.dir_signing_key
+                        .to_rsa_identity()
+                        .cmp(&b.dir_signing_key.to_rsa_identity())
+                });
+                let mut expect = testdata2::current_auth_certs()
+                    .into_iter()
+                    .map(|c| c.0)
+                    .collect::<Vec<_>>();
+                expect.sort_by(|a, b| {
+                    a.dir_signing_key
+                        .to_rsa_identity()
+                        .cmp(&b.dir_signing_key.to_rsa_identity())
+                });
+
+                assert_eq!(got, expect);
+                // ... and we can indeed verify :-)
+                unverified
+                    .clone()
+                    .verify(engine.authorities.v3idents(), &got)
+                    .unwrap();
+
+                // Reset for the next run.
+                *certs_already = None;
+                *verifiability_error = Some(
+                    unverified
+                        .can_verify(engine.authorities.v3idents(), &[])
+                        .unwrap_err(),
+                );
+            }
+            _ => panic!("ConsensusBoundData is not as expected"),
+        }
+
+        // Now, let's delete all certificates and try again.
+        db::rw_tx(&pool, |tx| {
+            tx.execute(sql!("DELETE FROM authority_key_certificate"), ())
+        })
+        .unwrap()
+        .unwrap();
+
+        engine.load_auth_certs(&pool, &mut data, now).unwrap();
+        match &data {
+            ConsensusBoundData::Unverified {
+                certs_already: Some(certs_already),
+                verifiability_error: Some(ConsensusVerifiabilityError::MissingAuthCerts { .. }),
+                ..
+            } => {
+                assert!(certs_already.is_empty());
+            }
+            _ => panic!("ConsensusBounDdata is not as expected"),
+        }
+    }
+
+    /// Fetches, verifies, and stores certificates from a local dummy server.
+    /// The test verifies whether the download and insertion works as expected.
+    #[tokio::test]
+    async fn state_fetch_auth_certs() {
+        // Work on an empty database.
+        let pool = db::open("").unwrap();
+        let unverified: Plain =
+            parse2::parse_netdoc(&ParseInput::new(testdata2::current_consensus_ns().2, ""))
+                .unwrap();
+        let engine = StaticEngine::<Plain> {
+            authorities: testdata2::current_auth_cert_contacts(),
+            tolerance: DirTolerance::default(),
+            rt: PreferredRuntime::current().unwrap(),
+            _phantom: Default::default(),
+        };
+        let mut data = ConsensusBoundData::<Plain>::Unverified {
+            consensus: unverified.clone(),
+            raw: testdata2::current_consensus_ns().2.to_string(),
+            certs_already: Some(Vec::new()),
+            verifiability_error: Some(
+                unverified
+                    .can_verify(engine.authorities.v3idents(), &[])
+                    .unwrap_err(),
+            ),
+        };
+        let now = Timestamp::from(testdata2::valid_system_time());
+
+        // Ensure the state transition works.
+        let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
             .unwrap()
-            .unwrap(),
-            State::AuthCerts
-        );
+            .unwrap();
+        assert_eq!(state, State::FetchAuthCerts);
 
+        // Simple server process that just returns all authority certificates
+        // we have, regardless of what the client asked for.
         let server = TcpListener::bind("[::1]:0").await.unwrap();
         let saddr = server.local_addr().unwrap();
         tokio::spawn(async move {
@@ -867,49 +1105,111 @@ mod test {
             ).as_bytes()).await.unwrap();
         });
 
-        // Fetch all authcerts.
         engine
-            .auth_certs(
-                &pool,
-                &mut data,
-                &[saddr],
-                testdata2::valid_system_time().into(),
-            )
+            .fetch_auth_certs(&pool, &mut data, &[saddr], now)
             .await
             .unwrap();
 
-        // Check whether we are done with all authcerts.
-        assert_eq!(
-            db::read_tx(&pool, |tx| engine.determine_state(
-                tx,
-                &data,
-                testdata2::valid_system_time().into(),
-            ))
+        match &data {
+            ConsensusBoundData::Unverified {
+                certs_already: Some(certs_already),
+                verifiability_error: None,
+                ..
+            } => {
+                let mut got = certs_already.clone();
+                got.sort_by(|a, b| {
+                    a.dir_signing_key
+                        .to_rsa_identity()
+                        .cmp(&b.dir_signing_key.to_rsa_identity())
+                });
+                let mut expect = testdata2::current_auth_certs()
+                    .into_iter()
+                    .map(|c| c.0)
+                    .collect::<Vec<_>>();
+                expect.sort_by(|a, b| {
+                    a.dir_signing_key
+                        .to_rsa_identity()
+                        .cmp(&b.dir_signing_key.to_rsa_identity())
+                });
+                assert_eq!(got, expect);
+
+                // Because this function also inserts into the database, it
+                // means that querying the database should return these certs.
+                let certs = db::read_tx(&pool, AuthCertMeta::query).unwrap().unwrap();
+                for meta in certs {
+                    // Check whether each certificate now returned from the
+                    // database corresponds to one of the ones we just queried.
+                    got.iter().find(|c| {
+                        db::Sha1::from(c.dir_identity_key.to_rsa_identity().to_bytes())
+                            == meta.kp_auth_id_rsa_sha1
+                            && db::Sha1::from(c.dir_signing_key.to_rsa_identity().to_bytes())
+                                == meta.kp_auth_sign_rsa_sha1
+                    });
+                }
+            }
+            _ => panic!("ConsensusBoundData is not unverified"),
+        }
+
+        // The next state must now be StoreConsensus.
+        let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
             .unwrap()
-            .unwrap(),
-            State::StoreConsensus
-        );
-        let recent_authcerts = db::read_tx(&pool, |tx| {
-            AuthCertMeta::query(
-                tx,
-                &parse2::parse_netdoc::<Plain>(&ParseInput::new(
-                    testdata2::current_consensus_ns().1,
-                    "",
-                ))
-                .unwrap()
-                .sigs()
-                .signatories(),
-                &DirTolerance::default(),
-                testdata2::valid_system_time().into(),
-            )
-        })
-        .unwrap()
-        .unwrap();
-        // TODO DIRMIRROR: Compare more than just length.
-        assert_eq!(
-            recent_authcerts.0.len(),
-            engine.authorities.v3idents().len()
-        );
-        assert!(recent_authcerts.1.is_empty());
+            .unwrap();
+        assert_eq!(state, State::StoreConsensus);
+    }
+
+    #[tokio::test]
+    async fn state_store_consensus() {
+        let pool = testdata2::test_db();
+        let unverified: Plain =
+            parse2::parse_netdoc(&ParseInput::new(testdata2::current_consensus_ns().2, ""))
+                .unwrap();
+        let engine = StaticEngine::<Plain> {
+            authorities: testdata2::current_auth_cert_contacts(),
+            tolerance: DirTolerance::default(),
+            rt: PreferredRuntime::current().unwrap(),
+            _phantom: Default::default(),
+        };
+        let mut data = ConsensusBoundData::<Plain>::Unverified {
+            consensus: unverified.clone(),
+            raw: testdata2::current_consensus_ns().2.to_string(),
+            certs_already: Some(
+                testdata2::current_auth_certs()
+                    .into_iter()
+                    .map(|c| c.0)
+                    .collect(),
+            ),
+            verifiability_error: None,
+        };
+        let now = Timestamp::from(testdata2::valid_system_time());
+
+        // Clean all consensus related tables.
+        pool.get()
+            .unwrap()
+            .execute_batch(sql!(
+                "
+                DELETE FROM consensus_router_descriptor_member;
+                DELETE FROM consensus_authority_voter;
+                DELETE FROM consensus;
+                "
+            ))
+            .unwrap();
+
+        // Execute the StoreConsensus state.
+        let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state, State::StoreConsensus);
+        engine.store_consensus(&pool, &mut data, now).unwrap();
+        assert!(matches!(&data, ConsensusBoundData::None));
+
+        // Verify that it got inserted.
+        let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state, State::LoadConsensus);
+        engine
+            .load_consensus(&pool, &mut data, now, &mut testing_rng())
+            .unwrap();
+        assert!(matches!(data, ConsensusBoundData::Verified { .. }));
     }
 }
