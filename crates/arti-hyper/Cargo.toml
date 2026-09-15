@@ -1,0 +1,40 @@
+[package]
+name = "arti-hyper"
+version = "0.1.0"
+edition = "2024"
+authors = ["The Tor Project, Inc.", "Niel Duysters"]
+license = "MIT OR Apache-2.0"
+description = "Library to use Arti in the hyper http client"
+keywords = ["hyper", "http", "client"]
+categories = ["network-programming"]
+repository = "https://gitlab.torproject.org/tpo/core/arti.git/"
+
+[dependencies]
+arti-client = { path = "../arti-client", version = "0.34.0" }
+anyhow = "1.0.75"
+bytes = "1.10.1"
+http = "1.3.1"
+http-body-util = "0.1.0"
+hyper = { version = "1.6", features = ["full"] }
+hyper-util = { version = "0.1.11", features = ["full"] }
+tower-service = "0.3.3"
+tokio = { version = "1.7", features = ["macros", "rt-multi-thread", "io-util"], optional = true }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["ring"] }
+webpki-roots = { version = "0.26", optional = true }
+tokio-rustls = { version = "0.26", optional = true }
+native-tls = { version = "0.2", optional = true }
+tokio-native-tls = { version = "0.3", optional = true }
+tor-rtcompat = { path = "../tor-rtcompat", default-features = false, version = "0.34.0" }
+tor-proto = { path = "../tor-proto", features = [ "stream-ctrl" ], version = "0.34.0" }
+ring = "0.17.14"
+
+[features]
+default = ["rustls", "tokio"]
+
+rustls = ["dep:rustls", "dep:tokio-rustls", "dep:webpki-roots", "tor-rtcompat/rustls"]
+
+native-tls = ["dep:native-tls", "dep:tokio-native-tls", "tor-rtcompat/native-tls"]
+
+tokio = ["tor-rtcompat/tokio", "dep:tokio", "dep:tokio-rustls", "dep:tokio-native-tls"]
+
+__is_nonadditive = []
