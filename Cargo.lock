@@ -7291,6 +7291,7 @@ dependencies = [
  "tor-checkable",
  "tor-error",
  "tor-netdoc",
+ "typed-index-collections",
 ]
 
 [[package]]

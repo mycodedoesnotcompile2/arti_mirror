@@ -1,12 +1,18 @@
 //! Consensus methods
+#![allow(unused)] // TODO DIRAUTH
 
 use crate::internal_prelude::*;
 
+// md calculations
 mod ip_summary;
 mod method;
 mod microdesc;
 mod tracked_method;
 
+// consensus calculations
+mod framework;
+
+pub use framework::*;
 pub use method::*;
 pub use microdesc::*;
 pub use tracked_method::*;

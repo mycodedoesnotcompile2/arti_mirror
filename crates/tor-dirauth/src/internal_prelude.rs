@@ -12,6 +12,7 @@ pub(crate) use ipnet::{IpNet, Ipv4Net};
 pub(crate) use itertools::{Itertools, chain};
 pub(crate) use paste::paste;
 pub(crate) use rangemap::RangeInclusiveMap;
+pub(crate) use typed_index_collections::TiVec;
 
 pub(crate) use tor_basic_utils::intern::GloballyInternable as _;
 pub(crate) use tor_error::{Bug, internal, into_internal};
