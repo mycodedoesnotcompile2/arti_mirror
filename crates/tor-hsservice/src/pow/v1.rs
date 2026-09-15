@@ -4,6 +4,8 @@
 //! * <https://spec.torproject.org/hspow-spec/common-protocol.html>
 //! * <https://spec.torproject.org/hspow-spec/v1-equix.html>
 
+use crate::err::StateExpiryError;
+
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     sync::{Arc, Mutex, RwLock},
@@ -30,6 +32,7 @@ use tor_hscrypto::{
     time::TimePeriod,
 };
 use tor_keymgr::KeyMgr;
+use tor_log_ratelim::log_ratelim;
 use tor_netdir::{NetDirProvider, NetdirProviderShutdown, params::NetParameters};
 use tor_netdoc::doc::hsdesc::pow::{PowParams, v1::PowParamsV1};
 use tor_persist::{
@@ -64,7 +67,7 @@ struct State<R, Q> {
     seeds: HashMap<TimePeriod, SeedsForTimePeriod>,
 
     /// Verifiers for all the seeds that exist in `seeds`.
-    verifiers: HashMap<SeedHead, (Verifier, Mutex<PowNonceReplayLog>)>,
+    verifiers: HashMap<SeedHead, (Verifier, Option<Mutex<PowNonceReplayLog>>)>,
 
     /// The nickname for this hidden service.
     ///
@@ -267,16 +270,16 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                     }
                 };
                 let replay_log = match PowNonceReplayLog::new_logged(&instance_dir, &seed) {
-                    Ok(replay_log) => replay_log,
+                    Ok(replay_log) => Some(Mutex::new(replay_log)),
                     Err(err) => {
                         warn_report!(
                             err,
                             "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses..."
                         );
-                        continue;
+                        None
                     }
                 };
-                verifiers.insert(seed.head(), (verifier, Mutex::new(replay_log)));
+                verifiers.insert(seed.head(), (verifier, replay_log));
             }
         }
 
@@ -574,16 +577,24 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             }
 
             for (seed, verifier) in new_verifiers {
-                let replay_log = Mutex::new(
-                    PowNonceReplayLog::new_logged(&state.instance_dir, &seed)
-                        .expect("Couldn't make ReplayLog."),
-                );
+                let replay_log = match PowNonceReplayLog::new_logged(&state.instance_dir, &seed) {
+                    Ok(replay_log) => Some(Mutex::new(replay_log)),
+                    Err(err) => {
+                        warn_report!(
+                            err,
+                            "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses..."
+                        );
+                        None
+                    }
+                };
                 state.verifiers.insert(seed.head(), (verifier, replay_log));
             }
 
             for seed_head in expired_verifiers {
                 state.verifiers.remove(&seed_head);
             }
+
+            Self::expire_old_replay_logs(&state);
 
             let record = state.to_record();
             if let Err(err) = state.storage_handle.store(&record) {
@@ -600,6 +611,66 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
         }
 
         update_times.iter().min().cloned()
+    }
+
+    /// Remove expired replay log files from disk.
+    fn expire_old_replay_logs(state: &State<R, Q>) {
+        let handle_rl_err = |operation, path: &std::path::Path| {
+            let path = path.to_owned();
+            move |source| StateExpiryError::ReplayLog {
+                operation,
+                path,
+                source: Arc::new(source),
+            }
+        };
+
+        let replay_logs = state.instance_dir.as_path();
+        let replay_logs_dir = match std::fs::read_dir(replay_logs)
+            .map_err(handle_rl_err("open dir", replay_logs))
+        {
+            Ok(replay_logs_dir) => replay_logs_dir,
+            Err(err) => {
+                log_ratelim!("Error removing state for old PoW seed"; Result::<(), _>::Err(err));
+                return;
+            }
+        };
+        for ent in replay_logs_dir {
+            match ent.map_err(handle_rl_err("read dir", replay_logs)) {
+                Ok(ent) => {
+                    let leaf = ent.file_name();
+                    match PowNonceReplayLog::parse_log_leafname(&leaf) {
+                        Ok(seed) => {
+                            if state
+                                .verifiers
+                                .iter()
+                                .filter(|(seed_head, _)| seed.head() == **seed_head)
+                                .collect::<Vec<_>>()
+                                .is_empty()
+                            {
+                                tracing::trace!(
+                                    leaf = leaf.to_string_lossy().as_ref(),
+                                    "deleting replay log for old PoW seed"
+                                );
+                                let path = ent.path();
+                                if let Err(err) = std::fs::remove_file(&path)
+                                    .map_err(handle_rl_err("remove", &path))
+                                {
+                                    log_ratelim!("Error removing state for old PoW seed"; Result::<(), _>::Err(err));
+                                }
+                            }
+                        }
+                        Err(bad) => tracing::info!(
+                            "deleting garbage in PoW replay log dir: {} ({})",
+                            leaf.to_string_lossy(),
+                            bad
+                        ),
+                    }
+                }
+                Err(err) => {
+                    log_ratelim!("Error removing state for old PoW seed"; Result::<(), _>::Err(err));
+                }
+            }
+        }
     }
 
     /// Get [`PowParams`] for a given [`TimePeriod`].
@@ -651,8 +722,16 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                 )
                 .ok_or(PowError::MissingKey)?;
 
-                let replay_log =
-                    Mutex::new(PowNonceReplayLog::new_logged(&state.instance_dir, &seed)?);
+                let replay_log = match PowNonceReplayLog::new_logged(&state.instance_dir, &seed) {
+                    Ok(replay_log) => Some(Mutex::new(replay_log)),
+                    Err(err) => {
+                        warn_report!(
+                            err,
+                            "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses..."
+                        );
+                        None
+                    }
+                };
                 state.verifiers.insert(seed.head(), (verifier, replay_log));
 
                 let record = state.to_record();
@@ -675,13 +754,21 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
         // See commit bc5b313028 for a more full explanation.
         {
             let state = self.0.write().expect("Lock poisoned");
-            let mut replay_log = match state.verifiers.get(&solve.seed_head()) {
-                Some((_, replay_log)) => replay_log.lock().expect("Lock poisoned"),
+            match state.verifiers.get(&solve.seed_head()) {
+                Some((_, Some(replay_log))) => {
+                    replay_log
+                        .lock()
+                        .expect("Lock poisoned")
+                        .check_for_replay(solve.nonce())
+                        .map_err(PowSolveError::NonceReplay)?;
+                }
+                Some((_, None)) => {
+                    // Due to an earlier error, we don't have a replay log for this seed.
+                    // We already warned when we were unable to create the replay log,
+                    // so there's no need to warn here, as that would just create log spam.
+                }
                 None => return Err(PowSolveError::InvalidSeedHead),
             };
-            replay_log
-                .check_for_replay(solve.nonce())
-                .map_err(PowSolveError::NonceReplay)?;
         }
 
         // TODO: Once RwLock::downgrade is stabilized, it would make sense to use it here...
