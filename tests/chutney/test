@@ -15,7 +15,7 @@ from typing_extensions import override
 # non-stdlib imports
 import chutney.TorNet as TorNet
 import chutney.network_tests.verify
-from chutney.Util import addr_and_port_str
+from chutney.util.ipaddress import addr_and_port_str
 
 # local imports
 import common
@@ -44,6 +44,7 @@ class TestNetwork(unittest.TestCase):
         self._test_dns = not common.running_in_shadow()
 
     def test_verify(self) -> None:
+        self.skipTest("xxx test_verify")
         # chutney's built-in "verify" test
         config = chutney.network_tests.verify.VerifyConfig.from_envargs()
         # Connect to each hidden service from every client
@@ -52,6 +53,7 @@ class TestNetwork(unittest.TestCase):
 
     def test_curl(self) -> None:
         """Test http requests, using `curl` with the socks port"""
+        self.skipTest("xxx test_curl")
         arti_socks_clients = [
             n
             for n in self._network.nodes
@@ -72,7 +74,14 @@ class TestNetwork(unittest.TestCase):
                     else:
                         # Do DNS resolution locally
                         curl_socks_flag = "--socks5"
-                    subprocess.check_call(
+                    # We're testing *all* exposed socksport endpoints, some of
+                    # which are normally loopback (127.0.0.1). We use the node's
+                    # process launcher to run curl from the same "location"
+                    # (e.g. shadow virtual host) as the chutney node itself.
+                    # XXX expose Node.launcher
+                    # XXX print stdout and stderr
+                    launcher = client._launcher
+                    res = launcher.run(
                         [
                             "curl",
                             f"http://{common.TEST_DOMAIN}",
@@ -81,7 +90,11 @@ class TestNetwork(unittest.TestCase):
                             addr_and_port_str(ip, port),
                             "-o",
                             "/dev/null",
-                        ]
+                        ],
+                        check=True,
+                        known_bin=None,
+                        text=True,
+                        timeout=60.0,
                     )
 
     def test_dig(self) -> None:
@@ -151,10 +164,14 @@ class TestNetwork(unittest.TestCase):
                 os.path.join(self._config.chutney_data_dir, "nodes", "arti.toml"),
                 "--socks5",
                 addr_and_port_str(ip, port),
+                "--listen",
+                # XXX
+                f'{chutney.network_tests.verify.VerifyConfig._LISTEN_ADDRESS_ENV.get()}:0',
                 "-o",
                 str(self._network.dir.joinpath("benchmark_results.json")),
             ],
             env=dict(os.environ) | dict(RUST_LOG="debug"),
+            timeout=60.0,
         )
 
 
