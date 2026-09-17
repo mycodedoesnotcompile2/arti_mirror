@@ -317,9 +317,7 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
     /// is very small and that the garbage collector removes old consensuses
     /// anyways.  If this becomes a problem, we may want to add an optional
     /// limit.
-    pub(crate) fn query(
-        tx: &Transaction,
-    ) -> Result<Vec<Self>, DatabaseError> {
+    pub(crate) fn query(tx: &Transaction) -> Result<Vec<Self>, DatabaseError> {
         // Select the most recent flavored consensus document from the database.
         let mut meta_stmt = tx.prepare_cached(sql!(
             "
@@ -332,18 +330,21 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
         ))?;
 
         // Actually execute the query.
-        let rows = meta_stmt.query_map(named_params! {
-            ":flavor": T::flavor().name(),
-        }, |row| {
-            Ok(Self {
-                docid: row.get(0)?,
-                unsigned_sha3_256: row.get(1)?,
-                valid_after: row.get(2)?,
-                fresh_until: row.get(3)?,
-                valid_until: row.get(4)?,
-                flavor: Default::default(),
-            })
-        })?;
+        let rows = meta_stmt.query_map(
+            named_params! {
+                ":flavor": T::flavor().name(),
+            },
+            |row| {
+                Ok(Self {
+                    docid: row.get(0)?,
+                    unsigned_sha3_256: row.get(1)?,
+                    valid_after: row.get(2)?,
+                    fresh_until: row.get(3)?,
+                    valid_until: row.get(4)?,
+                    flavor: Default::default(),
+                })
+            },
+        )?;
 
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
@@ -1310,8 +1311,8 @@ mod test {
     fn missing_server_descriptors() {
         let pool = testdata2::test_db();
         let meta = read_tx(&pool, ConsensusMeta::<Plain>::query)
-        .unwrap()
-        .unwrap()[0];
+            .unwrap()
+            .unwrap()[0];
         // Ensure that the returned consensus matches the one from testdata2.
         assert_eq!(
             meta.docid,
@@ -1372,8 +1373,8 @@ mod test {
     fn missing_extra_infos() {
         let pool = testdata2::test_db();
         let meta = read_tx(&pool, ConsensusMeta::<Plain>::query)
-        .unwrap()
-        .unwrap()[0];
+            .unwrap()
+            .unwrap()[0];
         // Ensure that the returned consensus matches the one from testdata2.
         assert_eq!(
             meta.docid,
@@ -1399,9 +1400,7 @@ mod test {
     #[test]
     fn missing_micro_descriptors() {
         let pool = testdata2::test_db();
-        let meta = read_tx(&pool, ConsensusMeta::<Md>::query)
-        .unwrap()
-        .unwrap()[0];
+        let meta = read_tx(&pool, ConsensusMeta::<Md>::query).unwrap().unwrap()[0];
         // Ensure that the returned consensus matches the one from testdata2.
         assert_eq!(
             meta.docid,
