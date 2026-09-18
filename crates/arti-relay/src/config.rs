@@ -5,6 +5,7 @@
 // https://gitlab.torproject.org/tpo/core/arti/-/issues/2253
 
 mod listen;
+mod relay;
 
 use std::borrow::Cow;
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
@@ -35,6 +36,7 @@ use tracing_subscriber::filter::EnvFilter;
 use crate::util::NonEmptyList;
 
 use self::listen::Listen;
+use self::relay::{Contact, Nickname};
 
 /// Paths used for default configuration files.
 pub(crate) fn default_config_paths() -> Result<Vec<PathBuf>, CfgPathError> {
@@ -229,6 +231,27 @@ impl tor_guardmgr::GuardMgrConfig for TorRelayConfig {
 #[derive_deftly(TorConfig)]
 #[deftly(tor_config(no_default_trait))]
 pub(crate) struct RelayConfig {
+    /// The nickname of this relay.
+    ///
+    /// Nicknames are a legacy (and fun!) mechanism that is occasionally useful for
+    /// debugging. They should never be used to uniquely identify a relay. Nothing
+    /// prevents two relays from having the same nickname.
+    ///
+    /// It must be between 1 and 19 ASCII alphanumeric characters inclusive. Default
+    /// value is `Unamed`.
+    #[deftly(tor_config(default = "relay::default_nickname()"))]
+    pub(crate) nickname: Nickname,
+
+    /// Contact information for the operator(s) of this relay.
+    ///
+    /// This is published in the descriptor so that the network health team can reach you
+    /// if there is a problem with the relay. It is free-form text but it must be a
+    /// single line and must not start with whitespace.
+    ///
+    /// If unset, the descriptor is published without a contact information.
+    #[deftly(tor_config(default))]
+    pub(crate) contact: Option<Contact>,
+
     /// Addresses to listen on for incoming OR connections.
     #[deftly(tor_config(no_default))]
     pub(crate) listen: Listen,
