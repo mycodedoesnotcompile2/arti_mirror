@@ -122,6 +122,7 @@ struct PowMetrics {
     counter_rend_queue_overflow: metrics::Counter,
     counter_rendrequest_enqueued: metrics::Counter,
     counter_rendrequest_expired: metrics::Counter,
+    counter_replay_log_error_total: metrics::Counter,
     histogram_rendrequest_effort: metrics::Histogram,
 }
 
@@ -161,6 +162,12 @@ impl PowMetrics {
             "arti_hss_pow_rendrequest_expired_total",
             "nickname" => nickname.to_string()
         );
+        let counter_replay_log_error_total = metrics::counter!(
+            description: "Number of errors related to the replay log.",
+            unit: metrics::Unit::Count,
+            "arti_hss_pow_replay_log_error_total",
+            "nickname" => nickname.to_string()
+        );
         let histogram_rendrequest_effort = metrics::histogram!(
             description: "Histogram of effort values seen for incoming PoW requests.",
             "arti_hss_pow_rendrequest_effort_hist",
@@ -173,6 +180,7 @@ impl PowMetrics {
             counter_rend_queue_overflow,
             counter_rendrequest_enqueued,
             counter_rendrequest_expired,
+            counter_replay_log_error_total,
             histogram_rendrequest_effort,
         }
     }
@@ -319,6 +327,9 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             on_disk_state.seeds.into_iter().collect();
         let suggested_effort = Arc::new(Mutex::new(on_disk_state.suggested_effort));
 
+        #[cfg(feature = "metrics")]
+        let metrics = Arc::new(PowMetrics::new(&nickname));
+
         let mut verifiers = HashMap::new();
         for (tp, seeds_for_tp) in seeds.clone().into_iter() {
             for seed in seeds_for_tp.seeds {
@@ -337,7 +348,12 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                         continue;
                     }
                 };
-                let replay_log = try_build_pow_replay_log(&instance_dir, &seed);
+                let replay_log = try_build_pow_replay_log(
+                    &instance_dir,
+                    &seed,
+                    #[cfg(feature = "metrics")]
+                    metrics.clone(),
+                );
                 verifiers.insert(seed.head(), (verifier, replay_log));
             }
         }
@@ -358,9 +374,6 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             #[cfg(feature = "metrics")]
             PowMetrics::new(&nickname),
         );
-
-        #[cfg(feature = "metrics")]
-        let metrics = Arc::new(PowMetrics::new(&nickname));
 
         let state = State {
             seeds,
@@ -643,7 +656,12 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             }
 
             for (seed, verifier) in new_verifiers {
-                let replay_log = try_build_pow_replay_log(&state.instance_dir, &seed);
+                let replay_log = try_build_pow_replay_log(
+                    &state.instance_dir,
+                    &seed,
+                    #[cfg(feature = "metrics")]
+                    self.0.write().expect("Lock poisoned").metrics.clone(),
+                );
                 state.verifiers.insert(seed.head(), (verifier, replay_log));
             }
 
@@ -781,7 +799,12 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                 )
                 .ok_or(PowError::MissingKey)?;
 
-                let replay_log = try_build_pow_replay_log(&state.instance_dir, &seed);
+                let replay_log = try_build_pow_replay_log(
+                    &state.instance_dir,
+                    &seed,
+                    #[cfg(feature = "metrics")]
+                    state.metrics.clone(),
+                );
                 state.verifiers.insert(seed.head(), (verifier, replay_log));
 
                 let record = state.to_record();
@@ -1405,10 +1428,12 @@ impl<R: Runtime, Q: MockableRendRequest> Stream for RendRequestReceiver<R, Q> {
 fn try_build_pow_replay_log(
     instance_dir: &InstanceRawSubdir,
     seed: &Seed,
+    #[cfg(feature = "metrics")] metrics: Arc<PowMetrics>,
 ) -> Option<Mutex<PowNonceReplayLog>> {
     match PowNonceReplayLog::new_logged(instance_dir, seed) {
         Ok(replay_log) => Some(Mutex::new(replay_log)),
         Err(err) => {
+            metrics.counter_replay_log_error_total.increment(1);
             warn_report!(
                 err,
                 "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses. \
