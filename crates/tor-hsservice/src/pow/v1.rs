@@ -4,10 +4,11 @@
 //! * <https://spec.torproject.org/hspow-spec/common-protocol.html>
 //! * <https://spec.torproject.org/hspow-spec/v1-equix.html>
 
-use crate::{err::StateExpiryError, replay::ReplayLog};
+use crate::err::StateExpiryError;
 
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
+    fs::DirEntry,
     sync::{Arc, Mutex, RwLock},
     task::Waker,
 };
@@ -606,6 +607,37 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             }
         };
 
+        let remove_replay_log = |ent: DirEntry| {
+            let leaf = ent.file_name();
+            match PowNonceReplayLog::parse_log_leafname(&leaf) {
+                Ok(seed) => {
+                    if state
+                        .verifiers
+                        .iter()
+                        .filter(|(seed_head, _)| seed.head() == **seed_head)
+                        .collect::<Vec<_>>()
+                        .is_empty()
+                    {
+                        tracing::trace!(
+                            leaf = leaf.to_string_lossy().as_ref(),
+                            "deleting replay log for old PoW seed"
+                        );
+                        let path = ent.path();
+                        if let Err(err) =
+                            std::fs::remove_file(&path).map_err(handle_rl_err("remove", &path))
+                        {
+                            log_ratelim!("Error removing state for old PoW seed"; Result::<(), _>::Err(err));
+                        }
+                    }
+                }
+                Err(bad) => tracing::info!(
+                    "deleting garbage in PoW replay log dir: {} ({})",
+                    leaf.to_string_lossy(),
+                    bad
+                ),
+            }
+        };
+
         let replay_logs = state.instance_dir.as_path();
         let replay_logs_dir = match std::fs::read_dir(replay_logs)
             .map_err(handle_rl_err("open dir", replay_logs))
@@ -618,36 +650,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
         };
         for ent in replay_logs_dir {
             match ent.map_err(handle_rl_err("read dir", replay_logs)) {
-                Ok(ent) => {
-                    let leaf = ent.file_name();
-                    match PowNonceReplayLog::parse_log_leafname(&leaf) {
-                        Ok(seed) => {
-                            if state
-                                .verifiers
-                                .iter()
-                                .filter(|(seed_head, _)| seed.head() == **seed_head)
-                                .collect::<Vec<_>>()
-                                .is_empty()
-                            {
-                                tracing::trace!(
-                                    leaf = leaf.to_string_lossy().as_ref(),
-                                    "deleting replay log for old PoW seed"
-                                );
-                                let path = ent.path();
-                                if let Err(err) = std::fs::remove_file(&path)
-                                    .map_err(handle_rl_err("remove", &path))
-                                {
-                                    log_ratelim!("Error removing state for old PoW seed"; Result::<(), _>::Err(err));
-                                }
-                            }
-                        }
-                        Err(bad) => tracing::info!(
-                            "deleting garbage in PoW replay log dir: {} ({})",
-                            leaf.to_string_lossy(),
-                            bad
-                        ),
-                    }
-                }
+                Ok(ent) => remove_replay_log(ent),
                 Err(err) => {
                     log_ratelim!("Error removing state for old PoW seed"; Result::<(), _>::Err(err));
                 }
