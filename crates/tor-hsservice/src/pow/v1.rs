@@ -4,7 +4,7 @@
 //! * <https://spec.torproject.org/hspow-spec/common-protocol.html>
 //! * <https://spec.torproject.org/hspow-spec/v1-equix.html>
 
-use crate::err::StateExpiryError;
+use crate::{err::StateExpiryError, replay::ReplayLog};
 
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
@@ -269,16 +269,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                         continue;
                     }
                 };
-                let replay_log = match PowNonceReplayLog::new_logged(&instance_dir, &seed) {
-                    Ok(replay_log) => Some(Mutex::new(replay_log)),
-                    Err(err) => {
-                        warn_report!(
-                            err,
-                            "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses..."
-                        );
-                        None
-                    }
-                };
+                let replay_log = try_build_pow_replay_log(&instance_dir, &seed);
                 verifiers.insert(seed.head(), (verifier, replay_log));
             }
         }
@@ -577,16 +568,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             }
 
             for (seed, verifier) in new_verifiers {
-                let replay_log = match PowNonceReplayLog::new_logged(&state.instance_dir, &seed) {
-                    Ok(replay_log) => Some(Mutex::new(replay_log)),
-                    Err(err) => {
-                        warn_report!(
-                            err,
-                            "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses..."
-                        );
-                        None
-                    }
-                };
+                let replay_log = try_build_pow_replay_log(&state.instance_dir, &seed);
                 state.verifiers.insert(seed.head(), (verifier, replay_log));
             }
 
@@ -722,16 +704,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                 )
                 .ok_or(PowError::MissingKey)?;
 
-                let replay_log = match PowNonceReplayLog::new_logged(&state.instance_dir, &seed) {
-                    Ok(replay_log) => Some(Mutex::new(replay_log)),
-                    Err(err) => {
-                        warn_report!(
-                            err,
-                            "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses..."
-                        );
-                        None
-                    }
-                };
+                let replay_log = try_build_pow_replay_log(&state.instance_dir, &seed);
                 state.verifiers.insert(seed.head(), (verifier, replay_log));
 
                 let record = state.to_record();
@@ -1366,6 +1339,23 @@ impl<R: Runtime, Q: MockableRendRequest> Stream for RendRequestReceiver<R, Q> {
         } else {
             inner.waker = Some(cx.waker().clone());
             std::task::Poll::Pending
+        }
+    }
+}
+
+fn try_build_pow_replay_log(
+    instance_dir: &InstanceRawSubdir,
+    seed: &Seed,
+) -> Option<Mutex<PowNonceReplayLog>> {
+    match PowNonceReplayLog::new_logged(instance_dir, seed) {
+        Ok(replay_log) => Some(Mutex::new(replay_log)),
+        Err(err) => {
+            warn_report!(
+                err,
+                "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses. \
+                If the underlying I/O error is unexpected or inscrutable, please file a Arti bug report with all the details that you can provide."
+            );
+            None
         }
     }
 }
