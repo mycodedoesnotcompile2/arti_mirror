@@ -109,6 +109,73 @@ struct State<R, Q> {
 
     /// Receiver for the current configuration.
     config_rx: postage::watch::Receiver<Arc<OnionServiceConfig>>,
+
+    #[cfg(feature = "metrics")]
+    metrics: Arc<PowMetrics>,
+}
+
+#[cfg(feature = "metrics")]
+/// All metrics for the PoW subsystesm.
+struct PowMetrics {
+    counter_rendrequest_error_total: metrics::Counter,
+    counter_rendrequest_verification_failure: metrics::Counter,
+    counter_rend_queue_overflow: metrics::Counter,
+    counter_rendrequest_enqueued: metrics::Counter,
+    counter_rendrequest_expired: metrics::Counter,
+    histogram_rendrequest_effort: metrics::Histogram,
+}
+
+#[cfg(feature = "metrics")]
+impl PowMetrics {
+    /// Create a new [`PowMetrics`].
+    ///
+    /// Ideally this should be called once, then passed around as an [`Arc`]
+    fn new(nickname: &HsNickname) -> Self {
+        let counter_rendrequest_error_total = metrics::counter!(
+            description: "Number of errors processing rendezvous requests in the PoW subsystem.",
+            unit: metrics::Unit::Count,
+            "arti_hss_pow_rendrequest_error_total",
+            "nickname" => nickname.to_string(),
+        );
+        let counter_rendrequest_verification_failure = metrics::counter!(
+            description: "Number of PoW verification failures.",
+            unit: metrics::Unit::Count,
+            "arti_hss_pow_rendrequest_verification_failure_total",
+            "nickname" => nickname.to_string()
+        );
+        let counter_rend_queue_overflow = metrics::counter!(
+            description: "Number of times the PoW rendezvous request queue overflowed, leading to dropped requests.",
+            unit: metrics::Unit::Count,
+            "arti_hss_pow_rend_queue_overflow_total",
+            "nickname" => nickname.to_string()
+        );
+        let counter_rendrequest_enqueued = metrics::counter!(
+            description: "Number of rendezvous requests enqueued in the PoW subsystem.",
+            unit: metrics::Unit::Count,
+            "arti_hss_pow_rendrequest_enqueued_total",
+            "nickname" => nickname.to_string()
+        );
+        let counter_rendrequest_expired = metrics::counter!(
+            description: "Number of rendezvous requests expired.",
+            unit: metrics::Unit::Count,
+            "arti_hss_pow_rendrequest_expired_total",
+            "nickname" => nickname.to_string()
+        );
+        let histogram_rendrequest_effort = metrics::histogram!(
+            description: "Histogram of effort values seen for incoming PoW requests.",
+            "arti_hss_pow_rendrequest_effort_hist",
+            "nickname" => nickname.to_string()
+        );
+
+        PowMetrics {
+            counter_rendrequest_error_total,
+            counter_rendrequest_verification_failure,
+            counter_rend_queue_overflow,
+            counter_rendrequest_enqueued,
+            counter_rendrequest_expired,
+            histogram_rendrequest_effort,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -288,7 +355,12 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             netdir_provider.clone(),
             status_tx.clone(),
             config_rx.clone(),
+            #[cfg(feature = "metrics")]
+            PowMetrics::new(&nickname),
         );
+
+        #[cfg(feature = "metrics")]
+        let metrics = Arc::new(PowMetrics::new(&nickname));
 
         let state = State {
             seeds,
@@ -304,6 +376,8 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             netdir_provider,
             status_tx,
             config_rx,
+            #[cfg(feature = "metrics")]
+            metrics,
         };
         let pow_manager = Arc::new(PowManagerGeneric(RwLock::new(state)));
 
@@ -953,6 +1027,9 @@ struct RendRequestReceiverInner<R, Q> {
 
     /// Sender for reporting back onion service status.
     status_tx: PowManagerStatusSender,
+
+    #[cfg(feature = "metrics")]
+    metrics: PowMetrics,
 }
 
 impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R, Q> {
@@ -964,6 +1041,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
         netdir_provider: Arc<dyn NetDirProvider>,
         status_tx: PowManagerStatusSender,
         config_rx: postage::watch::Receiver<Arc<OnionServiceConfig>>,
+        #[cfg(feature = "metrics")] metrics: PowMetrics,
     ) -> Self {
         let now = runtime.now();
         RendRequestReceiver(Arc::new(Mutex::new(RendRequestReceiverInner {
@@ -982,6 +1060,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
             total_effort: 0,
             suggested_effort,
             status_tx,
+            metrics,
         })))
     }
 
@@ -1130,42 +1209,6 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
 
         let config_rx = self.0.lock().expect("Lock poisoned").config_rx.clone();
 
-        let nickname = self.0.lock().expect("Lock poisoned").nickname.to_string();
-
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "metrics")] {
-                let counter_rendrequest_error_total = metrics::counter!(
-                    description: "Number of errors processing rendezvous requests in the PoW subsystem.",
-                    unit: metrics::Unit::Count,
-                    "arti_hss_pow_rendrequest_error_total",
-                    "nickname" => nickname.clone()
-                );
-                let counter_rendrequest_verification_failure = metrics::counter!(
-                    description: "Number of PoW verification failures.",
-                    unit: metrics::Unit::Count,
-                    "arti_hss_pow_rendrequest_verification_failure_total",
-                    "nickname" => nickname.clone()
-                );
-                let counter_rend_queue_overflow = metrics::counter!(
-                    description: "Number of times the PoW rendezvous request queue overflowed, leading to dropped requests.",
-                    unit: metrics::Unit::Count,
-                    "arti_hss_pow_rend_queue_overflow_total",
-                    "nickname" => nickname.clone()
-                );
-                let counter_rendrequest_enqueued = metrics::counter!(
-                    description: "Number of rendezvous requests enqueued in the PoW subsystem.",
-                    unit: metrics::Unit::Count,
-                    "arti_hss_pow_rendrequest_enqueued_total",
-                    "nickname" => nickname.clone()
-                );
-                let histogram_rendrequest_effort = metrics::histogram!(
-                    description: "Histogram of effort values seen for incoming PoW requests.",
-                    "arti_hss_pow_rendrequest_effort_hist",
-                    "nickname" => nickname.clone()
-                );
-            }
-        }
-
         loop {
             let rend_request = if let Some(rend_request) = runtime.reenter_block_on(receiver.next())
             {
@@ -1185,7 +1228,12 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                         Ok(rend_request) => rend_request,
                         Err(err) => {
                             #[cfg(feature = "metrics")]
-                            counter_rendrequest_error_total.increment(1);
+                            self.0
+                                .lock()
+                                .expect("Lock poisoned")
+                                .metrics
+                                .counter_rendrequest_error_total
+                                .increment(1);
                             tracing::trace!(?err, "Error processing RendRequest");
                             continue;
                         }
@@ -1197,13 +1245,23 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                     if let Err(err) = pow_manager.check_solve(pow) {
                         tracing::debug!(?err, "PoW verification failed");
                         #[cfg(feature = "metrics")]
-                        counter_rendrequest_verification_failure.increment(1);
+                        self.0
+                            .lock()
+                            .expect("Lock poisoned")
+                            .metrics
+                            .counter_rendrequest_verification_failure
+                            .increment(1);
                         continue;
                     } else {
                         #[cfg(feature = "metrics")]
                         {
                             let effort: u32 = pow.effort().into();
-                            histogram_rendrequest_effort.record(effort);
+                            self.0
+                                .lock()
+                                .expect("Lock poisoned")
+                                .metrics
+                                .histogram_rendrequest_effort
+                                .record(effort);
                         }
                     }
                 }
@@ -1234,7 +1292,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                 if inner.queue.len() >= config_rx.borrow().pow_rend_queue_depth {
                     let dropped_request = inner.queue.pop_first();
                     #[cfg(feature = "metrics")]
-                    counter_rend_queue_overflow.increment(1);
+                    inner.metrics.counter_rend_queue_overflow.increment(1);
                     tracing::debug!(
                         dropped_effort = ?dropped_request.map(|x| x.pow.map(|x| x.effort())),
                         "RendRequest queue full, dropping request."
@@ -1242,7 +1300,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                 }
                 inner.queue.insert(rend_request);
                 #[cfg(feature = "metrics")]
-                counter_rendrequest_enqueued.increment(1);
+                inner.metrics.counter_rendrequest_enqueued.increment(1);
                 if let Some(waker) = &inner.waker {
                     waker.wake_by_ref();
                 }
@@ -1253,7 +1311,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                 let mut inner = self.0.lock().expect("Lock poisoned");
                 inner.queue_pow_disabled.push_back(rend_request);
                 #[cfg(feature = "metrics")]
-                counter_rendrequest_enqueued.increment(1);
+                inner.metrics.counter_rendrequest_enqueued.increment(1);
                 if let Some(waker) = &inner.waker {
                     waker.wake_by_ref();
                 }
@@ -1281,10 +1339,6 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                 "Couldn't convert HiddenServiceProofOfWorkV1ServiceIntroTimeoutSeconds to Duration",
             );
 
-        let nickname = self.0.lock().expect("Lock poisoned").nickname.to_string();
-        #[cfg(feature = "metrics")]
-        let counter_rendrequest_expired = metrics::counter!("arti_hss_pow_rendrequest_expired_total", "nickname" => nickname.clone());
-
         loop {
             let inner = self.0.lock().expect("Lock poisoned");
             // Wake up when the oldest request will reach the expiration age, or, if there are no
@@ -1307,7 +1361,9 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
             let dropped = prev_len - inner.queue.len();
             tracing::trace!(dropped, "Expired timed out RendRequests");
             #[cfg(feature = "metrics")]
-            counter_rendrequest_expired
+            inner
+                .metrics
+                .counter_rendrequest_expired
                 .increment(dropped.try_into().expect("usize overflowed u64!"));
         }
     }
@@ -1468,6 +1524,8 @@ mod test {
             netdir_provider,
             status_tx,
             config_rx,
+            #[cfg(feature = "metrics")]
+            PowMetrics::new(&nickname),
         );
         let (tx, rx) = mpsc::channel(32);
         receiver.start_accept_thread(runtime.clone(), pow_manager, rx);
