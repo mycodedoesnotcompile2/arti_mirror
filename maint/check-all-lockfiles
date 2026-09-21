@@ -12,8 +12,64 @@
 
 set -eu
 
+function usage() {
+cat <<EOF
+check_all_lockfiles: Check (or update) every Cargo.lock checked into git.
+
+Usage:
+  check_all_lockfiles [opts]
+
+  -h / --help: print this message
+EOF
+}
+
+if command -v gnu-getopt >/dev/null; then
+    # If gnu-getopt is present, the platform getopt is unlikely to be good.
+    GETOPT=gnu-getopt
+else
+    GETOPT=getopt
+fi
+
+set +e
+options=$("$GETOPT" -ohu --long help,update -- "$@")
+status="$?"
+set -e
+if test "$status" != 0; then
+    usage
+    exit 1
+fi
+
+verb="Checking"
+update=0
+
+eval set -- "$options"
+while true; do
+    case "$1" in
+	-h | --help)
+	    usage
+	    exit 0
+	    ;;
+	-u | --update)
+	    update=1
+	    verb="Updating"
+	    shift
+	    ;;
+	--)
+	    shift
+	    break
+	    ;;
+    esac
+done
+
+
 for subdir in $(git ls-files | sed -n 's/^/.\//;s/Cargo.lock$//p'); do
     echo
-    echo "---- Checking $subdir"
-    (cd "$subdir" && cargo tree --locked > /dev/null)
+    echo "---- ${verb} $subdir"
+    pushd "$subdir" >/dev/null
+    if test "$update" = 1; then
+	cargo update
+    else
+	cargo tree --locked > /dev/null
+    fi
+    popd >/dev/null
 done
