@@ -110,6 +110,7 @@ struct State<R, Q> {
     /// Receiver for the current configuration.
     config_rx: postage::watch::Receiver<Arc<OnionServiceConfig>>,
 
+    /// PoW metrics.
     #[cfg(feature = "metrics")]
     metrics: Arc<PowMetrics>,
 }
@@ -117,12 +118,19 @@ struct State<R, Q> {
 #[cfg(feature = "metrics")]
 /// All metrics for the PoW subsystesm.
 struct PowMetrics {
+    /// Number of errors processing rendezvous requests in the PoW subsystem.
     counter_rendrequest_error_total: metrics::Counter,
+    /// Number of PoW verification failures.
     counter_rendrequest_verification_failure: metrics::Counter,
+    /// Number of times the PoW rendezvous request queue overflowed, leading to dropped requests.
     counter_rend_queue_overflow: metrics::Counter,
+    /// Number of rendezvous requests enqueued in the PoW subsystem.
     counter_rendrequest_enqueued: metrics::Counter,
+    /// Number of rendezvous requests expired.
     counter_rendrequest_expired: metrics::Counter,
+    /// Number of errors related to the replay log.
     counter_replay_log_error_total: metrics::Counter,
+    /// Histogram of effort values seen for incoming PoW requests.
     histogram_rendrequest_effort: metrics::Histogram,
 }
 
@@ -352,7 +360,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                     &instance_dir,
                     &seed,
                     #[cfg(feature = "metrics")]
-                    metrics.clone(),
+                    &metrics,
                 );
                 verifiers.insert(seed.head(), (verifier, replay_log));
             }
@@ -366,7 +374,6 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
         let (rend_req_tx, rend_req_rx_channel) = super::make_rend_queue();
         let rend_req_rx = RendRequestReceiver::new(
             runtime.clone(),
-            nickname.clone(),
             suggested_effort.clone(),
             netdir_provider.clone(),
             status_tx.clone(),
@@ -660,7 +667,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                     &state.instance_dir,
                     &seed,
                     #[cfg(feature = "metrics")]
-                    self.0.write().expect("Lock poisoned").metrics.clone(),
+                    &self.0.write().expect("Lock poisoned").metrics,
                 );
                 state.verifiers.insert(seed.head(), (verifier, replay_log));
             }
@@ -803,7 +810,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                     &state.instance_dir,
                     &seed,
                     #[cfg(feature = "metrics")]
-                    state.metrics.clone(),
+                    &state.metrics,
                 );
                 state.verifiers.insert(seed.head(), (verifier, replay_log));
 
@@ -1018,9 +1025,6 @@ struct RendRequestReceiverInner<R, Q> {
     /// Runtime, used to get current time in a testable way.
     runtime: R,
 
-    /// Nickname, use when reporting metrics.
-    nickname: HsNickname,
-
     /// [`NetDirProvider`], for getting configuration values in consensus parameters.
     netdir_provider: Arc<dyn NetDirProvider>,
 
@@ -1051,6 +1055,7 @@ struct RendRequestReceiverInner<R, Q> {
     /// Sender for reporting back onion service status.
     status_tx: PowManagerStatusSender,
 
+    /// PoW metrics.
     #[cfg(feature = "metrics")]
     metrics: PowMetrics,
 }
@@ -1059,7 +1064,6 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
     /// Create a new [`RendRequestReceiver`].
     fn new(
         runtime: R,
-        nickname: HsNickname,
         suggested_effort: Arc<Mutex<Effort>>,
         netdir_provider: Arc<dyn NetDirProvider>,
         status_tx: PowManagerStatusSender,
@@ -1072,7 +1076,6 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
             queue_pow_disabled: VecDeque::new(),
             waker: None,
             runtime,
-            nickname,
             netdir_provider,
             config_rx,
             update_period_start: now,
@@ -1425,10 +1428,11 @@ impl<R: Runtime, Q: MockableRendRequest> Stream for RendRequestReceiver<R, Q> {
     }
 }
 
+/// Build a new PoW replay log, passing through underlying I/O errors.
 fn try_build_pow_replay_log(
     instance_dir: &InstanceRawSubdir,
     seed: &Seed,
-    #[cfg(feature = "metrics")] metrics: Arc<PowMetrics>,
+    #[cfg(feature = "metrics")] metrics: &PowMetrics,
 ) -> Option<Mutex<PowNonceReplayLog>> {
     match PowNonceReplayLog::new_logged(instance_dir, seed) {
         Ok(replay_log) => Some(Mutex::new(replay_log)),
@@ -1544,7 +1548,6 @@ mod test {
         ));
         let receiver: RendRequestReceiver<_, MockRendRequest> = RendRequestReceiver::new(
             runtime.clone(),
-            nickname.clone(),
             suggested_effort.clone(),
             netdir_provider,
             status_tx,
