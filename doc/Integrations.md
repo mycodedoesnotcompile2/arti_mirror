@@ -1,6 +1,6 @@
 # Officially supported third-party integrations
 
-> [!NOTE]: Arti was designed to integrate with other libraries and tools.
+> [!NOTE] Arti was designed to integrate with other libraries and tools.
 > Typically, this involves writing some glue code that bridges between Arti and the external library.
 > The crate that holds this glue code is referred to as an "Arti integration"
 
