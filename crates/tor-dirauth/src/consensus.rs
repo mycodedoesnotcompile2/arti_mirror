@@ -3,6 +3,8 @@
 
 use crate::internal_prelude::*;
 
+use tor_netdoc::types::{NotPresent, relay_flags::DocRelayFlags};
+
 // md calculations
 mod ip_summary;
 mod method;
@@ -13,6 +15,8 @@ mod tracked_method;
 #[macro_use]
 mod calculate_macros;
 mod framework;
+mod functions;
+mod preamble;
 
 pub use framework::*;
 pub use method::*;
