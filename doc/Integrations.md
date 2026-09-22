@@ -36,7 +36,7 @@ If we (the Arti team) accept a new user-facing Arti integration,
 we are making a long-term commitment to the development and support of this integration.
 We should, among the team members, ensure there is a rough consensus that we all want
 to become familiar with this library and contribute to its Arti integration.
-A good way to propose this to the team is by following the
+A good way to propose this to the rest of the team is by following the
 ["proposing big changes"][proposing-big-changes] guide.
 
 
