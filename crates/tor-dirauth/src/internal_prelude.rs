@@ -8,6 +8,7 @@ pub(crate) use std::hash::Hash;
 pub(crate) use std::net::Ipv4Addr;
 pub(crate) use std::ops::{RangeBounds, RangeInclusive};
 
+pub(crate) use derive_deftly::Deftly;
 pub(crate) use ipnet::{IpNet, Ipv4Net};
 pub(crate) use itertools::{Itertools, chain};
 pub(crate) use paste::paste;

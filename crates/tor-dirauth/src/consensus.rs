@@ -10,6 +10,8 @@ mod microdesc;
 mod tracked_method;
 
 // consensus calculations
+#[macro_use]
+mod calculate_macros;
 mod framework;
 
 pub use framework::*;
