@@ -95,6 +95,10 @@ pub enum ConsensusError {
     /// Tried to calculate a consensus from no votes!
     #[error("tried to calculate a consensus from no votes!")]
     NoVotes,
+
+    /// Internal error in calculation algorithm
+    #[error("bug calculating a consensus")]
+    Internal(#[from] Bug),
 }
 
 /// "Global" inputs for calculating consensus from votes
