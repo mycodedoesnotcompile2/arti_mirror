@@ -4,8 +4,11 @@
 //! * <https://spec.torproject.org/hspow-spec/common-protocol.html>
 //! * <https://spec.torproject.org/hspow-spec/v1-equix.html>
 
+use crate::err::StateExpiryError;
+
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
+    fs::DirEntry,
     sync::{Arc, Mutex, RwLock},
     task::Waker,
 };
@@ -30,6 +33,7 @@ use tor_hscrypto::{
     time::TimePeriod,
 };
 use tor_keymgr::KeyMgr;
+use tor_log_ratelim::log_ratelim;
 use tor_netdir::{NetDirProvider, NetdirProviderShutdown, params::NetParameters};
 use tor_netdoc::doc::hsdesc::pow::{PowParams, v1::PowParamsV1};
 use tor_persist::{
@@ -64,7 +68,7 @@ struct State<R, Q> {
     seeds: HashMap<TimePeriod, SeedsForTimePeriod>,
 
     /// Verifiers for all the seeds that exist in `seeds`.
-    verifiers: HashMap<SeedHead, (Verifier, Mutex<PowNonceReplayLog>)>,
+    verifiers: HashMap<SeedHead, (Verifier, Option<Mutex<PowNonceReplayLog>>)>,
 
     /// The nickname for this hidden service.
     ///
@@ -105,6 +109,89 @@ struct State<R, Q> {
 
     /// Receiver for the current configuration.
     config_rx: postage::watch::Receiver<Arc<OnionServiceConfig>>,
+
+    /// PoW metrics.
+    #[cfg(feature = "metrics")]
+    metrics: Arc<PowMetrics>,
+}
+
+#[cfg(feature = "metrics")]
+/// All metrics for the PoW subsystesm.
+struct PowMetrics {
+    /// Number of errors processing rendezvous requests in the PoW subsystem.
+    counter_rendrequest_error_total: metrics::Counter,
+    /// Number of PoW verification failures.
+    counter_rendrequest_verification_failure: metrics::Counter,
+    /// Number of times the PoW rendezvous request queue overflowed, leading to dropped requests.
+    counter_rend_queue_overflow: metrics::Counter,
+    /// Number of rendezvous requests enqueued in the PoW subsystem.
+    counter_rendrequest_enqueued: metrics::Counter,
+    /// Number of rendezvous requests expired.
+    counter_rendrequest_expired: metrics::Counter,
+    /// Number of errors related to the replay log.
+    counter_replay_log_error_total: metrics::Counter,
+    /// Histogram of effort values seen for incoming PoW requests.
+    histogram_rendrequest_effort: metrics::Histogram,
+}
+
+#[cfg(feature = "metrics")]
+impl PowMetrics {
+    /// Create a new [`PowMetrics`].
+    ///
+    /// Ideally this should be called once, then passed around as an [`Arc`]
+    fn new(nickname: &HsNickname) -> Self {
+        let counter_rendrequest_error_total = metrics::counter!(
+            description: "Number of errors processing rendezvous requests in the PoW subsystem.",
+            unit: metrics::Unit::Count,
+            "arti_hss_pow_rendrequest_error_total",
+            "nickname" => nickname.to_string(),
+        );
+        let counter_rendrequest_verification_failure = metrics::counter!(
+            description: "Number of PoW verification failures.",
+            unit: metrics::Unit::Count,
+            "arti_hss_pow_rendrequest_verification_failure_total",
+            "nickname" => nickname.to_string()
+        );
+        let counter_rend_queue_overflow = metrics::counter!(
+            description: "Number of times the PoW rendezvous request queue overflowed, leading to dropped requests.",
+            unit: metrics::Unit::Count,
+            "arti_hss_pow_rend_queue_overflow_total",
+            "nickname" => nickname.to_string()
+        );
+        let counter_rendrequest_enqueued = metrics::counter!(
+            description: "Number of rendezvous requests enqueued in the PoW subsystem.",
+            unit: metrics::Unit::Count,
+            "arti_hss_pow_rendrequest_enqueued_total",
+            "nickname" => nickname.to_string()
+        );
+        let counter_rendrequest_expired = metrics::counter!(
+            description: "Number of rendezvous requests expired.",
+            unit: metrics::Unit::Count,
+            "arti_hss_pow_rendrequest_expired_total",
+            "nickname" => nickname.to_string()
+        );
+        let counter_replay_log_error_total = metrics::counter!(
+            description: "Number of errors related to the replay log.",
+            unit: metrics::Unit::Count,
+            "arti_hss_pow_replay_log_error_total",
+            "nickname" => nickname.to_string()
+        );
+        let histogram_rendrequest_effort = metrics::histogram!(
+            description: "Histogram of effort values seen for incoming PoW requests.",
+            "arti_hss_pow_rendrequest_effort_hist",
+            "nickname" => nickname.to_string()
+        );
+
+        PowMetrics {
+            counter_rendrequest_error_total,
+            counter_rendrequest_verification_failure,
+            counter_rend_queue_overflow,
+            counter_rendrequest_enqueued,
+            counter_rendrequest_expired,
+            counter_replay_log_error_total,
+            histogram_rendrequest_effort,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -248,6 +335,9 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             on_disk_state.seeds.into_iter().collect();
         let suggested_effort = Arc::new(Mutex::new(on_disk_state.suggested_effort));
 
+        #[cfg(feature = "metrics")]
+        let metrics = Arc::new(PowMetrics::new(&nickname));
+
         let mut verifiers = HashMap::new();
         for (tp, seeds_for_tp) in seeds.clone().into_iter() {
             for seed in seeds_for_tp.seeds {
@@ -266,17 +356,13 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                         continue;
                     }
                 };
-                let replay_log = match PowNonceReplayLog::new_logged(&instance_dir, &seed) {
-                    Ok(replay_log) => replay_log,
-                    Err(err) => {
-                        warn_report!(
-                            err,
-                            "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses..."
-                        );
-                        continue;
-                    }
-                };
-                verifiers.insert(seed.head(), (verifier, Mutex::new(replay_log)));
+                let replay_log = try_build_pow_replay_log(
+                    &instance_dir,
+                    &seed,
+                    #[cfg(feature = "metrics")]
+                    &metrics,
+                );
+                verifiers.insert(seed.head(), (verifier, replay_log));
             }
         }
 
@@ -288,11 +374,12 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
         let (rend_req_tx, rend_req_rx_channel) = super::make_rend_queue();
         let rend_req_rx = RendRequestReceiver::new(
             runtime.clone(),
-            nickname.clone(),
             suggested_effort.clone(),
             netdir_provider.clone(),
             status_tx.clone(),
             config_rx.clone(),
+            #[cfg(feature = "metrics")]
+            PowMetrics::new(&nickname),
         );
 
         let state = State {
@@ -309,6 +396,8 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             netdir_provider,
             status_tx,
             config_rx,
+            #[cfg(feature = "metrics")]
+            metrics,
         };
         let pow_manager = Arc::new(PowManagerGeneric(RwLock::new(state)));
 
@@ -574,9 +663,11 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             }
 
             for (seed, verifier) in new_verifiers {
-                let replay_log = Mutex::new(
-                    PowNonceReplayLog::new_logged(&state.instance_dir, &seed)
-                        .expect("Couldn't make ReplayLog."),
+                let replay_log = try_build_pow_replay_log(
+                    &state.instance_dir,
+                    &seed,
+                    #[cfg(feature = "metrics")]
+                    &self.0.write().expect("Lock poisoned").metrics,
                 );
                 state.verifiers.insert(seed.head(), (verifier, replay_log));
             }
@@ -584,6 +675,8 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             for seed_head in expired_verifiers {
                 state.verifiers.remove(&seed_head);
             }
+
+            Self::expire_old_replay_logs(&state);
 
             let record = state.to_record();
             if let Err(err) = state.storage_handle.store(&record) {
@@ -600,6 +693,68 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
         }
 
         update_times.iter().min().cloned()
+    }
+
+    /// Remove expired replay log files from disk.
+    fn expire_old_replay_logs(state: &State<R, Q>) {
+        let handle_rl_err = |operation, path: &std::path::Path| {
+            let path = path.to_owned();
+            move |source| StateExpiryError::ReplayLog {
+                operation,
+                path,
+                source: Arc::new(source),
+            }
+        };
+
+        let remove_replay_log = |ent: DirEntry| {
+            let leaf = ent.file_name();
+            match PowNonceReplayLog::parse_log_leafname(&leaf) {
+                Ok(seed) => {
+                    if state
+                        .verifiers
+                        .iter()
+                        .filter(|(seed_head, _)| seed.head() == **seed_head)
+                        .collect::<Vec<_>>()
+                        .is_empty()
+                    {
+                        tracing::trace!(
+                            leaf = leaf.to_string_lossy().as_ref(),
+                            "deleting replay log for old PoW seed"
+                        );
+                        let path = ent.path();
+                        if let Err(err) =
+                            std::fs::remove_file(&path).map_err(handle_rl_err("remove", &path))
+                        {
+                            log_ratelim!("Error removing state for old PoW seed"; Result::<(), _>::Err(err));
+                        }
+                    }
+                }
+                Err(bad) => tracing::info!(
+                    "deleting garbage in PoW replay log dir: {} ({})",
+                    leaf.to_string_lossy(),
+                    bad
+                ),
+            }
+        };
+
+        let replay_logs = state.instance_dir.as_path();
+        let replay_logs_dir = match std::fs::read_dir(replay_logs)
+            .map_err(handle_rl_err("open dir", replay_logs))
+        {
+            Ok(replay_logs_dir) => replay_logs_dir,
+            Err(err) => {
+                log_ratelim!("Error removing state for old PoW seed"; Result::<(), _>::Err(err));
+                return;
+            }
+        };
+        for ent in replay_logs_dir {
+            match ent.map_err(handle_rl_err("read dir", replay_logs)) {
+                Ok(ent) => remove_replay_log(ent),
+                Err(err) => {
+                    log_ratelim!("Error removing state for old PoW seed"; Result::<(), _>::Err(err));
+                }
+            }
+        }
     }
 
     /// Get [`PowParams`] for a given [`TimePeriod`].
@@ -651,8 +806,12 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                 )
                 .ok_or(PowError::MissingKey)?;
 
-                let replay_log =
-                    Mutex::new(PowNonceReplayLog::new_logged(&state.instance_dir, &seed)?);
+                let replay_log = try_build_pow_replay_log(
+                    &state.instance_dir,
+                    &seed,
+                    #[cfg(feature = "metrics")]
+                    &state.metrics,
+                );
                 state.verifiers.insert(seed.head(), (verifier, replay_log));
 
                 let record = state.to_record();
@@ -675,13 +834,21 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
         // See commit bc5b313028 for a more full explanation.
         {
             let state = self.0.write().expect("Lock poisoned");
-            let mut replay_log = match state.verifiers.get(&solve.seed_head()) {
-                Some((_, replay_log)) => replay_log.lock().expect("Lock poisoned"),
+            match state.verifiers.get(&solve.seed_head()) {
+                Some((_, Some(replay_log))) => {
+                    replay_log
+                        .lock()
+                        .expect("Lock poisoned")
+                        .check_for_replay(solve.nonce())
+                        .map_err(PowSolveError::NonceReplay)?;
+                }
+                Some((_, None)) => {
+                    // Due to an earlier error, we don't have a replay log for this seed.
+                    // We already warned when we were unable to create the replay log,
+                    // so there's no need to warn here, as that would just create log spam.
+                }
                 None => return Err(PowSolveError::InvalidSeedHead),
             };
-            replay_log
-                .check_for_replay(solve.nonce())
-                .map_err(PowSolveError::NonceReplay)?;
         }
 
         // TODO: Once RwLock::downgrade is stabilized, it would make sense to use it here...
@@ -858,9 +1025,6 @@ struct RendRequestReceiverInner<R, Q> {
     /// Runtime, used to get current time in a testable way.
     runtime: R,
 
-    /// Nickname, use when reporting metrics.
-    nickname: HsNickname,
-
     /// [`NetDirProvider`], for getting configuration values in consensus parameters.
     netdir_provider: Arc<dyn NetDirProvider>,
 
@@ -890,17 +1054,21 @@ struct RendRequestReceiverInner<R, Q> {
 
     /// Sender for reporting back onion service status.
     status_tx: PowManagerStatusSender,
+
+    /// PoW metrics.
+    #[cfg(feature = "metrics")]
+    metrics: PowMetrics,
 }
 
 impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R, Q> {
     /// Create a new [`RendRequestReceiver`].
     fn new(
         runtime: R,
-        nickname: HsNickname,
         suggested_effort: Arc<Mutex<Effort>>,
         netdir_provider: Arc<dyn NetDirProvider>,
         status_tx: PowManagerStatusSender,
         config_rx: postage::watch::Receiver<Arc<OnionServiceConfig>>,
+        #[cfg(feature = "metrics")] metrics: PowMetrics,
     ) -> Self {
         let now = runtime.now();
         RendRequestReceiver(Arc::new(Mutex::new(RendRequestReceiverInner {
@@ -908,7 +1076,6 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
             queue_pow_disabled: VecDeque::new(),
             waker: None,
             runtime,
-            nickname,
             netdir_provider,
             config_rx,
             update_period_start: now,
@@ -919,6 +1086,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
             total_effort: 0,
             suggested_effort,
             status_tx,
+            metrics,
         })))
     }
 
@@ -1067,42 +1235,6 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
 
         let config_rx = self.0.lock().expect("Lock poisoned").config_rx.clone();
 
-        let nickname = self.0.lock().expect("Lock poisoned").nickname.to_string();
-
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "metrics")] {
-                let counter_rendrequest_error_total = metrics::counter!(
-                    description: "Number of errors processing rendezvous requests in the PoW subsystem.",
-                    unit: metrics::Unit::Count,
-                    "arti_hss_pow_rendrequest_error_total",
-                    "nickname" => nickname.clone()
-                );
-                let counter_rendrequest_verification_failure = metrics::counter!(
-                    description: "Number of PoW verification failures.",
-                    unit: metrics::Unit::Count,
-                    "arti_hss_pow_rendrequest_verification_failure_total",
-                    "nickname" => nickname.clone()
-                );
-                let counter_rend_queue_overflow = metrics::counter!(
-                    description: "Number of times the PoW rendezvous request queue overflowed, leading to dropped requests.",
-                    unit: metrics::Unit::Count,
-                    "arti_hss_pow_rend_queue_overflow_total",
-                    "nickname" => nickname.clone()
-                );
-                let counter_rendrequest_enqueued = metrics::counter!(
-                    description: "Number of rendezvous requests enqueued in the PoW subsystem.",
-                    unit: metrics::Unit::Count,
-                    "arti_hss_pow_rendrequest_enqueued_total",
-                    "nickname" => nickname.clone()
-                );
-                let histogram_rendrequest_effort = metrics::histogram!(
-                    description: "Histogram of effort values seen for incoming PoW requests.",
-                    "arti_hss_pow_rendrequest_effort_hist",
-                    "nickname" => nickname.clone()
-                );
-            }
-        }
-
         loop {
             let rend_request = if let Some(rend_request) = runtime.reenter_block_on(receiver.next())
             {
@@ -1122,7 +1254,12 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                         Ok(rend_request) => rend_request,
                         Err(err) => {
                             #[cfg(feature = "metrics")]
-                            counter_rendrequest_error_total.increment(1);
+                            self.0
+                                .lock()
+                                .expect("Lock poisoned")
+                                .metrics
+                                .counter_rendrequest_error_total
+                                .increment(1);
                             tracing::trace!(?err, "Error processing RendRequest");
                             continue;
                         }
@@ -1134,13 +1271,23 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                     if let Err(err) = pow_manager.check_solve(pow) {
                         tracing::debug!(?err, "PoW verification failed");
                         #[cfg(feature = "metrics")]
-                        counter_rendrequest_verification_failure.increment(1);
+                        self.0
+                            .lock()
+                            .expect("Lock poisoned")
+                            .metrics
+                            .counter_rendrequest_verification_failure
+                            .increment(1);
                         continue;
                     } else {
                         #[cfg(feature = "metrics")]
                         {
                             let effort: u32 = pow.effort().into();
-                            histogram_rendrequest_effort.record(effort);
+                            self.0
+                                .lock()
+                                .expect("Lock poisoned")
+                                .metrics
+                                .histogram_rendrequest_effort
+                                .record(effort);
                         }
                     }
                 }
@@ -1171,7 +1318,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                 if inner.queue.len() >= config_rx.borrow().pow_rend_queue_depth {
                     let dropped_request = inner.queue.pop_first();
                     #[cfg(feature = "metrics")]
-                    counter_rend_queue_overflow.increment(1);
+                    inner.metrics.counter_rend_queue_overflow.increment(1);
                     tracing::debug!(
                         dropped_effort = ?dropped_request.map(|x| x.pow.map(|x| x.effort())),
                         "RendRequest queue full, dropping request."
@@ -1179,7 +1326,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                 }
                 inner.queue.insert(rend_request);
                 #[cfg(feature = "metrics")]
-                counter_rendrequest_enqueued.increment(1);
+                inner.metrics.counter_rendrequest_enqueued.increment(1);
                 if let Some(waker) = &inner.waker {
                     waker.wake_by_ref();
                 }
@@ -1190,7 +1337,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                 let mut inner = self.0.lock().expect("Lock poisoned");
                 inner.queue_pow_disabled.push_back(rend_request);
                 #[cfg(feature = "metrics")]
-                counter_rendrequest_enqueued.increment(1);
+                inner.metrics.counter_rendrequest_enqueued.increment(1);
                 if let Some(waker) = &inner.waker {
                     waker.wake_by_ref();
                 }
@@ -1218,10 +1365,6 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                 "Couldn't convert HiddenServiceProofOfWorkV1ServiceIntroTimeoutSeconds to Duration",
             );
 
-        let nickname = self.0.lock().expect("Lock poisoned").nickname.to_string();
-        #[cfg(feature = "metrics")]
-        let counter_rendrequest_expired = metrics::counter!("arti_hss_pow_rendrequest_expired_total", "nickname" => nickname.clone());
-
         loop {
             let inner = self.0.lock().expect("Lock poisoned");
             // Wake up when the oldest request will reach the expiration age, or, if there are no
@@ -1244,7 +1387,9 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
             let dropped = prev_len - inner.queue.len();
             tracing::trace!(dropped, "Expired timed out RendRequests");
             #[cfg(feature = "metrics")]
-            counter_rendrequest_expired
+            inner
+                .metrics
+                .counter_rendrequest_expired
                 .increment(dropped.try_into().expect("usize overflowed u64!"));
         }
     }
@@ -1279,6 +1424,26 @@ impl<R: Runtime, Q: MockableRendRequest> Stream for RendRequestReceiver<R, Q> {
         } else {
             inner.waker = Some(cx.waker().clone());
             std::task::Poll::Pending
+        }
+    }
+}
+
+/// Build a new PoW replay log, passing through underlying I/O errors.
+fn try_build_pow_replay_log(
+    instance_dir: &InstanceRawSubdir,
+    seed: &Seed,
+    #[cfg(feature = "metrics")] metrics: &PowMetrics,
+) -> Option<Mutex<PowNonceReplayLog>> {
+    match PowNonceReplayLog::new_logged(instance_dir, seed) {
+        Ok(replay_log) => Some(Mutex::new(replay_log)),
+        Err(err) => {
+            metrics.counter_replay_log_error_total.increment(1);
+            warn_report!(
+                err,
+                "Error constructing replay log. We will continue without the log, but be aware that this may allow attackers to bypass PoW defenses. \
+                If the underlying I/O error is unexpected or inscrutable, please file a Arti bug report with all the details that you can provide."
+            );
+            None
         }
     }
 }
@@ -1383,11 +1548,12 @@ mod test {
         ));
         let receiver: RendRequestReceiver<_, MockRendRequest> = RendRequestReceiver::new(
             runtime.clone(),
-            nickname.clone(),
             suggested_effort.clone(),
             netdir_provider,
             status_tx,
             config_rx,
+            #[cfg(feature = "metrics")]
+            PowMetrics::new(&nickname),
         );
         let (tx, rx) = mpsc::channel(32);
         receiver.start_accept_thread(runtime.clone(), pow_manager, rx);
