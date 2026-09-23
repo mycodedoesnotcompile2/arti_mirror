@@ -102,6 +102,70 @@ pub(super) struct ConsensusContext {
     /// The consensus method for which to generate a consensus
     pub(super) method: SupportedConsensusMethod,
 
+    /// The number of authorities (>= the number of votes)
+    pub(super) n_authorities: usize,
+
     /// The input votes (in their entirity)
     pub(super) votes: TiVec<VoterNum, tor_netdoc::doc::netstatus::vote::NetworkStatus>,
+}
+
+impl ConsensusContext {
+    /// Is `n_some_voters` strictly more than half of all the authorities?
+    pub(super) fn is_more_than_half_all_auths(&self, n_some_voters: usize) -> bool {
+        // This way of writing it avoids any possibility of over/under-flow
+        n_some_voters > self.n_authorities / 2
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use super::*;
+    use typed_index_collections::ti_vec;
+
+    impl ConsensusContext {
+        pub(crate) fn new_for_test() -> Self {
+            // TODO obtain (memoised?) from testdata2, using its constructor, when we have one
+            ConsensusContext {
+                method: SupportedConsensusMethod::MAX,
+                n_authorities: 0,
+                votes: ti_vec![],
+            }
+        }
+    }
+
+    #[test]
+    fn is_more_than_half_all_auths() {
+        let mut context = ConsensusContext::new_for_test();
+
+        let mut check = |n_authorities, minimum_that_is_more_than_half| {
+            context.n_authorities = n_authorities;
+            for t in 0..=(n_authorities + 1) {
+                assert_eq!(
+                    context.is_more_than_half_all_auths(t),
+                    t >= minimum_that_is_more_than_half,
+                );
+            }
+        };
+
+        check(0, 1);
+        check(1, 1);
+        check(2, 2);
+        check(3, 2);
+        check(4, 3);
+        check(5, 3);
+    }
 }
