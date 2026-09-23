@@ -114,6 +114,9 @@ pub(super) struct ConsensusContext {
 
     /// The input votes (in their entirity)
     pub(super) votes: TiVec<VoterNum, tor_netdoc::doc::netstatus::vote::NetworkStatus>,
+
+    /// Which of the votes came from bandwidth authorities
+    pub(super) bandwidth_authorities: VoterSet,
 }
 
 impl ConsensusContext {
@@ -149,6 +152,7 @@ pub(crate) mod test {
                 method: SupportedConsensusMethod::MAX,
                 n_authorities: 0,
                 votes: ti_vec![],
+                bandwidth_authorities: VoterSet::default(),
             }
         }
     }

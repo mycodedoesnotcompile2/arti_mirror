@@ -13,7 +13,6 @@ impl<'i> ResolvedRouterStatusInputs<'i> {
     ///
     /// Can return `None` to mean that this router should not be listed after all
     /// (eg, because its listing would lack the Running flag).
-    #[allow(clippy::unnecessary_wraps)] // for consistency; also, might change
     pub(super) fn consensuses(
         &self,
         context: &ConsensusContext,
@@ -65,11 +64,11 @@ impl<'i> ResolvedRouterStatusInputs<'i> {
 
         calc! { both.ed25519_id = NotPresent }
         calc! { plain.m = NotPresent }
+        calc! { plain, md .weight }
 
         // TODO DIRAUTH replace routerstatus dummy values
         calc! { both.flags = DocRelayFlags::new_empty_unknown_discarded() }
         calc! { both.protos = Default::default() }
-        calc! { both.weight = Default::default() }
         calc! { md.m = [0; 32].into() }
 
         Ok(Some(construct_both! {
@@ -79,5 +78,69 @@ impl<'i> ResolvedRouterStatusInputs<'i> {
                 // TODO DIRAUTH routerstatus fields missing
             }
         }))
+    }
+}
+
+impl Aggregate for VoteRelayWeightsItem {
+    type Output = RelayWeightsItem;
+
+    #[allow(clippy::needless_late_init)] // re median_inputs and unmeasured; clearer this way
+    fn aggregate<'i>(
+        context: &ConsensusContext,
+        inputs: impl ComponentInVotes<&'i VoteRelayWeightsItem>,
+    ) -> Result<RelayWeightsItem, ConsensusError>
+    where
+        Self: 'i,
+    {
+        // https://spec.torproject.org/dir-spec/computing-consensus.html#router-status-entries
+        // under "`w` item".
+        //
+        // TODO DIRAUTH implements torspec!542, as yet unmerged, so may need to change.
+
+        const MEASURED: &str = "Measured";
+        const BANDWIDTH: &str = "Bandwidth";
+        const UNMEASURED: &str = "Unmeasured";
+        const MEASURED_THRESHOLD: usize = 3;
+
+        // Obtains the Measured value from this vote, if its there and we ought to use it
+        let get_measured = |(vnum, rwi): (_, &VoteRelayWeightsItem)| -> Option<u32> {
+            if context.bandwidth_authorities.contains(&vnum) {
+                rwi.w.as_ref()?.get(MEASURED).copied()
+            } else {
+                None
+            }
+        };
+        // Obtains some bandwidth value from this vote
+        let get_bandwidth = |(vnum, rwi): (_, &VoteRelayWeightsItem)| -> Option<u32> {
+            get_measured((vnum, rwi)).or_else(|| {
+                //
+                rwi.w.as_ref()?.get(BANDWIDTH).copied()
+            })
+        };
+
+        // Iterator of the Measured values.
+        let measured_inputs = inputs.clone().filter_map(&get_measured as &dyn Fn(_) -> _);
+
+        let median_inputs; // the inputs for the median
+        let unmeasured; // the (keyword, value) for Unmeasured, or None
+        if measured_inputs.clone().count() >= MEASURED_THRESHOLD {
+            median_inputs = measured_inputs;
+            unmeasured = None;
+        } else {
+            median_inputs = inputs.clone().filter_map(&get_bandwidth as _);
+            unmeasured = Some((UNMEASURED, 1));
+        };
+
+        let Some(median) = functions::low_median_raw(median_inputs) else {
+            // There were no w lines, or none of them had a bandwidth of any kind.
+            return Ok(RelayWeightsItem::default());
+        };
+
+        let out = chain!([(BANDWIDTH, median)], unmeasured)
+            .collect::<NetParams<_>>()
+            .try_into()
+            .map_err(into_internal!("generated bad w item"))?;
+
+        Ok(out)
     }
 }
