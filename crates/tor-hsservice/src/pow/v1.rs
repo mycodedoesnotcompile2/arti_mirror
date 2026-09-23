@@ -971,7 +971,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
         let decay_adjustment_fraction = net_params.hs_pow_v1_default_decay_adjustment.as_fraction();
 
         let update_period_duration = inner.runtime.now() - inner.update_period_start;
-        if inner.num_dequeued != 0 && update_period_duration.as_millis() != 0 {
+        if inner.num_dequeued != 0 {
             let avg_request_duration = update_period_duration / inner.num_dequeued;
             let num_dequeued = f64::from(inner.num_dequeued);
             if inner.queue.is_empty() {
@@ -984,6 +984,12 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                 avg_request_duration * inner.queue.len().try_into().expect("Queue too large."),
             );
             // TODO: use as_millis_f64 when stable
+            // `update_period_duration` should always be greater than zero, since this function is
+            // called at intervals of `HS_UPDATE_PERIOD`. This really checks that it's greater than
+            // or equal to 1ms, since there's rounding in order to get the types that we need.
+            debug_assert!(
+                f64::from_u128(update_period_duration.as_millis()).expect("Conversion error") > 0.0
+            );
             let idle_fraction = f64::from_u128(adjusted_idle_time.as_millis())
                 .expect("Conversion error")
                 / f64::from_u128(update_period_duration.as_millis()).expect("Conversion error");
@@ -1003,10 +1009,13 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                         .expect("Conversion error");
                 *suggested_effort = Effort::from(new_suggested_effort);
             } else {
-                // The rust `as` operator is used here to provide saturating conversions,
-                // to avoid panicking if the effort calculation would be lossy due to extremely
-                // large values. In practice, the values should be low enough that this shouldn't
-                // come up, but it is worth being defensive.
+                // The Rust `as` operator provides infallible integer to float conversions [1].
+                // We use this below to avoid panicking in the case that the average per-request
+                // effort is greater than `u32::MAX`. This is highly unlikely to happen, as it
+                // would require a patched Tor client to make an extremely large number of
+                // extremely high-effort requests, but it is best to be safe.
+                //
+                // [1]: https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.numeric.int-as-float
                 let theoretical_num_dequeued = num_dequeued * (1.0 / busy_fraction);
                 let num_enqueued_gte_suggested_f64 = inner.num_enqueued_gte_suggested as f64;
 
