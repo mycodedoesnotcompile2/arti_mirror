@@ -17,6 +17,10 @@ mod calculate_macros;
 mod framework;
 mod functions;
 mod preamble;
+#[macro_use]
+mod rs_common;
+mod rs_body;
+mod rs_select;
 
 pub use framework::*;
 pub use method::*;

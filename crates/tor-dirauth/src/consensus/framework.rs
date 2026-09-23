@@ -10,6 +10,9 @@ use super::*;
 #[derive(derive_more::From, derive_more::Into)]
 pub(super) struct VoterNum(pub usize);
 
+/// A set of voters
+pub(super) type VoterSet = HashSet<VoterNum>;
+
 /// Components within a vote (trait alias)
 ///
 /// Input to [`ConsensusesFromVotes::consensuses`] and [`Aggregate::aggregate`].
@@ -138,7 +141,6 @@ pub(crate) mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
-    use typed_index_collections::ti_vec;
 
     impl ConsensusContext {
         pub(crate) fn new_for_test() -> Self {
