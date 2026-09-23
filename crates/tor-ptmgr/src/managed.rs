@@ -192,7 +192,9 @@ impl<R: Runtime> PtReactor<R> {
                 drop(all_next_messages);
 
                 match internal {
-                    Some(PtReactorMessage::Reconfigured) => {},
+                    Some(PtReactorMessage::Reconfigured) => {
+                        self.running.retain(|v| !v.inner.is_none());
+                    },
                     Some(PtReactorMessage::Spawn { pt, result }) => {
                         // Make sure we don't already have a running request.
                         if let Some(requests) = self.requests.get_mut(&pt) {
