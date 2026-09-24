@@ -98,8 +98,7 @@ def _configure_and_run_shadow(args: argparse.Namespace) -> None:
             str(_SCRIPT_DIR.joinpath("test")), "-v"]),
         network_graph=network_graph,
     )
-    #shadow_config.setdefault('experimental', scfg.Experimental())['strace_logging_mode'] ="standard"
-    #shadow_config.setdefault('host_option_defaults', scfg.HostOptions())['pcap_enabled'] = True
+    shadow_config.setdefault('experimental', scfg.Experimental())['strace_logging_mode'] ="standard"
     # Add the TEST_DOMAIN web server
     shadow_config['hosts'][common.TEST_DOMAIN] = scfg.Host(
         network_node_id=network_graph.default_node_id(),
