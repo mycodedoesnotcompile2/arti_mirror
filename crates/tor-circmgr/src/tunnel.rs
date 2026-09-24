@@ -442,6 +442,26 @@ impl ClientDirTunnel {
 }
 
 impl ServiceOnionServiceDataTunnel {
+    /// Return the cryptographic material used to prove knowledge of a shared
+    /// secret with `hop`.
+    ///
+    /// See [`CircuitBinding`] for more information on how this is used.
+    ///
+    /// Return `None` if we have no circuit binding information for the hop, or if
+    /// the hop does not exist.
+    #[cfg(feature = "hs-service")]
+    pub async fn binding_key(&self, hop: TargetHop) -> Result<Option<CircuitBinding>> {
+        let circ = self.circuit()?;
+        circ.binding_key(hop)
+            .await
+            .map_err(|error| Error::Protocol {
+                action: "binding key",
+                peer: None,
+                error,
+                unique_id: Some(self.tunnel.unique_id()),
+            })
+    }
+
     /// Tell this tunnel to begin allowing the final hop of the tunnel to try
     /// to create new Tor streams, and to return those pending requests in an
     /// asynchronous stream.
