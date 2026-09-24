@@ -67,7 +67,7 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::future::Future;
 use std::io::{Read, Write};
-use std::net::{IpAddr, Shutdown, SocketAddr, TcpListener, TcpStream};
+use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream};
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -221,19 +221,8 @@ fn run_timing(mut stream: TcpStream, send: &Arc<[u8]>, receive: &Arc<[u8]>) -> R
         first_byte_ts,
         read_done_ts,
     };
-    let timing = serde_json::to_vec(&st)?;
-    let sz = timing.len().to_be_bytes();
-    std::io::copy(&mut &sz[..], &mut stream)?;
-    std::io::copy(&mut &timing[..], &mut stream)?;
-    //serde_json::to_writer(&mut stream, &st)?;
-    stream.flush()?;
+    serde_json::to_writer(&mut stream, &st)?;
     info!("Wrote timing payload to {}.", peer_addr);
-    // Wait for client to close the connection; if we preemptively close it,
-    // data may be lost.
-    let mut buf = [0u8; 1];
-    let res = stream.read(&mut buf);
-    info!("xxx Final read res: {res:?}");
-
     Ok(())
 }
 
@@ -284,31 +273,9 @@ async fn client<S: AsyncRead + AsyncWrite + Unpin>(
     if received != receive.deref() {
         panic!("Received data doesn't match expected; potential corruption?");
     }
-    let sz = {
-        let mut sz_buf = [0u8; 8];
-        info!("xxx reading size");
-        socket.read_exact(&mut sz_buf).await?;
-        usize::from_be_bytes(sz_buf)
-    };
-    info!("xxx got sz={sz}");
-    let json_buf = {
-        let mut json_buf = Vec::new();
-        json_buf.resize(sz, 0u8);
-        info!("xxx client about to read exactly {}", sz);
-        socket.read_exact(&mut json_buf).await?;
-        json_buf
-    };
-    /*
-    let json_buf = {
-        let mut v = Vec::new();
-        socket.read_to_end(&mut v).await?;
-        v
-    }; */
+    let mut json_buf = Vec::new();
+    socket.read_to_end(&mut json_buf).await?;
     let server: ServerTiming = serde_json::from_slice(&json_buf)?;
-    //socket.read_to_end(&mut json_buf).await?;
-    //let server: ServerTiming = serde_json::from_slice(&json_buf)?;
-    info!("xxx client shutting down");
-    socket.shutdown().await?;
     Ok(ClientTiming {
         started_ts,
         first_byte_ts,
@@ -721,7 +688,6 @@ impl<R: ToplevelRuntime> Benchmark<R> {
 
     /// Benchmark without Arti on loopback.
     fn without_arti(&mut self) -> Result<()> {
-        info!("xxx without_arti...");
         let ca = self.connect_addr;
         self.run(BenchmarkType::RawLoopback, |_| {
             tokio::net::TcpStream::connect(ca)
@@ -739,9 +705,7 @@ impl<R: ToplevelRuntime> Benchmark<R> {
             let iso_string = format!("{:?}", iso.next_in(run));
             async move {
                 tracing::warn!("xxx connect_with_pasword:{addr} ca:{ca} username:{iso_string} password:{iso_string}");
-                let res = Socks5Stream::connect_with_password(addr, ca, &iso_string, &iso_string).await;
-                tracing::warn!("xxx connected");
-                res
+                Socks5Stream::connect_with_password(addr, ca, &iso_string, &iso_string).await
             }
         })
     }

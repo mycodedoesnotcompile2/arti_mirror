@@ -157,9 +157,7 @@ class TestNetwork(unittest.TestCase):
             f"Running arti bench with tor client {client.nick} via {ip}:{port}",
             flush=True,
         )
-        # XXX expose launcher
-        launcher = client._launcher
-        p = launcher.popen(
+        subprocess.check_call(
             [
                 self._config.arti_bench,
                 "-c",
@@ -168,33 +166,14 @@ class TestNetwork(unittest.TestCase):
                 addr_and_port_str(ip, port),
                 "--listen",
                 # XXX
-                #XXX f'{chutney.network_tests.verify.VerifyConfig._LISTEN_ADDRESS_ENV.get()}:0',
-                f'{ip}:0',
-
-                # XXX make smaller for debugging
-                "--streams", "1",
-                "--num-samples", "2",
-                "--download-bytes", "5000",
-                "--upload-bytes", "5000",
-
+                f'{chutney.network_tests.verify.VerifyConfig._LISTEN_ADDRESS_ENV.get()}:0',
                 "-o",
                 str(self._network.dir.joinpath("benchmark_results.json")),
             ],
             env=dict(os.environ) | dict(RUST_LOG="debug"),
-            #timeout=60.0,
-            #check=True,
-            text=True,
-            known_bin=None,
-            capture_strategy=chutney.launcher.Capture.MERGED,
+            timeout=60.0,
         )
-        try:
-            cp = p.communicate(timeout=120.0)
-        except Exception as e:
-            print(f"xxx communicate got exception {e}")
-            p.send_signal(6)
-            cp = p.communicate(timeout=30.0)
-        print(cp.stdout)
-        self.assertEqual(cp.returncode, 0)
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
