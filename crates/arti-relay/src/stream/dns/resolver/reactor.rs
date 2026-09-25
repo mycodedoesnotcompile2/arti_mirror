@@ -325,6 +325,8 @@ impl<M: MockableAsyncResolver> DnsResolverReactor<M> {
     pub(crate) fn new(runtime: DynTimeProvider, resolver: Arc<M>) -> (Self, DnsResolver) {
         // TODO(relay-tuning): pick an appropriate buffer size here
         const DNS_QUERY_BUF_SIZE: usize = 512;
+
+        #[allow(clippy::disallowed_methods)]
         let (query_tx, query_rx) = mpsc::channel(DNS_QUERY_BUF_SIZE);
 
         let mut inflight = JoinSet::new();
