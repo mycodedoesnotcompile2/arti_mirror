@@ -2356,6 +2356,7 @@ pub(crate) mod test {
     #[test]
     #[cfg(feature = "hs-service")]
     fn allow_stream_requests() {
+        use std::num::NonZero;
         use tor_cell::relaycell::msg::BeginFlags;
 
         tor_rtcompat::test_with_all_runtimes!(|rt| async move {
@@ -2399,7 +2400,8 @@ pub(crate) mod test {
             };
 
             let simulate_client = async move {
-                let begin = relaymsg::Begin::new("localhost", 80, BeginFlags::IPV6_OKAY).unwrap();
+                let port = NonZero::new(80).unwrap();
+                let begin = relaymsg::Begin::new("localhost", port, BeginFlags::IPV6_OKAY).unwrap();
                 let body: BoxedCellBody =
                     AnyRelayMsgOuter::new(StreamId::new(12), AnyRelayMsg::Begin(begin))
                         .encode(rfmt, &mut testing_rng())
@@ -2435,6 +2437,7 @@ pub(crate) mod test {
     #[test]
     #[cfg(feature = "hs-service")]
     fn accept_stream_after_reject() {
+        use std::num::NonZero;
         use tor_cell::relaycell::msg::AnyRelayMsg;
         use tor_cell::relaycell::msg::BeginFlags;
         use tor_cell::relaycell::msg::EndReason;
@@ -2496,7 +2499,8 @@ pub(crate) mod test {
             };
 
             let simulate_client = async move {
-                let begin = relaymsg::Begin::new("localhost", 80, BeginFlags::IPV6_OKAY).unwrap();
+                let port = NonZero::new(80).unwrap();
+                let begin = relaymsg::Begin::new("localhost", port, BeginFlags::IPV6_OKAY).unwrap();
                 let body: BoxedCellBody =
                     AnyRelayMsgOuter::new(StreamId::new(12), AnyRelayMsg::Begin(begin))
                         .encode(rfmt, &mut testing_rng())
@@ -2534,6 +2538,7 @@ pub(crate) mod test {
     #[test]
     #[cfg(feature = "hs-service")]
     fn incoming_stream_bad_hop() {
+        use std::num::NonZero;
         use tor_cell::relaycell::msg::BeginFlags;
 
         tor_rtcompat::test_with_all_runtimes!(|rt| async move {
@@ -2571,7 +2576,8 @@ pub(crate) mod test {
             };
 
             let simulate_client = async move {
-                let begin = relaymsg::Begin::new("localhost", 80, BeginFlags::IPV6_OKAY).unwrap();
+                let port = NonZero::new(80).unwrap();
+                let begin = relaymsg::Begin::new("localhost", port, BeginFlags::IPV6_OKAY).unwrap();
                 let body: BoxedCellBody =
                     AnyRelayMsgOuter::new(StreamId::new(12), AnyRelayMsg::Begin(begin))
                         .encode(rfmt, &mut testing_rng())
