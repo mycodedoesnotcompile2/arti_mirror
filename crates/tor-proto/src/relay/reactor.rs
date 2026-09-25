@@ -392,7 +392,8 @@ pub(crate) mod test {
     use chanmsg::{AnyChanMsg, Destroy, DestroyReason, HandshakeType};
     use relaymsg::SendmeTag;
 
-    use std::net::IpAddr;
+    use std::net::{IpAddr, Ipv4Addr};
+    use std::num::NonZero;
     use std::sync::{Arc, Mutex, Weak, mpsc};
     use std::task::{Context, Poll, Waker};
 
@@ -827,6 +828,13 @@ pub(crate) mod test {
         ]
     }
 
+    /// Helper for constructing `Begin` messages with less boilerplate.
+    fn dummy_begin(addr: impl Into<relaymsg::BeginAddr>, port: u16) -> relaymsg::Begin {
+        let addr = addr.into();
+        let port = NonZero::new(port).unwrap();
+        relaymsg::Begin::new(addr.encode(), port, 0).unwrap()
+    }
+
     macro_rules! assert_cell_is_destroy {
         ($cell:expr, $reason:expr) => {{
             match $cell.msg() {
@@ -978,7 +986,7 @@ pub(crate) mod test {
 
             // Time to forward a message to the next hop!
             let early = false;
-            let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap();
+            let begin = dummy_begin(Ipv4Addr::LOCALHOST, 1111);
             ctrl.send_fwd(None, begin.clone().into(), Recognized::No, early)
                 .await;
             rt.advance_until_stalled().await;
@@ -990,7 +998,7 @@ pub(crate) mod test {
 
             // Now send the same message again, but this time in a RELAY_EARLY
             let early = true;
-            let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap();
+            let begin = dummy_begin(Ipv4Addr::LOCALHOST, 1111);
             ctrl.send_fwd(None, begin.clone().into(), Recognized::No, early)
                 .await;
             rt.advance_until_stalled().await;
@@ -1032,7 +1040,7 @@ pub(crate) mod test {
                 ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]).await;
             rt.advance_until_stalled().await;
 
-            let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
+            let begin = dummy_begin(Ipv4Addr::LOCALHOST, 1111).into();
 
             // BEGIN cells *must* have a stream ID, so expect the reactor to reject this
             // and close the circuit
@@ -1156,7 +1164,7 @@ pub(crate) mod test {
                 ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]).await;
             rt.advance_until_stalled().await;
 
-            let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
+            let begin = dummy_begin(Ipv4Addr::LOCALHOST, 1111).into();
             ctrl.send_fwd(StreamId::new(1), begin, Recognized::Yes, false)
                 .await;
             rt.advance_until_stalled().await;
@@ -1188,7 +1196,7 @@ pub(crate) mod test {
                 ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]).await;
             rt.advance_until_stalled().await;
 
-            let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
+            let begin = dummy_begin(Ipv4Addr::LOCALHOST, 1111).into();
             ctrl.send_fwd(StreamId::new(1), begin, Recognized::Yes, false)
                 .await;
             rt.advance_until_stalled().await;
@@ -1245,7 +1253,7 @@ pub(crate) mod test {
                 IncomingStreamRequest::BeginDir(_)
             ));
 
-            let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
+            let begin = dummy_begin(Ipv4Addr::LOCALHOST, 1111).into();
             ctrl.send_fwd(StreamId::new(2), begin, Recognized::Yes, false)
                 .await;
             rt.advance_until_stalled().await;
