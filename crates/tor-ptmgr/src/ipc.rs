@@ -858,6 +858,15 @@ impl PluggableTransport for PluggableClientTransport {
     }
 }
 
+/// Whether the client PT startup loop should keep reading messages or stop.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum StartupFlow {
+    /// Keep processing further startup messages.
+    Continue,
+    /// Startup is complete; the loop should stop.
+    Done,
+}
+
 impl PluggableTransportPrivate for PluggableClientTransport {
     fn inner(&mut self) -> Result<&mut AsyncPtChild, PtError> {
         self.inner.as_mut().ok_or(PtError::ChildGone)
@@ -877,6 +886,74 @@ impl PluggableTransportPrivate for PluggableClientTransport {
 }
 
 impl PluggableClientTransport {
+    /// Handle a single [`PtMessage`] received during client PT startup.
+    ///
+    /// Updates `cmethods` and `proxy_done` as needed, and returns whether the
+    /// startup loop should continue or is done. Returns an error on protocol
+    /// violations, including a PT that completes startup without confirming the
+    /// configured proxy.
+    fn handle_client_startup_msg(
+        &self,
+        message: PtMessage,
+        cmethods: &mut HashMap<PtTransportName, PtClientMethod>,
+        proxy_done: &mut bool,
+    ) -> err::Result<StartupFlow> {
+        match message {
+            PtMessage::ClientTransportLaunched {
+                transport,
+                protocol,
+                endpoint,
+            } => {
+                self.common_transport_launched_handler(
+                    Some(protocol),
+                    transport,
+                    endpoint,
+                    cmethods,
+                )?;
+                Ok(StartupFlow::Continue)
+            }
+            PtMessage::ProxyDone => {
+                if *proxy_done {
+                    return Err(PtError::ProtocolViolation(
+                        "binary initiated proxy when not asked (or twice)".into(),
+                    ));
+                }
+                info!("PT binary now proxying connections via supplied URI");
+                *proxy_done = true;
+                Ok(StartupFlow::Continue)
+            }
+            // TODO: unify most of the handling of ClientTransportsDone with ServerTransportsDone
+            PtMessage::ClientTransportsDone => {
+                let unsupported = self
+                    .client_params
+                    .transports
+                    .iter()
+                    .filter(|&x| !cmethods.contains_key(x))
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>();
+                if !unsupported.is_empty() {
+                    warn!(
+                        "PT binary failed to initialise transports: {:?}",
+                        unsupported
+                    );
+                    return Err(PtError::ClientTransportsUnsupported(unsupported));
+                }
+                if !*proxy_done {
+                    return Err(PtError::ProtocolViolation(
+                        "PT completed startup without confirming proxy (TOR_PT_PROXY configured)"
+                            .into(),
+                    ));
+                }
+                info!("PT binary initialisation done");
+                Ok(StartupFlow::Done)
+            }
+            x => Err(PtError::ProtocolViolation(format!(
+                "received unexpected {:?}",
+                x
+            ))),
+        }
+    }
+
     /// Create a new pluggable transport wrapper, wrapping the binary at `binary_path` and passing
     /// the `params` to it.
     ///
@@ -926,53 +1003,13 @@ impl PluggableClientTransport {
             {
                 Ok(maybe_message) => {
                     if let Some(message) = maybe_message {
-                        match message {
-                            PtMessage::ClientTransportLaunched {
-                                transport,
-                                protocol,
-                                endpoint,
-                            } => {
-                                self.common_transport_launched_handler(
-                                    Some(protocol),
-                                    transport,
-                                    endpoint,
-                                    &mut cmethods,
-                                )?;
-                            }
-                            PtMessage::ProxyDone => {
-                                if proxy_done {
-                                    return Err(PtError::ProtocolViolation(
-                                        "binary initiated proxy when not asked (or twice)".into(),
-                                    ));
-                                }
-                                info!("PT binary now proxying connections via supplied URI");
-                                proxy_done = true;
-                            }
-                            // TODO: unify most of the handling of ClientTransportsDone with ServerTransportsDone
-                            PtMessage::ClientTransportsDone => {
-                                let unsupported = self
-                                    .client_params
-                                    .transports
-                                    .iter()
-                                    .filter(|&x| !cmethods.contains_key(x))
-                                    .map(|x| x.to_string())
-                                    .collect::<Vec<_>>();
-                                if !unsupported.is_empty() {
-                                    warn!(
-                                        "PT binary failed to initialise transports: {:?}",
-                                        unsupported
-                                    );
-                                    return Err(PtError::ClientTransportsUnsupported(unsupported));
-                                }
-                                info!("PT binary initialisation done");
-                                break;
-                            }
-                            x => {
-                                return Err(PtError::ProtocolViolation(format!(
-                                    "received unexpected {:?}",
-                                    x
-                                )));
-                            }
+                        if self.handle_client_startup_msg(
+                            message,
+                            &mut cmethods,
+                            &mut proxy_done,
+                        )? == StartupFlow::Done
+                        {
+                            break;
                         }
                     }
                 }
@@ -1146,6 +1183,7 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
 
+    use super::{PluggableClientTransport, PtClientParameters, PtCommonParameters, StartupFlow};
     use crate::ipc::{PtMessage, PtStatus};
     use std::borrow::Cow;
     use std::collections::HashMap;
@@ -1309,5 +1347,154 @@ mod test {
                 data: map
             }))
         );
+    }
+
+    #[test]
+    fn client_startup_requires_proxy_done_before_completion() {
+        let transport: tor_linkspec::PtTransportName = "trebuchet".parse().unwrap();
+        let pt = PluggableClientTransport {
+            inner: None,
+            binary_path: std::path::PathBuf::new(),
+            arguments: vec![],
+            common_params: PtCommonParameters {
+                state_location: std::path::PathBuf::new(),
+                outbound_bind_v4: None,
+                outbound_bind_v6: None,
+                timeout: None,
+            },
+            client_params: PtClientParameters {
+                proxy_uri: Some("socks5://127.0.0.1:9000".into()),
+                transports: vec![transport.clone()],
+            },
+            cmethods: Default::default(),
+        };
+        let mut cmethods = HashMap::new();
+        let mut proxy_done = false;
+
+        assert!(matches!(
+            pt.handle_client_startup_msg(
+                PtMessage::ClientTransportLaunched {
+                    transport: transport.clone(),
+                    protocol: "socks5".into(),
+                    endpoint: "127.0.0.1:19999".parse().unwrap(),
+                },
+                &mut cmethods,
+                &mut proxy_done
+            ),
+            Ok(StartupFlow::Continue)
+        ));
+        assert!(matches!(
+            pt.handle_client_startup_msg(
+                PtMessage::ClientTransportsDone,
+                &mut cmethods,
+                &mut proxy_done
+            ),
+            Err(crate::err::PtError::ProtocolViolation(_))
+        ));
+
+        proxy_done = true;
+        assert!(matches!(
+            pt.handle_client_startup_msg(
+                PtMessage::ClientTransportsDone,
+                &mut cmethods,
+                &mut proxy_done
+            ),
+            Ok(StartupFlow::Done)
+        ));
+    }
+
+    #[test]
+    fn client_startup_succeeds_without_proxy_when_none_configured() {
+        let transport: tor_linkspec::PtTransportName = "trebuchet".parse().unwrap();
+        let pt = PluggableClientTransport {
+            inner: None,
+            binary_path: std::path::PathBuf::new(),
+            arguments: vec![],
+            common_params: PtCommonParameters {
+                state_location: std::path::PathBuf::new(),
+                outbound_bind_v4: None,
+                outbound_bind_v6: None,
+                timeout: None,
+            },
+            client_params: PtClientParameters {
+                proxy_uri: None,
+                transports: vec![transport.clone()],
+            },
+            cmethods: Default::default(),
+        };
+        let mut cmethods = HashMap::new();
+        // No proxy configured, so proxy_done starts true.
+        let mut proxy_done = pt.client_params.proxy_uri.is_none();
+
+        assert!(matches!(
+            pt.handle_client_startup_msg(
+                PtMessage::ClientTransportLaunched {
+                    transport: transport.clone(),
+                    protocol: "socks5".into(),
+                    endpoint: "127.0.0.1:19999".parse().unwrap(),
+                },
+                &mut cmethods,
+                &mut proxy_done,
+            ),
+            Ok(StartupFlow::Continue)
+        ));
+        assert!(matches!(
+            pt.handle_client_startup_msg(
+                PtMessage::ClientTransportsDone,
+                &mut cmethods,
+                &mut proxy_done,
+            ),
+            Ok(StartupFlow::Done)
+        ));
+    }
+
+    #[test]
+    fn client_startup_succeeds_after_proxy_done() {
+        let transport: tor_linkspec::PtTransportName = "trebuchet".parse().unwrap();
+        let pt = PluggableClientTransport {
+            inner: None,
+            binary_path: std::path::PathBuf::new(),
+            arguments: vec![],
+            common_params: PtCommonParameters {
+                state_location: std::path::PathBuf::new(),
+                outbound_bind_v4: None,
+                outbound_bind_v6: None,
+                timeout: None,
+            },
+            client_params: PtClientParameters {
+                proxy_uri: Some("socks5://127.0.0.1:9000".into()),
+                transports: vec![transport.clone()],
+            },
+            cmethods: Default::default(),
+        };
+        let mut cmethods = HashMap::new();
+        let mut proxy_done = pt.client_params.proxy_uri.is_none();
+
+        // Compliant PT: PROXY DONE arrives before CMETHODS DONE.
+        assert!(matches!(
+            pt.handle_client_startup_msg(PtMessage::ProxyDone, &mut cmethods, &mut proxy_done),
+            Ok(StartupFlow::Continue)
+        ));
+        assert!(proxy_done);
+        assert!(matches!(
+            pt.handle_client_startup_msg(
+                PtMessage::ClientTransportLaunched {
+                    transport: transport.clone(),
+                    protocol: "socks5".into(),
+                    endpoint: "127.0.0.1:19999".parse().unwrap(),
+                },
+                &mut cmethods,
+                &mut proxy_done,
+            ),
+            Ok(StartupFlow::Continue)
+        ));
+        assert!(matches!(
+            pt.handle_client_startup_msg(
+                PtMessage::ClientTransportsDone,
+                &mut cmethods,
+                &mut proxy_done,
+            ),
+            Ok(StartupFlow::Done)
+        ));
     }
 }
