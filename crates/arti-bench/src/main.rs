@@ -223,6 +223,8 @@ fn run_timing(mut stream: TcpStream, send: &Arc<[u8]>, receive: &Arc<[u8]>) -> R
     };
     serde_json::to_writer(&mut stream, &st)?;
     info!("Wrote timing payload to {}.", peer_addr);
+    stream.shutdown(std::net::Shutdown::Both)?;
+    info!("Server shutdown.");
     Ok(())
 }
 
