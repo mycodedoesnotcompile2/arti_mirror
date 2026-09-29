@@ -8,6 +8,10 @@ include:
 # of duplicated jobs.
 workflow:
   rules:
+    # Codex Security scans protected, same-project merge requests. Keep this
+    # aligned with the job-level rule so untrusted forks cannot receive the
+    # protected scan credential.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID && $CI_MERGE_REQUEST_SOURCE_BRANCH_PROTECTED == "true" && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED == "true"'
     # These 2 are used to detect pushes, and scheduled builds:
     - if: $CI_PIPELINE_SOURCE == "push"
     - if: $CI_PIPELINE_SOURCE == "schedule"
@@ -18,6 +22,8 @@ workflow:
 stages:
   - build
   - test
+  - security_scan
+  - security_gate
   - deploy
 
 variables:
@@ -960,6 +966,87 @@ cargo-check-targets:
   image: $RECENT_RUST_IMAGE
   script:
     - ./maint/cargo-check-targets -il
+
+.codex-security-merge-request:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID && $CI_MERGE_REQUEST_SOURCE_BRANCH_PROTECTED == "true" && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED == "true"'
+  tags:
+    - namespaces
+
+codex-security:
+  extends: .codex-security-merge-request
+  stage: security_scan
+  image: node:26-bookworm-slim
+  environment:
+    name: codex-security/openai
+    action: access
+  variables:
+    GIT_DEPTH: "0"
+  # Do not inherit the repository's Rust-specific setup and cleanup commands.
+  before_script:
+    - npm install --prefix /tmp/codex-security-cli --ignore-scripts --no-audit --no-fund @openai/codex-security@0.1.20
+  after_script: []
+  dependencies: []
+  script:
+    - |
+      set -eu
+      test -n "${CODEX_SECURITY_API_KEY:-}"
+
+      CODEX_SECURITY_BIN="/tmp/codex-security-cli/node_modules/.bin/codex-security"
+      RESULTS_DIR="/tmp/codex-security-results-$CI_JOB_ID"
+      ARTIFACT_DIR="codex-security-artifacts"
+      BASE_REVISION="$(git merge-base \
+        "$CI_MERGE_REQUEST_DIFF_BASE_SHA" "$CI_COMMIT_SHA")"
+      install -d -m 700 "$RESULTS_DIR" "$ARTIFACT_DIR/results"
+
+      codex_security_api_key="$CODEX_SECURITY_API_KEY"
+      unset CODEX_SECURITY_API_KEY
+      set +e
+      OPENAI_API_KEY="$codex_security_api_key" \
+        "$CODEX_SECURITY_BIN" scan . \
+          --diff "$BASE_REVISION" \
+          --head "$CI_COMMIT_SHA" \
+          --auth api-key \
+          --output-dir "$RESULTS_DIR" \
+          --json
+      scan_exit="$?"
+      set -e
+      unset codex_security_api_key
+
+      case "$scan_exit" in
+        0|1|2) ;;
+        *) exit "$scan_exit" ;;
+      esac
+
+      "$CODEX_SECURITY_BIN" export "$RESULTS_DIR" \
+        --export-format sarif \
+        --source-root "$CI_PROJECT_DIR" \
+        --output "$ARTIFACT_DIR/results.sarif"
+      test -s "$ARTIFACT_DIR/results.sarif"
+      cp -R "$RESULTS_DIR"/. "$ARTIFACT_DIR/results/"
+      printf '%s\n' "$scan_exit" > "$ARTIFACT_DIR/scan-exit-code.txt"
+      exit 0
+  artifacts:
+    when: always
+    access: maintainer
+    expire_in: 7 days
+    paths:
+      - codex-security-artifacts/
+    reports:
+      sarif: codex-security-artifacts/results.sarif
+
+codex-security-gate:
+  extends: .codex-security-merge-request
+  stage: security_gate
+  image: alpine:3.20
+  before_script: []
+  after_script: []
+  dependencies: []
+  needs:
+    - job: codex-security
+      artifacts: true
+  script:
+    - exit "$(cat codex-security-artifacts/scan-exit-code.txt)"
 
 # build the website
 website:
