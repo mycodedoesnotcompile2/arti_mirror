@@ -244,6 +244,8 @@ pub enum ProxyAction {
 pub enum TargetAddr {
     /// An address that we can reach over the internet.
     Inet(SocketAddr),
+    /// A hostname string and port that will be resolved at connection time.
+    Host(String, u16),
     /// And address for Unix Socket
     /// (Only supported on Unix platforms, std::os::unix::net::SocketAddr
     /// and ignored on non-Unix platforms Void::void).
@@ -261,6 +263,7 @@ impl PartialEq for TargetAddr {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (TargetAddr::Inet(a), TargetAddr::Inet(b)) => a == b,
+            (TargetAddr::Host(h1, p1), TargetAddr::Host(h2, p2)) => h1 == h2 && p1 == p2,
             #[cfg(unix)]
             (TargetAddr::Unix(a), TargetAddr::Unix(b)) => a.as_pathname() == b.as_pathname(),
             _ => false,
@@ -281,6 +284,8 @@ impl TargetAddr {
             #[cfg(unix)]
             TargetAddr::Unix(_) => true,
 
+            TargetAddr::Host(_, _) => true,
+
             TargetAddr::Inet(sa) => match sa.ip() {
                 IpAddr::V4(ip) => ip.is_loopback() || ip.is_unspecified() || ip.is_private(),
                 IpAddr::V6(ip) => ip.is_loopback() || ip.is_unspecified(),
@@ -295,14 +300,6 @@ impl FromStr for TargetAddr {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use ProxyConfigError as PCE;
 
-        /// Return true if 's' looks like an attempted IPv4 or IPv6 socketaddr.
-        fn looks_like_attempted_addr(s: &str) -> bool {
-            s.starts_with(|c: char| c.is_ascii_digit())
-                || s.strip_prefix('[')
-                    .map(|rhs| rhs.starts_with(|c: char| c.is_ascii_hexdigit() || c == ':'))
-                    .unwrap_or(false)
-        }
-
         #[cfg(unix)]
         if let Some(path) = s.strip_prefix("unix:") {
             return Ok(Self::Unix(UnixSocketAddr::from_pathname(path).map_err(
@@ -312,19 +309,40 @@ impl FromStr for TargetAddr {
                 },
             )?));
         }
-        if let Some(addr) = s.strip_prefix("inet:") {
-            Ok(Self::Inet(addr.parse().map_err(|e| {
-                PCE::InvalidTargetAddr(addr.to_string(), e)
-            })?))
-        } else if looks_like_attempted_addr(s) {
-            // We check 'looks_like_attempted_addr' before parsing this.
-            Ok(Self::Inet(
-                s.parse()
-                    .map_err(|e| PCE::InvalidTargetAddr(s.to_string(), e))?,
-            ))
-        } else {
-            Err(PCE::UnrecognizedTargetType(s.to_string()))
+        let (has_inet_prefix, target_str) = match s.strip_prefix("inet:") {
+            Some(stripped) => (true, stripped),
+            None => (false, s),
+        };
+        let parsed_addr = target_str.parse::<SocketAddr>();
+        if let Ok(sa) = parsed_addr {
+            return Ok(Self::Inet(sa));
         }
+        if let Some((host, port_str)) = target_str.rsplit_once(':') {
+            if let Ok(port) = port_str.parse::<u16>() {
+                let is_attempted_ip = host.starts_with('[')
+                    || host.split('.').next_back().is_some_and(|tld| {
+                        !tld.is_empty() && tld.chars().all(|c| c.is_ascii_digit())
+                    });
+
+                let is_valid_hostname = !host.is_empty()
+                    && !is_attempted_ip
+                    && host
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
+
+                if is_valid_hostname {
+                    return Ok(Self::Host(host.to_string(), port));
+                }
+            }
+        }
+        let looks_like_ip = target_str.starts_with(|c: char| c.is_ascii_digit() || c == '[');
+        if has_inet_prefix || looks_like_ip {
+            if let Err(parse_err) = parsed_addr {
+                return Err(PCE::InvalidTargetAddr(target_str.to_string(), parse_err));
+            }
+        }
+
+        Err(PCE::UnrecognizedTargetType(s.to_string()))
     }
 }
 
@@ -333,6 +351,7 @@ impl std::fmt::Display for TargetAddr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TargetAddr::Inet(a) => write!(f, "inet:{}", a),
+            TargetAddr::Host(host, port) => write!(f, "inet:{}:{}", host, port),
             #[cfg(unix)]
             TargetAddr::Unix(p) => match p.as_pathname() {
                 Some(path) => write!(f, "unix:{}", path.display()),
@@ -499,6 +518,23 @@ mod test {
     }
 
     #[test]
+    fn target_hostname_ok() {
+        use Encapsulation::Simple;
+        use ProxyAction as T;
+        use TargetAddr as A;
+
+        assert!(
+            matches!(T::from_str("httpd:80"), Ok(T::Forward(Simple, A::Host(h, p))) if h == "httpd" && p == 80)
+        );
+        assert!(
+            matches!(T::from_str("inet:onionservice.local:443"), Ok(T::Forward(Simple, A::Host(h, p))) if h == "onionservice.local" && p == 443)
+        );
+        assert!(
+            matches!(T::from_str("inet:wwww.example.com:80"), Ok(T::Forward(Simple, A::Host(h, p))) if h == "wwww.example.com" && p == 80)
+        );
+    }
+
+    #[test]
     fn target_display() {
         use Encapsulation::Simple;
         use ProxyAction as T;
@@ -535,10 +571,6 @@ mod test {
 
         assert!(matches!(
             T::from_str("inet:hello"),
-            Err(PCE::InvalidTargetAddr(_, _))
-        ));
-        assert!(matches!(
-            T::from_str("inet:wwww.example.com:80"),
             Err(PCE::InvalidTargetAddr(_, _))
         ));
 
