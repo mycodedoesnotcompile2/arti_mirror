@@ -120,7 +120,12 @@ where
         let name: ServerName<'_> = sni_hostname
             .try_into()
             .map_err(|e| IoError::new(io::ErrorKind::InvalidInput, e))?;
-        self.connector.connect(name.to_owned(), stream).await
+
+        let mut tls = self.connector.connect(name.to_owned(), stream).await?;
+        let (_, session) = tls.get_mut();
+        session.set_buffer_limit(Some(16 * 1024));
+
+        Ok(tls)
     }
 }
 
