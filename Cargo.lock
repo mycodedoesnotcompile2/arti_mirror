@@ -394,6 +394,7 @@ dependencies = [
  "directories",
  "fs-mistrust",
  "futures",
+ "futures-copy",
  "libc",
  "metrics-exporter-prometheus",
  "opentelemetry",
