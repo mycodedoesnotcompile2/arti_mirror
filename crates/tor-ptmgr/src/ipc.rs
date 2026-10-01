@@ -839,7 +839,7 @@ pub trait PluggableTransport: PluggableTransportPrivate {
 #[derive(Debug)]
 pub struct PluggableClientTransport {
     /// The currently running child, if there is one.
-    inner: Option<AsyncPtChild>,
+    pub(crate) inner: Option<AsyncPtChild>,
     /// The path to the binary to run.
     pub(crate) binary_path: PathBuf,
     /// Arguments to pass to the binary.
