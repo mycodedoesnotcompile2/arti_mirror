@@ -518,11 +518,9 @@ pub struct RouterDescIntroItem {
     pub orport: u16,
 
     /// Legacy.
-    #[deftly(constructor)]
     pub socksport: u16,
 
     /// Legacy.
-    #[deftly(constructor)]
     pub dirport: u16,
 
     #[doc(hidden)]
