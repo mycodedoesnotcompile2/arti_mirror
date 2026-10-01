@@ -554,7 +554,7 @@ impl<R: Runtime> TorRelay<R> {
 }
 
 /// Build the hickory resolver, configuring it using
-/// the settings from our [`DnsConfig`](crate::config::DnsConfig).
+/// the settings from our [`DnsConfig`].
 fn build_hickory_resolver(
     config: &TorRelayConfig,
 ) -> anyhow::Result<Resolver<TokioRuntimeProvider>> {
@@ -572,7 +572,7 @@ fn build_hickory_resolver(
 }
 
 /// Prepare the hickory resolver builder, using the settings from
-/// our [`DnsConfig`](crate::config::DnsConfig).
+/// our [`DnsConfig`].
 #[cfg(all(unix, not(any(target_os = "android", target_vendor = "apple"))))]
 fn prepare_hickory_builder(
     config: &TorRelayConfig,
