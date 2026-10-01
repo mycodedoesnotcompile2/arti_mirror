@@ -265,6 +265,10 @@ pub struct RouterDesc {
 /// Signatures of a [`RouterDesc`].
 ///
 /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:router-sig-ed25519>
+///
+// TODO(relay): Would be grand to be able to use this within RouterDesc::encode_sign()
+// but it would need to support "signature sections" I guess or something around those
+// lines because the RSA signature covers the Ed25519 signature.
 #[derive(Clone, Debug, PartialEq, Deftly)]
 #[derive_deftly(NetdocParseableSignatures, NetdocEncodable)]
 #[deftly(netdoc(signatures(hashes_accu = "RouterHashAccu")))]
@@ -791,6 +795,9 @@ impl RouterDesc {
 
         let mut encoder = NetdocEncoder::new();
         self.encode_unsigned(&mut encoder)?;
+
+        // Note that we can't use RouterDescSignatures because of the overlapping
+        // signatures that is the RSA signature covers the Ed25519 signatures.
 
         let ed_signature = RouterSigEd25519::new_sign_netdoc(
             k_relaysign_ed,
