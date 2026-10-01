@@ -555,7 +555,9 @@ impl<R: Runtime> TorRelay<R> {
 
 /// Build the hickory resolver, configuring it using
 /// the settings from our [`DnsConfig`](crate::config::DnsConfig).
-fn build_hickory_resolver(config: &TorRelayConfig) -> anyhow::Result<Resolver<TokioRuntimeProvider>> {
+fn build_hickory_resolver(
+    config: &TorRelayConfig,
+) -> anyhow::Result<Resolver<TokioRuntimeProvider>> {
     let mut builder = prepare_hickory_builder(config)?;
 
     // Set the hickory's internal cache size to 0
@@ -579,10 +581,7 @@ fn prepare_hickory_builder(
     let DnsConfig { resolv_conf } = &config.relay.dns;
     let builder = if let Some(resolv_conf) = resolv_conf {
         let mistrust = config.storage.permissions();
-        let resolv_conf = mistrust
-            .verifier()
-            .file_access()
-            .read(resolv_conf)?;
+        let resolv_conf = mistrust.verifier().file_access().read(resolv_conf)?;
         let (config, opts) = parse_resolv_conf(resolv_conf)?;
 
         let rt_provider = TokioRuntimeProvider::default();
@@ -613,6 +612,6 @@ fn prepare_hickory_builder(
     // but we deconstruct DnsConfig here to make sure that
     // if we add new fields, this will fail to compile,
     // reminding us to handle them here
-    let DnsConfig { resolv_conf:_ } = &config.relay.dns;
+    let DnsConfig { resolv_conf: _ } = &config.relay.dns;
     Ok(Resolver::builder_tokio()?)
 }
