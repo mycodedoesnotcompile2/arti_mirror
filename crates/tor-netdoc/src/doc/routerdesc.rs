@@ -503,23 +503,32 @@ pub struct OverloadGeneral {
 ///
 /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:router>
 #[derive(Clone, Debug, PartialEq, Eq, Deftly)]
-#[derive_deftly(ItemValueParseable, ItemValueEncodable)]
-#[non_exhaustive]
+#[derive_deftly(Constructor, ItemValueParseable, ItemValueEncodable)]
+#[allow(clippy::exhaustive_structs)]
 pub struct RouterDescIntroItem {
     /// A valid router [`Nickname`].
+    #[deftly(constructor)]
     pub nickname: Nickname,
 
     /// An IPv4 address in dotted-squad format.
+    #[deftly(constructor)]
     pub address: std::net::Ipv4Addr,
 
     /// The TCP port of the onion router.
+    #[deftly(constructor)]
     pub orport: u16,
 
     /// Legacy.
+    #[deftly(constructor)]
     pub socksport: u16,
 
     /// Legacy.
+    #[deftly(constructor)]
     pub dirport: u16,
+
+    #[doc(hidden)]
+    #[deftly(netdoc(skip))]
+    pub __non_exhaustive: (),
 }
 
 /// Digest identifying the extra-info document.
@@ -1232,13 +1241,14 @@ impl RouterDesc {
             .saturating_sub(time::Duration::new(ROUTER_PRE_VALIDITY_SECONDS, 0));
 
         let desc = RouterDesc {
-            router: RouterDescIntroItem {
+            router: RouterDescIntroItemConstructor {
                 nickname,
                 address: ipv4addr,
                 orport,
                 socksport: 0,
                 dirport,
-            },
+            }
+            .construct(),
             identity_ed25519: EmbeddedCert::new(
                 Ed25519IdentityCert {
                     id_ed25519: ed25519_identity_key,
@@ -1664,13 +1674,14 @@ mod test {
         assert_eq!(rd.len(), 20);
         assert_eq!(
             rd[0].0.router,
-            RouterDescIntroItem {
+            RouterDescIntroItemConstructor {
                 nickname: "test002a".parse().unwrap(),
                 address: net::Ipv4Addr::LOCALHOST,
                 orport: 5102,
                 socksport: 0,
                 dirport: 7102
             }
+            .construct()
         );
         assert_eq!(
             rd[0].0.fingerprint.unwrap(),
@@ -1776,13 +1787,14 @@ mod test {
         // Very boilerplatey construction of a router descriptor.
         // TODO: Probably best to use constructor logic here.
         let mut rd = RouterDesc {
-            router: RouterDescIntroItem {
+            router: RouterDescIntroItemConstructor {
                 nickname: "foo".parse().unwrap(),
                 address: Ipv4Addr::LOCALHOST,
                 orport: 9000,
                 socksport: 0,
                 dirport: 0,
-            },
+            }
+            .construct(),
             identity_ed25519: Ed25519IdentityCert::new_signed(
                 &ed25519_id,
                 Ed25519Identity::from(ed25519_sign.public_key()),
