@@ -223,6 +223,8 @@ fn run_timing(mut stream: TcpStream, send: &Arc<[u8]>, receive: &Arc<[u8]>) -> R
     };
     serde_json::to_writer(&mut stream, &st)?;
     info!("Wrote timing payload to {}.", peer_addr);
+    stream.shutdown(std::net::Shutdown::Both)?;
+    info!("Server shutdown.");
     Ok(())
 }
 
@@ -371,6 +373,14 @@ fn main() -> Result<()> {
                 .value_name("addr:port")
                 .help("SOCKS5 proxy address for a node to benchmark through as well (usually a Chutney node). Optional."),
         )
+        .arg(
+            Arg::new("listen")
+                .long("listen")
+                .action(ArgAction::Set)
+                .value_name("addr")
+                .default_value("127.0.0.1:0")
+                .help("IP address on which to bind a listening server"),
+        )
         .get_matches();
     info!("Parsing Arti configuration...");
     let mut config_sources = ConfigurationSources::new_empty();
@@ -392,9 +402,12 @@ fn main() -> Result<()> {
     let cfg = config_sources.load()?;
     let (_config, tcc) = tor_config::resolve::<ArtiCombinedConfig>(&cfg)?;
     info!("Binding local TCP listener...");
-    let listener = TcpListener::bind("0.0.0.0:0")?;
+    let Some(listen_addr) = matches.get_one::<String>("listen") else {
+        panic!("XXX");
+    };
+    let listener = TcpListener::bind(listen_addr)?;
     let local_addr = listener.local_addr()?;
-    let connect_addr = SocketAddr::new(IpAddr::from_str("127.0.0.1").unwrap(), local_addr.port());
+    let connect_addr = local_addr;
     info!("Bound to {}.", local_addr);
     let upload_bytes = *matches.get_one::<usize>("upload-bytes").unwrap();
     let download_bytes = *matches.get_one::<usize>("download-bytes").unwrap();
@@ -427,10 +440,13 @@ fn main() -> Result<()> {
         results: Default::default(),
     };
 
+    tracing::warn!("XXX starting without_arti");
     benchmark.without_arti()?;
     if let Some(addr) = matches.get_one::<String>("socks-proxy") {
+        tracing::warn!("XXX starting with_proxy");
         benchmark.with_proxy(addr)?;
     }
+    tracing::warn!("XXX starting with_arti");
     benchmark.with_arti(tcc)?;
 
     info!("Benchmarking complete.");
@@ -683,12 +699,14 @@ impl<R: ToplevelRuntime> Benchmark<R> {
     /// Benchmark through a SOCKS5 proxy at address `addr`.
     fn with_proxy(&mut self, addr: &str) -> Result<()> {
         let ca = self.connect_addr;
+        tracing::warn!("xxx with_proxy addr:{addr} ca:{ca}");
         let mut iso = StreamIsolationTracker::new(self.streams_per_circ);
 
         self.run(BenchmarkType::Socks, |run| {
             // Tor uses the username,password tuple of socks authentication do decide how to isolate streams.
             let iso_string = format!("{:?}", iso.next_in(run));
             async move {
+                tracing::warn!("xxx connect_with_pasword:{addr} ca:{ca} username:{iso_string} password:{iso_string}");
                 Socks5Stream::connect_with_password(addr, ca, &iso_string, &iso_string).await
             }
         })
