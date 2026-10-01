@@ -1291,14 +1291,15 @@ impl RouterDesc {
             .saturating_sub(time::Duration::new(ROUTER_PRE_VALIDITY_SECONDS, 0));
 
         let desc = RouterDesc {
-            router: RouterDescIntroItemConstructor {
-                nickname,
-                address: ipv4addr,
-                orport,
-                socksport: 0,
+            router: RouterDescIntroItem {
                 dirport,
-            }
-            .construct(),
+                ..RouterDescIntroItemConstructor {
+                    nickname,
+                    address: ipv4addr,
+                    orport,
+                }
+                .construct()
+            },
             identity_ed25519: EmbeddedCert::new(
                 Ed25519IdentityCert {
                     id_ed25519: ed25519_identity_key,
@@ -1724,14 +1725,15 @@ mod test {
         assert_eq!(rd.len(), 20);
         assert_eq!(
             rd[0].0.router,
-            RouterDescIntroItemConstructor {
-                nickname: "test002a".parse().unwrap(),
-                address: net::Ipv4Addr::LOCALHOST,
-                orport: 5102,
-                socksport: 0,
-                dirport: 7102
+            RouterDescIntroItem {
+                dirport: 7102,
+                ..RouterDescIntroItemConstructor {
+                    nickname: "test002a".parse().unwrap(),
+                    address: net::Ipv4Addr::LOCALHOST,
+                    orport: 5102,
+                }
+                .construct()
             }
-            .construct()
         );
         assert_eq!(
             rd[0].0.fingerprint.unwrap(),
@@ -1796,8 +1798,6 @@ mod test {
                 nickname: "foo".parse().unwrap(),
                 address: Ipv4Addr::LOCALHOST,
                 orport: 9000,
-                socksport: 0,
-                dirport: 0,
             }
             .construct(),
             identity_ed25519: Ed25519IdentityCert::new_signed(
