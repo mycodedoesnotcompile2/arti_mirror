@@ -4,6 +4,7 @@
 use std::num::NonZero;
 
 /// Module used to seal the traits declared here.
+#[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
 mod seal {
     /// A type to seal most of the traits here.
     pub trait Sealed {}

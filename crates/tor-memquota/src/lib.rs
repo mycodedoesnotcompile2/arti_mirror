@@ -259,6 +259,7 @@ pub mod mtracker;
 /// For trait sealing
 mod private {
     /// Inaccessible trait
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait Sealed {}
 }
 

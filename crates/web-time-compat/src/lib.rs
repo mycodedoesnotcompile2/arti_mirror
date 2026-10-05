@@ -73,7 +73,7 @@ pub use wasm::*;
 /// Module to hide "Sealed"
 mod seal {
     /// Trait used to prevent implementing InstantExt or SystemTimeExt outside of this crate.
-    #[allow(unreachable_pub)]
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait Sealed {}
 }
 

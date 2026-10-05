@@ -789,5 +789,6 @@ impl HasKind for std::convert::Infallible {
 /// Sealed
 mod sealed {
     /// Sealed
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait Sealed {}
 }
