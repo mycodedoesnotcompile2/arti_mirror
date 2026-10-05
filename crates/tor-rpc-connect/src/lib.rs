@@ -64,7 +64,7 @@ mod testing;
 
 use std::{io, sync::Arc};
 
-pub use connpt::{ParsedConnectPoint, ResolveError, ResolvedConnectPoint};
+pub use connpt::{ParseError, ParsedConnectPoint, ResolveError, ResolvedConnectPoint};
 use tor_general_addr::general;
 
 /// An action that an RPC client should take when a connect point fails.
