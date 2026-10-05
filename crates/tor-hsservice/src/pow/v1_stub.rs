@@ -14,7 +14,7 @@ use tor_persist::{
 };
 use tor_rtcompat::Runtime;
 
-use crate::{OnionServiceConfig, RendRequest, StartupError, status::StatusSender};
+use crate::{OnionServiceConfig, RendRequest, StartupError, status::PowManagerStatusSender};
 
 use super::NewPowManager;
 
