@@ -190,7 +190,7 @@ impl Instruction {
 
 /// Generated `HashX` program, as a boxed array of instructions
 #[derive(Clone)]
-pub struct Program(Box<InstructionArray>);
+pub(crate) struct Program(Box<InstructionArray>);
 
 impl fmt::Debug for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
