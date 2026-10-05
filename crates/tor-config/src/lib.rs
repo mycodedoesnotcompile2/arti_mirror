@@ -80,7 +80,9 @@ pub mod deps {
 }
 
 pub use cmdline::CmdLine;
-pub use err::{ConfigBuildError, ConfigError, ConfigGetValueError, ReconfigureError};
+pub use err::{
+    ConfigBuildError, ConfigError, ConfigGetValueError, ConfigLoadError, ReconfigureError,
+};
 pub use flatten::{Flatten, Flattenable};
 pub use list_builder::{MultilineListBuilder, MultilineListBuilderError};
 pub use listen::*;
