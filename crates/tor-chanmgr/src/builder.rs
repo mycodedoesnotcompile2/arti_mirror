@@ -227,7 +227,7 @@ where
         memquota: ChannelAccount,
     ) -> crate::Result<Arc<tor_proto::channel::Channel>> {
         use tor_linkspec::OwnedChanTargetBuilder;
-        use tor_proto::relay::MaybeVerifiableRelayResponderChannel;
+        use tor_rtcompat::SleepProviderExt;
 
         // Note that as we accept a connection, we don't expect any specific identities and so we
         // can only build a target from the peer address. This means that the verification process
@@ -237,6 +237,40 @@ where
             .addrs(vec![peer.into_inner()])
             .build()
             .map_err(|e| internal!("Unable to build chan target from peer sockaddr: {e}"))?;
+
+        // Don't let a peer hold a half-finished handshake open forever.
+        //
+        // TODO: make this an option.  And make a better value.
+        let delay = Duration::from_secs(30);
+
+        self.runtime
+            .timeout(
+                delay,
+                self.accept_no_timeout(peer, stream, &target_no_ids, memquota),
+            )
+            .await
+            .map_err(|_| Error::ChanTimeout {
+                peer: target_no_ids.to_logged(),
+            })?
+    }
+}
+
+impl<R: Runtime, H: TransportImplHelper> ChanBuilder<R, H>
+where
+    R: tor_rtcompat::TlsProvider<H::Stream> + Send + Sync,
+    H: Send + Sync,
+{
+    /// Perform the work of `accept_from_transport`, but without enforcing a timeout.
+    #[cfg(feature = "relay")]
+    async fn accept_no_timeout(
+        &self,
+        peer: Sensitive<std::net::SocketAddr>,
+        stream: H::Stream,
+        target_no_ids: &OwnedChanTarget,
+        memquota: ChannelAccount,
+    ) -> crate::Result<Arc<tor_proto::channel::Channel>> {
+        use tor_proto::relay::MaybeVerifiableRelayResponderChannel;
+
         // Convert into a PeerAddr but keep it sensitive, this can be a client/bridge.
         let peer_addr: MaybeSensitive<PeerAddr> =
             MaybeSensitive::sensitive(peer.into_inner().into());
@@ -292,20 +326,20 @@ where
             )
             .handshake(|| self.runtime.wallclock())
             .await
-            .map_err(|e| map_proto(e, &target_no_ids, None))?;
+            .map_err(|e| map_proto(e, target_no_ids, None))?;
 
         let (chan, reactor) = match unverified {
             MaybeVerifiableRelayResponderChannel::Verifiable(c) => {
                 let clock_skew = c.clock_skew();
                 let now = self.runtime.wallclock();
-                c.verify(&target_no_ids, &our_cert, Some(now))
-                    .map_err(|e| map_proto(e, &target_no_ids, Some(clock_skew)))?
+                c.verify(target_no_ids, &our_cert, Some(now))
+                    .map_err(|e| map_proto(e, target_no_ids, Some(clock_skew)))?
                     .finish()
                     .await
-                    .map_err(|e| map_proto(e, &target_no_ids, Some(clock_skew)))?
+                    .map_err(|e| map_proto(e, target_no_ids, Some(clock_skew)))?
             }
             MaybeVerifiableRelayResponderChannel::NonVerifiable(c) => {
-                c.finish().map_err(|e| map_proto(e, &target_no_ids, None))?
+                c.finish().map_err(|e| map_proto(e, target_no_ids, None))?
             }
         };
 
@@ -318,13 +352,7 @@ where
 
         Ok(chan)
     }
-}
 
-impl<R: Runtime, H: TransportImplHelper> ChanBuilder<R, H>
-where
-    R: tor_rtcompat::TlsProvider<H::Stream> + Send + Sync,
-    H: Send + Sync,
-{
     /// Perform the work of `connect_via_transport`, but without enforcing a timeout.
     ///
     /// Return a [`Channel`](tor_proto::channel::Channel) on success.
