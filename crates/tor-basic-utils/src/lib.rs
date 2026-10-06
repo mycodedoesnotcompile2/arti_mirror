@@ -67,7 +67,7 @@ pub mod test_rng;
 pub mod token_bucket;
 
 mod byte_qty;
-pub use byte_qty::ByteQty;
+pub use byte_qty::{ByteQty, InvalidByteQty};
 
 pub use paste::paste;
 
