@@ -167,23 +167,23 @@ impl Aggregate<PlainPreamble> for DocRelayFlags {
             // authorities who care about that flag."
             .iter_incl_unknown()?
             .try_filter(|flag| {
-                    // Check the votes' opinions about `flag`
-                    let mut tally = [0_usize; 2];
-                    for (vnum, vote_rs_flags) in inputs.clone() {
-                        let vote_known_flags = &context.votes.vote(vnum)?.preamble.known_flags;
-                        if !vote_known_flags.contains_incl_unknown(flag)? {
-                            // This authority didn't advertise this flag as one it knows about.
-                            // It's possible that it is included in that authority's vote for this
-                            // relay anyway; if so we disregard it.
-                            continue;
-                        }
-                        let is_in_favour: bool = vote_rs_flags.contains_incl_unknown(flag)?;
-                        let update = &mut tally[usize::from(is_in_favour)];
-                        // can't overflow, but let's use saturating add anyway
-                        *update = update.saturating_add(1);
+                // Check the votes' opinions about `flag`
+                let mut tally = [0_usize; 2];
+                for (vnum, vote_rs_flags) in inputs.clone() {
+                    let vote_known_flags = &context.votes.vote(vnum)?.preamble.known_flags;
+                    if !vote_known_flags.contains_incl_unknown(flag)? {
+                        // This authority didn't advertise this flag as one it knows about.
+                        // It's possible that it is included in that authority's vote for this
+                        // relay anyway; if so we disregard it.
+                        continue;
                     }
-                    let y = tally[1] > tally[0];
-                    Ok::<_, Bug>(y)
+                    let is_in_favour: bool = vote_rs_flags.contains_incl_unknown(flag)?;
+                    let update = &mut tally[usize::from(is_in_favour)];
+                    // can't overflow, but let's use saturating add anyway
+                    *update = update.saturating_add(1);
+                }
+                let y = tally[1] > tally[0];
+                Ok::<_, Bug>(y)
             })
             .try_collect()?;
 
