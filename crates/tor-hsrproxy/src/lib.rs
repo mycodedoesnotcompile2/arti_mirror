@@ -56,4 +56,4 @@ pub mod config;
 mod proxy;
 
 pub use config::ProxyConfig;
-pub use proxy::OnionServiceReverseProxy;
+pub use proxy::{HandleRequestsError, OnionServiceReverseProxy};
