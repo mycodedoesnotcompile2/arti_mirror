@@ -6,3 +6,4 @@ ADDED: `DocRelayFlags` impl `FromIterator<DocRelayFlag>`
 ADDED: `SupersededAuthorityKey::from_dir_source_and_key`
 ADDED: `netstatus::ConsensusAuthoritySectionConstructor`, `DirSourceConstructor`
 ADDED: `ProtoStatusesConstructor`; `ProtoStatuses` fields are now `pub`
+ADDED: `ProtoStatusConstructor`; `ProtoStatus` fields are now `pub`
