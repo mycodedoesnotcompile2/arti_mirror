@@ -25,13 +25,16 @@ impl ConsensusesFromVotes<()> for netstatus::vote::Preamble {
         calc! { both.params = Default::default() }
         calc! { both.proto_statuses = Default::default() }
         calc! { both.voting_delay }
+        calc! { both.client_versions }
+        calc! { both.server_versions }
+        calc! { both.shared_rand = Default::default() }
 
         Ok(construct_both! {
             netstatus::plain::Preamble, netstatus::md::Preamble {
                 both. lifetime, consensus_method, consensus_methods, published;
                 both. known_flags, params, proto_statuses, voting_delay;
             } {
-                // TODO DIRAUTH Preamble fields missing
+                both. client_versions, server_versions, shared_rand;
             }
         })
     }
@@ -95,4 +98,34 @@ pub(super) fn doc_relay_flags_union<'i>(
         .map(|(_vnum, flags)| flags.iter_incl_unknown())
         .flatten_ok()
         .process_results(|flag_iters| flag_iters.unique().collect())?)
+}
+
+impl<AC> Aggregate<AC> for netstatus::RecommendedTorVersions {
+    type Output = Self;
+
+    fn aggregate<'i>(
+        _context: ConsensusContextRefs<AC>,
+        inputs: impl ComponentInVotes<&'i Self>,
+    ) -> Result<Self, ConsensusError>
+    where
+        Self: 'i,
+    {
+        let inputs = inputs.map(|(_vnum, i)| i).filter(|i| i.is_known());
+
+        Ok(inputs
+            .clone()
+            .flat_map(|i| i.iter())
+            .unique()
+            .try_filter(|k| {
+                is_true_for_more_than_half_of(
+                    //
+                    inputs.clone(),
+                    |i| Ok::<_, Bug>(i.contains(&**k)),
+                )
+            })
+            .process_results(|ks| netstatus::RecommendedTorVersions::from_iter(ks))?
+            .map_err(into_internal!(
+                "passed through software version was invalid"
+            ))?)
+    }
 }
