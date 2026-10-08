@@ -54,6 +54,9 @@
 use caret::caret_int;
 
 use derive_deftly::Deftly;
+use itertools::chain;
+use std::borrow::Cow;
+use std::collections::BTreeMap;
 use thiserror::Error;
 use tor_basic_utils::intern::{GloballyInternable as _, Intern};
 
@@ -203,30 +206,56 @@ impl tor_bytes::Writeable for NumberedSubver {
     }
 }
 
+/// Known or unknown protocol
+#[derive(Eq, PartialEq, Clone, Debug, Hash, Ord, PartialOrd, derive_more::Display)]
+#[display("{_0}")]
+pub struct Protocol(ProtocolInner<'static>);
+
 /// Representation for a known or unknown protocol.
-#[derive(Eq, PartialEq, Clone, Debug, Hash, Ord, PartialOrd)]
-enum Protocol {
+#[derive(Eq, PartialEq, Clone, Debug, Hash, Ord, PartialOrd, derive_more::Display)]
+enum ProtocolInner<'s> {
     /// A known protocol; represented by one of ProtoKind.
     ///
     /// ProtoKind must always be in the range 0..N_RECOGNIZED.
+    #[display("{_0}")]
     Proto(ProtoKind),
     /// An unknown protocol; represented by its name.
-    Unrecognized(String),
+    ///
+    /// Invariant: is legal syntax, is not a recognized name
+    #[display("{_0}")]
+    Unrecognized(Cow<'s, str>),
 }
 
 impl Protocol {
     /// Return true iff `s` is the name of a protocol we do not recognize.
     fn is_unrecognized(&self, s: &str) -> bool {
-        match self {
-            Protocol::Unrecognized(s2) => s2 == s,
+        match &self.0 {
+            ProtocolInner::Unrecognized(s2) => s2 == s,
             _ => false,
         }
     }
-    /// Return a string representation of this protocol.
-    fn to_str(&self) -> &str {
+}
+
+impl<'s> ProtocolInner<'s> {
+    /// Borrow from a `ProtocolInner`
+    ///
+    /// Gives a new owned `ProtocolInner` which borrows from `self`.
+    fn as_ref(&self) -> ProtocolInner<'_> {
+        use ProtocolInner as PI;
         match self {
-            Protocol::Proto(k) => k.to_str().unwrap_or("<bug>"),
-            Protocol::Unrecognized(s) => s,
+            PI::Proto(p) => PI::Proto(*p),
+            PI::Unrecognized(u) => PI::Unrecognized(Cow::Borrowed(u.as_ref())),
+        }
+    }
+
+    /// Borrow from a `ProtocolInner`
+    ///
+    /// Gives a new owned `ProtocolInner` which borrows from `self`.
+    fn into_static(self) -> ProtocolInner<'static> {
+        use ProtocolInner as PI;
+        match self {
+            PI::Proto(p) => PI::Proto(p),
+            PI::Unrecognized(u) => PI::Unrecognized(u.to_string().into()),
         }
     }
 }
@@ -241,10 +270,10 @@ impl std::str::FromStr for Protocol {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match ProtoKind::from_name(s) {
-            Some(p) => Ok(Protocol::Proto(p)),
+            Some(p) => Ok(Protocol(ProtocolInner::Proto(p))),
             None => {
                 if is_valid_proto_name(s) {
-                    Ok(Protocol::Unrecognized(s.to_string()))
+                    Ok(Protocol(ProtocolInner::Unrecognized(s.to_string().into())))
                 } else {
                     Err(ParseError::Malformed)
                 }
@@ -568,8 +597,8 @@ impl ProtocolsInner {
         ent: SubprotocolEntry,
         strictness: ParseStrictness,
     ) -> Result<(), ParseError> {
-        match ent.proto {
-            Protocol::Proto(k) => {
+        match &ent.proto.0 {
+            ProtocolInner::Proto(k) => {
                 let idx = k.get() as usize;
                 assert!(idx < N_RECOGNIZED); // guaranteed by invariant on Protocol::Proto
                 let bit = 1 << u64::from(k.get());
@@ -582,7 +611,7 @@ impl ProtocolsInner {
                 *foundmask |= bit;
                 self.recognized[idx] = ent.supported;
             }
-            Protocol::Unrecognized(_) => {
+            ProtocolInner::Unrecognized(_) => {
                 if ent.supported != 0 {
                     self.unrecognized.push(ent);
                 }
@@ -817,24 +846,75 @@ fn dumpmask(mut mask: u64) -> String {
 impl std::fmt::Display for Protocols {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut entries = Vec::new();
-        for (idx, mask) in self.0.recognized.iter().enumerate() {
-            if *mask != 0 {
-                let pk: ProtoKind = (idx as u8).into();
-                entries.push(format!("{}={}", pk, dumpmask(*mask)));
-            }
-        }
-        for ent in &self.0.unrecognized {
-            if ent.supported != 0 {
-                entries.push(format!(
-                    "{}={}",
-                    ent.proto.to_str(),
-                    dumpmask(ent.supported)
-                ));
-            }
+        for (pk, mask) in self.iter_masks() {
+            let mask = &mask;
+            entries.push(format!("{}={}", pk, dumpmask(*mask)));
         }
         // This sort is required.
         entries.sort();
         write!(f, "{}", entries.join(" "))
+    }
+}
+
+impl Protocols {
+    /// Iterate over all capabilities, known and unknown
+    ///
+    /// Yields each capability separately, as name (`Protocol`) and and number
+    fn iter_masks(&self) -> impl Iterator<Item = (ProtocolInner<'_>, u64)> + Clone {
+        chain!(
+            self.0.recognized.iter().enumerate().map(|(idx, mask)| {
+                let pk = ProtocolInner::Proto((idx as u8).into());
+                (pk, *mask)
+            }),
+            self.0
+                .unrecognized
+                .iter()
+                .map(|ent| (ent.proto.0.as_ref(), ent.supported)),
+        )
+        .filter(|(_idx, mask)| *mask != 0)
+    }
+
+    /// Iterate over all the specified capabilities
+    ///
+    /// Yields each capability separately, as name (`Protocol`) and and number.
+    /// Output is in an arbitrary order.
+    pub fn iter_all(&self) -> impl Iterator<Item = (Protocol, u8)> + Clone {
+        self.iter_masks().flat_map(|(kind, mask)| {
+            (0..64)
+                .into_iter()
+                .filter(move |bit_index| {
+                    let bit = 1_u64 << bit_index;
+                    (mask & bit) != 0
+                })
+                .map(move |bit_index| (Protocol(kind.clone().into_static()), bit_index))
+        })
+    }
+}
+
+impl FromIterator<(Protocol, u8)> for Protocols {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = (Protocol, u8)>,
+    {
+        let mut out = BTreeMap::<Protocol, u64>::new();
+        for (proto, bit_index) in iter {
+            *out.entry(proto).or_default() |= 1_u64 << bit_index;
+        }
+        let mut recognized = [0_u64; N_RECOGNIZED];
+        let mut unrecognized = vec![];
+        for (proto, supported) in out {
+            match proto.0 {
+                ProtocolInner::Proto(proto) => recognized[proto.get() as usize] = supported,
+                ProtocolInner::Unrecognized(_) => {
+                    unrecognized.push(SubprotocolEntry { proto, supported });
+                }
+            };
+        }
+        ProtocolsInner {
+            recognized,
+            unrecognized,
+        }
+        .into()
     }
 }
 
@@ -1132,6 +1212,19 @@ mod test {
         .into_iter()
         .collect::<Protocols>();
         assert_eq!(prs, "Link=3-5 HSDir=2 Conflux=1".parse().unwrap());
+    }
+
+    #[test]
+    fn from_iter_all() -> Result<(), ParseError> {
+        let p1: Protocols = "Link=1-10 Desc=5-10 Relay=1,3,5,7,9 Other=7-60 Mine=1-20".parse()?;
+        let p2 = p1.iter_all().collect::<Protocols>();
+        assert_eq!(p1, p2);
+
+        let p3 = std::iter::repeat_n(p1.iter_all(), 3)
+            .flatten()
+            .collect::<Protocols>();
+        assert_eq!(p1, p3);
+        Ok(())
     }
 
     #[test]
