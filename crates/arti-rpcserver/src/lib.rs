@@ -5,6 +5,7 @@
 #![warn(missing_docs)]
 #![warn(noop_method_call)]
 #![warn(unreachable_pub)]
+#![warn(unnameable_types)]
 #![warn(clippy::all)]
 #![deny(clippy::await_holding_lock)]
 #![deny(clippy::cargo_common_metadata)]
@@ -62,7 +63,8 @@ mod session;
 mod stream;
 
 pub use connection::{Connection, ConnectionError, auth::RpcAuthentication};
-pub use mgr::RpcMgr;
+pub use err::RequestParseError;
+pub use mgr::{RpcMgr, RpcMgrError};
 pub use session::RpcSession;
 
 /// Return a list of RPC methods that will be needed to use `arti-rpcserver` with the given runtime.

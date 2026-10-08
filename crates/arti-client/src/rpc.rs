@@ -182,7 +182,7 @@ dyn_clone::clone_trait_object!(ClientConnectionError);
 /// module to seal the ClientConnectionError trait.
 mod seal {
     /// hidden trait to seal the ClientConnectionError trait.
-    #[allow(unreachable_pub)]
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait Sealed {}
 }
 

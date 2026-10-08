@@ -73,6 +73,7 @@ pub trait Isolation:
 /// Seal preventing implementation of Isolation not relying on IsolationHelper
 mod seal {
     /// Seal preventing implementation of Isolation not relying on IsolationHelper
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait Sealed {}
     impl<T: super::IsolationHelper> Sealed for T {}
 }

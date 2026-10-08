@@ -1488,6 +1488,7 @@ macro_rules! bld_magic_setter_docs {
 pub use bld_magic_setter_docs;
 
 /// Helper for sealing traits below.
+#[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
 mod seal {
     /// Used to seal ShouldBeCaughtAsSpecialCase.
     pub trait SealSpecialCase {}

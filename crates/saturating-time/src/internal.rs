@@ -25,6 +25,7 @@ static MAX_INSTANT: LazyLock<Instant> = LazyLock::new(find_max);
 static MIN_INSTANT: LazyLock<Instant> = LazyLock::new(find_min);
 
 /// An internal trait implementing the actual magic behind this.
+#[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
 pub trait SaturatingTime: Sized + Copy {
     /// Anchor method to obtain an instance of this type.
     fn anchor() -> Self;

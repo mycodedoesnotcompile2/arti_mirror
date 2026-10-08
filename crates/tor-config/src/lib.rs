@@ -6,6 +6,7 @@
 #![warn(missing_docs)]
 #![warn(noop_method_call)]
 #![warn(unreachable_pub)]
+#![warn(unnameable_types)]
 #![warn(clippy::all)]
 #![deny(clippy::await_holding_lock)]
 #![deny(clippy::cargo_common_metadata)]
@@ -79,7 +80,9 @@ pub mod deps {
 }
 
 pub use cmdline::CmdLine;
-pub use err::{ConfigBuildError, ConfigError, ConfigGetValueError, ReconfigureError};
+pub use err::{
+    ConfigBuildError, ConfigError, ConfigGetValueError, ConfigLoadError, ReconfigureError,
+};
 pub use flatten::{Flatten, Flattenable};
 pub use list_builder::{MultilineListBuilder, MultilineListBuilderError};
 pub use listen::*;

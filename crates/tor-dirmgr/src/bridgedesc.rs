@@ -170,6 +170,7 @@ mod mockable {
     /// Not nameable (and therefore not implementable)
     /// outside the `bridgedesc` module,
     #[async_trait]
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait MockableAPI<R>: Clone + Send + Sync + 'static {
         /// Circuit manager
         type CircMgr: Send + Sync + 'static;

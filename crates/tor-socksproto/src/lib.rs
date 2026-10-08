@@ -6,6 +6,7 @@
 #![warn(missing_docs)]
 #![warn(noop_method_call)]
 #![warn(unreachable_pub)]
+#![warn(unnameable_types)]
 #![warn(clippy::all)]
 #![deny(clippy::await_holding_lock)]
 #![deny(clippy::cargo_common_metadata)]
@@ -71,8 +72,8 @@ pub use handshake::framework::{
 pub use SocksProxyHandshake as SocksHandshake;
 
 pub use msg::{
-    SocksAddr, SocksAuth, SocksCmd, SocksHostname, SocksReply, SocksRequest, SocksStatus,
-    SocksVersion,
+    InvalidSocksVersion, SocksAddr, SocksAuth, SocksCmd, SocksHostname, SocksReply, SocksRequest,
+    SocksStatus, SocksVersion,
 };
 pub use tor_error::Truncated;
 
