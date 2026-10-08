@@ -72,9 +72,9 @@ impl<'i> ResolvedRouterStatusInputs<'i> {
             return Ok(None);
         }
         calc! { both.flags = out_flags.clone() }
+        calc! { both.protos }
 
         // TODO DIRAUTH replace routerstatus dummy values
-        calc! { both.protos = Default::default() }
         calc! { md.m = [0; 32].into() }
 
         let (plain, md) = construct_both! {
@@ -206,6 +206,25 @@ impl Aggregate<RouterStatusAC<'_>> for DocRelayFlags {
         }
 
         Ok(out)
+    }
+}
+
+impl Aggregate<RouterStatusAC<'_>> for tor_protover::Protocols {
+    type Output = Self;
+
+    fn aggregate<'i>(
+        context: ConsensusContextRefs<RouterStatusAC<'_>>,
+        inputs: impl ComponentInVotes<&'i Self>,
+    ) -> Result<Self::Output, ConsensusError>
+    where
+        Self: 'i,
+    {
+        Ok(functions::choose_most_popular_amongst_votes(
+            context,
+            inputs,
+            |pr: &tor_protover::Protocols| pr.to_string(),
+        )?
+        .unwrap_or_default())
     }
 }
 
