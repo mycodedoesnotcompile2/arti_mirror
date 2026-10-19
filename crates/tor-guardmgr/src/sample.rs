@@ -834,10 +834,6 @@ impl GuardSet {
         // _rather_ use are either down, or have had their circuit
         // attempts pending for too long.
 
-        let cutoff = now
-            .checked_sub(params.np_connect_timeout)
-            .expect("Can't subtract connect timeout from now.");
-
         for (src, guard) in self.preference_order() {
             if guard.guard_id() == guard_id {
                 return Some(true);
@@ -851,7 +847,7 @@ impl GuardSet {
                         return Some(false);
                     }
                     (_, Reachable::Untried | Reachable::Retriable) => {
-                        if guard.exploratory_attempt_after(cutoff) {
+                        if guard.exploratory_attempt_after(now, params.np_connect_timeout) {
                             return None;
                         }
                     }
