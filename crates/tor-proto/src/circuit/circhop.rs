@@ -533,7 +533,11 @@ impl CircHopOutbound {
         ))
     }
 
-    /// Close the stream associated with `id` because the stream was dropped.
+    /// Close the stream associated with `id`.
+    ///
+    /// `why` says why we're closing it: either all of its `StreamTarget`s were
+    /// dropped, or we were explicitly told to end it (for example, when
+    /// rejecting an incoming stream).
     ///
     /// If we have not already received an END cell on this stream, send one.
     /// If no END cell is specified, an END cell with the reason byte set to
