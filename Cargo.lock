@@ -7561,6 +7561,7 @@ name = "tor-dirserver"
 version = "0.47.0"
 dependencies = [
  "bytes",
+ "derive_more",
  "digest 0.10.7",
  "educe",
  "flate2",
