@@ -1,5 +1,8 @@
 //! Stub for configuration for OpenTelemetry exporter
 
+// Stub unit structs have no fields; see arti#2716
+#![allow(clippy::exhaustive_structs)]
+
 use derive_deftly::Deftly;
 use serde::{Deserialize, Serialize};
 use tor_config::derive::prelude::*;
