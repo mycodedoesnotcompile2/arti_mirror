@@ -429,3 +429,29 @@ impl futures::task::Spawn for TokioRuntimeHandle {
         Ok(())
     }
 }
+
+#[async_trait]
+impl<T: Send + 'static> JoinSet<T> for tokio_crate::task::JoinSet<T> {
+    fn spawn<F>(&mut self, task: F) -> Result<(), futures::task::SpawnError>
+    where
+        F: Future<Output = T> + Send + 'static,
+    {
+        let _ = self.spawn(task);
+        Ok(())
+    }
+
+    async fn join_next(&mut self) -> Option<IoResult<T>> {
+        Some(self.join_next().await?.map_err(std::io::Error::other))
+    }
+}
+
+impl JoinSetProvider for TokioRuntimeHandle {
+    type JoinSet<T: Send + Sync + 'static> = tokio_crate::task::JoinSet<T>;
+
+    fn new_join_set<T>(&self) -> Self::JoinSet<T>
+    where
+        T: Send + Sync + 'static,
+    {
+        tokio_crate::task::JoinSet::new()
+    }
+}
