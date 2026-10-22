@@ -54,6 +54,7 @@
 #![warn(missing_docs)]
 #![warn(noop_method_call)]
 #![warn(unreachable_pub)]
+#![warn(unnameable_types)]
 #![warn(clippy::all)]
 #![deny(clippy::await_holding_lock)]
 #![deny(clippy::cargo_common_metadata)]

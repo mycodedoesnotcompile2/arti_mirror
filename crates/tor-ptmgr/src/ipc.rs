@@ -499,6 +499,7 @@ pub(crate) mod sealed {
 
     /// Defines some helper methods that are required later on
     #[async_trait::async_trait]
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait PluggableTransportPrivate {
         /// Return the [`AsyncPtChild`] if it exists
         fn inner(&mut self) -> Result<&mut AsyncPtChild, PtError>;

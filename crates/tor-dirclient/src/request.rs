@@ -42,6 +42,7 @@ pub(crate) mod sealed {
 
     /// Sealed trait to help implement [`Requestable`](super::Requestable): not
     /// visible outside this crate, so we can change its methods however we like.
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait RequestableInner: Send + Sync {
         /// Build an [`http::Request`] from this Requestable, if
         /// it is well-formed.

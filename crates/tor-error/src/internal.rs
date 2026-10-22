@@ -172,6 +172,7 @@ impl<T> Sealed for Result<T, Bug> {}
 // Separate from crate::sealed::Sealed because that has wide blanket impls which we don't want
 mod sealed {
     /// Sealed
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait Sealed {}
 }
 use sealed::Sealed;
