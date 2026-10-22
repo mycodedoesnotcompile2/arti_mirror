@@ -69,6 +69,7 @@ pub trait Runtime:
     + Send
     + Spawn
     + Blocking
+    + JoinSetProvider
     + Clone
     + SleepProvider
     + CoarseTimeProvider
@@ -86,6 +87,7 @@ impl<T> Runtime for T where
         + Send
         + Spawn
         + Blocking
+        + JoinSetProvider
         + Clone
         + SleepProvider
         + CoarseTimeProvider
@@ -96,6 +98,41 @@ impl<T> Runtime for T where
         + Debug
         + 'static
 {
+}
+
+/// Trait representing a collection of tasks spawned on a [`Runtime`].
+#[async_trait]
+pub trait JoinSet<T>: Send + Sync + 'static {
+    /// Spawn the provided `task` on the runtime .
+    ///
+    /// The provided `task` will start executing in the background immediately,
+    /// even if you don't call [`JoinSet::join_next`].
+    fn spawn<F>(&mut self, task: F) -> Result<(), SpawnError>
+    where
+        F: Future<Output = T> + Send + 'static;
+
+    /// Wait until one of the tasks completes, and return its output.
+    ///
+    /// Returns `None` if there are currently no tasks in this set.
+    ///
+    /// This function is cancel-safe, and therefore safe to use in a `select!` branch.
+    async fn join_next(&mut self) -> Option<IoResult<T>>;
+}
+
+/// Trait for a runtime that can create [`JoinSet`]s.
+pub trait JoinSetProvider: Clone + Send + Sync + 'static {
+    /// The [`JoinSet`] type of this runtime.
+    type JoinSet<T: Send + Sync + 'static>: JoinSet<T>;
+
+    /// Create a new [`JoinSet`] for use with this runtime.
+    ///
+    /// Important: the resulting `JoinSet` should only be used
+    /// from the context of the runtime it was created for.
+    /// Using the `JoinSet` with a different runtime can lead to panics,
+    /// and other undesirable behavior.
+    fn new_join_set<T>(&self) -> Self::JoinSet<T>
+    where
+        T: Send + Sync + 'static;
 }
 
 /// A runtime that we can use to run Tor as a client.
