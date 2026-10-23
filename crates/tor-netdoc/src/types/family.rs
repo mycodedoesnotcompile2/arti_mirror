@@ -61,7 +61,11 @@ impl RelayFamily {
 
     /// Does this family include the given relay?
     pub fn contains(&self, rsa_id: &RsaIdentity) -> bool {
-        self.0.contains(&LongIdent(*rsa_id))
+        // Relay identities are public, so we don't need `RsaIdentity`'s constant-time `==` here.
+        // Path selection calls this for every candidate relay, and some families are very large,
+        // so comparing the bytes directly is much cheaper.
+        let wanted = rsa_id.as_bytes();
+        self.0.iter().any(|id| id.0.as_bytes() == wanted)
     }
 
     /// Return an iterator over the RSA identity keys listed in this
