@@ -25,6 +25,24 @@ impl Listen {
     }
 }
 
+/// Listen on the given port on all IPv4 and IPv6 interfaces.
+impl TryFrom<u16> for Listen {
+    type Error = ListenError;
+
+    fn try_from(port: u16) -> Result<Self, Self::Error> {
+        if port == 0 {
+            return Err(ListenError::InvalidPort { ip: None, port });
+        }
+        let addrs: [IpAddr; 2] = [Ipv4Addr::UNSPECIFIED.into(), Ipv6Addr::UNSPECIFIED.into()];
+        Ok(Self(
+            addrs
+                .into_iter()
+                .map(|ip| SocketAddr::new(ip, port))
+                .collect(),
+        ))
+    }
+}
+
 /// A deserialize helper for [`Listen`].
 ///
 /// This is a `Listen` that has not yet been validated.
@@ -47,17 +65,7 @@ impl TryFrom<UncheckedListen> for Listen {
         // We also don't want an "auto" port option at the moment.
         // TODO: Maybe accept and handle network interface names to bind to.
         match from {
-            UncheckedListen::Port(port @ 0) => Err(ListenError::InvalidPort { ip: None, port }),
-            UncheckedListen::Port(port) => {
-                // Listen at 0.0.0.0 and [::].
-                let addrs: [IpAddr; 2] =
-                    [Ipv4Addr::UNSPECIFIED.into(), Ipv6Addr::UNSPECIFIED.into()];
-                let addrs = addrs
-                    .into_iter()
-                    .map(|ip| SocketAddr::new(ip, port))
-                    .collect();
-                Ok(Self(addrs))
-            }
+            UncheckedListen::Port(port) => Self::try_from(port),
             UncheckedListen::Addr(addrs) => {
                 // Ensure that no address had a port of 0.
                 for addr in &addrs {
