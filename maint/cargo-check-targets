@@ -67,26 +67,29 @@ function usage()
 {
     cat <<EOF
 ${SCRIPT_NAME}: Check arti for many targets, with parameters minimizing dependencies
-on platform dependent tooling.
+on platform dependent tooling. By default no targets are selected.
    Usage:
-  cargo_check_target [opts] : Run cargo check for many targets.
+  cargo_check_target [opts] [additional_target ...] : Run cargo check for many targets.
 
 Options:
   -h: Print this message.
-  -i: Install the target if they are missing
-  -l: Longer test, test ${#MAINTAINED_PLATFORMS[@]} targets instead of ${#SUPPORTTARGETED_PLATFORMS[@]}.
+  -i: Install the target if they are missing.
+  -s: Shorter test, test ${#SUPPORTTARGETED_PLATFORMS[@]} targets.
+  -l: Longer test, test ${#MAINTAINED_PLATFORMS[@]} targets.
 EOF
 }
 
 install=no
-to_build=("${SUPPORTTARGETED_PLATFORMS[@]}")
+to_build=()
 
-while getopts "hil" opt ; do
+while getopts "hisl" opt ; do
     case "$opt" in
         h) usage
 	   exit 0
 	   ;;
 	i) install=yes
+	   ;;
+	s) to_build=("${SUPPORTTARGETED_PLATFORMS[@]}")
 	   ;;
 	l) to_build=("${MAINTAINED_PLATFORMS[@]}")
 	   ;;
@@ -95,6 +98,13 @@ while getopts "hil" opt ; do
            ;;
     esac
 done
+
+# add any additional provided targets
+to_build+=("${@:$OPTIND}")
+
+if [ ${#to_build[@]} -eq 0 ]; then
+	echo "Warning: No targets provided."
+fi
 
 if [ "$install" = "yes" ]; then
 	rustup target add "${to_build[@]}"
