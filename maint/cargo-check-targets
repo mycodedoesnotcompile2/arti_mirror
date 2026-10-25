@@ -117,4 +117,3 @@ for target in "${to_build[@]}" ; do
 	# don't include "compression" as it requires a C compiler for the given target
 	PKG_CONFIG_ALLOW_CROSS=1 cargo check -p arti --no-default-features --features tokio,native-tls,dns-proxy,harden --target "$target"
 done
-rm "$CC"
