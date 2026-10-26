@@ -235,7 +235,7 @@ impl SleepProvider for SmolRuntime {
         Box::pin(async_io::Timer::after(duration).map(|_| ()))
     }
     fn sleep_until(&self, deadline: Instant) -> Self::SleepFuture {
-        todo!("XXX")
+        Box::pin(async_io::Timer::at(deadline).map(|_| ()))
     }
 }
 
