@@ -219,7 +219,7 @@ impl SleepProvider for TokioRuntimeHandle {
     }
 
     fn sleep_until(&self, deadline: Instant) -> Self::SleepFuture {
-        todo!("XXX")
+        tokio_crate::time::sleep_until(deadline.into())
     }
 }
 
