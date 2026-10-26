@@ -428,6 +428,12 @@ impl SleepProvider for MockSleepProvider {
     fn sleep(&self, duration: Duration) -> Self::SleepFuture {
         let mut provider = self.state.lock().expect("Poisoned lock for state");
         let when = provider.core.instant() + duration;
+        drop(provider);
+        self.sleep_until(when)
+    }
+
+    fn sleep_until(&self, when: Instant) -> Self::SleepFuture {
+        let mut provider = self.state.lock().expect("Poisoned lock for state");
         // We're making a new sleeper, so register this in the state.
         provider.sleepers_made += 1;
         trace!(
@@ -440,10 +446,6 @@ impl SleepProvider for MockSleepProvider {
             inserted: false,
             provider: Arc::downgrade(&self.state),
         }
-    }
-
-    fn sleep_until(&self, when: Instant) -> Self::SleepFuture {
-        todo!("XXX")
     }
 
     fn block_advance<T: Into<String>>(&self, reason: T) {
