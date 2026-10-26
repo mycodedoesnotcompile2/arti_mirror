@@ -197,9 +197,11 @@ impl SleepProvider for Provider {
     type SleepFuture = SleepFuture;
 
     fn sleep(&self, d: Duration) -> SleepFuture {
-        let mut state = self.lock();
-        let until = state.core.instant() + d;
-        drop(state);
+        let until = {
+            let state = self.lock();
+            state.core.instant() + d
+        };
+
         self.sleep_until(until)
     }
 

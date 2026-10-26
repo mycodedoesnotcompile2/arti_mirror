@@ -426,9 +426,10 @@ impl SleepSchedule {
 impl SleepProvider for MockSleepProvider {
     type SleepFuture = Sleeping;
     fn sleep(&self, duration: Duration) -> Self::SleepFuture {
-        let mut provider = self.state.lock().expect("Poisoned lock for state");
-        let when = provider.core.instant() + duration;
-        drop(provider);
+        let when = {
+            let provider = self.state.lock().expect("Poisoned lock for state");
+            provider.core.instant() + duration
+        };
         self.sleep_until(when)
     }
 
