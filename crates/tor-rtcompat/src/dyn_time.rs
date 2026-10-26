@@ -51,6 +51,7 @@ trait DynProvider: DynClone + Send + Sync + 'static {
     fn dyn_now(&self) -> Instant;
     fn dyn_wallclock(&self) -> SystemTime;
     fn dyn_sleep(&self, duration: Duration) -> DynSleepFuture;
+    fn dyn_sleep_until(&self, deadline: Instant) -> DynSleepFuture;
 
     // SleepProvider testing stuff
     fn dyn_block_advance(&self, reason: String);
@@ -147,6 +148,10 @@ impl<R: SleepProvider + CoarseTimeProvider> DynProvider for R {
     fn dyn_sleep(&self, duration: Duration) -> DynSleepFuture {
         Box::pin(self.sleep(duration))
     }
+
+    fn dyn_sleep_until(&self, deadline: Instant) -> DynSleepFuture {
+        Box::pin(self.sleep_until(deadline))
+    }
 }
 
 //---------- impl SleepProvider and CoarseTimeProvider for DynTimeProvider ----------
@@ -192,7 +197,10 @@ impl SleepProvider for DynTimeProvider {
     }
 
     fn sleep_until(&self, deadline: Instant) -> DynSleepFuture {
-        todo!("XXX")
+        match &self.0 {
+            Impl::Preferred(p) => with_preferred_runtime!(p; Box::pin(p.sleep_until(deadline))),
+            Impl::Dyn(p) => p.dyn_sleep_until(deadline),
+        }
     }
 }
 
