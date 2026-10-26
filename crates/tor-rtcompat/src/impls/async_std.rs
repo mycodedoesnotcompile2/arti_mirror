@@ -199,6 +199,7 @@ mod net {
 use futures::{Future, FutureExt};
 use std::pin::Pin;
 use std::time::Duration;
+use web_time_compat::Instant;
 
 use crate::traits::*;
 
@@ -211,6 +212,9 @@ impl SleepProvider for async_executors::AsyncStd {
     type SleepFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
     fn sleep(&self, duration: Duration) -> Self::SleepFuture {
         Box::pin(async_io::Timer::after(duration).map(|_| ()))
+    }
+    fn sleep_until(&self, deadline: Instant) -> Self::SleepFuture {
+        todo!("XXX")
     }
 }
 

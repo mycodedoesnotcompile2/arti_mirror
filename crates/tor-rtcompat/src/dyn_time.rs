@@ -190,6 +190,10 @@ impl SleepProvider for DynTimeProvider {
             Impl::Dyn(p) => p.dyn_sleep(duration),
         }
     }
+
+    fn sleep_until(&self, deadline: Instant) -> DynSleepFuture {
+        todo!("XXX")
+    }
 }
 
 impl CoarseTimeProvider for DynTimeProvider {

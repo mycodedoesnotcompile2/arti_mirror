@@ -175,6 +175,11 @@ where
     }
 
     #[inline]
+    fn sleep_until(&self, deadline: Instant) -> Self::SleepFuture {
+        self.inner.sleep.sleep_until(deadline)
+    }
+
+    #[inline]
     fn now(&self) -> Instant {
         self.inner.sleep.now()
     }

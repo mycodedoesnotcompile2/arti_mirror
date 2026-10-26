@@ -211,7 +211,7 @@ use crate::traits::*;
 use futures::task::{FutureObj, Spawn, SpawnError};
 use futures::{Future, FutureExt};
 use std::pin::Pin;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Type to wrap `smol::Executor`.
 #[derive(Clone)]
@@ -233,6 +233,9 @@ impl SleepProvider for SmolRuntime {
     type SleepFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
     fn sleep(&self, duration: Duration) -> Self::SleepFuture {
         Box::pin(async_io::Timer::after(duration).map(|_| ()))
+    }
+    fn sleep_until(&self, deadline: Instant) -> Self::SleepFuture {
+        todo!("XXX")
     }
 }
 

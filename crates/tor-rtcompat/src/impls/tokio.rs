@@ -210,11 +210,16 @@ use std::time::Duration;
 #[cfg(unix)]
 use tor_general_addr::unix;
 use tracing::instrument;
+use web_time_compat::Instant;
 
 impl SleepProvider for TokioRuntimeHandle {
     type SleepFuture = tokio_crate::time::Sleep;
     fn sleep(&self, duration: Duration) -> Self::SleepFuture {
         tokio_crate::time::sleep(duration)
+    }
+
+    fn sleep_until(&self, deadline: Instant) -> Self::SleepFuture {
+        todo!("XXX")
     }
 }
 

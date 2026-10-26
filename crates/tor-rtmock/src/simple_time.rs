@@ -219,6 +219,10 @@ impl SleepProvider for Provider {
         fut
     }
 
+    fn sleep_until(&self, until: Instant) -> SleepFuture {
+        todo!("XXX")
+    }
+
     fn now(&self) -> Instant {
         self.lock().core.instant()
     }

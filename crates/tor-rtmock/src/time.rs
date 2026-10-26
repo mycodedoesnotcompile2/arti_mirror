@@ -442,6 +442,10 @@ impl SleepProvider for MockSleepProvider {
         }
     }
 
+    fn sleep_until(&self, when: Instant) -> Self::SleepFuture {
+        todo!("XXX")
+    }
+
     fn block_advance<T: Into<String>>(&self, reason: T) {
         let mut provider = self.state.lock().expect("Poisoned lock for state");
         let reason = reason.into();

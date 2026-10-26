@@ -159,6 +159,9 @@ define_derive_deftly! {
         fn sleep(&self, dur: Duration) -> Self::SleepFuture {
             self.$fname.sleep(dur)
         }
+        fn sleep_until(&self, deadline: Instant) -> Self::SleepFuture {
+            self.$fname.sleep_until(deadline)
+        }
         fn now(&self) -> Instant {
             self.$fname.now()
         }
