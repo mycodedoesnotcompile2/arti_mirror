@@ -54,9 +54,14 @@ impl AtomicTokenBucket {
     /// that `claimed` can be lower than `tokens` hence why the caller needs to use that
     /// value and not what it asked for.
     ///
-    /// Returns `None` if the bucket is empty, nothing is taken.
+    /// Returns `None` if the bucket is empty or `tokens` is zero, nothing is taken.
     #[must_use]
     pub(super) fn claim(&self, tokens: u64) -> Option<u64> {
+        // Never claim a zero amount.
+        if tokens == 0 {
+            return None;
+        }
+
         // NOTE: fetch_update() is deprecated in 1.99.0 and replaced by try_update()
         // starting in 1.95.0. Our current MSRV is 1.89.0.
         //
