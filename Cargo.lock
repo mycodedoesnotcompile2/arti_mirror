@@ -7658,11 +7658,15 @@ dependencies = [
 name = "tor-geoip"
 version = "0.47.0"
 dependencies = [
+ "derive-deftly",
  "derive_more",
  "proptest",
  "rangemap",
+ "serde",
+ "serde_with",
  "thiserror 2.0.21",
  "tor-geoip-db",
+ "tor-rpcbase",
 ]
 
 [[package]]
