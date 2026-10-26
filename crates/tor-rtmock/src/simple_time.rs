@@ -199,7 +199,12 @@ impl SleepProvider for Provider {
     fn sleep(&self, d: Duration) -> SleepFuture {
         let mut state = self.lock();
         let until = state.core.instant() + d;
+        drop(state);
+        self.sleep_until(until)
+    }
 
+    fn sleep_until(&self, until: Instant) -> SleepFuture {
+        let mut state = self.lock();
         let id = state.futures.insert(None);
         state.unready.push(id, Reverse(until));
 
@@ -217,10 +222,6 @@ impl SleepProvider for Provider {
         // This sleep is now UNPOLLED or READY, according to whether duration was 0.
 
         fut
-    }
-
-    fn sleep_until(&self, until: Instant) -> SleepFuture {
-        todo!("XXX")
     }
 
     fn now(&self) -> Instant {
