@@ -219,7 +219,17 @@ pub(crate) mod test {
     }
 
     #[test]
+    #[traced_test]
     fn compute_for_test_vanilla() {
-        compute_test(3, 4, |_, _| Ok(()), |_| Ok(()));
+        compute_test(
+            3,
+            4,
+            |_, _| Ok(()),
+            |(plain, md)| {
+                dbg!(&plain);
+                dbg!(&md);
+                Ok(())
+            },
+        );
     }
 }
