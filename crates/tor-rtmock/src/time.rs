@@ -432,7 +432,7 @@ impl SleepProvider for MockSleepProvider {
         provider.sleepers_made += 1;
         trace!(
             "sleeper made for {:?}, {}/{}",
-            duration, provider.sleepers_polled, provider.sleepers_made
+            when, provider.sleepers_polled, provider.sleepers_made
         );
 
         Sleeping {
