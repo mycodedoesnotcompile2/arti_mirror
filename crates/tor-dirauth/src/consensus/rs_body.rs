@@ -290,6 +290,7 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
+    use crate::consensus::test::compute_test;
 
     #[test]
     fn relay_flags() -> Result<(), ConsensusError> {
@@ -373,6 +374,77 @@ mod test {
                 one,
             );
         }
+
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn md_selection() -> anyhow::Result<()> {
+        #[derive(Deftly)]
+        #[derive_deftly(NetdocParseable)]
+        struct TestVote {
+            #[allow(unused)]
+            vote: (),
+            m: Vec<netstatus::RouterStatusMdDigestsVote>,
+        }
+
+        // A x 3: vtKpzB+Vw6LlETW6txvAH+1G6gJIl6x1D/N3NZdPK24
+        // B x 2: PSFWDSIK+sMS6+fkLrc7PSZ6L0Rkscbz2WcmKCDIdOQ
+        let votes = r#"vote # A, with irrelevant SHA1 ignored
+m 1,2,3,METHOD sha256=vtKpzB+Vw6LlETW6txvAH+1G6gJIl6x1D/N3NZdPK24
+m 1,2,3,METHOD sha1=AAAErLudKby6FyVrs1ko3b/Iq6k
+vote # A
+m METHOD sha256=vtKpzB+Vw6LlETW6txvAH+1G6gJIl6x1D/N3NZdPK24
+vote # A
+m METHOD sha256=vtKpzB+Vw6LlETW6txvAH+1G6gJIl6x1D/N3NZdPK24
+vote # B, with irrelevant other method
+m METHOD sha256=PSFWDSIK+sMS6+fkLrc7PSZ6L0Rkscbz2WcmKCDIdOQ
+m 1 sha256=PSFWDSIK+sMS6+fkLrc7PSZ6L0Rkscbz2WcmKCDIdOQ
+vote # B
+m METHOD sha256=PSFWDSIK+sMS6+fkLrc7PSZ6L0Rkscbz2WcmKCDIdOQ
+vote # BX but multiple values, so ignored
+m METHOD sha256=PSFWDSIK+sMS6+fkLrc7PSZ6L0Rkscbz2WcmKCDIdOQ
+m METHOD sha256=PSFWDSIK+sMS6+fkLrc7PSZ6L0Rkscbz2WcmKCDIdOQ
+m METHOD sha256=PSFWDSIK+sMS6+fkLrc7PSZ6L0Rkscbz2WcmKCDIdOQ
+m METHOD sha256=PSFWDSIK+sMS6+fkLrc7PSZ6L0Rkscbz2WcmKCDIdOQ
+m METHOD sha256=PSFWDSIK+sMS6+fkLrc7PSZ6L0Rkscbz2WcmKCDIdOQ
+vote # B but only for irrelevant methods
+m 1,2,3 sha256=PSFWDSIK+sMS6+fkLrc7PSZ6L0Rkscbz2WcmKCDIdOQ
+"#;
+
+        let votes = votes.replace("METHOD", &SupportedConsensusMethod::MAX.to_string());
+        println!("----- test votes -----\n{votes}----- ^ test votes -----");
+
+        let votes: Vec<TestVote> = parse_netdoc_multiple(&ParseInput::new(&votes, "<test data>"))?;
+
+        const NICK: &str = "lisdex";
+
+        compute_test(
+            votes.len(),
+            12,
+            |i, vote| {
+                vote.routers
+                    .iter_mut()
+                    .find(|rs| rs.r.nickname.as_str() == NICK)
+                    .unwrap()
+                    .m = votes[i].m.clone();
+                Ok(())
+            },
+            |(_plain, md)| {
+                let m = &md
+                    .routers
+                    .iter()
+                    .find(|rs| rs.r.nickname.as_str() == NICK)
+                    .expect("output router missing")
+                    .m;
+                assert_eq!(
+                    m,
+                    &"vtKpzB+Vw6LlETW6txvAH+1G6gJIl6x1D/N3NZdPK24".parse::<MdDigest>()?,
+                );
+                Ok(())
+            },
+        );
 
         Ok(())
     }
