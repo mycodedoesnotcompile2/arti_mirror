@@ -358,6 +358,24 @@ mod test {
             assert_eq!(poll!(&mut f1), Ready(()));
             let mut f0 = sp.sleep(ms(0));
             assert_eq!(poll!(&mut f0), Ready(()));
+            let n2 = sp.now();
+            let w2 = sp.wallclock();
+            let mut f1 = sp.sleep_until(n2 + ms(500));
+            let mut f2 = sp.sleep_until(n2 + ms(1500));
+            assert_eq!(poll!(&mut f1), Pending);
+            assert_eq!(poll!(&mut f2), Pending);
+            sp.jump_wallclock(w2 + ms(10_000));
+            // jump_wallclock doesn't advance the monotonic clock
+            assert_eq!(poll!(&mut f1), Pending);
+            assert_eq!(poll!(&mut f2), Pending);
+            // advance() *does* advance the monotonic clock
+            sp.advance(ms(500));
+            assert_eq!(poll!(&mut f1), Ready(()));
+            assert_eq!(poll!(&mut f2), Pending);
+            sp.advance(ms(1000));
+            assert_eq!(poll!(&mut f2), Ready(()));
+            assert_eq!(n2 + ms(1500), sp.now());
+            assert_eq!(w2 + ms(11_500), sp.wallclock());
         });
     }
 
