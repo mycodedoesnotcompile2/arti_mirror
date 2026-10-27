@@ -6,7 +6,7 @@ use tor_netdoc::doc::netstatus::{
     self, NetParams, PlainPreamble, RelayWeightsItem, VoteRelayWeightsItem,
 };
 use tor_netdoc::types::{
-    NotPresent,
+    DigestName, NotPresent,
     relay_flags::{DocRelayFlags, RelayFlag},
 };
 
