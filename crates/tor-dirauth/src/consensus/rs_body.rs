@@ -41,6 +41,8 @@ impl<'i> ResolvedRouterStatusInputs<'i> {
             };
         }
 
+        let mut md_none_defer = NoneDefer::new();
+
         let (plain_r, md_r) = {
             calc! { both.identity    = self.id.rsa }
             calc! { both.publication = netstatus::IgnoredPublicationTimeSp }
@@ -71,9 +73,16 @@ impl<'i> ResolvedRouterStatusInputs<'i> {
         }
         calc! { both.flags = out_flags.clone() }
 
+        let md_m = md_none_defer.handle(
+            {
+                let md_m = None; // XXXX
+                Ok::<_, Bug>(md_m)
+            },
+            || [0; 32].into(),
+        )?;
+
         // TODO DIRAUTH replace routerstatus dummy values
         calc! { both.protos = Default::default() }
-        calc! { md.m = [0; 32].into() }
 
         let (plain, md) = construct_both! {
             netstatus::plain::RouterStatus, netstatus::md::RouterStatus {
@@ -82,7 +91,7 @@ impl<'i> ResolvedRouterStatusInputs<'i> {
                 // TODO DIRAUTH routerstatus fields missing
             }
         };
-        Ok(Some((plain, Some(md))))
+        Ok(Some((plain, md_none_defer.finish(md))))
     }
 }
 
