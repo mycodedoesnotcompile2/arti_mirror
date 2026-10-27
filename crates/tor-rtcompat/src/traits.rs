@@ -119,6 +119,10 @@ pub trait SleepProvider: Clone + Send + Sync + 'static {
     #[must_use = "sleep() returns a future, which does nothing unless used"]
     fn sleep(&self, duration: Duration) -> Self::SleepFuture;
 
+    /// Return a future that will be ready when `deadline` is reached.
+    #[must_use = "sleep_until() returns a future, which does nothing unless used"]
+    fn sleep_until(&self, deadline: Instant) -> Self::SleepFuture;
+
     /// Return the SleepProvider's view of the current instant.
     ///
     /// (This is the same as `Instant::now`, if not running in test mode.)

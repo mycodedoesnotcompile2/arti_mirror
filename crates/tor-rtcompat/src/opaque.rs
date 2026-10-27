@@ -60,6 +60,10 @@ macro_rules! implement_opaque_runtime {
         fn sleep(&self, duration: std::time::Duration) -> Self::SleepFuture {
             self.$member.sleep(duration)
         }
+        #[inline]
+        fn sleep_until(&self, deadline: web_time_compat::Instant) -> Self::SleepFuture {
+            self.$member.sleep_until(deadline)
+        }
     }
 
     impl $crate::CoarseTimeProvider for $t {

@@ -426,13 +426,20 @@ impl SleepSchedule {
 impl SleepProvider for MockSleepProvider {
     type SleepFuture = Sleeping;
     fn sleep(&self, duration: Duration) -> Self::SleepFuture {
+        let when = {
+            let provider = self.state.lock().expect("Poisoned lock for state");
+            provider.core.instant() + duration
+        };
+        self.sleep_until(when)
+    }
+
+    fn sleep_until(&self, when: Instant) -> Self::SleepFuture {
         let mut provider = self.state.lock().expect("Poisoned lock for state");
-        let when = provider.core.instant() + duration;
         // We're making a new sleeper, so register this in the state.
         provider.sleepers_made += 1;
         trace!(
             "sleeper made for {:?}, {}/{}",
-            duration, provider.sleepers_polled, provider.sleepers_made
+            when, provider.sleepers_polled, provider.sleepers_made
         );
 
         Sleeping {
