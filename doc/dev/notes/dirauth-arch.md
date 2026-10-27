@@ -123,7 +123,7 @@ There is a `dir-config.git` which contains data about bad relays,
 flags, network parameters, etc.
 It also contains machinery for resolving all that into a torrc.
 
-Arti dirath will be able to read files containing those torrc directives.
+Arti dirauth will be able to read files containing those torrc directives.
 (There are about 8 such directives, AIUI.)
 
 They are plain text input files, not stored in the database.
