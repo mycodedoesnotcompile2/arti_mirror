@@ -85,6 +85,7 @@ async-std = [
     "tor-rtcompat/async-std",
     "async-ctrlc",
     "async-signal",
+    # (this comment is here to prevent reformatting)
 ]
 bridge-client = ["arti-client/bridge-client"]
 default-runtime = ["tokio", "native-tls"]
@@ -99,6 +100,7 @@ tokio = [
     "tor-async-utils/tokio",
     "tor-rtcompat/tokio",
     "tokio-util",
+    # (this comment is here to prevent reformatting)
 ]
 native-tls = ["arti-client/native-tls", "tor-rtcompat/native-tls"]
 onion-service-client = ["arti-client/onion-service-client"]
@@ -145,6 +147,7 @@ rpc = [
     "dep:tor-rpc-connect",
     "arti-client/rpc",
     "derive-deftly",
+    # (this comment is here to prevent reformatting)
 ]
 
 # These are not nonadditive from a software POV, but we mark them as such because
@@ -200,6 +203,7 @@ metrics = [
     "tor-hsservice?/metrics",
     "tor-hsrproxy?/metrics",
     "__is_experimental",
+    # (this comment is here to prevent reformatting)
 ]
 http-connect = ["base64ct", "http", "hyper", "tor-error/http", "tor-cell"]
 hsc = ["onion-service-client", "experimental-api", "arti-client/keymgr", "__is_experimental"]
