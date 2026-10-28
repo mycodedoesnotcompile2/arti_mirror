@@ -245,6 +245,7 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
+    use crate::consensus::test::compute_test;
 
     #[test]
     fn relay_flags() -> Result<(), ConsensusError> {
@@ -330,5 +331,33 @@ mod test {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn protocols() {
+        use tor_protover::Protocols;
+
+        let p = |s| Protocols::from_str_c_compatible(s).unwrap();
+
+        let inputs = [
+            p("Link=1 counting=2-6 req=1 rec=1 neither=1"), // majority, first
+            p("Link=1 counting=2-6 req=1 rec=1 neither=1"),
+            p("Link=1"),
+        ];
+
+        compute_test(
+            inputs.len(),
+            4,
+            |vnum, vote| {
+                vote.routers.truncate(1);
+                vote.routers[0].protos = inputs[vnum].clone();
+                Ok(())
+            },
+            |(plain, md)| {
+                assert_eq!(plain.routers[0].protos, inputs[0].clone());
+                assert_eq!(md.routers[0].protos, inputs[0].clone());
+                Ok(())
+            },
+        );
     }
 }
