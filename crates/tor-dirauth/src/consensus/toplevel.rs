@@ -20,7 +20,8 @@ impl ConsensusesFromVotes<()> for netstatus::vote::NetworkStatus {
         calc! { both.routers }
         calc! { both.authority }
 
-        // TODO DIRAUTH pass (&plain_preamble, &*plain_routers) to footer calculation
+        let computed = (&plain_preamble, &*plain_routers);
+        let context = context.with_computed(&computed);
 
         calc! { both.footer }
 
