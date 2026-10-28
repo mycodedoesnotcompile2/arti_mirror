@@ -74,6 +74,17 @@ impl<'i> ResolvedRouterStatusInputs<'i> {
         calc! { both.flags = out_flags.clone() }
         calc! { both.protos }
 
+        // In principle we could omit writing these, and let Constructor default them,
+        // but this way it's clearer that we've thought of every field,
+        // and it might catch mistakes.
+        calc! { md.port_policy = NotPresent }
+        calc! { both.stats = NotPresent }
+
+        // TODO DIRAUTH replace dummy values
+        calc! { both.a = Default:: default() }
+        calc! { plain.port_policy = Default:: default() }
+        calc! { both.version = None }
+
         // TODO DIRAUTH replace routerstatus dummy values
         calc! { md.m = [0; 32].into() }
 
@@ -81,7 +92,7 @@ impl<'i> ResolvedRouterStatusInputs<'i> {
             netstatus::plain::RouterStatus, netstatus::md::RouterStatus {
                 both. r, m, flags, protos, weight, ed25519_id;
             } {
-                // TODO DIRAUTH routerstatus fields missing
+                both. a, version, port_policy, stats;
             }
         };
         Ok(Some((plain, Some(md))))
