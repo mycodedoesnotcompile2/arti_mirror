@@ -27,7 +27,7 @@ use tracing::{debug, error, info, instrument, warn};
 use arti_client::HasKind;
 use arti_client::TorClient;
 #[cfg(feature = "rpc")]
-use arti_rpcserver::RpcMgr;
+use tor_rpcserver::RpcMgr;
 use tor_config::Listen;
 use tor_error::{debug_report, warn_report};
 use tor_rtcompat::{NetStreamListener, Runtime};
@@ -169,7 +169,7 @@ const _: () = {
 /// An application gets a TorClient by asking the session for one,
 /// or for asking a TorClient to give you a new variant clone of itself.
 ///
-/// A one-shot client is an `arti_rpcserver::stream::OneshotClient`.
+/// A one-shot client is an `tor_rpcserver::stream::OneshotClient`.
 /// It is created from a client-like object, but can only be used for a single data stream.
 /// When created, it it not yet connected or trying to connect to anywhere:
 /// the act of using it as the target Object for a proxy connection causes
@@ -299,7 +299,7 @@ struct ProxyContext<R: Runtime> {
     /// If present, an RpcMgr to use when for attaching requests to RPC
     /// sessions.
     #[cfg(feature = "rpc")]
-    rpc_mgr: Option<Arc<arti_rpcserver::RpcMgr>>,
+    rpc_mgr: Option<Arc<tor_rpcserver::RpcMgr>>,
     /// The protocols that we support.
     protocols: ListenProtocols,
 }

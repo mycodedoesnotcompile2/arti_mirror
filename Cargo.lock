@@ -189,7 +189,6 @@ dependencies = [
  "amplify",
  "anyhow",
  "arti-client",
- "arti-rpcserver",
  "assert_cmd",
  "async-ctrlc",
  "async-signal",
@@ -255,6 +254,7 @@ dependencies = [
  "tor-proto",
  "tor-rpc-connect",
  "tor-rpcbase",
+ "tor-rpcserver",
  "tor-rtcompat",
  "tor-rtmock",
  "tor-socksproto",
@@ -484,40 +484,6 @@ dependencies = [
 [[package]]
 name = "arti-rpcserver"
 version = "0.47.0"
-dependencies = [
- "arti-client",
- "async-trait",
- "asynchronous-codec",
- "base64ct",
- "bytes",
- "derive-deftly",
- "derive_more",
- "erased-serde",
- "futures",
- "futures-await-test",
- "oneshot-fused-workaround",
- "pin-project",
- "rand 0.10.3",
- "serde",
- "serde_json",
- "slotmap-careful",
- "thiserror 2.0.21",
- "tiny-keccak",
- "tor-async-utils",
- "tor-basic-utils",
- "tor-bytes",
- "tor-error",
- "tor-llcrypto",
- "tor-proto",
- "tor-rpc-connect",
- "tor-rpcbase",
- "tor-rtcompat",
- "tor-rtmock",
- "tracing",
- "typetag",
- "weak-table",
- "zeroize",
-]
 
 [[package]]
 name = "arti-testing"
@@ -8448,6 +8414,44 @@ dependencies = [
  "tor-error",
  "typetag",
  "void",
+]
+
+[[package]]
+name = "tor-rpcserver"
+version = "0.47.0"
+dependencies = [
+ "arti-client",
+ "async-trait",
+ "asynchronous-codec",
+ "base64ct",
+ "bytes",
+ "derive-deftly",
+ "derive_more",
+ "erased-serde",
+ "futures",
+ "futures-await-test",
+ "oneshot-fused-workaround",
+ "pin-project",
+ "rand 0.10.3",
+ "serde",
+ "serde_json",
+ "slotmap-careful",
+ "thiserror 2.0.21",
+ "tiny-keccak",
+ "tor-async-utils",
+ "tor-basic-utils",
+ "tor-bytes",
+ "tor-error",
+ "tor-llcrypto",
+ "tor-proto",
+ "tor-rpc-connect",
+ "tor-rpcbase",
+ "tor-rtcompat",
+ "tor-rtmock",
+ "tracing",
+ "typetag",
+ "weak-table",
+ "zeroize",
 ]
 
 [[package]]

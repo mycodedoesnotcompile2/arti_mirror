@@ -1,7 +1,6 @@
 //! Experimental RPC support.
 
 use anyhow::Result;
-use arti_rpcserver::RpcMgr;
 use derive_deftly::Deftly;
 use fs_mistrust::Mistrust;
 use futures::{AsyncReadExt, stream::StreamExt};
@@ -10,6 +9,7 @@ use std::collections::BTreeMap;
 use std::{io::Result as IoResult, sync::Arc};
 use tor_config::derive::prelude::*;
 use tor_config_path::CfgPathResolver;
+use tor_rpcserver::RpcMgr;
 use tracing::{debug, info};
 
 use arti_client::TorClient;
@@ -149,7 +149,7 @@ pub(crate) async fn launch_rpc_mgr<R: Runtime>(
     //
     // TODO: If we accumulate a large number of generics like this, we should do this elsewhere.
     rpc_mgr.register_rpc_methods(TorClient::<R>::rpc_methods());
-    rpc_mgr.register_rpc_methods(arti_rpcserver::rpc_methods::<R>());
+    rpc_mgr.register_rpc_methods(tor_rpcserver::rpc_methods::<R>());
     rpc_mgr.register_rpc_methods(RpcSuperuser::<R>::rpc_methods());
 
     let rt_clone = runtime.clone();
@@ -224,7 +224,7 @@ async fn run_rpc_listener<R: Runtime>(
 /// Information passed to a proxy or similar stream provider when running with RPC support.
 pub(crate) struct RpcProxySupport {
     /// An RPC manager to use for looking up objects as possible stream targets.
-    pub(crate) rpc_mgr: Arc<arti_rpcserver::RpcMgr>,
+    pub(crate) rpc_mgr: Arc<tor_rpcserver::RpcMgr>,
     /// An RPCStateSender to use for registering the list of known proxy ports.
     pub(crate) rpc_state_sender: RpcStateSender,
 }

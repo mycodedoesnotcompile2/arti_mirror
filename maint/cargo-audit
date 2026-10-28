@@ -187,7 +187,7 @@ OBSOLETE_IGNORE=(
     --ignore RUSTSEC-2022-0093
 
     # This is not a vulnerability but an unmaintained warning for
-    # `generational-arena`. It is only used by arti-rpcserver (which is
+    # `generational-arena`. It is only used by tor-rpcserver (which is
     # experimental).
     #
     # Eventual resolution: Migrated to slotmap-careful; see #1282

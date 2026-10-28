@@ -46,7 +46,7 @@ full = [
     "bridge-client",
     "pt-client",
     "restricted-discovery",
-    "arti-rpcserver?/full",
+    "tor-rpcserver?/full",
     "fs-mistrust/full",
     "keymgr",
     "rpc",
@@ -140,7 +140,7 @@ ctor-keystore = []
 opentelemetry-appender-tracing = []
 
 rpc = [
-    "dep:arti-rpcserver",
+    "dep:tor-rpcserver",
     "dep:tor-rpcbase",
     "dep:tor-rpc-connect",
     "arti-client/rpc",
@@ -214,7 +214,7 @@ anyhow = "1.0.104"
 arti-client = { package = "arti-client", path = "../arti-client", version = "0.47.0", default-features = false, features = [
     "anyhow",
 ] }
-arti-rpcserver = { path = "../arti-rpcserver", version = "0.47.0", optional = true }
+tor-rpcserver = { path = "../tor-rpcserver", version = "0.47.0", optional = true }
 async-ctrlc = { version = "1.2.0", optional = true }
 async-signal = { version = "0.2.14", optional = true }
 base64ct = { version = "1.8.3", optional = true }

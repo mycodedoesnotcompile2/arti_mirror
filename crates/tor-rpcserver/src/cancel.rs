@@ -21,7 +21,7 @@ use pin_project::pin_project;
 /// including the future itself:
 /// this may cause a panic or deadlock.
 ///
-/// In `arti-rpcserver`, we prevent this happening by ensuring that
+/// In `tor-rpcserver`, we prevent this happening by ensuring that
 /// every method that calls `cancel()` is itself uncancellable.
 ///
 // TODO: We should probably fix this limitation somehow before exposing
