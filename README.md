@@ -67,6 +67,20 @@ Currently (as of August 2026) we're working on
 support for running Arti as a relay or directory authority.
 (See [README_relay.md](./README_relay.md) for more information.)
 
+We provide the following crates which are useful for users
+and people integrating Arti with applications:
+
+|Crate|Target users|Status|Description|
+|---|---|---|---|
+| [`arti`](https://crates.io/crates/arti) | Application developers | Suitable for general usage | An imeplementation of a Tor client as a library. Useful for integrating Arti into an application. |
+| [`arti-client`](https://crates.io/crates/arti-client) | End users | Suitable for general usage | A Tor client that provides a SOCKS proxy and can run onion services. |
+| [`arti-dirauth`](https://crates.io/crates/arti-dirauth) | Directory Authority operators | In development, not ready for use | A directory authority server implementation. |
+| [`arti-relay`](https://crates.io/crates/arti-relay) | Relay operators | In development, not ready for use | A Tor relay implementation. |
+| [`arti-rpc-client-core`](https://crates.io/crates/arti-rpc-client-core) | Application developers | Usable, but provides very few features. Please request any desired features. | A RPC client library for interacting with a running Arti instance programmatically. |
+| [`arti-ureq`](https://crates.io/crates/arti-ureq) | Application developers | Suitable for general usage. | A library for making HTTP request through Tor via [ureq](https://crates.io/crates/ureq). |
+
+Other crates with names beginning with `tor-*` are low-level crates for implementing specific parts of the Tor protocol or other implementation details. They may be useful for researchers, implementers of non-standard Tor-related software, or curious people, but they are not intended for general usage and are likely to regularly have breaking changes.
+
 ## Building and using Arti
 
 Arti can act as a SOCKS proxy that uses the Tor network.
