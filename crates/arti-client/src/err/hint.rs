@@ -8,7 +8,7 @@ use std::error::Error as StdError;
 /// non-public module, to implement a "sealed" trait.
 mod seal {
     /// Trait to seal the "HintableError" trait
-    #[allow(unreachable_pub)]
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait Sealed {}
     /// Trait to seal the "HintableErrorImpl" trait
     #[allow(unreachable_pub)]

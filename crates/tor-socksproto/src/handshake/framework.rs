@@ -66,6 +66,7 @@ impl ReadPrecision for PreciseReads {}
 impl ReadPrecision for () {}
 
 /// Sealed, and adjustment of `RecvStep::buf`
+#[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
 pub trait ReadPrecisionSealed {
     /// Adjust `buf` to `deficit`, iff we're doing precise reads
     fn recv_step_buf(buf: &mut [u8], deficit: NonZeroUsize) -> &mut [u8];

@@ -6,6 +6,7 @@
 #![warn(missing_docs)]
 #![warn(noop_method_call)]
 #![warn(unreachable_pub)]
+#![warn(unnameable_types)]
 #![warn(clippy::all)]
 #![deny(clippy::await_holding_lock)]
 #![deny(clippy::cargo_common_metadata)]
@@ -67,7 +68,7 @@ pub mod test_rng;
 pub mod token_bucket;
 
 mod byte_qty;
-pub use byte_qty::ByteQty;
+pub use byte_qty::{ByteQty, InvalidByteQty};
 
 pub use paste::paste;
 
@@ -80,6 +81,7 @@ use rand::Rng;
 /// Sealed
 mod sealed {
     /// Sealed
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait Sealed {}
 }
 use sealed::Sealed;

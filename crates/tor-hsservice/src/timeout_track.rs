@@ -458,6 +458,7 @@ pub trait Update<T>: Sealed {
 /// Sealed
 mod sealed {
     /// Sealed
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait Sealed {}
 }
 use sealed::*;

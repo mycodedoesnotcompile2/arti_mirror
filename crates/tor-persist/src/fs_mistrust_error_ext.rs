@@ -45,6 +45,7 @@ macro_rules! accesses { {
 } } }
 
 /// Sealed
+#[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
 pub trait Sealed {}
 impl Sealed for fs_mistrust::Error {}
 

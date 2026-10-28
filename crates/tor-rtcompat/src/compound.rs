@@ -348,7 +348,7 @@ where
 /// Module to seal RuntimeSubstExt
 mod sealed {
     /// Helper for sealing RuntimeSubstExt
-    #[allow(unreachable_pub)]
+    #[allow(unnameable_types)] // TODO: See https://github.com/rust-lang/rust/issues/163797
     pub trait Sealed {}
 }
 /// Extension trait on Runtime:
