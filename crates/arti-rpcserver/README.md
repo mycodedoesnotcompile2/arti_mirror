@@ -1,6 +1,11 @@
 # arti-rpcserver
 
-Backend for Arti's RPC service
+Backend for Arti's RPC service.
+
+Note that despite the `arti-*` crate name,
+which typically indicates a user-facing crate,
+this crate is intended solely for low-level implementation of arti,
+and should only be used if you have a need to implement an arti RPC server.
 
 ## Overview
 
