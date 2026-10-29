@@ -1,13 +1,13 @@
 //! Declare the RPC session object as exposed from the RPC server run by the `arti` crate.
 
 use arti_client::TorClient;
-use arti_rpcserver::RpcAuthentication;
 use derive_deftly::Deftly;
 use futures::stream::StreamExt as _;
 use std::sync::Arc;
 use tor_async_utils::{DropNotifyEofSignallable, DropNotifyWatchSender};
 use tor_rpc_connect::SuperuserPermission;
 use tor_rpcbase::{self as rpc};
+use tor_rpcserver::RpcAuthentication;
 use tor_rtcompat::Runtime;
 
 use crate::{
@@ -27,23 +27,23 @@ use super::proxyinfo::{self, ProxyInfo};
 /// are available using methods on this object.
 /// (See the list of available methods.)
 ///
-/// This type wraps and delegates to [`arti_rpcserver::RpcSession`],
+/// This type wraps and delegates to [`tor_rpcserver::RpcSession`],
 /// but exposes additional functionality not available at the
-/// level of [`arti_rpcserver`], including information about configured proxies.
+/// level of [`tor_rpcserver`], including information about configured proxies.
 ///
 /// This ObjectID for this object can be used as the target of a SOCKS stream.
 #[derive(Deftly)]
 #[derive_deftly(rpc::Object)]
 #[deftly(rpc(
     delegate_with = "|this: &Self| Some(this.session.clone())",
-    delegate_type = "arti_rpcserver::RpcSession"
+    delegate_type = "tor_rpcserver::RpcSession"
 ))]
 #[deftly(rpc(expose_outside_of_session))]
 pub(super) struct ArtiRpcSession {
     /// State about the `arti` server, as seen by the Rpc system.
     pub(super) arti_state: Arc<RpcVisibleArtiState>,
     /// The underlying RpcSession object that we delegate to.
-    session: Arc<arti_rpcserver::RpcSession>,
+    session: Arc<tor_rpcserver::RpcSession>,
 }
 
 /// Information about the current global top-level Arti state,
@@ -87,7 +87,7 @@ impl ArtiRpcSession {
     ) -> Arc<Self> {
         let _ = auth; // This is currently unused; any authentication gives the same result.
         let client = client_root.isolated_client();
-        let session = arti_rpcserver::RpcSession::new_with_client(client);
+        let session = tor_rpcserver::RpcSession::new_with_client(client);
         if listener_info.allow_superuser == SuperuserPermission::Allowed {
             session.provide_superuser_permission(Arc::new(RpcSuperuser::new(
                 client_root.clone(),

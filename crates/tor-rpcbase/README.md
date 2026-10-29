@@ -182,7 +182,7 @@ and that you are not affecting objects that belong to other RPC sessions.
 ## Related crates
 
 See also:
-  * `arti-rpcserver`, which actually implements the RPC protocol,
+  * `tor-rpcserver`, which actually implements the RPC protocol,
     sessions, and objectId mappings.
   * `arti`, where RPC sessions are created based on incoming connections to
     an RPC socket.

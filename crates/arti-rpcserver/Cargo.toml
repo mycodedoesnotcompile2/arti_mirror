@@ -6,67 +6,16 @@ rust-version = "1.92"
 authors = ["The Tor Project, Inc.", "eta <eta@torproject.org>"]
 license = "MIT OR Apache-2.0"
 homepage = "https://gitlab.torproject.org/tpo/core/arti/-/wikis/home"
-description = "Backend functionality for Arti's RPC service"
+description = "Deprecated crate, moved to tor-rpcserver."
 keywords = ["tor", "arti", "rpc"]
 categories = ["asynchronous"]
 repository = "https://gitlab.torproject.org/tpo/core/arti.git/"
-
-[features]
-default = []
-full = [
-    "arti-client/full",
-    "tor-async-utils/full",
-    "tor-error/full",
-    "tor-rpcbase/full",
-    "tor-rtcompat/full",
-    "tor-bytes/full",
-    "tor-llcrypto/full",
-    "tor-proto/full",
-    "describe-methods",
-    "oneshot-fused-workaround/full",
-    "slotmap-careful/full",
-    "tor-rpc-connect/full",
-]
-describe-methods = ["tor-rpcbase/describe-methods"]
-experimental = []
-
-__is_experimental = []
-
-[dependencies]
-arti-client = { path = "../arti-client", version = "0.47.0", features = ["rpc"] }
-async-trait = "0.1.92"
-asynchronous-codec = { version = "0.7.0", features = ["json"] }
-base64ct = "1.8.3"
-bytes = "1"
-derive-deftly = { version = "~1.14.0", features = ["full", "beta"] }
-derive_more = { version = "2.1.1", features = ["full"] }
-erased-serde = "0.4.10"
-futures = "0.3.34"
-oneshot-fused-workaround = { path = "../oneshot-fused-workaround", version = "0.8.0" }
-pin-project = "1"
-rand = "0.10.3"
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.154"
-slotmap-careful = { path = "../slotmap-careful", version = "0.9.0" }
-thiserror = "2"
-tiny-keccak = { version = "2.0.2", features = ["kmac"] }
-tor-async-utils = { path = "../tor-async-utils", version = "0.47.0" }
-tor-bytes = { path = "../tor-bytes", version = "0.47.0" }
-tor-error = { path = "../tor-error", version = "0.47.0" }
-tor-llcrypto = { path = "../tor-llcrypto", version = "0.47.0" }
-tor-proto = { path = "../tor-proto", version = "0.47.0", features = ["rpc", "stream-ctrl"] }
-tor-rpc-connect = { path = "../tor-rpc-connect", version = "0.47.0" }
-tor-rpcbase = { path = "../tor-rpcbase", version = "0.47.0" }
-tor-rtcompat = { path = "../tor-rtcompat", version = "0.47.0" }
-tracing = "0.1.44"
-typetag = "0.2.23"
-weak-table = "0.4.0"
-zeroize = "1"
-
-[dev-dependencies]
-futures-await-test = "0.3.0"
-tor-basic-utils = { path = "../tor-basic-utils", version = "0.47.0" }
-tor-rtmock = { path = "../tor-rtmock", version = "0.47.0" }
+# TODO: Add publish = false once this version has been published.
 
 [package.metadata.docs.rs]
 all-features = true
+
+[dependencies]
+
+[features]
+full = []
