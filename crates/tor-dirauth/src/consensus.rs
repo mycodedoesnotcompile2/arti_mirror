@@ -6,7 +6,7 @@ use tor_netdoc::doc::netstatus::{
     self, NetParams, PlainPreamble, RelayWeightsItem, VoteRelayWeightsItem,
 };
 use tor_netdoc::types::{
-    NotPresent,
+    DigestName, NotPresent,
     relay_flags::{DocRelayFlags, RelayFlag},
 };
 
@@ -18,9 +18,10 @@ mod tracked_method;
 
 // consensus calculations
 #[macro_use]
+mod framework;
+#[macro_use]
 mod calculate_macros;
 mod footer;
-mod framework;
 mod functions;
 mod preamble;
 #[macro_use]
