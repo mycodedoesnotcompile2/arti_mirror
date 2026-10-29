@@ -96,7 +96,7 @@ cargo_build(["arti", "arti-rpc-client-core"], ["--all-features"])
 if not os.path.exists(ARTI):
     print("whoops no arti at", ARTI)
     sys.exit(1)
-if not os.path.exists(ARTI):
+if not os.path.exists(LIBRPC):
     print("whoops no librpc at", LIBRPC)
     sys.exit(1)
 
