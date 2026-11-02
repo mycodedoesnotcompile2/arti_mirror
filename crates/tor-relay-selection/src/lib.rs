@@ -92,6 +92,8 @@ pub(crate) mod testing {
     use crate::{LowLevelRelayPredicate, RelaySelectionConfig};
     use std::collections::HashSet;
     use std::sync::LazyLock;
+    #[cfg(feature = "geoip")]
+    use tor_geoip::GeoipDb;
     use tor_netdir::{NetDir, Relay, SubnetConfig};
     use tor_netdoc::types::relay_flags::RelayFlag;
 
@@ -136,5 +138,15 @@ pub(crate) mod testing {
         .unwrap()
         .unwrap_if_sufficient()
         .unwrap()
+    }
+
+    #[cfg(feature = "geoip")]
+    pub(crate) fn testnet_with_geoip() -> NetDir {
+        let geoip_db = GeoipDb::new_embedded();
+
+        tor_netdir::testnet::construct_custom_netdir_with_geoip(|_, _, _| {}, &geoip_db)
+            .unwrap()
+            .unwrap_if_sufficient()
+            .unwrap()
     }
 }
