@@ -964,6 +964,20 @@ cargo-check-targets:
   script:
     - ./maint/cargo-check-targets -il
 
+# A smaller version of the above 'cargo-check-targets' test, which uses a handpicked list of targets.
+# This is meant to be much smaller than the above test so that we can run it on each MR,
+# while having enough variety that we catch most issues on different platforms.
+cargo-check-targets-minimal:
+  rules:
+    # The tested targets should already be checked by the scheduled 'cargo-check-targets' test above,
+    # so we don't need to test them again.
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+  needs: []
+  stage: build
+  image: $RECENT_RUST_IMAGE
+  script:
+    - ./maint/cargo-check-targets -i x86_64-unknown-linux-gnu i686-unknown-linux-gnu aarch64-apple-darwin aarch64-apple-ios x86_64-pc-windows-msvc aarch64-linux-android
+
 # build the website
 website:
   rules:
