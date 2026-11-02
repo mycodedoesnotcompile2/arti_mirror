@@ -273,8 +273,7 @@ impl CircHop {
         )
     }
 
-    /// Close the stream associated with `id` because the stream was
-    /// dropped.
+    /// Close the stream associated with `id`, for the reason given in `why`.
     ///
     /// See [`CircHopOutbound::close_stream`].
     pub(crate) fn close_stream(
