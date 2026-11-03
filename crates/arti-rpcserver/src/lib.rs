@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg, doc_cfg))]
 #![doc = include_str!("../README.md")]
 // @@ begin lint list maintained by maint/add_warning @@
 #![allow(renamed_and_removed_lints)] // @@REMOVE_WHEN(ci_arti_stable)
@@ -48,27 +49,4 @@
 #![allow(recursion_depth_exceeding_limit)] // arti#2715, rust/issues/159228
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 
-// TODO #1645 (either remove this, or decide to have it everywhere)
-#![cfg_attr(not(all(feature = "full", feature = "experimental")), allow(unused))]
-
-mod cancel;
-mod codecs;
-mod connection;
-mod err;
-mod globalid;
-mod mgr;
-mod msgs;
-mod objmap;
-mod session;
-mod stream;
-
-pub use connection::{Connection, ConnectionError, auth::RpcAuthentication};
-pub use mgr::RpcMgr;
-pub use session::RpcSession;
-
-/// Return a list of RPC methods that will be needed to use `arti-rpcserver` with the given runtime.
-pub fn rpc_methods<R: tor_rtcompat::Runtime>() -> Vec<tor_rpcbase::dispatch::InvokerEnt> {
-    tor_rpcbase::invoker_ent_list![
-        crate::stream::new_oneshot_client_on_client::<R>, //
-    ]
-}
+// EOF

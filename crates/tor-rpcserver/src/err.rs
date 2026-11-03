@@ -1,4 +1,4 @@
-//!  Error types used in by `arti-rpcserver`].
+//!  Error types used in by `tor-rpcserver`].
 
 use tor_rpcbase::RpcError;
 

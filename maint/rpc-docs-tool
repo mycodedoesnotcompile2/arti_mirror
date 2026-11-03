@@ -113,13 +113,13 @@ def add_additional_methods(methods):
     # Eventually we may add a better way to solve this.
     methods["methods"]["rpc:release"] = {
         "applies_to_object_types": "*",
-        "method_type": "arti_rpcserver::objmap::methods::RpcRelease",
+        "method_type": "tor_rpcserver::objmap::methods::RpcRelease",
         "output_type": "tor_rpcbase::Nil",
         "update_type": None,
     }
     methods["methods"]["rpc:clone_id"] = {
         "applies_to_object_types": "*",
-        "method_type": "arti_rpcserver::objmap::methods::RpcCloneId",
+        "method_type": "tor_rpcserver::objmap::methods::RpcCloneId",
         "output_type": "tor_rpcbase::SingleIdResponse",
         "update_type": None,
     }
