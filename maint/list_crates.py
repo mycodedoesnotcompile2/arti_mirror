@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import semver
 import subprocess
 import sys
 import toml.decoder
@@ -25,7 +26,7 @@ class Crate:
     name: str
     subdir: str
     publish: bool
-    version: str
+    version: semver.Version
     raw_metadata: Any
 
     @staticmethod
@@ -33,7 +34,7 @@ class Crate:
         pt = toml.decoder.loads(contents)
         package = pt["package"]["name"]
         publish = pt["package"].get("publish")
-        version = pt["package"]["version"]
+        version = semver.Version.parse(pt["package"]["version"])
         if publish is None:
             publish = True
         return Crate(package, str(subdir), publish, version, pt)
