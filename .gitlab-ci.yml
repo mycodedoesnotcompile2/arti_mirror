@@ -149,6 +149,7 @@ python3-checks:
     - pip3 install
         git+https://gitlab.torproject.org/tpo/core/chutney.git@"$CHUTNEY_COMMIT"
         marko
+        semver
         tomli_w
         types-toml
         types-PyYAML
@@ -165,11 +166,11 @@ maint-checks:
   needs: []
   stage: build
   script:
-    - maint/common/apt-install git python3-toml python3-requests python3-mistune
+    - maint/common/apt-install git python3-toml python3-requests python3-mistune python3-semver
     - ./maint/check-toposort
     - ./maint/add_warning --check
     - ./maint/common/forbid-absolute-shebangs
-    - ./maint/common/forbid-script-extensions !maint/list_crates.py
+    - ./maint/common/forbid-script-extensions !maint/list_crates.py !maint/sort_bumps.py
     - ./maint/common/update-shell-includes --check --all
     - ./maint/cargo-check-publishable
     - ./maint/check-case-sensitive
