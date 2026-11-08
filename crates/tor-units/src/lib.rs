@@ -424,22 +424,6 @@ impl<T> IntegerSeconds<T> {
     pub fn as_secs(self) -> T {
         self.value
     }
-
-    /// Map the inner value (useful for conversion)
-    ///
-    /// ```
-    /// use tor_units::{BoundedInt32, IntegerSeconds};
-    ///
-    /// let value: IntegerSeconds<i32> = 42.into();
-    /// let value: IntegerSeconds<BoundedInt32<0,1000>>
-    ///     = value.try_map(TryInto::try_into).unwrap();
-    /// ```
-    pub fn try_map<U, F, E>(self, f: F) -> Result<IntegerSeconds<U>, E>
-    where
-        F: FnOnce(T) -> Result<U, E>,
-    {
-        Ok(IntegerSeconds::new(f(self.value)?))
-    }
 }
 
 impl<T: TryInto<u64>> TryFrom<IntegerSeconds<T>> for Duration {
@@ -478,22 +462,6 @@ impl<T> IntegerMinutes<T> {
     /// use the Rust type system to ensure secs vs ms vs us correctness.
     pub fn as_minutes(self) -> T {
         self.value
-    }
-
-    /// Map the inner value (useful for conversion)
-    ///
-    /// ```
-    /// use tor_units::{BoundedInt32, IntegerMinutes};
-    ///
-    /// let value: IntegerMinutes<i32> = 42.into();
-    /// let value: IntegerMinutes<BoundedInt32<0,1000>>
-    ///     = value.try_map(TryInto::try_into).unwrap();
-    /// ```
-    pub fn try_map<U, F, E>(self, f: F) -> Result<IntegerMinutes<U>, E>
-    where
-        F: FnOnce(T) -> Result<U, E>,
-    {
-        Ok(IntegerMinutes::new(f(self.value)?))
     }
 }
 
@@ -538,22 +506,6 @@ impl<T> IntegerDays<T> {
     /// use the Rust type system to ensure secs vs ms vs us correctness.
     pub fn as_days(self) -> T {
         self.value
-    }
-
-    /// Map the inner value (useful for conversion)
-    ///
-    /// ```
-    /// use tor_units::{BoundedInt32, IntegerDays};
-    ///
-    /// let value: IntegerDays<i32> = 42.into();
-    /// let value: IntegerDays<BoundedInt32<0,1000>>
-    ///     = value.try_map(TryInto::try_into).unwrap();
-    /// ```
-    pub fn try_map<U, F, E>(self, f: F) -> Result<IntegerDays<U>, E>
-    where
-        F: FnOnce(T) -> Result<U, E>,
-    {
-        Ok(IntegerDays::new(f(self.value)?))
     }
 }
 
