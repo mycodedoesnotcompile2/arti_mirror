@@ -260,6 +260,34 @@ async fn run_action<R: Runtime>(
 
                 forward_connection(rt_clone, request, stream, nickname, addr).await?;
             }
+            (Encapsulation::Simple, ref addr @ TargetAddr::Host(ref host, port)) => {
+                let rt_clone = runtime.clone();
+                let connect_options = Default::default();
+                let host_clone = host.clone();
+                let port_clone = port;
+
+                let lookup_future = async move {
+                    use std::net::ToSocketAddrs;
+                    let addrs = (host_clone.as_str(), port_clone).to_socket_addrs()?;
+
+                    let mut last_err = None;
+                    for addr in addrs {
+                        match rt_clone.connect(&addr, &connect_options).await {
+                            Ok(stream) => return Ok(stream),
+                            Err(e) => last_err = Some(e),
+                        }
+                    }
+
+                    Err(last_err.unwrap_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            "DNS resolution returned no addresses",
+                        )
+                    }))
+                };
+
+                forward_connection(runtime.clone(), request, lookup_future, nickname, addr).await?;
+            }
             // TODO: we need more tests for Unix Socket support
             // I will open a issue or just finish it in this MR
             // (UnixTests)
