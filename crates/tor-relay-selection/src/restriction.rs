@@ -388,10 +388,14 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
 
+    #[cfg(feature = "geoip")]
+    use tor_geoip::CountryCode;
     use tor_linkspec::RelayId;
     use tor_netdir::testnet::construct_custom_netdir;
 
     use super::*;
+    #[cfg(feature = "geoip")]
+    use crate::testing::testnet_with_geoip;
     use crate::testing::{cfg, split_netdir, testnet};
 
     #[test]
@@ -565,5 +569,19 @@ mod test {
         assert!(no.iter().all(|r| !p(r)));
     }
 
-    // TODO: Write a geoip test?
+    #[cfg(feature = "geoip")]
+    #[test]
+    fn filter_countries() {
+        let nd = testnet_with_geoip();
+        let us: CountryCode = "US".parse().unwrap();
+        let us_only = RelayRestriction::require_country_code(us);
+
+        let (yes, no) = split_netdir(&nd, &us_only);
+        let p = |r: &Relay<'_>| r.country_code() == Some(us);
+
+        assert_eq!(yes.len(), 16);
+        assert_eq!(no.len(), 24);
+        assert!(yes.iter().all(p));
+        assert!(no.iter().all(|r| !p(r)));
+    }
 }
