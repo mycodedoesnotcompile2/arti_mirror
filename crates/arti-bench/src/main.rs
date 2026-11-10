@@ -404,7 +404,7 @@ fn main() -> Result<()> {
     let cfg = config_sources.load()?;
     let (_config, tcc) = tor_config::resolve::<ArtiCombinedConfig>(&cfg)?;
     info!("Binding local TCP listener...");
-    let Some(listen_addr) = matches.get_one::<String>("listen").unwrap();
+    let listen_addr = matches.get_one::<String>("listen").unwrap().clone();
     let listener = TcpListener::bind(listen_addr)?;
     let local_addr = listener.local_addr()?;
     let connect_addr = local_addr;
