@@ -177,6 +177,7 @@ class TestNetwork(unittest.TestCase):
         print(cp.stdout)
         self.assertEqual(cp.returncode, 0)
 
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     unittest.main()
