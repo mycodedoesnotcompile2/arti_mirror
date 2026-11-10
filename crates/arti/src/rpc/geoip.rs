@@ -23,12 +23,10 @@ use super::session::ArtiRpcSession;
 /// since the database is linked into Arti at compile time.
 /// This may change in the future.
 ///
-/// We guarantee that the database returned by this method
-/// will not change.
-/// (Currently, Arti has no ability at all to change the Geoip database
-/// while it's running.
-/// But even if we add support for changing Geoip DBs,
-/// the database returned by this method will not change.)
+/// This method returns the latest geoip database
+/// at the time that it is called.
+/// (As of Nov 2026, Arti has no ability at all to change the Geoip database
+/// while it's running.)
 #[derive(Debug, serde::Deserialize, serde::Serialize, Deftly)]
 #[derive_deftly(rpc::DynMethod)]
 #[deftly(rpc(method_name = "arti:get_geoip_db"))]
