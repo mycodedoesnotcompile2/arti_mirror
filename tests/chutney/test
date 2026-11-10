@@ -76,7 +76,7 @@ class TestNetwork(unittest.TestCase):
                     # which are normally loopback (127.0.0.1). We use the node's
                     # process launcher to run curl from the same "location"
                     # (e.g. shadow virtual host) as the chutney node itself.
-                    cp = client.launcher().run(
+                    cp = client._launcher.run(
                         [
                             "curl",
                             f"http://{common.TEST_DOMAIN}",
@@ -155,7 +155,7 @@ class TestNetwork(unittest.TestCase):
             f"Running arti bench with tor client {client.nick} via {ip}:{port}",
             flush=True,
         )
-        cp = client.launcher().run(
+        cp = client._launcher.run(
             [
                 self._config.arti_bench,
                 "-c",
