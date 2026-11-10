@@ -94,8 +94,10 @@ def _configure_and_run_shadow(args: argparse.Namespace) -> None:
                 f"{common.RUNNING_IN_SHADOW_ENV}=1",
                 # tell "chutney verify" to listen on and connect back to the
                 # controller's ip address.
-                f"{chutney.network_tests.verify.VerifyConfig._LISTEN_ADDRESS_ENV.varname()}"
-                "={str(controller_ip)}",
+                (
+                    f"{chutney.network_tests.verify.VerifyConfig._LISTEN_ADDRESS_ENV.varname()}"
+                    f"={str(controller_ip)}"
+                ),
                 str(_SCRIPT_DIR.joinpath("test")),
                 "-v",
             ]
