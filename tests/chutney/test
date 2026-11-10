@@ -163,7 +163,7 @@ class TestNetwork(unittest.TestCase):
                 "--socks5",
                 addr_and_port_str(ip, port),
                 "--listen",
-                f'{ip}:0',
+                f"{ip}:0",
                 "-o",
                 str(self._network.dir.joinpath("benchmark_results.json")),
             ],
