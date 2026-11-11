@@ -359,10 +359,9 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 // TODO DIRMIRROR: This appears to be prone to copy and paste
                 // errors, we should do something about it, as in macros and/or
                 // traits.
-                let (missing_routers, missing_micros, missing_extras) = (
+                let (missing_routers, missing_micros) = (
                     consensus.missing_routers(tx, futile.routers.refused(), Some(1))?,
                     consensus.missing_micros(tx, futile.micros.refused(), Some(1))?,
-                    consensus.missing_extras(tx, futile.extras.refused(), Some(1))?,
                 );
 
                 if *ttl <= now {
@@ -376,7 +375,6 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                     State::FetchConsensus
                 } else if missing_routers.is_empty()
                     && missing_micros.is_empty()
-                    && missing_extras.is_empty()
                 {
                     // All queues are empty, meaning we are done, until ttl
                     // ends.
@@ -664,7 +662,6 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     ) -> Result<(), OperationError> {
         match T::flavor() {
             ConsensusFlavor::Plain => {
-                // TODO DIRMIRROR: Add extras.
                 self.descriptors_rd(pool, data, endpoint, now).await
             }
             ConsensusFlavor::Microdesc => self.descriptors_md(pool, data, endpoint, now).await,
@@ -1064,8 +1061,7 @@ trait DescriptorDownloader<T: FlavoredConsensusUnverified> {
 /// additionally accepts a function item that returns the respective
 /// [`FutileDescriptorSet`] item out of [`FutileDescriptors`]; this is to avoid
 /// duplication.
-// TODO: Once we have extra-info support, consider moving this implementation
-// into the trait method.
+// XXX: Move this into the trait method.
 fn downloader_common_insert<T: FlavoredConsensusUnverified, D: DescriptorDownloader<T>>(
     engine: &StaticEngine<T>,
     tx: &Transaction<'_>,
@@ -1315,9 +1311,6 @@ struct FutileDescriptors {
     /// The futile router descriptors.
     routers: FutileDescriptorSet<Sha1>,
 
-    /// The futile extra-infos.
-    extras: FutileDescriptorSet<Sha1>,
-
     /// The futile micro descriptors.
     micros: FutileDescriptorSet<Sha256>,
 }
@@ -1516,12 +1509,6 @@ mod test {
                     assert_eq!(
                         consensus.missing_routers(tx, iter::empty(), None).unwrap(),
                         HashSet::from([relay_to_remove])
-                    );
-                    assert!(
-                        consensus
-                            .missing_extras(tx, iter::empty(), None)
-                            .unwrap()
-                            .is_empty()
                     );
                     assert!(
                         consensus

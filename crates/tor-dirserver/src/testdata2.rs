@@ -276,10 +276,9 @@ pub(crate) fn test_db() -> Pool<SqliteConnectionManager> {
             sql!(
                 "
                 INSERT INTO descriptor
-                (docid, sha1, sha2, kp_relay_id_rsa_sha1, flavor, extra_sha1)
+                (docid, sha1, sha2, kp_relay_id_rsa_sha1, flavor)
                 VALUES
-                -- TODO DIRMIRROR: Support extra-info.
-                (:docid, :sha1, :sha2, :fingerprint, :flavor, NULL)
+                (:docid, :sha1, :sha2, :fingerprint, :flavor)
                 "
             ),
             named_params! {
@@ -314,9 +313,9 @@ pub(crate) fn test_db() -> Pool<SqliteConnectionManager> {
                 "
                 -- TODO DIRMIRROR: Same naming issue here.
                 INSERT INTO descriptor
-                (docid, sha1, sha2, kp_relay_id_rsa_sha1, flavor, extra_sha1)
+                (docid, sha1, sha2, kp_relay_id_rsa_sha1, flavor)
                 VALUES
-                (:docid, :sha1, :sha2, NULL, :flavor, NULL)
+                (:docid, :sha1, :sha2, NULL, :flavor)
                 "
             ),
             named_params! {
