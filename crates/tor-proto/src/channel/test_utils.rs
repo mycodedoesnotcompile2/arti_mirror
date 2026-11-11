@@ -78,22 +78,25 @@ pub(crate) fn new_channel<R: Runtime>(
     (chan, reactor)
 }
 
-/// Initialize connected client and relay channels.
+/// A channel provider that can't launch any channels.
 ///
-/// Returns a client channel and a relay channel respectively.
-///
-/// The [`ConnInspector`] allows you to inspect the cells that they send to each other.
+/// Because channels only take a `Weak`, we have to retain the `Arc`. This is
+/// only for tests and the channel provider is a no-op, so let's keep a global
+/// around forever so that we can forget about it.
 #[cfg(feature = "relay")]
-pub(crate) fn new_channel_pair<R: Runtime>(
-    rt: &R,
-    chan_provider: Weak<dyn ChannelProvider<BuildSpec = OwnedChanTarget> + Send + Sync>,
-    relay_ids: RelayIds,
-    relay_ntor_keys: RelayNtorKeys,
-    conn_inspector: &ConnInspector,
-) -> (Arc<Channel>, Arc<Channel>, CircuitIncomingStreamReceiver) {
-    let relay_info = PeerInfo::new(PeerAddr::UNSPECIFIED, relay_ids);
-    let client_info = PeerInfo::new(PeerAddr::UNSPECIFIED, RelayIds::empty());
+static CHAN_PROVIDER: LazyLock<Arc<NoOpChannelProvider>> =
+    LazyLock::new(|| Arc::new(NoOpChannelProvider));
 
+/// Create a [`ChannelMode::Relay`] for a channel where we are the responder.
+///
+/// It also returns a receiver for incoming streams on the channel's circuits.
+/// Circuits cannot be created on a channel after its receiver has been dropped.
+#[cfg(feature = "relay")]
+pub(crate) fn new_relay_mode(
+    chan_provider: Weak<dyn ChannelProvider<BuildSpec = OwnedChanTarget> + Send + Sync>,
+    relay_ids: &RelayIds,
+    relay_ntor_keys: RelayNtorKeys,
+) -> (ChannelMode, CircuitIncomingStreamReceiver) {
     let circ_net_params = CircNetParameters {
         cc: CongestionControlNetParams::defaults_for_tests(),
     };
@@ -108,16 +111,37 @@ pub(crate) fn new_channel_pair<R: Runtime>(
         // Don't allow any stream commands.
         &[],
     );
-    let create_request_handler = Arc::new(create_request_handler);
 
-    let client_mode = ChannelMode::Client;
     let relay_mode = ChannelMode::Relay {
-        create_request_handler,
-        our_ed25519_id: *relay_info.ed_identity().unwrap(),
-        our_rsa_id: *relay_info.rsa_identity().unwrap(),
+        create_request_handler: Arc::new(create_request_handler),
+        our_ed25519_id: *relay_ids.ed_identity().unwrap(),
+        our_rsa_id: *relay_ids.rsa_identity().unwrap(),
         // The relay is the responder.
         circ_id_range: CircIdRange::Low,
     };
+
+    (relay_mode, circuit_stream_rx)
+}
+
+/// Initialize connected channels for a client and a relay.
+///
+/// Return the client and relay channels, respectively.
+///
+/// With the help of the [`ConnInspector`], you can inspect the cells they exchange.
+#[cfg(feature = "relay")]
+pub(crate) fn new_channel_pair<R: Runtime>(
+    rt: &R,
+    chan_provider: Weak<dyn ChannelProvider<BuildSpec = OwnedChanTarget> + Send + Sync>,
+    relay_ids: RelayIds,
+    relay_ntor_keys: RelayNtorKeys,
+    conn_inspector: &ConnInspector,
+) -> (Arc<Channel>, Arc<Channel>, CircuitIncomingStreamReceiver) {
+    let client_mode = ChannelMode::Client;
+    let (relay_mode, circuit_stream_rx) =
+        new_relay_mode(chan_provider, &relay_ids, relay_ntor_keys);
+
+    let relay_info = PeerInfo::new(PeerAddr::UNSPECIFIED, relay_ids);
+    let client_info = PeerInfo::new(PeerAddr::UNSPECIFIED, RelayIds::empty());
 
     // This simplifies the rustc errors when something goes wrong.
     // c_to_r = client -> relay
@@ -220,11 +244,6 @@ pub(crate) fn new_channel_pair_with_keys<R: Runtime>(
     let relay_ntor_keys = tor_llcrypto::pk::curve25519::StaticKeypair::generate(&mut rng).unwrap();
     let relay_ntor_keys = RelayNtorKeys::new(Arc::new(relay_ntor_keys.into()));
 
-    // Since channels only take a `Weak`, it means we need to keep the `Arc` around.
-    // This is just a test and the channel provider is a no-op,
-    // so keep a global around forever so that we can forget about it.
-    static CHAN_PROVIDER: LazyLock<Arc<NoOpChannelProvider>> =
-        LazyLock::new(|| Arc::new(NoOpChannelProvider));
     let chan_provider = Arc::downgrade(&CHAN_PROVIDER);
 
     let (client_chan, relay_chan, circuit_stream_rx) = new_channel_pair(
