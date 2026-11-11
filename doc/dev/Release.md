@@ -182,62 +182,67 @@ release?" above.
 
    Add an acknowledgement for the current sponsor(s).
 
-3. [ ] Determine what semver/version update to do to each crate.
+3. [ ] Increase all appropriate version numbers.
 
-   We need to sort our crates into the following tiers.
-    * Unstable (0.x) `tor-*` and `arti-*` crates.
-      (Bump minor version, to the same value for each crate.)
-    * No changes were made.
-      (No version bump needed)
-    * Only non-functional changes were made.
-      (Bump the version of the crate, but not the depended-on version.)
-    * Functional changes were made, but no APIs were added or broken.
-      (Bump patchlevel.)
-    * APIs were added.
-      (Bump patchlevel if major == 0; else bump minor.)
-    * APIs were broken.
-      (Bump minor if major == 0; else bump major.)
-    * MSRV was increased.
-      (Bump minor; see our [MSRV policy][msrv])
-    * Crates that we do not publish (E.g. `maint/*`, `examples/*`).
-      (Do not bump version)
+   Prepare an MR to bump crate versions.
+
+   For all published `tor-*` and `arti-*` crates with 0.x version numbers
+   we always bump the minor version and release,
+   even if there have been no changes.
+
+   These crates and their current version (which should all be the same) can be printed with:
+   `./maint/list-crates --only-unstable --only-matching-regex='^(tor|arti)-' --version`.
+   Pick the next minor version, and, for each such crate:
+   `cargo set-version -p ${CRATE} 0.${MINOR}.0`.
+
+   We also bump the versions for published crates that have any changes since
+   the last version.
+   We do not bump versions for crates we don't publish (e.g. `maint/*`, `examples/*`).
+
+   Remaining crates that need version bumps can be identified with:
+   `./maint/list-crates --only-changed --prev-rev=arti-v$LAST_VERSION --only-unbumped`.
+
+   For each of these, first determine which kind of version bump to do:
+
+    * APIs were broken:
+      Bump minor if major == 0; else bump major.
+    * APIs were added:
+      Bump patchlevel if major == 0; else bump minor.
+    * MSRV was increased:
+      Bump minor; see our [MSRV policy][msrv]
+    * Functional changes were made, but no APIs were added or broken:
+      Bump patchlevel.
+    * Only non-functional changes (e.g. clippy lints, documentation) were made:
+      Bump the version of the crate, but not the depended-on version.
 
    [msrv]: https://gitlab.torproject.org/tpo/core/arti#minimum-supported-rust-version
 
-   For all `tor-*` and `arti-*` crates with 0.x version numbers
-   (which, as of March 2024 includes all `tor-*` crates,
-   and all `arti-*` crates apart from `arti` itself),
-   we always bump the minor version and release,
-   even if there have been no changes.
-   For other crates, things are more complicated:
-
-   You can identify crates that have no changes using `maint/changed-crates`:
-   ```
-   maint/changed-crates -v "arti-v$LAST_VERSION" 2>&1 >/dev/null | grep -i "no change"
-   ```
-
-   To see whether a crate has only non-functional changes,
-   you have to use  `git diff`.  Sorry!
-   Historically, trivial changes
-   are small tweaks in the clippy lints,
-   or documentation/comment improvements.
-
-   To determine whether any APIs were added,
-   look in the semver.md files.
-   (We often forget to add these;
-   but fortunately,
-   most of our crates currently have major version 0,
-   so we don't need to distinguish "functional changes"
-   from "new APIs".)
-
-   To determine whether any APIs were broken,
-   look in the semver.md files.
+   The crate's `semver.md` file may be helpful if it exists, but they are often
+   missing or incomplete, so you will also need to use `git diff` and/or `git
+   log`.
    The `cargo semver-checks` tool
    can also identify some of these,
    but its false-negative rate is high.
 
-   You may also want to look over the crate-by-crate diffs.
-   This can be quite time-consuming.
+   For a crate with functional changes, use `cargo set-version`:
+   `cargo set-version --bump {patch|minor|major} -p ${CRATE}`.
+
+   For a crate with only non-functional changes, use the `bump-nodep` script:
+   `./maint/bump-nodep crate1 crate2 crate3` ...
+
+   If `hashx` or `equix` have changed since the last release, you must also update
+   `crates/{hashx,equix}/bench/Cargo.lock`,
+   which aren't in the workspace for
+   [Reasons](https://gitlab.torproject.org/tpo/core/arti/-/issues/1351):
+
+```
+		(cd crates/hashx/bench && cargo update)
+		(cd crates/equix/bench && cargo update)
+```
+
+   When you are done,
+   `./maint/list-crates --only-changed --prev-rev=arti-v$LAST_VERSION --only-unbumped` should
+   generally return nothing.
 
 ## Final preparation for a release.
 
@@ -261,38 +266,7 @@ before you continue!
    Make sure that the acknowledgments and links are correct,
    if they might have gotten stale.
 
-5. [ ] Increase all appropriate version numbers.
-
-   For unstable (0.x) `tor-*` and `arti-*` crates,
-   determine the new minor number.
-   `maint/list-crates --version  | grep -P '^tor|^arti'`
-   will show you the existing versions,
-   which should usually all be the same.
-   Pick the next minor version, and, for each such crate:
-   `cargo set-version -p ${CRATE} 0.${MINOR}.0`.
-
-   For other crates:
-
-    * For each crate with functional changes:
-      `cargo set-version --bump {patch|minor|major} -p ${CRATE}`.
-
-    * For crates with non-functional changes,
-      you can use the `bump-nodep` script:
-      `./maint/bump-nodep crate1 crate2 crate3` ...
-
-   In all cases, make sure you commit `Cargo.lock` changes too.
-
-   If `hashx` or `equix` have changed since the last release, you must also update
-   `crates/{hashx,equix}/bench/Cargo.lock`,
-   which aren't in the workspace for
-   [Reasons](https://gitlab.torproject.org/tpo/core/arti/-/issues/1351):
-
-```
-		(cd crates/hashx/bench && cargo update)
-		(cd crates/equix/bench && cargo update)
-```
-
-6. [ ] (Re)run `maint/semver-checks` (having addressed any expected problems)
+5. [ ] (Re)run `maint/semver-checks` (having addressed any expected problems)
 
    Check for side effects from bumping versions!
 
@@ -317,13 +291,12 @@ before you continue!
    since the last version,
    but not had their versions bumped,
    with the command
-   `./maint/changed-crates -u ${LAST_VERSION}`.
-   (Note the `-u`.)
+   `./maint/list-crates --only-changed --prev-rev "arti-v${LAST_VERSION}" --only-unbumped`.
 
    Run `maint/semver-checks` again:
    It should be quiet now that you bumped all the versions.
 
-7. [ ] Run `maint/update-release-date`
+6. [ ] Run `maint/update-release-date`
 
    This makes sure that Arti has an accurate sense of when its version was bumped.
 
