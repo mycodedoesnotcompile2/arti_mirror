@@ -20,8 +20,8 @@
 //!
 //! | RELAY cmd  | Received in | Handled in            | Description                            |
 //! |------------|-------------|-----------------------|----------------------------------------|
-//! | DROP       | F           | FH::handle_meta_msg() | Passed to PaddingController for        |
-//! |            |             |                       | validation                             |
+//! | DROP       | F           | F                     | Ignored in FH::handle_forward_cell(),  |
+//! |            |             |                       | before the PaddingController sees it   |
 //! |------------|-------------|-----------------------|----------------------------------------|
 //! | EXTEND2    | F           | FH::handle_meta_msg() | Handled by the ExtendRequestHandler    |
 //! |            |             |                       | See [forward::extend_handler].         |
