@@ -373,9 +373,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                     // database until valid-after has been surpassed, which is
                     // most definitely not what we want.
                     State::FetchConsensus
-                } else if missing_routers.is_empty()
-                    && missing_micros.is_empty()
-                {
+                } else if missing_routers.is_empty() && missing_micros.is_empty() {
                     // All queues are empty, meaning we are done, until ttl
                     // ends.
                     State::Hibernate
@@ -661,9 +659,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         now: Timestamp,
     ) -> Result<(), OperationError> {
         match T::flavor() {
-            ConsensusFlavor::Plain => {
-                self.descriptors_rd(pool, data, endpoint, now).await
-            }
+            ConsensusFlavor::Plain => self.descriptors_rd(pool, data, endpoint, now).await,
             ConsensusFlavor::Microdesc => self.descriptors_md(pool, data, endpoint, now).await,
         }
     }
@@ -1068,7 +1064,12 @@ trait DescriptorDownloader<T: FlavoredConsensusUnverified> {
                 }
                 DescriptorDownloadResult::Refused => Self::GET_FUTILE(futile).set_refused(digest),
                 DescriptorDownloadResult::Found(descriptor, raw) => {
-                    DescriptorMeta::insert(tx, engine.encodings.iter().copied(), &descriptor, &raw)?;
+                    DescriptorMeta::insert(
+                        tx,
+                        engine.encodings.iter().copied(),
+                        &descriptor,
+                        &raw,
+                    )?;
                 }
             }
         }
@@ -1085,7 +1086,8 @@ impl<T: FlavoredConsensusUnverified> DescriptorDownloader<T> for RdDownloader {
     type Request = RouterDescRequest;
     type Response = RouterDescUnverified;
 
-    const GET_FUTILE: fn(&mut FutileDescriptors) -> &mut FutileDescriptorSet<Self::DocDigest> = |futile| &mut futile.routers;
+    const GET_FUTILE: fn(&mut FutileDescriptors) -> &mut FutileDescriptorSet<Self::DocDigest> =
+        |futile| &mut futile.routers;
 
     fn query(
         tx: &Transaction<'_>,
@@ -1199,7 +1201,8 @@ impl<T: FlavoredConsensusUnverified> DescriptorDownloader<T> for MdDownloader {
     type Request = MicrodescRequest;
     type Response = Microdesc;
 
-    const GET_FUTILE: fn(&mut FutileDescriptors) -> &mut FutileDescriptorSet<Self::DocDigest> = |futile| &mut futile.micros;
+    const GET_FUTILE: fn(&mut FutileDescriptors) -> &mut FutileDescriptorSet<Self::DocDigest> =
+        |futile| &mut futile.micros;
 
     fn query(
         tx: &Transaction<'_>,
