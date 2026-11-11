@@ -8,8 +8,7 @@ use rusqlite::{Transaction, params};
 use weak_table::WeakValueHashMap;
 
 use crate::{
-    database::{DocumentId, sql},
-    err::DatabaseError,
+    database::{DatabaseError, DocumentId, sql},
 };
 
 /// Alias to force use of RandomState, regardless of features enabled in `weak_tables`.
