@@ -993,6 +993,12 @@ pub(crate) mod test {
     use tor_rtcompat::SpawnExt;
     use tor_rtcompat::{DynTimeProvider, NoOpStreamOpsHandle, Runtime};
 
+    #[cfg(feature = "relay")]
+    use {
+        crate::channel::test_utils::new_relay_mode_with_keys, futures::FutureExt as _,
+        tor_cell::chancell::msg::HandshakeType, tor_rtmock::MockRuntime,
+    };
+
     pub(crate) type CodecResult = std::result::Result<AnyChanCell, Error>;
 
     pub(crate) fn new_reactor<R: Runtime>(
@@ -1371,6 +1377,189 @@ pub(crate) mod test {
                 .await
                 .unwrap();
             reactor.run_once().await.unwrap();
+        });
+    }
+
+    // CREATE* cells are not processed by clients.
+    #[test]
+    fn create_on_client_channel() {
+        tor_rtcompat::test_with_all_runtimes!(|rt| async move {
+            let (_chan, mut reactor, _output, mut input) = new_reactor(rt, ChannelMode::Client);
+
+            let create_cells: [AnyChanMsg; 2] = [
+                msg::CreateFast::new(vec![42; 20]).into(),
+                msg::Create2::new(msg::HandshakeType::NTOR, *b"hihi").into(),
+            ];
+            for create_cell in create_cells {
+                input
+                    .send(Ok(AnyChanCell::new(CircId::new(0x8000_0001), create_cell)))
+                    .await
+                    .unwrap();
+                let e = reactor.run_once().await.unwrap_err().unwrap_err();
+                assert!(
+                    format!("{}", e).starts_with("Channel protocol violation: Unexpected cell: ")
+                );
+            }
+        });
+    }
+
+    // We will drop a CREATE* cell for an already-used circuit ID, even
+    // if it's a value our peer is forbidden from allocating.
+    #[cfg(feature = "relay")]
+    #[test]
+    fn create_on_circid_in_use() {
+        // MockRuntime is used to ensure that spawned circuit reactors are done with what
+        // they can do when we look.
+        MockRuntime::test_with_various(|rt| async move {
+            let (mode, _circuit_stream_rx) = new_relay_mode_with_keys();
+            let (_chan, mut reactor, mut output, mut input) = new_reactor(rt.clone(), mode);
+
+            // Our circuit.
+            let (padding_ctrl, _padding_stream) = new_padding(DynTimeProvider::new(rt.clone()));
+            let (snd, _circ_stream_13) = fake_mpsc(64);
+            reactor.circs.put_unchecked(
+                CircId::new(13).unwrap(),
+                CircEnt::OpenOrigin {
+                    cell_sender: snd,
+                    padding_ctrl,
+                },
+            );
+
+            // The peer also created a circuit.
+            let create_fast: AnyChanMsg = msg::CreateFast::new(vec![42; 20]).into();
+            input
+                .send(Ok(AnyChanCell::new(
+                    CircId::new(0x8000_0001),
+                    create_fast.clone(),
+                )))
+                .await
+                .unwrap();
+            reactor.run_once().await.unwrap();
+            let cell = output.next().await.unwrap();
+            assert_eq!(cell.circid(), CircId::new(0x8000_0001));
+            assert!(matches!(cell.msg(), AnyChanMsg::CreatedFast(_)));
+
+            // C-tor drops all such requests, per the `circuit_id_in_use_on_channel()`
+            // check in command.c's `command_process_create_cell()`.
+            let create2: AnyChanMsg = msg::Create2::new(HandshakeType::NTOR, *b"hihi").into();
+            for (id, create_cell) in [
+                (13, create_fast.clone()),
+                (0x8000_0001, create_fast),
+                (0x8000_0001, create2),
+            ] {
+                input
+                    .send(Ok(AnyChanCell::new(CircId::new(id), create_cell)))
+                    .await
+                    .unwrap();
+                reactor.run_once().await.unwrap();
+                rt.progress_until_stalled().await;
+
+                // We don't send anything, and there's no work for the
+                // reactor, such as sending a DESTROY for a circuit that was
+                // dropped.
+                assert!(output.try_recv().is_err());
+                assert!(reactor.run_once().now_or_never().is_none());
+            }
+
+            let ent = reactor.circs.get_mut(CircId::new(13).unwrap());
+            assert!(matches!(*ent.unwrap(), CircEnt::OpenOrigin { .. }));
+            let ent = reactor.circs.get_mut(CircId::new(0x8000_0001).unwrap());
+            assert!(matches!(*ent.unwrap(), CircEnt::OpenRelay { .. }));
+        });
+    }
+
+    // CREATE* cells for circuit IDs that cannot be allocated by the peer are rejected; the
+    // channel remains open.
+    #[cfg(feature = "relay")]
+    #[test]
+    fn create_on_circid_not_allowed() {
+        MockRuntime::test_with_various(|rt| async move {
+            let (mode, _circuit_stream_rx) = new_relay_mode_with_keys();
+            let (_chan, mut reactor, mut output, mut input) = new_reactor(rt.clone(), mode);
+
+            // We've never used the final ID in our half of the ID
+            // space. We have sent a DESTROY message about one of our
+            // circuits on ID 23.
+            reactor.circs.put_unchecked(
+                CircId::new(23).unwrap(),
+                CircEnt::DestroySent(HalfCirc::new(25)),
+            );
+
+            let create_fast: AnyChanMsg = msg::CreateFast::new(vec![42; 20]).into();
+            for id in [0x7fff_ffff, 23] {
+                input
+                    .send(Ok(AnyChanCell::new(CircId::new(id), create_fast.clone())))
+                    .await
+                    .unwrap();
+                reactor.run_once().await.unwrap();
+                rt.progress_until_stalled().await;
+
+                // C-tor responds with `END_CIRC_REASON_TORPROTOCOL`: see the `circ_id_type`
+                // check in `command_process_create_cell()` in command.c.
+                let cell = output.next().await.unwrap();
+                assert_eq!(cell.circid(), CircId::new(id));
+                let AnyChanMsg::Destroy(destroy) = cell.msg() else {
+                    panic!("Expected a DESTROY, got {:?}", cell.msg());
+                };
+                assert_eq!(destroy.reason(), DestroyReason::PROTOCOL);
+
+                // We don't send anything more; the reactor doesn't do anything else.
+                assert!(output.try_recv().is_err());
+                assert!(reactor.run_once().now_or_never().is_none());
+            }
+
+            assert!(
+                reactor
+                    .circs
+                    .get_mut(CircId::new(0x7fff_ffff).unwrap())
+                    .is_none()
+            );
+            let ent = reactor.circs.get_mut(CircId::new(23).unwrap());
+            assert!(matches!(*ent.unwrap(), CircEnt::DestroySent(_)));
+
+            // We're good with the first ID on their side.
+            input
+                .send(Ok(AnyChanCell::new(CircId::new(0x8000_0000), create_fast)))
+                .await
+                .unwrap();
+            reactor.run_once().await.unwrap();
+            let cell = output.next().await.unwrap();
+            assert_eq!(cell.circid(), CircId::new(0x8000_0000));
+            assert!(matches!(cell.msg(), AnyChanMsg::CreatedFast(_)));
+        });
+    }
+
+    // A peer may build a circuit on an ID that we have previously sent a DESTROY for.
+    #[cfg(feature = "relay")]
+    #[test]
+    fn create_on_circid_destroy_sent() {
+        MockRuntime::test_with_various(|rt| async move {
+            let (mode, _circuit_stream_rx) = new_relay_mode_with_keys();
+            let (_chan, mut reactor, mut output, mut input) = new_reactor(rt.clone(), mode);
+
+            let id = CircId::new(0x8000_0017).unwrap();
+            reactor
+                .circs
+                .put_unchecked(id, CircEnt::DestroySent(HalfCirc::new(25)));
+
+            // C-tor doesn't remember the ID once its DESTROY is written
+            // (`channel_note_destroy_not_pending()` in circuitlist.c), so it allows this.
+            let create_fast = msg::CreateFast::new(vec![42; 20]).into();
+            input
+                .send(Ok(AnyChanCell::new(Some(id), create_fast)))
+                .await
+                .unwrap();
+            reactor.run_once().await.unwrap();
+            rt.progress_until_stalled().await;
+
+            let cell = output.next().await.unwrap();
+            assert_eq!(cell.circid(), Some(id));
+            assert!(matches!(cell.msg(), AnyChanMsg::CreatedFast(_)));
+            assert!(output.try_recv().is_err());
+
+            let ent = reactor.circs.get_mut(id);
+            assert!(matches!(*ent.unwrap(), CircEnt::OpenRelay { .. }));
+            assert_eq!(reactor.circs.open_ent_count(), 1);
         });
     }
 

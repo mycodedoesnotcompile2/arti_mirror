@@ -123,6 +123,27 @@ pub(crate) fn new_relay_mode(
     (relay_mode, circuit_stream_rx)
 }
 
+/// Same as [`new_relay_mode`], but with pre-generated keys and a
+/// channel provider that can't launch channels.
+#[cfg(feature = "relay")]
+pub(crate) fn new_relay_mode_with_keys() -> (ChannelMode, CircuitIncomingStreamReceiver) {
+    let mut rng = tor_llcrypto::rng::CautiousRng;
+
+    // The keys are arbitrarily chosen.
+    let relay_ids = RelayIds::builder()
+        .ed_identity([6_u8; 32].into())
+        .rsa_identity([10_u8; 20].into())
+        .build()
+        .unwrap();
+
+    let relay_ntor_keys = tor_llcrypto::pk::curve25519::StaticKeypair::generate(&mut rng).unwrap();
+    let relay_ntor_keys = RelayNtorKeys::new(Arc::new(relay_ntor_keys.into()));
+
+    let chan_provider = Arc::downgrade(&CHAN_PROVIDER);
+
+    new_relay_mode(chan_provider, &relay_ids, relay_ntor_keys)
+}
+
 /// Initialize connected channels for a client and a relay.
 ///
 /// Return the client and relay channels, respectively.
