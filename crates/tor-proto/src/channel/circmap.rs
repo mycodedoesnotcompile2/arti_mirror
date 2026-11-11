@@ -8,7 +8,6 @@ use crate::client::circuit::padding::{PaddingController, QueuedCellPaddingInfo};
 use crate::{Error, Result};
 use tor_basic_utils::RngExt;
 use tor_cell::chancell::CircId;
-use tor_cell::chancell::msg::DestroyReason;
 
 use crate::circuit::celltypes::CreateResponse;
 use crate::client::circuit::halfcirc::HalfCirc;
@@ -19,11 +18,10 @@ use rand::Rng;
 use rand::distr::Distribution;
 use std::collections::{HashMap, hash_map::Entry};
 use std::ops::{Deref, DerefMut};
-use std::result::Result as StdResult;
 use std::sync::Arc;
 
 #[cfg(feature = "relay")]
-use crate::relay::RelayCirc;
+use {crate::relay::RelayCirc, tor_error::internal};
 
 /// Which group of circuit IDs are we allowed to allocate in this map?
 ///
@@ -127,6 +125,20 @@ pub(super) enum CircEnt {
     DestroySent(HalfCirc),
 }
 
+/// Whether the peer for the channel is allowed to open a circuit with the
+/// provided circuit ID.
+#[cfg(feature = "relay")]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub(super) enum PeerCircIdStatus {
+    /// We have an open or opening circuit with that ID.
+    InUse,
+    /// It falls within the portion of the ID space that is reserved for our
+    /// exclusive allocation.
+    NotAllowed,
+    /// The peer can use the ID to open a circuit.
+    Available,
+}
+
 /// An "smart pointer" that wraps an exclusive reference
 /// of a `CircEnt`.
 ///
@@ -220,10 +232,31 @@ impl CircMap {
         Err(Error::IdRangeFull)
     }
 
-    /// Add a new set of elements (corresponding to a [`RelayCirc`]) as an entry to this map.
+    /// Check whether the channel's peer is authorized to open a circuit with ID `circ_id`.
     ///
-    /// We use [`DestroyReason`] as the return type since we very likely want to destroy the circuit
-    /// if this fails, and not return an error and destroy the entire channel.
+    /// Like in C tor's `command_process_create_cell()`, an ID that is in use will be reported as
+    /// such, even if the peer is not permitted to allocate it.
+    ///
+    /// Once we send the DESTROY, we are no longer using that ID. (C tor considers the ID "in
+    /// use" from the time of `channel_note_destroy_pending()` until the time of
+    /// `channel_note_destroy_not_pending()` when the DESTROY is written. For us the ID is free
+    /// once the DESTROY is sitting in the output buffer of the channel.)
+    #[cfg(feature = "relay")]
+    pub(super) fn peer_circ_id_status(&self, circ_id: CircId) -> PeerCircIdStatus {
+        if self.is_open(circ_id) {
+            PeerCircIdStatus::InUse
+        } else if !self.range.is_allowed_for_peer(circ_id) {
+            PeerCircIdStatus::NotAllowed
+        } else {
+            PeerCircIdStatus::Available
+        }
+    }
+
+    /// Insert a new element set (corresponding to a [`RelayCirc`]) into the map, replacing
+    /// any entry for a circuit on which we've sent a DESTROY.
+    ///
+    /// If `circ_id` is not [`PeerCircIdStatus::Available`] then return
+    /// an internal error, closing the channel.
     #[cfg(feature = "relay")]
     pub(super) fn add_relay_ent(
         &mut self,
@@ -231,10 +264,10 @@ impl CircMap {
         circ: Arc<RelayCirc>,
         sink: CircuitRxSender,
         padding_ctrl: PaddingController,
-    ) -> StdResult<(), DestroyReason> {
-        // The peer is only allowed to use a subset of the ID range.
-        if !self.range.is_allowed_for_peer(circ_id) {
-            return Err(DestroyReason::NONE);
+    ) -> Result<()> {
+        let status = self.peer_circ_id_status(circ_id);
+        if status != PeerCircIdStatus::Available {
+            return Err(internal!("Circuit ID {circ_id} is {status:?}, not available").into());
         }
 
         let circ_ent = CircEnt::OpenRelay {
@@ -243,13 +276,9 @@ impl CircMap {
             padding_ctrl,
         };
 
-        if let Entry::Vacant(ent) = self.m.entry(circ_id) {
-            ent.insert(circ_ent);
-            self.open_count += 1;
-            Ok(())
-        } else {
-            Err(DestroyReason::NONE)
-        }
+        self.m.insert(circ_id, circ_ent);
+        self.open_count += 1;
+        Ok(())
     }
 
     /// Testing only: install an entry in this circuit map without regard

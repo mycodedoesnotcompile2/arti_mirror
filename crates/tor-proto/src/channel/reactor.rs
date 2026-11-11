@@ -47,6 +47,7 @@ use tracing::{debug, instrument, trace};
 
 #[cfg(feature = "relay")]
 use {
+    super::circmap::PeerCircIdStatus,
     crate::channel::Channel,
     crate::circuit::celltypes::CreateRequest,
     crate::relay::channel::create_handler::{CreateRequestHandler, RelayCircComponents},
@@ -688,6 +689,53 @@ impl<R: Runtime> Reactor<R> {
             return Err(Error::ChanProto(err));
         };
 
+        // We check the circuit ID before entering the handshake logic, like C-tor's
+        // `command_process_create_cell()`, and we check for dropping a cell before refusing it
+        // (a DESTROY on an ID that is in use would destroy its associated circuit).
+        //
+        // TODO(relay): If the handshake is offloaded (see create_handler.rs) you need to
+        // pre-reserve the ID; otherwise a subsequent CREATE with that ID will hit
+        // add_relay_ent() and tear down the channel.
+        // TODO(relay): once it exists, count the cell in DoS accounting.
+        match self.circs.peer_circ_id_status(circid) {
+            PeerCircIdStatus::InUse => {
+                trace!(channel_id = %self, "{} for circuit {} that is in use", msg.cmd(), circid);
+                // Silently discard that cell according to the spec:
+                //
+                // > When an onion router receives a CREATE/CREATE2 cell, if it already has a
+                // > circuit on the given connection with the given circID, it drops the cell.
+                //
+                // See https://spec.torproject.org/tor-spec/creating-circuits.html
+                return Ok(());
+            }
+            PeerCircIdStatus::NotAllowed => {
+                // We may reject an ID from our half of the range per the spec.
+                //
+                // https://spec.torproject.org/tor-spec/create-created-cells.html#choosing-circid
+                //
+                // Similar to C-tor's `command_process_create_cell()`, we send PROTOCOL as the
+                // reason even though the spec says it should always be NONE:
+                //
+                // https://spec.torproject.org/tor-spec/tearing-down-circuits.html
+                //
+                // The rationale for NONE is to prevent colluding relays from using it to learn
+                // that they're both on the same circuit. In our case, there isn't a circuit yet,
+                // and the reason is just based on an ID chosen by the adjacent peer.
+                let destroy = Destroy::new(DestroyReason::PROTOCOL);
+                let destroy = AnyChanCell::new(Some(circid), destroy.into());
+
+                debug!(
+                    channel_id = %self,
+                    "Received {} with circuit ID {} that the peer may not allocate; sending {}",
+                    msg.cmd(),
+                    circid,
+                    destroy.msg().cmd(),
+                );
+                return self.send_cell(destroy).await;
+            }
+            PeerCircIdStatus::Available => {}
+        }
+
         let Some(chan) = create_request_handler.channel.upgrade() else {
             // This can happen if the last `Arc<Channel>` was dropped before the reactor had a
             // chance to notice.
@@ -733,12 +781,12 @@ impl<R: Runtime> Reactor<R> {
                     padding_ctrl,
                 } = components;
 
-                if let Err(reason) = self.circs.add_relay_ent(circid, circ, sender, padding_ctrl) {
-                    debug!("Unable to add circuit map entry for incoming circuit: {reason}");
-                    CreateResponse::Destroy(Destroy::new(reason))
-                } else {
-                    response
-                }
+                // We've held onto our `&mut self` reference since the ID check,
+                // so it is impossible for this to fail (although see the TODO
+                // there).
+                self.circs
+                    .add_relay_ent(circid, circ, sender, padding_ctrl)?;
+                response
             }
             Err(destroy) => CreateResponse::Destroy(destroy),
         };
