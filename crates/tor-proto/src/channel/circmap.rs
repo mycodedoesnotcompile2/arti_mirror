@@ -493,4 +493,46 @@ mod test {
             assert!(adv.is_none());
         });
     }
+
+    #[cfg(feature = "relay")]
+    #[test]
+    fn peer_circ_id_status() {
+        use PeerCircIdStatus::*;
+
+        let mut map_low = CircMap::new(CircIdRange::Low);
+        let map_high = CircMap::new(CircIdRange::High);
+        let mut rng = testing_rng();
+        let last_low = CircId::new(0x7fff_ffff).unwrap();
+        let first_high = CircId::new(0x8000_0000).unwrap();
+        tor_rtcompat::test_with_one_runtime!(|runtime| async {
+            let (padding_ctrl, _padding_stream) = new_padding(DynTimeProvider::new(runtime));
+
+            // The values are given in the same order that the checks
+            // are performed in `command_process_create_cell()` from C
+            // tor's command.c.
+
+            // The peer can only allocate IDs in our unused half of the space.
+            assert_eq!(map_low.peer_circ_id_status(last_low), NotAllowed);
+            assert_eq!(map_low.peer_circ_id_status(first_high), Available);
+            assert_eq!(map_high.peer_circ_id_status(last_low), Available);
+            assert_eq!(map_high.peer_circ_id_status(first_high), NotAllowed);
+
+            // Our circuit is in use, either while opening or when it is open.
+            let (csnd, _) = oneshot::channel();
+            let (snd, _) = fake_mpsc(8);
+            let id = map_low
+                .add_origin_ent(&mut rng, csnd, snd, padding_ctrl)
+                .unwrap();
+            assert_eq!(map_low.peer_circ_id_status(id), InUse);
+            assert!(map_low.advance_from_opening(id).is_some());
+            assert_eq!(map_low.peer_circ_id_status(id), InUse);
+
+            // After sending a DESTROY, an ID is equivalent to one that was
+            // never used.
+            map_low.destroy_sent(id, HalfCirc::new(1));
+            assert_eq!(map_low.peer_circ_id_status(id), NotAllowed);
+            map_low.destroy_sent(first_high, HalfCirc::new(1));
+            assert_eq!(map_low.peer_circ_id_status(first_high), Available);
+        });
+    }
 }
