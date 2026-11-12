@@ -1,6 +1,7 @@
 //! The `identity` subcommand.
 
 use anyhow::Context;
+use clap::Args;
 use serde::Serialize;
 use tor_keymgr::{KeyMgr, KeystoreSelector};
 use tor_relay_crypto::pk::{RelayIdentityKeypair, RelayIdentityRsaKeypair};
@@ -8,6 +9,22 @@ use tor_relay_crypto::pk::{RelayIdentityKeypair, RelayIdentityRsaKeypair};
 use crate::cli;
 use crate::keys::{RelayIdentityKeypairSpecifier, RelayIdentityRsaKeypairSpecifier};
 use crate::relay::InertTorRelay;
+
+/// Arguments for the identity subcommand.
+#[derive(Clone, Debug, Args)]
+pub(crate) struct IdentityArgs {
+    /// Generate the identity keys.
+    #[arg(long)]
+    pub(crate) generate: bool,
+
+    /// Replace existing identity keys.
+    #[arg(long, requires = "generate")]
+    pub(crate) overwrite: bool,
+
+    /// Print the fingerprints in JSON format.
+    #[arg(long)]
+    pub(crate) json: bool,
+}
 
 /// The relay identity fingerprints.
 #[derive(Serialize)]
@@ -19,7 +36,7 @@ struct Fingerprints {
 }
 
 /// Run the identity subcommand.
-pub(crate) fn run(args: &cli::IdentityArgs, global_args: &cli::GlobalArgs) -> anyhow::Result<()> {
+pub(crate) fn run(args: &IdentityArgs, global_args: &cli::GlobalArgs) -> anyhow::Result<()> {
     let config = crate::load_config(global_args)?;
     let state_path = config.storage.state_dir(&crate::config::base_resolver())?;
     let keymgr = InertTorRelay::create_keymgr(&state_path, config.storage.permissions())

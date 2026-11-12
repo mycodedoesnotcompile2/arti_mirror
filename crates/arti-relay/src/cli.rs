@@ -87,7 +87,7 @@ pub(crate) enum Commands {
     /// Run the relay.
     Run(RunArgs),
     /// Manage the relay identity keys.
-    Identity(IdentityArgs),
+    Identity(crate::subcommands::identity::IdentityArgs),
     /// Print build information.
     BuildInfo,
 }
@@ -158,22 +158,6 @@ impl GlobalArgs {
 /// Arguments when running an Arti relay.
 #[derive(Clone, Debug, Args)]
 pub(crate) struct RunArgs {}
-
-/// Arguments for the identity subcommand.
-#[derive(Clone, Debug, Args)]
-pub(crate) struct IdentityArgs {
-    /// Generate the identity keys.
-    #[arg(long)]
-    pub(crate) generate: bool,
-
-    /// Replace existing identity keys.
-    #[arg(long, requires = "generate")]
-    pub(crate) overwrite: bool,
-
-    /// Print the fingerprints in JSON format.
-    #[arg(long)]
-    pub(crate) json: bool,
-}
 
 /// Log levels allowed by the cli.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
