@@ -322,7 +322,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             // None afterwards.
             ConsensusBoundData::None => {
                 // Check whether there is a valid consensus in the database at all.
-                match self.recent_consensus(tx, now)? {
+                match self.fresh_consensus(tx, now)? {
                     // Some consensus means we can load it.
                     Some(_) => State::LoadConsensus,
 
@@ -470,7 +470,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // In this case, it is probably better to return a bug, as external
         // applications arbitrarily modifying the database while we are running
         // leaves too much room for wrong/weird behavior.
-        let consensus = db::read_tx(pool, |tx| self.recent_consensus(tx, now))??
+        let consensus = db::read_tx(pool, |tx| self.fresh_consensus(tx, now))??
             .ok_or_else(|| internal!("database externally modified?"))?;
         let ttl = consensus.ttl(rng);
         let futile = Box::new(FutileDescriptors::default());
@@ -913,8 +913,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     /// `(fresh_until - valid_after)/2` and this iteration of the finite state
     /// machine picks later random point in time still in this interval.
     // XXX: Fix StoreConsensus to not depend on this.
-    // XXX: Rename to fresh_consensus().
-    fn recent_consensus(
+    fn fresh_consensus(
         &self,
         tx: &Transaction<'_>,
         now: Timestamp,
