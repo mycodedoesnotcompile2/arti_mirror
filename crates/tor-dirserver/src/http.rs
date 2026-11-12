@@ -234,7 +234,14 @@ impl HttpServer {
                                 Ok::<_, Infallible>(resp)
                             }
                         });
-                        tasks.spawn(http1::Builder::new().serve_connection(stream, service));
+                        // C Tor's clients require `Content-Length` and `Date`
+                        // to be written with exactly this case:
+                        // `buf_http_find_content_length()`,
+                        // `parse_http_response()`.
+                        let conn = http1::Builder::new()
+                            .title_case_headers(true)
+                            .serve_connection(stream, service);
+                        tasks.spawn(conn);
                     },
 
                     // There has been an error in accepting the connection.
