@@ -1,10 +1,11 @@
 //! Code for parsing the relay specific config options.
 
-use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
 use derive_deftly::Deftly;
 use derive_more::Constructor;
 use serde::{Deserialize, Serialize};
+use tor_config::ConfigBuildError;
 use tor_config::derive::prelude::*;
 use tor_netdoc::types::{ContactInfo, Nickname};
 
@@ -67,6 +68,10 @@ pub(crate) struct RelayConfig {
     pub(crate) testing: TestingConfig,
 
     /// Addresses to advertise on the network for receiving OR connections.
+    ///
+    /// All values must be unicast addresses with non-zero ports and no IPv6 zones. Private and
+    /// other internal IP addresses such as 127.0.0.1 or 10.0.0.0/8 may only be used when using
+    /// custom directory authorities (for test networks).
     // For now, we've decided that we don't want to include any IP address auto-detection in
     // arti-relay, so we require users to provide the addresses to advertise. (So no `Option` and
     // `builder(default)` here).
@@ -75,13 +80,14 @@ pub(crate) struct RelayConfig {
 }
 
 /// The address(es) to advertise on the network.
-// TODO: We'll want to make sure we check that the addresses are valid before uploading them in a
-// server descriptor (for example no `INADDR_ANY`, multicast, etc). We can't do that validation here
-// during parsing, since we don't know exactly which addresses are valid or not. For example we
-// don't know if local addresses are allowed as we don't know here whether the user plans to run a
-// testing tor network. We also don't want to do the validation too late (for example when uploading
-// the server descriptor) as it's better to validate at startup. A better place might be to perform
-// the validation in the `RelayConfig` builder validate.
+///
+/// These are validated in [`validate_advertised`] after the full configuration is constructed,
+/// because it depends on the directory authorities whether internal addresses are permitted.
+//
+// TODO(relay): As of now there is no config reload, but if those parameters ever become changeable
+// at runtime, we should do the same thing that C-tor's `ip_address_changed()` does: reset our
+// reachability status, restart the bandwidth self-test (if we have been running for more than 6
+// hours), and publish a new descriptor.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Constructor)]
 pub(crate) struct Advertise {
     /// All relays must advertise an IPv4 address.
@@ -110,6 +116,85 @@ impl Advertise {
     }
 }
 
+/// Ensure the advertised addresses are publishable in a descriptor.
+///
+/// Ports of zero, unspecified addresses, multicast addresses, broadcast addresses, and IPv6
+/// addresses containing zones and/or flow labels are always rejected. If `allow_internal` is false,
+/// then we refuse any "internal" address ([`is_internal`]). C-tor uses this logic within its
+/// `address_can_be_used()` function, too. That way, private testing networks can use addresses like
+/// 127.0.0.1 for their ORs without breaking things, but real authorities will reject descriptors
+/// containing internal addresses (via `dirserv_router_has_valid_address()`).
+pub(super) fn validate_advertised(
+    advertise: &Advertise,
+    allow_internal: bool,
+) -> Result<(), ConfigBuildError> {
+    let invalid = |problem: String| ConfigBuildError::Invalid {
+        field: "relay.advertise".to_owned(),
+        problem,
+    };
+
+    for addr in advertise.all_addr() {
+        let ip = addr.ip().to_canonical();
+        if addr.port() == 0 {
+            return Err(invalid(format!("{addr} has port 0")));
+        }
+        let is_broadcast = matches!(ip, IpAddr::V4(v4) if v4.is_broadcast());
+        if ip.is_unspecified() || ip.is_multicast() || is_broadcast {
+            return Err(invalid(format!(
+                "{addr} is an unspecified, multicast or broadcast address"
+            )));
+        }
+        // The descriptor would include the zone (as "%3") that C-tor cannot parse, and any
+        // unparseable `or-address` is discarded (`find_single_ipv6_orport()`).
+        if matches!(addr, SocketAddr::V6(v6) if v6.scope_id() != 0 || v6.flowinfo() != 0) {
+            return Err(invalid(format!("{addr} has an IPv6 zone or flow label")));
+        }
+        if !allow_internal && is_internal(ip) {
+            return Err(ConfigBuildError::Inconsistent {
+                fields: vec![
+                    "relay.advertise".to_owned(),
+                    "tor_network.authorities".to_owned(),
+                ],
+                problem: format!(
+                    "{addr} is a private address, which needs custom directory authorities"
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Return true if `ip` is an internal address not reachable from the internet.
+///
+/// This is precisely the set of addresses that C-tor's `tor_addr_is_internal()` treats as internal
+/// (when not listening), which are the ones rejected by the DAs. As with C-tor, we interpret
+/// IPv4-mapped IPv6 addresses as IPv4 for this check.
+//
+// Two other Arti checks use different sets. `ChanTarget::all_addrs_allowed_for_outgoing_channels`
+// (tor-linkspec) also forbids IPv4 documentation and all multicasts, but allows 100.64.0.0/10,
+// fec0::/10, and all of 0.0.0.0/8 except for 0.0.0.0. The `is_globally_reachable_unicast` check
+// (arti-client) also rejects broadcasts and multicasts, but allows fec0::/10 and all of 0.0.0.0/8
+// except for 0.0.0.0.
+fn is_internal(ip: IpAddr) -> bool {
+    match ip.to_canonical() {
+        IpAddr::V4(v4) => {
+            let [a, b, _, _] = v4.octets();
+            a == 0 // 0.0.0.0/8
+                || v4.is_private() // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+                || v4.is_loopback() // 127.0.0.0/8
+                || (a == 100 && (b & 0xc0) == 64) // 100.64.0.0/10
+                || v4.is_link_local() // 169.254.0.0/16
+        }
+        IpAddr::V6(v6) => {
+            v6.is_unspecified() // ::
+                || v6.is_loopback() // ::1
+                || v6.is_unique_local() // fc00::/7
+                || v6.is_unicast_link_local() // fe80::/10
+                || (v6.segments()[0] & 0xffc0) == 0xfec0 // fec0::/10
+        }
+    }
+}
+
 /// Return the default relay nickname. Again, taken from C-tor.
 pub(crate) fn default_nickname() -> Nickname {
     "Unnamed".parse().expect("Default nickname is invalid")
@@ -133,6 +218,137 @@ mod test {
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
 
     use super::*;
+
+    /// Validate `addr` as the sole publicized address for its address family.
+    ///
+    /// We put an IPv6 address next to a public IPv4 address, because we need one.
+    fn validate(addr: &str, allow_internal: bool) -> Result<(), ConfigBuildError> {
+        let (ipv4, ipv6) = match addr.parse().unwrap() {
+            SocketAddr::V4(v4) => (v4, vec![]),
+            SocketAddr::V6(v6) => ("198.51.100.1:9001".parse().unwrap(), vec![v6]),
+        };
+        let advertise = Advertise::new(vec![ipv4].try_into().unwrap(), ipv6);
+        validate_advertised(&advertise, allow_internal)
+    }
+
+    #[test]
+    fn advertise_internal() {
+        // I borrowed the addresses from tor's test_addr.c (specifically `test_addr_ip6_helpers` and
+        // `test_addr_rfc6598`, not listening) and I took the boundary addresses of 100.64.0.0/10
+        // directly from the mask used in `tor_addr_is_internal()`.
+        let addrs = [
+            ("fbff:ffff::2:7", false),
+            ("fc01::2:7", true),
+            ("fdff:ffff::f:f", true),
+            ("fe00::3:f", false),
+            ("fe7f:ffff::2:7", false),
+            ("fe80::2:7", true),
+            ("febf:ffff::f:f", true),
+            ("fec0::2:7:7", true),
+            ("feff:ffff::e:7:7", true),
+            ("::1", true),
+            ("::2", false),
+            ("2001::", false),
+            ("::ffff:0.255.255.255", true),
+            ("::ffff:1.0.0.0", false),
+            ("::ffff:9.255.255.255", false),
+            ("::ffff:10.0.0.0", true),
+            ("::ffff:10.255.255.255", true),
+            ("::ffff:11.0.0.0", false),
+            ("::ffff:126.255.255.255", false),
+            ("::ffff:127.0.0.0", true),
+            ("::ffff:127.255.255.255", true),
+            ("::ffff:128.0.0.0", false),
+            ("::ffff:172.15.255.255", false),
+            ("::ffff:172.16.0.0", true),
+            ("::ffff:172.31.255.255", true),
+            ("::ffff:172.32.0.0", false),
+            ("::ffff:192.167.255.255", false),
+            ("::ffff:192.168.0.0", true),
+            ("::ffff:192.168.255.255", true),
+            ("::ffff:192.169.0.0", false),
+            ("::ffff:169.253.255.255", false),
+            ("::ffff:169.254.0.0", true),
+            ("::ffff:169.254.255.255", true),
+            ("::ffff:169.255.0.0", false),
+            ("100.63.255.255", false),
+            ("100.64.0.0", true),
+            ("100.64.0.1", true),
+            ("100.127.255.255", true),
+            ("100.128.0.0", false),
+        ];
+        for (ip, internal) in addrs {
+            // We treat every IPv4-mapped address as a regular IPv4 address as well.
+            let plain_ipv4 = ip.strip_prefix("::ffff:").map(|v4| format!("{v4}:9001"));
+            let addr = if ip.contains(':') {
+                format!("[{ip}]:9001")
+            } else {
+                format!("{ip}:9001")
+            };
+            for addr in [Some(addr), plain_ipv4].into_iter().flatten() {
+                let res = validate(&addr, false);
+                assert_eq!(
+                    matches!(res, Err(ConfigBuildError::Inconsistent { .. })),
+                    internal,
+                    "{addr}"
+                );
+                assert_eq!(res.is_ok(), !internal, "{addr}");
+                // If you define custom authorities, then all are equally good.
+                assert!(validate(&addr, true).is_ok(), "{addr}");
+            }
+        }
+    }
+
+    #[test]
+    fn advertise_invalid() {
+        // Not one is accessible to anyone. C-tor's descriptor parser rejects port 0
+        // (`router_parse_entry_from_string()`) and a zone (`find_single_ipv6_orport()`), and
+        // although C-tor classifies unspecified addresses as internal, it accepts multicast and
+        // broadcast addresses.
+        for addr in [
+            "0.0.0.0:9001",
+            "[::]:9001",
+            "[::ffff:0.0.0.0]:9001",
+            "224.0.0.0:9001",
+            "239.255.255.255:9001",
+            "[ff00::e:7:7]:9001",
+            "[ffff::]:9001",
+            "255.255.255.255:9001",
+            "198.51.100.1:0",
+            "[2001::]:0",
+            "[2001:db8::1%3]:9001",
+        ] {
+            for allow_internal in [false, true] {
+                assert!(
+                    matches!(
+                        validate(addr, allow_internal),
+                        Err(ConfigBuildError::Invalid { .. })
+                    ),
+                    "{addr}"
+                );
+            }
+        }
+        // You cannot write a flow label in the config, but it's rejected like a zone.
+        let ipv6 = SocketAddrV6::new("2001:db8::1".parse().unwrap(), 9001, 1, 0);
+        let advertise = Advertise::new(
+            vec!["198.51.100.1:9001".parse().unwrap()]
+                .try_into()
+                .unwrap(),
+            vec![ipv6],
+        );
+        assert!(matches!(
+            validate_advertised(&advertise, true),
+            Err(ConfigBuildError::Invalid { .. })
+        ));
+        // Neighbours to these ranges are public and 240.0.0.0/4 is also public in C-tor.
+        for addr in [
+            "223.255.255.255:9001",
+            "240.0.0.0:9001",
+            "255.255.255.254:9001",
+        ] {
+            assert!(validate(addr, false).is_ok(), "{addr}");
+        }
+    }
 
     #[test]
     fn contact_valid() {
