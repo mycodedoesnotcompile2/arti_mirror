@@ -256,19 +256,22 @@ impl ReqError {
     /// Convert this error into _either_ a response (if we know what to tell the client)
     /// or a [`DirBackendPluginError`] (if we don't).
     fn into_response(self) -> Result<http::Response<Box<[u8]>>, DirBackendPluginError> {
+        // Like C tor's terse responses, they lack bodies; in fact, a C tor client will treat any
+        // response with a body less than 32 bytes long as junk, and log a protocol warning
+        // (`body_is_plausible()`).
         match self {
-            ReqError::Invalid(msg) => {
-                let mut r = http::Response::new(msg.as_bytes().into());
+            ReqError::Invalid(_) => {
+                let mut r = http::Response::new(Box::default());
                 *r.status_mut() = http::StatusCode::BAD_REQUEST;
                 Ok(r)
             }
             ReqError::NotModified => {
-                let mut r = http::Response::new("Not modified".as_bytes().into());
+                let mut r = http::Response::new(Box::default());
                 *r.status_mut() = http::StatusCode::NOT_MODIFIED;
                 Ok(r)
             }
             ReqError::NotFound => {
-                let mut r = http::Response::new("Not found".as_bytes().into());
+                let mut r = http::Response::new(Box::default());
                 *r.status_mut() = http::StatusCode::NOT_FOUND;
                 Ok(r)
             }
