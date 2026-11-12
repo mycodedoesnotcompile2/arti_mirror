@@ -300,3 +300,85 @@ impl RelayDescriptorPublisherTask {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+
+    use super::*;
+    use tor_netdir::testprovider::TestNetDirProvider;
+    use tor_netdoc::doc::routerdesc::RouterDescUnverified;
+    use tor_netdoc::parse2::{ParseInput, parse_netdoc};
+    use tor_rtmock::MockRuntime;
+    use web_time_compat::SystemTime;
+
+    use crate::tasks::crypto::{self, CryptoCommandReceiver};
+
+    /// Craft the descriptor using `task`, using `crypto_rx` to fulfill its key material request.
+    ///
+    /// Return the parsed `uptime` of the descriptor.
+    async fn built_uptime(
+        task: &mut RelayDescriptorPublisherTask,
+        crypto_rx: &mut CryptoCommandReceiver,
+    ) -> Option<u64> {
+        let reply = async {
+            let Some(CryptoCommand::GetRouterDescKeyMaterial { tx }) = crypto_rx.next().await
+            else {
+                panic!("crypto command channel closed");
+            };
+            let (_, keys, _) = encode::test::descriptor_fixture();
+            assert!(tx.send(Ok(keys)).is_ok());
+        };
+        let (desc, ()) = futures::join!(task.build_descriptor(), reply);
+        let desc = desc.unwrap().unwrap();
+        parse_netdoc::<RouterDescUnverified>(&ParseInput::new(&desc, "built"))
+            .unwrap()
+            .verify()
+            .unwrap()
+            .dangerously_peek()
+            .uptime
+    }
+
+    /// Uptime is measured from task creation, in the monotonic clock.
+    #[test]
+    fn uptime_since_start() {
+        MockRuntime::test_with_various(|rt| async move {
+            // The fixture's certificates expire seven days after the epoch.
+            rt.jump_wallclock(SystemTime::UNIX_EPOCH);
+            let (info, _, _) = encode::test::descriptor_fixture();
+            let (crypto_tx, mut crypto_rx) = crypto::new_command_channel();
+            let (_command_tx, command_rx) = new_command_channel();
+            let mut task = RelayDescriptorPublisherTask::new(
+                &rt,
+                Arc::new(TestNetDirProvider::new()),
+                AuthorityContacts::default(),
+                info,
+                crypto_tx,
+                command_rx,
+            )
+            .unwrap();
+
+            assert_eq!(built_uptime(&mut task, &mut crypto_rx).await, Some(0));
+
+            rt.advance_by(Duration::from_secs(60 * 60)).await;
+            assert_eq!(built_uptime(&mut task, &mut crypto_rx).await, Some(3600));
+
+            // A wall clock jump isn't uptime.
+            rt.jump_wallclock(SystemTime::UNIX_EPOCH + Duration::from_secs(24 * 60 * 60));
+            assert_eq!(built_uptime(&mut task, &mut crypto_rx).await, Some(3600));
+        });
+    }
+}

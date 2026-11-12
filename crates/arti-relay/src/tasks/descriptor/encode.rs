@@ -101,7 +101,7 @@ pub(super) fn encode_and_sign_router_desc(
 }
 
 #[cfg(test)]
-mod test {
+pub(super) mod test {
     // @@ begin test lint list maintained by maint/add_warning @@
     #![allow(clippy::bool_assert_comparison)]
     #![allow(clippy::clone_on_copy)]
@@ -131,7 +131,7 @@ mod test {
     /// Build what we need to build a descriptor as in descriptor info and key material.
     ///
     /// Return all this along the now time used for the certificates.
-    fn descriptor_fixture() -> (RouterDescInfo, RouterDescKeyMaterial, SystemTime) {
+    pub(crate) fn descriptor_fixture() -> (RouterDescInfo, RouterDescKeyMaterial, SystemTime) {
         let advertise = config::Advertise::new(
             ["192.0.2.1:9001", "192.0.2.1:9003", "192.0.2.2:9001"]
                 .map(|addr| addr.parse().unwrap())
@@ -229,6 +229,28 @@ mod test {
                 .verify()
                 .is_err()
         );
+    }
+
+    /// The `uptime` item is in seconds, truncated.
+    #[test]
+    fn uptime_item() {
+        // C-tor's `router_dump_router_to_string()` prints "uptime %ld\n" using `get_uptime()`,
+        // which begins at 0 and increments in full seconds since process start.
+        for (uptime, expected) in [
+            (Duration::ZERO, 0),
+            (Duration::from_millis(24 * 60 * 60 * 1000 + 999), 86_400),
+        ] {
+            let (info, keys, now) = descriptor_fixture();
+            let encoded = encode_and_sign_router_desc(&info, keys, now, uptime).unwrap();
+            assert!(encoded.lines().any(|l| l == format!("uptime {expected}")));
+
+            let verified =
+                parse_netdoc::<RouterDescUnverified>(&ParseInput::new(&encoded, "encoded"))
+                    .unwrap()
+                    .verify()
+                    .unwrap();
+            assert_eq!(verified.dangerously_peek().uptime, Some(expected));
+        }
     }
 
     /// Test that using an expired certificate is caught.
