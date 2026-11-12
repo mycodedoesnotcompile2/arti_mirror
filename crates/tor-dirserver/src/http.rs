@@ -1126,26 +1126,47 @@ pub(in crate::http) mod test {
 
     #[cfg(feature = "dir-plugin-backend")]
     #[tokio::test]
-    async fn backend_errors() {
+    async fn backend_status_lines() {
         // A request line (and the corresponding Host header) from a C Tor
         // client that is retrieving an authority certificate it's missing (from
         // `authority_certs_fetch_missing()` and `directory_send_command()`).
         const GET: &str = "GET /tor/keys/fp/0232AF901C31A04EE9848595AF9BB7620D4C5B2E HTTP/1.0\r\n\
                            Host: 127.0.0.1:5200\r\n\r\n";
+        const POST: &str =
+            "POST /tor/ HTTP/1.0\r\nHost: 127.0.0.1:5200\r\nContent-Length: 0\r\n\r\n";
 
-        // When C Tor's directory cache receives a request for a URL that it
-        // doesn't host, it responds with a 404. Since C Tor lacks any kind of
-        // internal error status, the 500 comes from `EndpointFn`'s
+        // Both the 404 and 400 lines come from C Tor's test vectors `NOT_FOUND`
+        // and `BAD_REQUEST` in test_dir_handle_get.c, which get written by
+        // `write_short_http_response()`, the same function that writes the 304.
+        // (C Tor sends `BAD_REQUEST` on requests it can't parse, and longer
+        // phrases on rejected posts; we reject every post.) Since C Tor lacks
+        // any kind of internal error status, the 500 comes from `EndpointFn`'s
         // documentation.
-        for (backend, status) in [
-            (Err(DirBackendPluginError::UriNotHandledByPlugin), "404"),
-            (Err(DirBackendPluginError::Bug(internal!("test"))), "500"),
+        for (backend, requ, status_line) in [
+            (
+                Err(DirBackendPluginError::UriNotHandledByPlugin),
+                GET,
+                "HTTP/1.0 404 Not found\r\n",
+            ),
+            (Ok(StatusCode::OK), POST, "HTTP/1.0 400 Bad request\r\n"),
+            (
+                Ok(StatusCode::NOT_MODIFIED),
+                GET,
+                "HTTP/1.0 304 Not modified\r\n",
+            ),
+            (
+                Err(DirBackendPluginError::Bug(internal!("test"))),
+                GET,
+                "HTTP/1.0 500 Internal Server Error\r\n",
+            ),
         ] {
-            let answer = backend_answer(FixedBackend(backend), GET).await;
-            assert!(
-                answer.starts_with(&format!("HTTP/1.0 {status} ")),
-                "{answer:?}"
-            );
+            let answer = backend_answer(FixedBackend(backend), requ).await;
+            assert!(answer.starts_with(status_line), "{answer:?}");
+            // It's spelled as in C Tor's `write_http_response_header_impl()`.
+            assert!(answer.contains("\r\nDate: "), "{answer:?}");
+            if !status_line.contains(" 304 ") {
+                assert!(answer.contains("\r\nContent-Length: 0\r\n"), "{answer:?}");
+            }
         }
     }
 }
