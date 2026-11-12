@@ -161,7 +161,11 @@ pub(crate) struct RunArgs {}
 
 /// Arguments for the identity subcommand.
 #[derive(Clone, Debug, Args)]
-pub(crate) struct IdentityArgs {}
+pub(crate) struct IdentityArgs {
+    /// Print the fingerprints in JSON format.
+    #[arg(long)]
+    pub(crate) json: bool,
+}
 
 /// Log levels allowed by the cli.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]

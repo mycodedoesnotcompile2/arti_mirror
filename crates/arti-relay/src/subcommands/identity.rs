@@ -1,6 +1,7 @@
 //! The `identity` subcommand.
 
 use anyhow::Context;
+use serde::Serialize;
 use tor_keymgr::KeyMgr;
 use tor_relay_crypto::pk::{RelayIdentityKeypair, RelayIdentityRsaKeypair};
 
@@ -9,6 +10,7 @@ use crate::keys::{RelayIdentityKeypairSpecifier, RelayIdentityRsaKeypairSpecifie
 use crate::relay::InertTorRelay;
 
 /// The relay identity fingerprints.
+#[derive(Serialize)]
 struct Fingerprints {
     /// Ed25519 identity, in unpadded base64.
     ed25519: String,
@@ -17,19 +19,26 @@ struct Fingerprints {
 }
 
 /// Run the identity subcommand.
-pub(crate) fn run(_args: cli::IdentityArgs, global_args: cli::GlobalArgs) -> anyhow::Result<()> {
+pub(crate) fn run(args: cli::IdentityArgs, global_args: cli::GlobalArgs) -> anyhow::Result<()> {
     let config = crate::load_config(&global_args)?;
     let state_path = config.storage.state_dir(&crate::config::base_resolver())?;
     let keymgr = InertTorRelay::create_keymgr(&state_path, config.storage.permissions())
         .context("Failed to create key manager")?;
 
-    print_fingerprints(&keymgr)
+    print_fingerprints(&keymgr, args.json)
 }
 
 /// Print the Ed25519 and RSA identity fingerprints.
 #[allow(clippy::print_stdout)]
-fn print_fingerprints(keymgr: &KeyMgr) -> anyhow::Result<()> {
-    match get_fingerprints(keymgr)? {
+fn print_fingerprints(keymgr: &KeyMgr, json: bool) -> anyhow::Result<()> {
+    let fingerprints = get_fingerprints(keymgr)?;
+
+    if json {
+        println!("{}", serde_json::to_string(&fingerprints)?);
+        return Ok(());
+    }
+
+    match fingerprints {
         Some(fp) => {
             println!("Ed25519: {}", fp.ed25519);
             println!("RSA: {}", fp.rsa);
