@@ -58,8 +58,8 @@ use tracing::{debug, warn};
 
 use crate::{
     database::{
-        self as db, AuthCertMeta, ConsensusMeta, ContentEncoding, DatabaseError, DescriptorMeta, Sha1, Sha256,
-        Timestamp,
+        self as db, AuthCertMeta, ConsensusMeta, ContentEncoding, DatabaseError, DescriptorMeta,
+        Sha1, Sha256, Timestamp,
     },
     types::{
         FlavoredConsensusUnverified, FlavoredDescriptor, FlavoredDescriptorMd,
@@ -159,7 +159,6 @@ pub(crate) enum OperationError {
     #[error("Internal error")]
     Bug(#[from] tor_error::Bug),
 }
-
 
 /// The various states for the [`StaticEngine`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display)]

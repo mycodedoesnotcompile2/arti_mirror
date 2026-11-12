@@ -69,11 +69,9 @@ use tor_basic_utils::RngExt;
 use tor_error::{internal, into_internal};
 use tor_netdoc::doc::{authcert::AuthCert, netstatus::ConsensusFlavor};
 
-use crate::{
-    types::{
-        FlavoredConsensusBody, FlavoredConsensusSignatures, FlavoredConsensusUnverified,
-        FlavoredDescriptor,
-    },
+use crate::types::{
+    FlavoredConsensusBody, FlavoredConsensusSignatures, FlavoredConsensusUnverified,
+    FlavoredDescriptor,
 };
 
 /// Version 1 of the database schema.
@@ -132,7 +130,6 @@ pub(crate) enum DatabaseError {
     #[error("Internal error")]
     Bug(#[from] tor_error::Bug),
 }
-
 
 /// Convenience macro for implementing a hash type in a rusqlite compatible fashion.
 ///

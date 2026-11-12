@@ -7,9 +7,7 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use rusqlite::{Transaction, params};
 use weak_table::WeakValueHashMap;
 
-use crate::{
-    database::{DatabaseError, DocumentId, sql},
-};
+use crate::database::{DatabaseError, DocumentId, sql};
 
 /// Alias to force use of RandomState, regardless of features enabled in `weak_tables`.
 ///
