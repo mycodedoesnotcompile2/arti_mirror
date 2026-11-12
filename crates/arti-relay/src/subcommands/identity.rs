@@ -19,8 +19,8 @@ struct Fingerprints {
 }
 
 /// Run the identity subcommand.
-pub(crate) fn run(args: cli::IdentityArgs, global_args: cli::GlobalArgs) -> anyhow::Result<()> {
-    let config = crate::load_config(&global_args)?;
+pub(crate) fn run(args: &cli::IdentityArgs, global_args: &cli::GlobalArgs) -> anyhow::Result<()> {
+    let config = crate::load_config(global_args)?;
     let state_path = config.storage.state_dir(&crate::config::base_resolver())?;
     let keymgr = InertTorRelay::create_keymgr(&state_path, config.storage.permissions())
         .context("Failed to create key manager")?;

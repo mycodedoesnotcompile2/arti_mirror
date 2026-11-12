@@ -170,7 +170,7 @@ fn main_main(cli: cli::Cli) -> anyhow::Result<()> {
             println!("Host triple: {}", env!("BUILD_HOST"));
         }
         cli::Commands::Run(args) => start_relay(args, cli.global)?,
-        cli::Commands::Identity(args) => subcommands::identity::run(args, cli.global)?,
+        cli::Commands::Identity(args) => subcommands::identity::run(&args, &cli.global)?,
     }
 
     Ok(())
