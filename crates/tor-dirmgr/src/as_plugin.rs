@@ -256,19 +256,22 @@ impl ReqError {
     /// Convert this error into _either_ a response (if we know what to tell the client)
     /// or a [`DirBackendPluginError`] (if we don't).
     fn into_response(self) -> Result<http::Response<Box<[u8]>>, DirBackendPluginError> {
+        // Like C tor's terse responses, they lack bodies; in fact, a C tor client will treat any
+        // response with a body less than 32 bytes long as junk, and log a protocol warning
+        // (`body_is_plausible()`).
         match self {
-            ReqError::Invalid(msg) => {
-                let mut r = http::Response::new(msg.as_bytes().into());
+            ReqError::Invalid(_) => {
+                let mut r = http::Response::new(Box::default());
                 *r.status_mut() = http::StatusCode::BAD_REQUEST;
                 Ok(r)
             }
             ReqError::NotModified => {
-                let mut r = http::Response::new("Not modified".as_bytes().into());
+                let mut r = http::Response::new(Box::default());
                 *r.status_mut() = http::StatusCode::NOT_MODIFIED;
                 Ok(r)
             }
             ReqError::NotFound => {
-                let mut r = http::Response::new("Not found".as_bytes().into());
+                let mut r = http::Response::new(Box::default());
                 *r.status_mut() = http::StatusCode::NOT_FOUND;
                 Ok(r)
             }
@@ -276,6 +279,43 @@ impl ReqError {
             ReqError::DbFailed(e) => Err(DirBackendPluginError::Bug(into_internal!(
                 "Database failed"
             )(e))),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+
+    use super::*;
+
+    #[test]
+    fn error_bodies_empty() {
+        // A digest that does not decode.
+        let Err(invalid) = UriInterpretation::interpret("/tor/micro/d/AAAA.z") else {
+            panic!("bad digest accepted");
+        };
+        for (err, status) in [
+            (invalid, http::StatusCode::BAD_REQUEST),
+            (ReqError::NotModified, http::StatusCode::NOT_MODIFIED),
+            (ReqError::NotFound, http::StatusCode::NOT_FOUND),
+        ] {
+            let response = err.into_response().unwrap();
+            assert_eq!(response.status(), status);
+            assert!(response.body().is_empty(), "{status}");
         }
     }
 }
