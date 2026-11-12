@@ -8,7 +8,9 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 #[cfg(feature = "dir-plugin-backend")]
 use tor_dircommon::dir_plugin_backend::DirBackendPlugin;
-use tor_error::{internal, warn_report};
+use tor_error::internal;
+#[cfg(feature = "dir-plugin-backend")]
+use tor_error::warn_report;
 
 use std::{
     collections::VecDeque,
