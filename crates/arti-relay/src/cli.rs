@@ -86,6 +86,8 @@ fn cli_cmd_post_processing(cli: Command) -> Command {
 pub(crate) enum Commands {
     /// Run the relay.
     Run(RunArgs),
+    /// Manage the relay identity keys.
+    Identity(IdentityArgs),
     /// Print build information.
     BuildInfo,
 }
@@ -156,6 +158,10 @@ impl GlobalArgs {
 /// Arguments when running an Arti relay.
 #[derive(Clone, Debug, Args)]
 pub(crate) struct RunArgs {}
+
+/// Arguments for the identity subcommand.
+#[derive(Clone, Debug, Args)]
+pub(crate) struct IdentityArgs {}
 
 /// Log levels allowed by the cli.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]

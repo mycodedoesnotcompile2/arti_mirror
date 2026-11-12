@@ -82,6 +82,7 @@ mod config;
 mod keys;
 mod relay;
 mod stream;
+mod subcommands;
 mod tasks;
 mod util;
 
@@ -169,6 +170,7 @@ fn main_main(cli: cli::Cli) -> anyhow::Result<()> {
             println!("Host triple: {}", env!("BUILD_HOST"));
         }
         cli::Commands::Run(args) => start_relay(args, cli.global)?,
+        cli::Commands::Identity(args) => subcommands::identity::run(args, cli.global)?,
     }
 
     Ok(())
