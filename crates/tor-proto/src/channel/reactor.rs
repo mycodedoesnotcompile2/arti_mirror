@@ -620,7 +620,7 @@ impl<R: Runtime> Reactor<R> {
                     .await
             }
 
-            CreatedFast(_) | Created2(_) => self.deliver_created(circid, msg),
+            CreatedFast(_) | Created2(_) => self.deliver_created(circid, msg).await,
 
             // These are always ignored.
             Padding(_) | Vpadding(_) => Ok(()),
@@ -797,7 +797,7 @@ impl<R: Runtime> Reactor<R> {
 
     /// Handle a CREATED{_FAST,2} cell by passing it on to the appropriate
     /// circuit, if that circuit is waiting for one.
-    fn deliver_created(&mut self, circid: Option<CircId>, msg: AnyChanMsg) -> Result<()> {
+    async fn deliver_created(&mut self, circid: Option<CircId>, msg: AnyChanMsg) -> Result<()> {
         let Some(circid) = circid else {
             return Err(Error::ChanProto("'Created' cell without circuit ID".into()));
         };
@@ -814,13 +814,18 @@ impl<R: Runtime> Reactor<R> {
         };
 
         let created = msg.try_into()?;
-        // TODO(nickm) I think that this one actually means the other side
-        // is closed. See arti#269.
-        target.send(created).map_err(|_| {
-            Error::from(internal!(
-                "Circuit queue rejected created message. Is it closing?"
-            ))
-        })
+        if target.send(created).is_err() {
+            // Before we could manage to handle the close, the circuit disappeared. In that
+            // sequence of events C-tor has already marked the circuit for close:
+            // `circuit_get_by_circid_channel()` will fail to find it, the CREATED* will be
+            // discarded, and `circuit_about_to_free()` will send one DESTROY on this channel.
+            // Here, like in `deliver_relay()`, we send that DESTROY rather than wait for the
+            // close event; when that comes, the entry will not be considered open, so it sends
+            // nothing.
+            debug!(channel_id = %self, "CREATED* cell for circuit {} that has gone away", circid);
+            self.outbound_destroy_circ(circid).await?;
+        }
+        Ok(())
     }
 
     /// Handle a DESTROY cell by removing the corresponding circuit
@@ -830,20 +835,24 @@ impl<R: Runtime> Reactor<R> {
             return Err(Error::ChanProto("'Destroy' cell without circuit ID".into()));
         };
 
-        /// Helper to send DESTROY cell.
-        async fn send_destroy(mut sender: CircuitRxSender, msg: AnyChanMsg) -> Result<()> {
-            sender
-                .send(msg)
-                .await
-                // TODO(nickm) I think that this one actually means the other side
-                // is closed. See arti#269.
-                .map_err(|_| internal!("open circuit wasn't interested in destroy cell?").into())
+        /// Helper for passing a DESTROY cell into an open circuit.
+        ///
+        /// If it's no longer around, return false.
+        async fn send_destroy(mut sender: CircuitRxSender, msg: AnyChanMsg) -> bool {
+            sender.send(msg).await.is_ok()
         }
 
         // Remove the circuit from the map: nothing more can be done with it.
+        //
+        // We consider a circuit closed only after we process its close, so if a circuit
+        // disappears before we get there, we assume that the DESTROY came first. Given that
+        // ordering, C-tor's `command_process_destroy_cell()` will have cleared the circuit ID
+        // for this channel, so freeing the circuit does not send any DESTROY down the channel.
+        // This is also the safe thing to do, since our peer has already forgotten the circuit
+        // ID, and might have assigned it again if it was responsible for the allocation.
         let entry = self.circs.remove(circid);
         self.update_disused_since();
-        match entry {
+        let delivered = match entry {
             // If the circuit is waiting for CREATED, tell it that it
             // won't get one.
             Some(CircEnt::Opening {
@@ -851,13 +860,7 @@ impl<R: Runtime> Reactor<R> {
                 ..
             }) => {
                 trace!(channel_id = %self, "Passing destroy to pending circuit {}", circid);
-                create_response_sender
-                    .send(msg.try_into()?)
-                    // TODO(nickm) I think that this one actually means the other side
-                    // is closed. See arti#269.
-                    .map_err(|_| {
-                        internal!("pending circuit wasn't interested in destroy cell?").into()
-                    })
+                create_response_sender.send(msg.try_into()?).is_ok()
             }
             // It's an open origin circuit: tell it that it got a DESTROY cell.
             Some(CircEnt::OpenOrigin { cell_sender, .. }) => {
@@ -871,7 +874,7 @@ impl<R: Runtime> Reactor<R> {
                 send_destroy(cell_sender, msg).await
             }
             // We've sent a destroy; we can leave this circuit removed.
-            Some(CircEnt::DestroySent(_)) => Ok(()),
+            Some(CircEnt::DestroySent(_)) => true,
             // Got a DESTROY cell for a circuit we don't have.
             None => {
                 trace!(channel_id = %self, "Destroy for nonexistent circuit {}", circid);
@@ -881,9 +884,13 @@ impl<R: Runtime> Reactor<R> {
                 //
                 // See https://gitlab.torproject.org/tpo/core/arti/-/work_items/2655#note_3447841
                 drop(msg);
-                Ok(())
+                true
             }
+        };
+        if !delivered {
+            trace!(channel_id = %self, "Circuit {} had gone away before its DESTROY", circid);
         }
+        Ok(())
     }
 
     /// Helper: send a cell on the outbound sink.
@@ -909,6 +916,11 @@ impl<R: Runtime> Reactor<R> {
         // the number of relay cells we'll receive.
         self.circs.destroy_sent(id, HalfCirc::new(3000));
         self.update_disused_since();
+        // For relayed circuits, C-tor sends the reason it closed the circuit with; for locally
+        // created circuits, C-tor sends NONE (in `circuit_mark_for_close_()`). In all cases, we
+        // send NONE as the specification asks:
+        //
+        // https://spec.torproject.org/tor-spec/tearing-down-circuits.html
         let destroy = Destroy::new(DestroyReason::NONE).into();
         let cell = AnyChanCell::new(Some(id), destroy);
         self.send_cell(cell).await?;
