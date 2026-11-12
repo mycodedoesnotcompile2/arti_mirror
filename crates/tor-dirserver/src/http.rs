@@ -7,8 +7,10 @@ use cache::StoreCache;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 #[cfg(feature = "dir-plugin-backend")]
-use tor_dircommon::dir_plugin_backend::DirBackendPlugin;
-use tor_error::{internal, warn_report};
+use tor_dircommon::dir_plugin_backend::{DirBackendPlugin, DirBackendPluginError};
+use tor_error::internal;
+#[cfg(feature = "dir-plugin-backend")]
+use tor_error::warn_report;
 
 use std::{
     collections::VecDeque,
@@ -40,6 +42,8 @@ use tracing::warn;
 
 #[cfg(feature = "dir-plugin-backend")]
 use http_body_util::Full;
+#[cfg(feature = "dir-plugin-backend")]
+use hyper::ext::ReasonPhrase;
 #[cfg(feature = "dir-plugin-backend")]
 use std::io::Cursor;
 
@@ -165,10 +169,12 @@ impl HttpServer {
     {
         // Creates a failing HTTP resposne while satisfying the hyper requirements.
         let failure = |code| -> _ {
-            Response::builder()
-                .status(code)
-                .body(Default::default())
-                .expect("response builder should not fail")
+            with_c_tor_reason(
+                Response::builder()
+                    .status(code)
+                    .body(Default::default())
+                    .expect("response builder should not fail"),
+            )
         };
 
         // We need to wrap the backend as an Arc, as the value would otherwise
@@ -203,13 +209,45 @@ impl HttpServer {
                                 // Convert Request::<Incoming> to Request::<()>.
                                 let requ = requ.map(|_| ());
 
-                                // Convert the Box<[u8]> to something hyper accepts.
-                                backend
-                                    .get(&requ)
-                                    .map(|resp| resp.map(|body| Full::new(Cursor::new(body))))
+                                // Since an Err causes hyper to abort the
+                                // connection without responding at all, we
+                                // manually respond to each error.
+                                let resp = match backend.get(&requ) {
+                                    // Convert the Box<[u8]> to something hyper accepts.
+                                    Ok(resp) => with_c_tor_reason(
+                                        resp.map(|body| Full::new(Cursor::new(body))),
+                                    ),
+                                    // When C Tor's directory cache receives a
+                                    // request for a URL that it doesn't host,
+                                    // it responds with an HTTP 404 status code
+                                    // (in `directory_handle_command_get()`).
+                                    Err(DirBackendPluginError::UriNotHandledByPlugin) => {
+                                        tracing::debug!(
+                                            path = requ.uri().path(),
+                                            "Directory request not handled by backend"
+                                        );
+                                        failure(StatusCode::NOT_FOUND)
+                                    }
+                                    Err(DirBackendPluginError::Bug(bug)) => {
+                                        warn_report!(bug, "Directory backend failed");
+                                        failure(StatusCode::INTERNAL_SERVER_ERROR)
+                                    }
+                                    Err(e) => {
+                                        warn_report!(e, "Directory backend failed");
+                                        failure(StatusCode::INTERNAL_SERVER_ERROR)
+                                    }
+                                };
+                                Ok::<_, Infallible>(resp)
                             }
                         });
-                        tasks.spawn(http1::Builder::new().serve_connection(stream, service));
+                        // C Tor's clients require `Content-Length` and `Date`
+                        // to be written with exactly this case:
+                        // `buf_http_find_content_length()`,
+                        // `parse_http_response()`.
+                        let conn = http1::Builder::new()
+                            .title_case_headers(true)
+                            .serve_connection(stream, service);
+                        tasks.spawn(conn);
                     },
 
                     // There has been an error in accepting the connection.
@@ -649,6 +687,26 @@ impl HttpServer {
     }
 }
 
+/// We'll set `resp`'s reason to whatever phrase is sent by a C Tor directory
+/// cache alongside its response code, when it's different from hyper's
+/// canonical reason phrase.
+///
+/// C Tor clients only log that phrase, but matching it will keep our replies,
+/// and so their logs, the same as what they would have been when using a C Tor
+/// cache. These phrases come from C Tor's `write_short_http_response()` calls.
+#[cfg(feature = "dir-plugin-backend")]
+fn with_c_tor_reason<B>(mut resp: Response<B>) -> Response<B> {
+    let reason: &'static [u8] = match resp.status() {
+        StatusCode::NOT_MODIFIED => b"Not modified",
+        StatusCode::BAD_REQUEST => b"Bad request",
+        StatusCode::NOT_FOUND => b"Not found",
+        _ => return resp,
+    };
+    resp.extensions_mut()
+        .insert(ReasonPhrase::from_static(reason));
+    resp
+}
+
 #[cfg(test)]
 pub(in crate::http) mod test {
     // @@ begin test lint list maintained by maint/add_warning @@
@@ -1027,5 +1085,88 @@ pub(in crate::http) mod test {
         decoder.write_all(&resp_body).unwrap();
         let decoded_resp = decoder.finish().unwrap();
         assert_eq!(IDENTITY, String::from_utf8_lossy(&decoded_resp));
+    }
+
+    /// A [`DirBackendPlugin`] which returns the same response for all requests.
+    #[cfg(feature = "dir-plugin-backend")]
+    struct FixedBackend(Result<StatusCode, DirBackendPluginError>);
+
+    #[cfg(feature = "dir-plugin-backend")]
+    impl DirBackendPlugin for FixedBackend {
+        fn get(&self, _requ: &Request<()>) -> Result<Response<Box<[u8]>>, DirBackendPluginError> {
+            self.0.clone().map(|status| {
+                Response::builder()
+                    .status(status)
+                    .body(Box::default())
+                    .unwrap()
+            })
+        }
+    }
+
+    /// Call [`HttpServer::serve_backend`] with `requ` and collect everything it
+    /// writes before it closes the connection.
+    #[cfg(feature = "dir-plugin-backend")]
+    async fn backend_answer(backend: FixedBackend, requ: &str) -> String {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let (mut client, server) = tokio::io::duplex(4096);
+        let listener = futures::stream::iter([Ok::<_, std::io::Error>(server)])
+            .chain(futures::stream::pending());
+        let server = task::spawn(HttpServer::serve_backend(listener, backend));
+
+        client.write_all(requ.as_bytes()).await.unwrap();
+        let mut answer = Vec::new();
+        time::timeout(Duration::from_secs(10), client.read_to_end(&mut answer))
+            .await
+            .expect("connection not closed")
+            .unwrap();
+        server.abort();
+        String::from_utf8(answer).unwrap()
+    }
+
+    #[cfg(feature = "dir-plugin-backend")]
+    #[tokio::test]
+    async fn backend_status_lines() {
+        // A request line (and the corresponding Host header) from a C Tor
+        // client that is retrieving an authority certificate it's missing (from
+        // `authority_certs_fetch_missing()` and `directory_send_command()`).
+        const GET: &str = "GET /tor/keys/fp/0232AF901C31A04EE9848595AF9BB7620D4C5B2E HTTP/1.0\r\n\
+                           Host: 127.0.0.1:5200\r\n\r\n";
+        const POST: &str =
+            "POST /tor/ HTTP/1.0\r\nHost: 127.0.0.1:5200\r\nContent-Length: 0\r\n\r\n";
+
+        // Both the 404 and 400 lines come from C Tor's test vectors `NOT_FOUND`
+        // and `BAD_REQUEST` in test_dir_handle_get.c, which get written by
+        // `write_short_http_response()`, the same function that writes the 304.
+        // (C Tor sends `BAD_REQUEST` on requests it can't parse, and longer
+        // phrases on rejected posts; we reject every post.) Since C Tor lacks
+        // any kind of internal error status, the 500 comes from `EndpointFn`'s
+        // documentation.
+        for (backend, requ, status_line) in [
+            (
+                Err(DirBackendPluginError::UriNotHandledByPlugin),
+                GET,
+                "HTTP/1.0 404 Not found\r\n",
+            ),
+            (Ok(StatusCode::OK), POST, "HTTP/1.0 400 Bad request\r\n"),
+            (
+                Ok(StatusCode::NOT_MODIFIED),
+                GET,
+                "HTTP/1.0 304 Not modified\r\n",
+            ),
+            (
+                Err(DirBackendPluginError::Bug(internal!("test"))),
+                GET,
+                "HTTP/1.0 500 Internal Server Error\r\n",
+            ),
+        ] {
+            let answer = backend_answer(FixedBackend(backend), requ).await;
+            assert!(answer.starts_with(status_line), "{answer:?}");
+            // It's spelled as in C Tor's `write_http_response_header_impl()`.
+            assert!(answer.contains("\r\nDate: "), "{answer:?}");
+            if !status_line.contains(" 304 ") {
+                assert!(answer.contains("\r\nContent-Length: 0\r\n"), "{answer:?}");
+            }
+        }
     }
 }
