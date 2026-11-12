@@ -359,10 +359,9 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 // TODO DIRMIRROR: This appears to be prone to copy and paste
                 // errors, we should do something about it, as in macros and/or
                 // traits.
-                let (missing_routers, missing_micros, missing_extras) = (
+                let (missing_routers, missing_micros) = (
                     consensus.missing_routers(tx, futile.routers.refused(), Some(1))?,
                     consensus.missing_micros(tx, futile.micros.refused(), Some(1))?,
-                    consensus.missing_extras(tx, futile.extras.refused(), Some(1))?,
                 );
 
                 if *ttl <= now {
@@ -374,10 +373,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                     // database until valid-after has been surpassed, which is
                     // most definitely not what we want.
                     State::FetchConsensus
-                } else if missing_routers.is_empty()
-                    && missing_micros.is_empty()
-                    && missing_extras.is_empty()
-                {
+                } else if missing_routers.is_empty() && missing_micros.is_empty() {
                     // All queues are empty, meaning we are done, until ttl
                     // ends.
                     State::Hibernate
@@ -663,10 +659,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         now: Timestamp,
     ) -> Result<(), OperationError> {
         match T::flavor() {
-            ConsensusFlavor::Plain => {
-                // TODO DIRMIRROR: Add extras.
-                self.descriptors_rd(pool, data, endpoint, now).await
-            }
+            ConsensusFlavor::Plain => self.descriptors_rd(pool, data, endpoint, now).await,
             ConsensusFlavor::Microdesc => self.descriptors_md(pool, data, endpoint, now).await,
         }
     }
@@ -1013,6 +1006,11 @@ trait DescriptorDownloader<T: FlavoredConsensusUnverified> {
     /// The response data type we expect from the dirserver we are contacting.
     type Response: NetdocParseable;
 
+    /// Used in the default implementation [`DescriptorDownloader::insert`] to
+    /// obtain the respective [`FutileDescriptorSet`] item out of
+    /// [`FutileDescriptors`].
+    const GET_FUTILE: fn(&mut FutileDescriptors) -> &mut FutileDescriptorSet<Self::DocDigest>;
+
     /// Queries the database for the missing descriptor document digests
     /// contained within a [`HashSet`].
     ///
@@ -1049,43 +1047,34 @@ trait DescriptorDownloader<T: FlavoredConsensusUnverified> {
     /// [`FutileDescriptors`] accordingly.  This function may still leave the
     /// [`FutileDescriptors`] in an inconsistent state, but only in the case
     /// of an irrecoverable [`DatabaseError`], which is ok.
+    ///
+    /// By default, this uses a generic implementation that you probably do
+    /// not have to override.
     fn insert(
         engine: &StaticEngine<T>,
         tx: &Transaction<'_>,
         futile: &mut FutileDescriptors,
         downloads: DescriptorDownloads<Self::DocDigest, Self::Descriptor>,
         endpoint: &DownloadAuthority,
-    ) -> Result<(), DatabaseError>;
-}
-
-/// Common implementation of [`DescriptorDownloader::insert()`].
-///
-/// Signature is almost identical to the respective origianl one, except that it
-/// additionally accepts a function item that returns the respective
-/// [`FutileDescriptorSet`] item out of [`FutileDescriptors`]; this is to avoid
-/// duplication.
-// TODO: Once we have extra-info support, consider moving this implementation
-// into the trait method.
-fn downloader_common_insert<T: FlavoredConsensusUnverified, D: DescriptorDownloader<T>>(
-    engine: &StaticEngine<T>,
-    tx: &Transaction<'_>,
-    futile: &mut FutileDescriptors,
-    downloads: DescriptorDownloads<D::DocDigest, D::Descriptor>,
-    endpoint: &DownloadAuthority,
-    get_futile: fn(&mut FutileDescriptors) -> &mut FutileDescriptorSet<D::DocDigest>,
-) -> Result<(), DatabaseError> {
-    for (digest, res) in downloads.into_iter() {
-        match res {
-            DescriptorDownloadResult::NotFound => {
-                get_futile(futile).set_not_found(digest, endpoint);
-            }
-            DescriptorDownloadResult::Refused => get_futile(futile).set_refused(digest),
-            DescriptorDownloadResult::Found(descriptor, raw) => {
-                DescriptorMeta::insert(tx, engine.encodings.iter().copied(), &descriptor, &raw)?;
+    ) -> Result<(), DatabaseError> {
+        for (digest, res) in downloads.into_iter() {
+            match res {
+                DescriptorDownloadResult::NotFound => {
+                    Self::GET_FUTILE(futile).set_not_found(digest, endpoint);
+                }
+                DescriptorDownloadResult::Refused => Self::GET_FUTILE(futile).set_refused(digest),
+                DescriptorDownloadResult::Found(descriptor, raw) => {
+                    DescriptorMeta::insert(
+                        tx,
+                        engine.encodings.iter().copied(),
+                        &descriptor,
+                        &raw,
+                    )?;
+                }
             }
         }
+        Ok(())
     }
-    Ok(())
 }
 
 /// Unit type implementing [`DescriptorDownloader`] for router descriptors.
@@ -1096,6 +1085,9 @@ impl<T: FlavoredConsensusUnverified> DescriptorDownloader<T> for RdDownloader {
     type Descriptor = FlavoredDescriptorPlain;
     type Request = RouterDescRequest;
     type Response = RouterDescUnverified;
+
+    const GET_FUTILE: fn(&mut FutileDescriptors) -> &mut FutileDescriptorSet<Self::DocDigest> =
+        |futile| &mut futile.routers;
 
     fn query(
         tx: &Transaction<'_>,
@@ -1198,23 +1190,6 @@ impl<T: FlavoredConsensusUnverified> DescriptorDownloader<T> for RdDownloader {
         }
         downloads
     }
-
-    fn insert(
-        engine: &StaticEngine<T>,
-        tx: &Transaction<'_>,
-        futile: &mut FutileDescriptors,
-        downloads: DescriptorDownloads<Self::DocDigest, Self::Descriptor>,
-        endpoint: &DownloadAuthority,
-    ) -> Result<(), DatabaseError> {
-        downloader_common_insert::<T, RdDownloader>(
-            engine,
-            tx,
-            futile,
-            downloads,
-            endpoint,
-            |futile| &mut futile.routers,
-        )
-    }
 }
 
 /// Unit type implementing [`DescriptorDownloader`] for micro descriptors.
@@ -1225,6 +1200,9 @@ impl<T: FlavoredConsensusUnverified> DescriptorDownloader<T> for MdDownloader {
     type Descriptor = FlavoredDescriptorMd;
     type Request = MicrodescRequest;
     type Response = Microdesc;
+
+    const GET_FUTILE: fn(&mut FutileDescriptors) -> &mut FutileDescriptorSet<Self::DocDigest> =
+        |futile| &mut futile.micros;
 
     fn query(
         tx: &Transaction<'_>,
@@ -1288,23 +1266,6 @@ impl<T: FlavoredConsensusUnverified> DescriptorDownloader<T> for MdDownloader {
         }
         downloads
     }
-
-    fn insert(
-        engine: &StaticEngine<T>,
-        tx: &Transaction<'_>,
-        futile: &mut FutileDescriptors,
-        downloads: DescriptorDownloads<Self::DocDigest, Self::Descriptor>,
-        endpoint: &DownloadAuthority,
-    ) -> Result<(), DatabaseError> {
-        downloader_common_insert::<T, MdDownloader>(
-            engine,
-            tx,
-            futile,
-            downloads,
-            endpoint,
-            |futile| &mut futile.micros,
-        )
-    }
 }
 
 /// Records which allow us to avoid futile download attempts
@@ -1314,9 +1275,6 @@ impl<T: FlavoredConsensusUnverified> DescriptorDownloader<T> for MdDownloader {
 struct FutileDescriptors {
     /// The futile router descriptors.
     routers: FutileDescriptorSet<Sha1>,
-
-    /// The futile extra-infos.
-    extras: FutileDescriptorSet<Sha1>,
 
     /// The futile micro descriptors.
     micros: FutileDescriptorSet<Sha256>,
@@ -1516,12 +1474,6 @@ mod test {
                     assert_eq!(
                         consensus.missing_routers(tx, iter::empty(), None).unwrap(),
                         HashSet::from([relay_to_remove])
-                    );
-                    assert!(
-                        consensus
-                            .missing_extras(tx, iter::empty(), None)
-                            .unwrap()
-                            .is_empty()
                     );
                     assert!(
                         consensus

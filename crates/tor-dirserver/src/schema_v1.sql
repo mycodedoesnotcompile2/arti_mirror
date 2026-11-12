@@ -60,34 +60,13 @@ CREATE TABLE descriptor(
     sha2                    TEXT NOT NULL UNIQUE,
     kp_relay_id_rsa_sha1    TEXT,
     flavor                  TEXT NOT NULL,
-    extra_sha1              TEXT UNIQUE,
     FOREIGN KEY(docid) REFERENCES store(docid),
     CHECK(GLOB('*[^0-9A-F]*', sha1) == 0),
     CHECK(GLOB('*[^0-9A-F]*', sha2) == 0),
     CHECK(GLOB('*[^0-9A-F]*', kp_relay_id_rsa_sha1) == 0),
-    CHECK(GLOB('*[^0-9A-F]*', extra_sha1) == 0),
     CHECK(LENGTH(sha1) == 40),
     CHECK(LENGTH(sha2) == 64),
-    CHECK(kp_relay_id_rsa_sha1 IS NULL OR LENGTH(kp_relay_id_rsa_sha1) == 40),
-    CHECK(LENGTH(extra_sha1) == 40)
-) STRICT;
-
--- Stores extra-info documents.
---
--- http://<hostname>/tor/extra/d/<D>
--- http://<hostname>/tor/extra/fp/<FP>
--- http://<hostname>/tor/extra/all
--- http://<hostname>/tor/extra/authority
-CREATE TABLE extra_info(
-    rowid                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    docid                   TEXT NOT NULL UNIQUE,
-    sha1                    TEXT NOT NULL UNIQUE,
-    kp_relay_id_rsa_sha1    TEXT NOT NULL,
-    FOREIGN KEY(docid) REFERENCES store(docid),
-    CHECK(GLOB('*[^0-9A-F]*', sha1) == 0),
-    CHECK(GLOB('*[^0-9A-F]*', kp_relay_id_rsa_sha1) == 0),
-    CHECK(LENGTH(sha1) == 40),
-    CHECK(LENGTH(kp_relay_id_rsa_sha1) == 40)
+    CHECK(kp_relay_id_rsa_sha1 IS NULL OR LENGTH(kp_relay_id_rsa_sha1) == 40)
 ) STRICT;
 
 -- Directory authority key certificates.
