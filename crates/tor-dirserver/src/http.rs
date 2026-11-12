@@ -43,6 +43,8 @@ use tracing::warn;
 #[cfg(feature = "dir-plugin-backend")]
 use http_body_util::Full;
 #[cfg(feature = "dir-plugin-backend")]
+use hyper::ext::ReasonPhrase;
+#[cfg(feature = "dir-plugin-backend")]
 use std::io::Cursor;
 
 use crate::database::{self, ContentEncoding, DocumentId, sql};
@@ -167,10 +169,12 @@ impl HttpServer {
     {
         // Creates a failing HTTP resposne while satisfying the hyper requirements.
         let failure = |code| -> _ {
-            Response::builder()
-                .status(code)
-                .body(Default::default())
-                .expect("response builder should not fail")
+            with_c_tor_reason(
+                Response::builder()
+                    .status(code)
+                    .body(Default::default())
+                    .expect("response builder should not fail"),
+            )
         };
 
         // We need to wrap the backend as an Arc, as the value would otherwise
@@ -210,7 +214,9 @@ impl HttpServer {
                                 // manually respond to each error.
                                 let resp = match backend.get(&requ) {
                                     // Convert the Box<[u8]> to something hyper accepts.
-                                    Ok(resp) => resp.map(|body| Full::new(Cursor::new(body))),
+                                    Ok(resp) => with_c_tor_reason(
+                                        resp.map(|body| Full::new(Cursor::new(body))),
+                                    ),
                                     // When C Tor's directory cache receives a
                                     // request for a URL that it doesn't host,
                                     // it responds with an HTTP 404 status code
@@ -679,6 +685,26 @@ impl HttpServer {
             .body(DocumentBody(VecDeque::new()))
             .expect("response builder for empty response failed?!?")
     }
+}
+
+/// We'll set `resp`'s reason to whatever phrase is sent by a C Tor directory
+/// cache alongside its response code, when it's different from hyper's
+/// canonical reason phrase.
+///
+/// C Tor clients only log that phrase, but matching it will keep our replies,
+/// and so their logs, the same as what they would have been when using a C Tor
+/// cache. These phrases come from C Tor's `write_short_http_response()` calls.
+#[cfg(feature = "dir-plugin-backend")]
+fn with_c_tor_reason<B>(mut resp: Response<B>) -> Response<B> {
+    let reason: &'static [u8] = match resp.status() {
+        StatusCode::NOT_MODIFIED => b"Not modified",
+        StatusCode::BAD_REQUEST => b"Bad request",
+        StatusCode::NOT_FOUND => b"Not found",
+        _ => return resp,
+    };
+    resp.extensions_mut()
+        .insert(ReasonPhrase::from_static(reason));
+    resp
 }
 
 #[cfg(test)]
