@@ -264,6 +264,12 @@ impl<R: Runtime> Reactor<R> {
             Err(e) => debug_report!(e, channel_id = %self, "{MSG}"),
         }
 
+        // Since a closed channel has no circuits (whatever is left in our map), we treat it as
+        // an unused object from here on out, and leave it to the channel manager to expire it.
+        // C-tor removes the closing channel from its identity map immediately (in
+        // `channel_change_state_()`).
+        self.details.unused_since.update_if_none();
+
         // Inform any waiters that the channel has closed.
         let close_msg = result.as_ref().map_err(Clone::clone).map(|()| CloseInfo);
         self.reactor_closed_tx.send(close_msg);
