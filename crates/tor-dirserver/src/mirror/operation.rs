@@ -186,9 +186,14 @@ enum State {
     /// authority.
     Descriptors,
 
-    /// Hibernate because nothing is left.
-    // XXX: Replace with formal end state.
-    Hibernate,
+    /// Final end state signalizing that the FSM is done.
+    ///
+    /// The caller should drop [`ConsensusBoundData`] and wait a given time.
+    // TODO DIRMIRROR: This requires a way to signalize the end plus timeout to
+    // the caller.  We will fix that soon with a refactoring of the return types
+    // and by refactoring ConsensusBoundData to be moved through rather than
+    // passed as a mutable reference.
+    End,
 }
 
 /// The execution engine for the finite state machine.
@@ -341,9 +346,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
                     // We will never be able to verify the consensus, better
                     // times may come ...
-                    Err(ConsensusVerifiabilityError::InsufficientTrustedSigners) => {
-                        State::Hibernate
-                    }
+                    Err(ConsensusVerifiabilityError::InsufficientTrustedSigners) => State::End,
 
                     // We need to fetch more authority certificates from the
                     // network.
@@ -351,7 +354,8 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 }
             }
 
-            ConsensusBoundData::Unverified { .. } => State::FetchConsensus,
+            // The TTL is over without us having verified a consensus, end now.
+            ConsensusBoundData::Unverified { .. } => State::End,
 
             // ConsensusBoundData::Verified means that we have successfully
             // loaded a recent valid consensus from the database.
@@ -386,21 +390,14 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 );
 
                 if *ttl <= now {
-                    // The ttl has been surpassed, download a new
-                    // consensus.  It is very important TO NOT transition to
-                    // State::LoadConsensus here, because the current consensus
-                    // may still be valid but not fresh anymore, in which case
-                    // State::LoadConsensus will continue to obtain it from the
-                    // database until valid-after has been surpassed, which is
-                    // most definitely not what we want.
-                    State::FetchConsensus
+                    // The ttl has been surpassed, we are done.
+                    State::End
                 } else if missing_routers.is_empty()
                     && missing_micros.is_empty()
                     && missing_extras.is_empty()
                 {
-                    // All queues are empty, meaning we are done, until ttl
-                    // ends.
-                    State::Hibernate
+                    // All queues are empty, meaning we are done.
+                    State::End
                 } else {
                     // The ttl has not been surpassed and we have stuff
                     // to download, so we need to obtain the descriptors.
@@ -441,7 +438,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             State::AuthCerts => self.auth_certs(pool, data, endpoint, now).await,
             State::StoreConsensus => self.store_consensus(pool, data, now, rng),
             State::Descriptors => self.descriptors(pool, data, endpoint, now).await,
-            State::Hibernate => self.hibernate(data, now).await,
+            State::End => todo!(), // TODO DIRMIRROR: Return error that includes ttl.
         }
     }
 
@@ -785,30 +782,6 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             Err(OperationError::AuthorityRequest(
                 AuthorityRequestError::NoRequestedDocumentsReturned,
             ))?;
-        }
-
-        Ok(())
-    }
-
-    /// Hibernates for the remaining ttl of the consensus.
-    async fn hibernate(
-        &self,
-        data: &mut ConsensusBoundData<T>,
-        now: Timestamp,
-    ) -> Result<(), OperationError> {
-        match data {
-            ConsensusBoundData::None => {
-                return Err(internal!("hibernating without a consensus?").into());
-            }
-            // TODO DIRMIRROR: Should the Unverified case be an error or a
-            // success? In other words: Should we exclude the current authority
-            // from the set of the next authorities to try?
-            ConsensusBoundData::Verified { ttl, .. }
-            | ConsensusBoundData::Unverified { ttl, .. } => {
-                let timeout = *ttl - now;
-                debug!("hibernating for {}s", timeout.as_secs());
-                tokio::time::sleep(timeout).await;
-            }
         }
 
         Ok(())
@@ -1731,7 +1704,7 @@ mod test {
         })
         .unwrap()
         .unwrap();
-        assert_eq!(state, State::Hibernate);
+        assert_eq!(state, State::End);
     }
 
     /// Checks whether we can probably load and parse all certificates from
