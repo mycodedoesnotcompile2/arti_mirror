@@ -264,6 +264,12 @@ impl<R: Runtime> Reactor<R> {
             Err(e) => debug_report!(e, channel_id = %self, "{MSG}"),
         }
 
+        // Since a closed channel has no circuits (whatever is left in our map), we treat it as
+        // an unused object from here on out, and leave it to the channel manager to expire it.
+        // C-tor removes the closing channel from its identity map immediately (in
+        // `channel_change_state_()`).
+        self.details.unused_since.update_if_none();
+
         // Inform any waiters that the channel has closed.
         let close_msg = result.as_ref().map_err(Clone::clone).map(|()| CloseInfo);
         self.reactor_closed_tx.send(close_msg);
@@ -1072,6 +1078,33 @@ pub(crate) mod test {
             assert_eq!(cell.circid(), Some(id));
             assert!(matches!(cell.msg(), AnyChanMsg::Destroy(_)));
             assert!(chan.duration_unused().is_some()); // unused again
+        });
+    }
+
+    // After the reactor shuts down it marks the channel as unused (even though a circuit
+    // was open).
+    #[test]
+    fn closed_channel_is_unused() {
+        tor_rtcompat::test_with_all_runtimes!(|rt| async move {
+            let (chan, mut reactor, _output, input) = new_reactor(rt.clone(), ChannelMode::Client);
+
+            let (ret, reac) = futures::join!(
+                chan.new_tunnel(Arc::new(DummyTimeoutEstimator)),
+                reactor.run_once()
+            );
+            let (_pending, circr) = ret.unwrap();
+            rt.spawn(async {
+                let _ignore = circr.run().await;
+            })
+            .unwrap();
+            assert!(reac.is_ok());
+            assert!(chan.duration_unused().is_none());
+
+            // The peer terminates the connection.
+            drop(input);
+            reactor.run().await.unwrap();
+            assert!(chan.is_closing());
+            assert!(chan.duration_unused().is_some());
         });
     }
 
