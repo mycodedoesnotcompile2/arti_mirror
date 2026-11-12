@@ -17,6 +17,7 @@
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    convert::Infallible,
     fmt::Debug,
     hash::Hash,
     marker::PhantomData,
@@ -33,7 +34,7 @@ use rusqlite::Transaction;
 use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncReadCompatExt;
-use tor_checkable::TimeBound;
+use tor_checkable::{TimeBound, TimeRangeBound};
 use tor_dirclient::{
     Error as DirClientError, RequestError, RequestFailedError,
     request::{
@@ -62,8 +63,8 @@ use crate::{
         Sha1, Sha256, Timestamp,
     },
     types::{
-        FlavoredConsensusUnverified, FlavoredDescriptor, FlavoredDescriptorMd,
-        FlavoredDescriptorPlain,
+        FlavoredConsensusBody, FlavoredConsensusUnverified, FlavoredDescriptor,
+        FlavoredDescriptorMd, FlavoredDescriptorPlain,
     },
 };
 
@@ -186,6 +187,7 @@ enum State {
     Descriptors,
 
     /// Hibernate because nothing is left.
+    // XXX: Replace with formal end state.
     Hibernate,
 }
 
@@ -899,10 +901,19 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         Ok((resp, parsed))
     }
 
-    /// Queries and validates the most recent consensus from the database.
+    /// Queries and validates the most recent and still fresh consensus from the
+    /// database.
     ///
-    /// Effectively a wrapper around [`StaticEngine::verify_consensus()`] with
-    /// the data obtained from the database.
+    /// This is a bit stricter in terms of timeliness than one might expect.
+    /// It only returns a consensus if and only if `now` lies exactly inside
+    /// valid-after and fresh-until.  The reason for this is, that we otherwise
+    /// have no way of knowing whether it is already time to fetch a new
+    /// consensus or not, as a previous iteration of the finite state machine
+    /// may have already waited up until a random point between
+    /// `(fresh_until - valid_after)/2` and this iteration of the finite state
+    /// machine picks later random point in time still in this interval.
+    // XXX: Fix StoreConsensus to not depend on this.
+    // XXX: Rename to fresh_consensus().
     fn recent_consensus(
         &self,
         tx: &Transaction<'_>,
@@ -925,8 +936,21 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
         let certs_already = self.certs_already(tx, now)?;
 
-        match self.verify_consensus(unverified, &certs_already, now) {
-            Ok(_) => Ok(Some(meta)),
+        match unverified.verify(self.authorities.v3idents(), &certs_already) {
+            Ok(verified) => {
+                // Only if now is exactly between valid-after and fresh-until.
+                let meta = TimeRangeBound::build_intersect(move |times| {
+                    let body = verified.unwrap_with(times);
+                    let lifetime = body.lifetime();
+                    TimeRangeBound::new((), lifetime.valid_after.0..=lifetime.fresh_until.0)
+                        .unwrap_with(times);
+                    Ok::<_, Infallible>(meta)
+                })
+                .expect("infallible should not fail")
+                .if_valid_at(&now.into())
+                .ok();
+                Ok(meta)
+            }
             Err(e) => {
                 // TODO DIRMIRROR: Perhaps we should remove it?
                 debug!("ignoring invalid consensus in database: {meta:?} {e}");
