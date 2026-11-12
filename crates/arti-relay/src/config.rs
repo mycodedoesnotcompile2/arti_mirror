@@ -226,6 +226,12 @@ impl TorRelayConfig {
                 problem: "Testing options require custom directory authorities".to_owned(),
             });
         }
+
+        // Like C-tor's `address_can_be_used()`, we only accept internal addresses with custom
+        // authorities: test networks run on 127.0.0.1, and the real authorities reject such a
+        // descriptor. C-tor also accepts them if it doesn't publish a descriptor (since no one will
+        // ever find out about them); we have no option for that.
+        relay::validate_advertised(&self.relay.advertise, !default_authorities_used)?;
         Ok(self)
     }
 }
