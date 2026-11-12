@@ -457,6 +457,75 @@ mod test {
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
 
     use super::*;
+    use tor_config::sources::MustRead;
+    use tor_config::{ConfigurationSource, ConfigurationSources};
+
+    /// The `[relay]` section of a relay for a chutney test net.
+    const CHUTNEY_RELAY: &str = r#"
+        [relay]
+        listen = ["127.0.0.1:5200"]
+        [relay.advertise]
+        ipv4 = ["127.0.0.1:5200"]
+        ipv6 = []
+    "#;
+
+    /// Chutney test networks' custom directory authorities and fallbacks.
+    const CHUTNEY_AUTHORITIES: &str = r#"
+        [[tor_network.fallback_caches]]
+        rsa_identity = "1AD5BBD5B795627EC6C3F0FC9DF65E7EA432653D"
+        ed_identity = "0rxJnGCM1Qom2M2nB5OtlX6utXhVyQO7jKNmhirRnok"
+        orports = ["127.0.0.1:5100"]
+        [tor_network.authorities]
+        v3idents = ["AA40283B1E7FDA288060748E7FFA4158C31A7501"]
+        uploads = [["127.0.0.1:7100"]]
+        downloads = [["127.0.0.1:7100"]]
+        votes = [["127.0.0.1:7100"]]
+    "#;
+
+    /// Resolve a [`TorRelayConfig`] from TOML text just like `main.rs` resolves it from the
+    /// configuration files.
+    fn resolve_toml(text: &str) -> Result<TorRelayConfig, tor_config::load::ConfigResolveError> {
+        let mut sources = ConfigurationSources::new_empty();
+        sources.push_source(
+            ConfigurationSource::from_verbatim(text.to_owned()),
+            MustRead::MustRead,
+        );
+        tor_config::resolve::<TorRelayConfig>(&sources.load().unwrap())
+    }
+
+    /// For internal addresses, we need to specify custom authorities.
+    #[test]
+    fn advertise_internal_needs_custom_authorities() {
+        let err = resolve_toml(CHUTNEY_RELAY).unwrap_err();
+        let tor_config::load::ConfigResolveError::Build(ConfigBuildError::Inconsistent {
+            fields,
+            ..
+        }) = err
+        else {
+            panic!("unexpected error: {err}");
+        };
+        assert_eq!(fields, ["relay.advertise", "tor_network.authorities"]);
+
+        resolve_toml(&format!("{CHUTNEY_RELAY}{CHUTNEY_AUTHORITIES}")).unwrap();
+
+        // A public address needs nothing more.
+        let public = CHUTNEY_RELAY.replace("127.0.0.1:5200", "198.51.100.1:9001");
+        resolve_toml(&public).unwrap();
+    }
+
+    /// An IPv6 zone will make it through the configuration loader, so it must be rejected later.
+    #[test]
+    fn advertise_ipv6_zone() {
+        let relay = CHUTNEY_RELAY.replace("ipv6 = []", r#"ipv6 = ["[2001:db8::1%3]:9001"]"#);
+        let err = resolve_toml(&format!("{relay}{CHUTNEY_AUTHORITIES}")).unwrap_err();
+        let tor_config::load::ConfigResolveError::Build(ConfigBuildError::Invalid {
+            field, ..
+        }) = err
+        else {
+            panic!("unexpected error: {err}");
+        };
+        assert_eq!(field, "relay.advertise");
+    }
 
     fn cfg_variables() -> impl IntoIterator<Item = (&'static str, PathBuf)> {
         let project_dirs = project_dirs().unwrap();

@@ -219,6 +219,137 @@ mod test {
 
     use super::*;
 
+    /// Validate `addr` as the sole publicized address for its address family.
+    ///
+    /// We put an IPv6 address next to a public IPv4 address, because we need one.
+    fn validate(addr: &str, allow_internal: bool) -> Result<(), ConfigBuildError> {
+        let (ipv4, ipv6) = match addr.parse().unwrap() {
+            SocketAddr::V4(v4) => (v4, vec![]),
+            SocketAddr::V6(v6) => ("198.51.100.1:9001".parse().unwrap(), vec![v6]),
+        };
+        let advertise = Advertise::new(vec![ipv4].try_into().unwrap(), ipv6);
+        validate_advertised(&advertise, allow_internal)
+    }
+
+    #[test]
+    fn advertise_internal() {
+        // I borrowed the addresses from tor's test_addr.c (specifically `test_addr_ip6_helpers` and
+        // `test_addr_rfc6598`, not listening) and I took the boundary addresses of 100.64.0.0/10
+        // directly from the mask used in `tor_addr_is_internal()`.
+        let addrs = [
+            ("fbff:ffff::2:7", false),
+            ("fc01::2:7", true),
+            ("fdff:ffff::f:f", true),
+            ("fe00::3:f", false),
+            ("fe7f:ffff::2:7", false),
+            ("fe80::2:7", true),
+            ("febf:ffff::f:f", true),
+            ("fec0::2:7:7", true),
+            ("feff:ffff::e:7:7", true),
+            ("::1", true),
+            ("::2", false),
+            ("2001::", false),
+            ("::ffff:0.255.255.255", true),
+            ("::ffff:1.0.0.0", false),
+            ("::ffff:9.255.255.255", false),
+            ("::ffff:10.0.0.0", true),
+            ("::ffff:10.255.255.255", true),
+            ("::ffff:11.0.0.0", false),
+            ("::ffff:126.255.255.255", false),
+            ("::ffff:127.0.0.0", true),
+            ("::ffff:127.255.255.255", true),
+            ("::ffff:128.0.0.0", false),
+            ("::ffff:172.15.255.255", false),
+            ("::ffff:172.16.0.0", true),
+            ("::ffff:172.31.255.255", true),
+            ("::ffff:172.32.0.0", false),
+            ("::ffff:192.167.255.255", false),
+            ("::ffff:192.168.0.0", true),
+            ("::ffff:192.168.255.255", true),
+            ("::ffff:192.169.0.0", false),
+            ("::ffff:169.253.255.255", false),
+            ("::ffff:169.254.0.0", true),
+            ("::ffff:169.254.255.255", true),
+            ("::ffff:169.255.0.0", false),
+            ("100.63.255.255", false),
+            ("100.64.0.0", true),
+            ("100.64.0.1", true),
+            ("100.127.255.255", true),
+            ("100.128.0.0", false),
+        ];
+        for (ip, internal) in addrs {
+            // We treat every IPv4-mapped address as a regular IPv4 address as well.
+            let plain_ipv4 = ip.strip_prefix("::ffff:").map(|v4| format!("{v4}:9001"));
+            let addr = if ip.contains(':') {
+                format!("[{ip}]:9001")
+            } else {
+                format!("{ip}:9001")
+            };
+            for addr in [Some(addr), plain_ipv4].into_iter().flatten() {
+                let res = validate(&addr, false);
+                assert_eq!(
+                    matches!(res, Err(ConfigBuildError::Inconsistent { .. })),
+                    internal,
+                    "{addr}"
+                );
+                assert_eq!(res.is_ok(), !internal, "{addr}");
+                // If you define custom authorities, then all are equally good.
+                assert!(validate(&addr, true).is_ok(), "{addr}");
+            }
+        }
+    }
+
+    #[test]
+    fn advertise_invalid() {
+        // Not one is accessible to anyone. C-tor's descriptor parser rejects port 0
+        // (`router_parse_entry_from_string()`) and a zone (`find_single_ipv6_orport()`), and
+        // although C-tor classifies unspecified addresses as internal, it accepts multicast and
+        // broadcast addresses.
+        for addr in [
+            "0.0.0.0:9001",
+            "[::]:9001",
+            "[::ffff:0.0.0.0]:9001",
+            "224.0.0.0:9001",
+            "239.255.255.255:9001",
+            "[ff00::e:7:7]:9001",
+            "[ffff::]:9001",
+            "255.255.255.255:9001",
+            "198.51.100.1:0",
+            "[2001::]:0",
+            "[2001:db8::1%3]:9001",
+        ] {
+            for allow_internal in [false, true] {
+                assert!(
+                    matches!(
+                        validate(addr, allow_internal),
+                        Err(ConfigBuildError::Invalid { .. })
+                    ),
+                    "{addr}"
+                );
+            }
+        }
+        // You cannot write a flow label in the config, but it's rejected like a zone.
+        let ipv6 = SocketAddrV6::new("2001:db8::1".parse().unwrap(), 9001, 1, 0);
+        let advertise = Advertise::new(
+            vec!["198.51.100.1:9001".parse().unwrap()]
+                .try_into()
+                .unwrap(),
+            vec![ipv6],
+        );
+        assert!(matches!(
+            validate_advertised(&advertise, true),
+            Err(ConfigBuildError::Invalid { .. })
+        ));
+        // Neighbours to these ranges are public and 240.0.0.0/4 is also public in C-tor.
+        for addr in [
+            "223.255.255.255:9001",
+            "240.0.0.0:9001",
+            "255.255.255.254:9001",
+        ] {
+            assert!(validate(addr, false).is_ok(), "{addr}");
+        }
+    }
+
     #[test]
     fn contact_valid() {
         for info in [
