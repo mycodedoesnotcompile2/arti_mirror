@@ -279,7 +279,7 @@ pub(crate) enum ContentEncoding {
 /// integrate into SQL statements, as the database schema represents timestamps
 /// internally using a non-negative [`i64`] storing the seconds since the epoch.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub(crate) struct Timestamp(SystemTime);
+pub(crate) struct Timestamp(pub SystemTime);
 
 impl From<SystemTime> for Timestamp {
     fn from(value: SystemTime) -> Self {
