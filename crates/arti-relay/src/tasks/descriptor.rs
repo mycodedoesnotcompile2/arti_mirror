@@ -26,6 +26,7 @@ use tor_dirpublish::{Publisher, http::DirectHttpUploader};
 use tor_netdir::{DirEvent, NetDirProvider};
 use tor_netdoc::types::{ContactInfo, Nickname};
 use tor_rtcompat::{DynTimeProvider, Runtime, SleepProvider as _};
+use web_time_compat::Instant;
 
 use crate::config;
 use crate::tasks::crypto::{CryptoCommand, CryptoCommandSender};
@@ -81,6 +82,24 @@ pub(crate) struct RelayDescriptorPublisherTask {
     /// Time provider for descriptor publication timestamps.
     runtime: DynTimeProvider,
 
+    /// When the task was created, at the beginning of the relay. This is when we start counting our
+    /// uptime.
+    ///
+    /// This is monotonic time, so we ignore wall clock jumps when calculating uptime. C-tor also
+    /// ignores any clock jump of 100 secs or more (`update_current_time()`).
+    //
+    // https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:uptime
+    //
+    // TODO(relay): The C-tor code also resets its uptime calculation whenever the IP address
+    // changes (`ip_address_changed()`), when hibernation stops (`hibernate_end()`), or if it needs
+    // directory information and thinks there are no directory servers available, such as after a
+    // network outage (`directory_all_unreachable()`). We do none of this in Arti today, which means
+    // that, after a network outage, we'll report longer uptime than the C-tor code would. But all
+    // three events are external to this task; as soon as any of them gets implemented, or as soon
+    // as we need this uptime for an extra-info or heartbeat report, we'll have to migrate the
+    // uptime out of this task and into some shared "relay" state.
+    started: Instant,
+
     /// Directory provider, used to learn about new consensus documents and parameters.
     netdir: Arc<dyn NetDirProvider>,
 
@@ -134,6 +153,7 @@ impl RelayDescriptorPublisherTask {
 
         Ok(Self {
             runtime: DynTimeProvider::new(runtime.clone()),
+            started: runtime.now(),
             netdir,
             authorities,
             command_rx,
@@ -161,6 +181,7 @@ impl RelayDescriptorPublisherTask {
             &self.desc_info,
             key_material,
             self.runtime.wallclock(),
+            self.runtime.now().saturating_duration_since(self.started),
         )?;
         Ok(Some(encoded.into()))
     }
