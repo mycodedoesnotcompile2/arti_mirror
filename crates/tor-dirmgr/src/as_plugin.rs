@@ -183,6 +183,8 @@ impl UriInterpretation {
 
             Ok(Self::LatestMdConsensus)
         } else if let Some(remainder) = path.strip_prefix("/micro/d/") {
+            // LIMITATION: C tor skips any digests it fails to parse; we return a 400 status code on
+            //    the entire request.
             let mut digests: Vec<_> = remainder
                 .split('-')
                 .map(decode_md_digest)
@@ -191,7 +193,10 @@ impl UriInterpretation {
             digests.sort();
             Ok(UriInterpretation::MdsByDigest(digests))
         } else if let Some(remainder) = path.strip_prefix("/keys/fp-sk/") {
-            // LIMITATION: we don't handle other "keys" URIs, since I think clients don't use them.
+            // LIMITATION: We do not process any other "keys" URIs. When C tor does not have an
+            //    existing certificate for an authority, it requests the "/keys/fp/<F>" URI (in
+            //    `authority_certs_fetch_missing()`). When that fails here, it retries later, maybe
+            //    from a different directory.
             let mut pairs: Vec<_> = remainder
                 .split('+')
                 .map(decode_fp_pair)
@@ -201,6 +206,7 @@ impl UriInterpretation {
             Ok(UriInterpretation::AuthCertsByFpSk(pairs))
         } else {
             // This is some type of URI we don't handle.
+            // LIMITATION: This also includes "/tor/robots.txt", for which C tor replies with a 200.
             Err(ReqError::Unhandled)
         }
     }
