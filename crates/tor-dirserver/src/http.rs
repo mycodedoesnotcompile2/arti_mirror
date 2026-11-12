@@ -7,7 +7,7 @@ use cache::StoreCache;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 #[cfg(feature = "dir-plugin-backend")]
-use tor_dircommon::dir_plugin_backend::DirBackendPlugin;
+use tor_dircommon::dir_plugin_backend::{DirBackendPlugin, DirBackendPluginError};
 use tor_error::internal;
 #[cfg(feature = "dir-plugin-backend")]
 use tor_error::warn_report;
@@ -205,10 +205,33 @@ impl HttpServer {
                                 // Convert Request::<Incoming> to Request::<()>.
                                 let requ = requ.map(|_| ());
 
-                                // Convert the Box<[u8]> to something hyper accepts.
-                                backend
-                                    .get(&requ)
-                                    .map(|resp| resp.map(|body| Full::new(Cursor::new(body))))
+                                // Since an Err causes hyper to abort the
+                                // connection without responding at all, we
+                                // manually respond to each error.
+                                let resp = match backend.get(&requ) {
+                                    // Convert the Box<[u8]> to something hyper accepts.
+                                    Ok(resp) => resp.map(|body| Full::new(Cursor::new(body))),
+                                    // When C Tor's directory cache receives a
+                                    // request for a URL that it doesn't host,
+                                    // it responds with an HTTP 404 status code
+                                    // (in `directory_handle_command_get()`).
+                                    Err(DirBackendPluginError::UriNotHandledByPlugin) => {
+                                        tracing::debug!(
+                                            path = requ.uri().path(),
+                                            "Directory request not handled by backend"
+                                        );
+                                        failure(StatusCode::NOT_FOUND)
+                                    }
+                                    Err(DirBackendPluginError::Bug(bug)) => {
+                                        warn_report!(bug, "Directory backend failed");
+                                        failure(StatusCode::INTERNAL_SERVER_ERROR)
+                                    }
+                                    Err(e) => {
+                                        warn_report!(e, "Directory backend failed");
+                                        failure(StatusCode::INTERNAL_SERVER_ERROR)
+                                    }
+                                };
+                                Ok::<_, Infallible>(resp)
                             }
                         });
                         tasks.spawn(http1::Builder::new().serve_connection(stream, service));
