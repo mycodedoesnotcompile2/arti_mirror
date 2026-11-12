@@ -162,6 +162,14 @@ pub(crate) struct RunArgs {}
 /// Arguments for the identity subcommand.
 #[derive(Clone, Debug, Args)]
 pub(crate) struct IdentityArgs {
+    /// Generate the identity keys.
+    #[arg(long)]
+    pub(crate) generate: bool,
+
+    /// Replace existing identity keys.
+    #[arg(long, requires = "generate")]
+    pub(crate) overwrite: bool,
+
     /// Print the fingerprints in JSON format.
     #[arg(long)]
     pub(crate) json: bool,

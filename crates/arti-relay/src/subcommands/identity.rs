@@ -2,7 +2,7 @@
 
 use anyhow::Context;
 use serde::Serialize;
-use tor_keymgr::KeyMgr;
+use tor_keymgr::{KeyMgr, KeystoreSelector};
 use tor_relay_crypto::pk::{RelayIdentityKeypair, RelayIdentityRsaKeypair};
 
 use crate::cli;
@@ -25,7 +25,37 @@ pub(crate) fn run(args: cli::IdentityArgs, global_args: cli::GlobalArgs) -> anyh
     let keymgr = InertTorRelay::create_keymgr(&state_path, config.storage.permissions())
         .context("Failed to create key manager")?;
 
+    // Attempt to generate the identity key.
+    if args.generate {
+        generate_identity(&keymgr, args.overwrite)?;
+    }
+
     print_fingerprints(&keymgr, args.json)
+}
+
+/// Generate the Ed25519 and RSA identity keys.
+///
+/// Existing keys are only replaced if `overwrite` is set.
+fn generate_identity(keymgr: &KeyMgr, overwrite: bool) -> anyhow::Result<()> {
+    let ed_spec = RelayIdentityKeypairSpecifier::new();
+    let rsa_spec = RelayIdentityRsaKeypairSpecifier::new();
+
+    let exists = keymgr.get::<RelayIdentityKeypair>(&ed_spec)?.is_some()
+        || keymgr.get::<RelayIdentityRsaKeypair>(&rsa_spec)?.is_some();
+    if exists && !overwrite {
+        anyhow::bail!("Identity keys already exist. Use --overwrite to replace them");
+    }
+
+    let mut rng = tor_llcrypto::rng::CautiousRng;
+    let selector = KeystoreSelector::default();
+    keymgr
+        .generate::<RelayIdentityKeypair>(&ed_spec, selector, &mut rng, overwrite)
+        .context("Failed to generate the Ed25519 identity key")?;
+    keymgr
+        .generate::<RelayIdentityRsaKeypair>(&rsa_spec, selector, &mut rng, overwrite)
+        .context("Failed to generate the RSA identity key")?;
+
+    Ok(())
 }
 
 /// Print the Ed25519 and RSA identity fingerprints.
