@@ -1053,4 +1053,66 @@ pub(in crate::http) mod test {
         let decoded_resp = decoder.finish().unwrap();
         assert_eq!(IDENTITY, String::from_utf8_lossy(&decoded_resp));
     }
+
+    /// A [`DirBackendPlugin`] which returns the same response for all requests.
+    #[cfg(feature = "dir-plugin-backend")]
+    struct FixedBackend(Result<StatusCode, DirBackendPluginError>);
+
+    #[cfg(feature = "dir-plugin-backend")]
+    impl DirBackendPlugin for FixedBackend {
+        fn get(&self, _requ: &Request<()>) -> Result<Response<Box<[u8]>>, DirBackendPluginError> {
+            self.0.clone().map(|status| {
+                Response::builder()
+                    .status(status)
+                    .body(Box::default())
+                    .unwrap()
+            })
+        }
+    }
+
+    /// Call [`HttpServer::serve_backend`] with `requ` and collect everything it
+    /// writes before it closes the connection.
+    #[cfg(feature = "dir-plugin-backend")]
+    async fn backend_answer(backend: FixedBackend, requ: &str) -> String {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let (mut client, server) = tokio::io::duplex(4096);
+        let listener = futures::stream::iter([Ok::<_, std::io::Error>(server)])
+            .chain(futures::stream::pending());
+        let server = task::spawn(HttpServer::serve_backend(listener, backend));
+
+        client.write_all(requ.as_bytes()).await.unwrap();
+        let mut answer = Vec::new();
+        time::timeout(Duration::from_secs(10), client.read_to_end(&mut answer))
+            .await
+            .expect("connection not closed")
+            .unwrap();
+        server.abort();
+        String::from_utf8(answer).unwrap()
+    }
+
+    #[cfg(feature = "dir-plugin-backend")]
+    #[tokio::test]
+    async fn backend_errors() {
+        // A request line (and the corresponding Host header) from a C Tor
+        // client that is retrieving an authority certificate it's missing (from
+        // `authority_certs_fetch_missing()` and `directory_send_command()`).
+        const GET: &str = "GET /tor/keys/fp/0232AF901C31A04EE9848595AF9BB7620D4C5B2E HTTP/1.0\r\n\
+                           Host: 127.0.0.1:5200\r\n\r\n";
+
+        // When C Tor's directory cache receives a request for a URL that it
+        // doesn't host, it responds with a 404. Since C Tor lacks any kind of
+        // internal error status, the 500 comes from `EndpointFn`'s
+        // documentation.
+        for (backend, status) in [
+            (Err(DirBackendPluginError::UriNotHandledByPlugin), "404"),
+            (Err(DirBackendPluginError::Bug(internal!("test"))), "500"),
+        ] {
+            let answer = backend_answer(FixedBackend(backend), GET).await;
+            assert!(
+                answer.starts_with(&format!("HTTP/1.0 {status} ")),
+                "{answer:?}"
+            );
+        }
+    }
 }
