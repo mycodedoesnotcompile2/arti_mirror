@@ -2,6 +2,7 @@
 
 use anyhow::Context;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use tor_basic_utils::ByteQty;
 use tor_key_forge::ToEncodableKey as _;
@@ -32,17 +33,21 @@ fn cap_desc_bandwidth(limit: Option<ByteQty>) -> u64 {
 
 /// Encode and sign a [`RouterDesc`] with the given descriptor info and key material.
 ///
+/// `uptime` is the amount of time since we started running, and is reported in integer seconds,
+/// rounded down.
+///
 /// Return a result of the encoded descriptor as a [`String`].
 pub(super) fn encode_and_sign_router_desc(
     info: &RouterDescInfo,
     keys: RouterDescKeyMaterial,
     now: SystemTime,
+    uptime: Duration,
 ) -> anyhow::Result<String> {
     // TODO(relay): Need to decide what we do for IPv6 only relays as in with an explicit
     // flag in the config or just parsing the available IPs is enough.
     let primary_addr = info.advertise.primary_ipv4();
     let identity_ed25519 = cert::build_identity_cert(keys.ed_signing_cert, keys.ed_identity, now)?;
-    // TODO(relay): Need uptime, extrainfo, family, overload general and exit policy.
+    // TODO(relay): Need extrainfo, family, overload general and exit policy.
     //
     // tor-netdoc "Constructor" pattern holds only the required fields and `construct()`
     // fills the rest with default values.
@@ -53,6 +58,7 @@ pub(super) fn encode_and_sign_router_desc(
             env!("CARGO_PKG_VERSION")
         ))),
         fingerprint: Some(keys.rsa_identity_kp.to_rsa_identity().into()),
+        uptime: Some(uptime.as_secs()),
         tunnelled_dir_server: Some(Default::default()),
         proto: crate::supported_protocols(),
         bandwidth: BandwidthConstructor {
@@ -95,7 +101,7 @@ pub(super) fn encode_and_sign_router_desc(
 }
 
 #[cfg(test)]
-mod test {
+pub(super) mod test {
     // @@ begin test lint list maintained by maint/add_warning @@
     #![allow(clippy::bool_assert_comparison)]
     #![allow(clippy::clone_on_copy)]
@@ -125,7 +131,7 @@ mod test {
     /// Build what we need to build a descriptor as in descriptor info and key material.
     ///
     /// Return all this along the now time used for the certificates.
-    fn descriptor_fixture() -> (RouterDescInfo, RouterDescKeyMaterial, SystemTime) {
+    pub(crate) fn descriptor_fixture() -> (RouterDescInfo, RouterDescKeyMaterial, SystemTime) {
         let advertise = config::Advertise::new(
             ["192.0.2.1:9001", "192.0.2.1:9003", "192.0.2.2:9001"]
                 .map(|addr| addr.parse().unwrap())
@@ -181,7 +187,7 @@ mod test {
         let ed_identity = keys.ed_identity;
         let rsa_identity = keys.rsa_identity_kp.to_rsa_identity();
         let ntor_key = *keys.ntor_key.inner();
-        let encoded = encode_and_sign_router_desc(&info, keys, now).unwrap();
+        let encoded = encode_and_sign_router_desc(&info, keys, now, Duration::ZERO).unwrap();
         let verified = parse_netdoc::<RouterDescUnverified>(&ParseInput::new(&encoded, "encoded"))
             .unwrap()
             .verify()
@@ -225,12 +231,35 @@ mod test {
         );
     }
 
+    /// The `uptime` item is in seconds, truncated.
+    #[test]
+    fn uptime_item() {
+        // C-tor's `router_dump_router_to_string()` prints "uptime %ld\n" using `get_uptime()`,
+        // which begins at 0 and increments in full seconds since process start.
+        for (uptime, expected) in [
+            (Duration::ZERO, 0),
+            (Duration::from_millis(24 * 60 * 60 * 1000 + 999), 86_400),
+        ] {
+            let (info, keys, now) = descriptor_fixture();
+            let encoded = encode_and_sign_router_desc(&info, keys, now, uptime).unwrap();
+            assert!(encoded.lines().any(|l| l == format!("uptime {expected}")));
+
+            let verified =
+                parse_netdoc::<RouterDescUnverified>(&ParseInput::new(&encoded, "encoded"))
+                    .unwrap()
+                    .verify()
+                    .unwrap();
+            assert_eq!(verified.dangerously_peek().uptime, Some(expected));
+        }
+    }
+
     /// Test that using an expired certificate is caught.
     #[test]
     fn expired_signing_cert() {
         let (info, keys, now) = descriptor_fixture();
         let after_expiry = now + Duration::from_secs(8 * 24 * 60 * 60);
-        let err = encode_and_sign_router_desc(&info, keys, after_expiry).unwrap_err();
+        let err =
+            encode_and_sign_router_desc(&info, keys, after_expiry, Duration::ZERO).unwrap_err();
         assert!(matches!(
             err.downcast_ref::<tor_checkable::TimeValidityError>(),
             Some(tor_checkable::TimeValidityError::Expired(_))
@@ -243,7 +272,7 @@ mod test {
         keys.ed_identity = RelayIdentityKeypair::generate(&mut tor_llcrypto::rng::CautiousRng)
             .unwrap()
             .to_ed25519_id();
-        let err = encode_and_sign_router_desc(&info, keys, now).unwrap_err();
+        let err = encode_and_sign_router_desc(&info, keys, now, Duration::ZERO).unwrap_err();
         assert_eq!(
             err.to_string(),
             "Relay signing cert does not match relay identity"
@@ -255,7 +284,7 @@ mod test {
         let (info, mut keys, now) = descriptor_fixture();
         keys.relay_sign_kp =
             RelaySigningKeypair::generate(&mut tor_llcrypto::rng::CautiousRng).unwrap();
-        let err = encode_and_sign_router_desc(&info, keys, now).unwrap_err();
+        let err = encode_and_sign_router_desc(&info, keys, now, Duration::ZERO).unwrap_err();
         assert!(format!("{err:#}").contains("Ed25519 signing key does not match"));
     }
 
@@ -275,7 +304,7 @@ mod test {
             .encode_and_sign(&identity_kp)
             .unwrap()
             .into();
-        let err = encode_and_sign_router_desc(&info, keys, now).unwrap_err();
+        let err = encode_and_sign_router_desc(&info, keys, now, Duration::ZERO).unwrap_err();
         assert_eq!(err.to_string(), "Failed to verify relay signing cert");
     }
 }
