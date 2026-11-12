@@ -169,12 +169,17 @@ impl UriInterpretation {
             None => (path, false),
         };
 
-        if path.starts_with("/status-vote/current/consensus-md") {
-            // LIMITATION: We don't handle the "/diff" URIs.
+        // A microdesc consensus, possibly followed by a list of authority fingerprints. See
+        // https://spec.torproject.org/dir-spec/general-use-http-urls.html for details.
+        let md_consensus = path
+            .strip_prefix("/status-vote/current/consensus-microdesc")
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'));
+
+        if md_consensus {
+            // LIMITATION: URIs matching "/diff/" also match, giving a complete consensus; C tor
+            //    responds with a 404 if no such diff exists.
             // LIMITATION: We don't serve "ns" consensuses.
             // LIMITATION: We ignore the list of fingerprints that follow this part of the path.
-            // LIMITATION: We behave incorrectly if asked for a flavor that begins with, but is not,
-            //    "md".
 
             Ok(Self::LatestMdConsensus)
         } else if let Some(remainder) = path.strip_prefix("/micro/d/") {
