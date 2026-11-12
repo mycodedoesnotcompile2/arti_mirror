@@ -1165,6 +1165,47 @@ pub(crate) mod test {
         });
     }
 
+    // A channel is in use for exactly the duration of an open peer-created circuit.
+    #[cfg(feature = "relay")]
+    #[test]
+    fn relay_circuit_uses_channel() {
+        MockRuntime::test_with_various(|rt| async move {
+            let (mode, _circuit_stream_rx) = new_relay_mode_with_keys();
+            let (chan, mut reactor, mut output, mut input) = new_reactor(rt.clone(), mode);
+
+            // Channel hasn't been used in a minute.
+            let minute = std::time::Duration::from_secs(60);
+            reactor.details.unused_since.clear();
+            reactor
+                .details
+                .unused_since
+                .update_to(coarsetime::Instant::now() - coarsetime::Duration::from(minute));
+            assert!(chan.duration_unused().unwrap() >= minute);
+
+            let id = CircId::new(0x8000_0001).unwrap();
+            let create_fast = msg::CreateFast::new(vec![42; 20]).into();
+            input
+                .send(Ok(AnyChanCell::new(Some(id), create_fast)))
+                .await
+                .unwrap();
+            reactor.run_once().await.unwrap();
+            let cell = output.next().await.unwrap();
+            assert!(matches!(cell.msg(), AnyChanMsg::CreatedFast(_)));
+
+            assert!(chan.duration_unused().is_none());
+
+            let destroy = msg::Destroy::new(DestroyReason::NONE).into();
+            input
+                .send(Ok(AnyChanCell::new(Some(id), destroy)))
+                .await
+                .unwrap();
+            reactor.run_once().await.unwrap();
+
+            // Idle time is measured from the departure of the last circuit.
+            assert!(chan.duration_unused().unwrap() < minute);
+        });
+    }
+
     // Test proper delivery of a created cell that doesn't make a channel
     #[test]
     #[ignore] // See bug #244: re-enable this test once it passes reliably.
