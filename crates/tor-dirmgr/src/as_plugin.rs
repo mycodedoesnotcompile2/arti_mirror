@@ -183,7 +183,9 @@ impl UriInterpretation {
                 .map(decode_md_digest)
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(ReqError::Invalid)?;
+            // As in C tor, we only do a single lookup per digest (`DSR_SORT_UNIQ`).
             digests.sort();
+            digests.dedup();
             Ok(UriInterpretation::MdsByDigest(digests))
         } else if let Some(remainder) = path.strip_prefix("/keys/fp-sk/") {
             // LIMITATION: we don't handle other "keys" URIs, since I think clients don't use them.
