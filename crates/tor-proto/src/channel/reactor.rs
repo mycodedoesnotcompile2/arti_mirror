@@ -1135,6 +1135,33 @@ pub(crate) mod test {
         });
     }
 
+    // After the reactor shuts down it marks the channel as unused (even though a circuit
+    // was open).
+    #[test]
+    fn closed_channel_is_unused() {
+        tor_rtcompat::test_with_all_runtimes!(|rt| async move {
+            let (chan, mut reactor, _output, input) = new_reactor(rt.clone(), ChannelMode::Client);
+
+            let (ret, reac) = futures::join!(
+                chan.new_tunnel(Arc::new(DummyTimeoutEstimator)),
+                reactor.run_once()
+            );
+            let (_pending, circr) = ret.unwrap();
+            rt.spawn(async {
+                let _ignore = circr.run().await;
+            })
+            .unwrap();
+            assert!(reac.is_ok());
+            assert!(chan.duration_unused().is_none());
+
+            // The peer terminates the connection.
+            drop(input);
+            reactor.run().await.unwrap();
+            assert!(chan.is_closing());
+            assert!(chan.duration_unused().is_some());
+        });
+    }
+
     // Test proper delivery of a created cell that doesn't make a channel
     #[test]
     #[ignore] // See bug #244: re-enable this test once it passes reliably.
