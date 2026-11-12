@@ -792,6 +792,9 @@ impl<R: Runtime> Reactor<R> {
                 // there).
                 self.circs
                     .add_relay_ent(circid, circ, sender, padding_ctrl)?;
+                // Like in C-tor's `channel_num_circuits()`, usage includes the peer's
+                // circuits.
+                self.update_disused_since();
                 response
             }
             Err(destroy) => CreateResponse::Destroy(destroy),
