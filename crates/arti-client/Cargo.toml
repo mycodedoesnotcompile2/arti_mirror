@@ -238,5 +238,5 @@ tor-rtcompat = { path = "../tor-rtcompat", version = "0.48.0", features = ["toki
 tracing-subscriber = "0.3.23"
 tracing-test = "0.2.6"
 
-[target.'cfg(not(all(target_arch="wasm32", target_os="unknown")))'.dependencies]
+[target.'cfg(not(all(target_arch="wasm32", target_os="unknown")))'.dev-dependencies]
 tempfile = "3.27"
