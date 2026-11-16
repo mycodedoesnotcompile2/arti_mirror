@@ -17,6 +17,7 @@
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    convert::Infallible,
     fmt::Debug,
     hash::Hash,
     marker::PhantomData,
@@ -30,9 +31,10 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rand::Rng;
 use rusqlite::Transaction;
+use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncReadCompatExt;
-use tor_checkable::TimeBound;
+use tor_checkable::{TimeBound, TimeRangeBound};
 use tor_dirclient::{
     Error as DirClientError, RequestError, RequestFailedError,
     request::{
@@ -57,17 +59,14 @@ use tracing::{debug, warn};
 
 use crate::{
     database::{
-        self as db, AuthCertMeta, ConsensusMeta, ContentEncoding, DescriptorMeta, Sha1, Sha256,
-        Timestamp,
+        self as db, AuthCertMeta, ConsensusMeta, ContentEncoding, DatabaseError, DescriptorMeta,
+        Sha1, Sha256, Timestamp,
     },
-    err::{AuthorityRequestError, DatabaseError, OperationError},
     types::{
-        FlavoredConsensusUnverified, FlavoredDescriptor, FlavoredDescriptorMd,
-        FlavoredDescriptorPlain,
+        FlavoredConsensusBody, FlavoredConsensusUnverified, FlavoredDescriptor,
+        FlavoredDescriptorMd, FlavoredDescriptorPlain,
     },
 };
-
-mod poc;
 
 /// The duration to try verifying an unverified consensus.
 ///
@@ -88,82 +87,113 @@ const DESCRIPTOR_LIMIT: Option<u64> = Some(92);
 /// The endpoint(s) of a download authority identifying it.
 type DownloadAuthority = [SocketAddr];
 
+/// An error while performing a request at a directory authority.
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub(crate) enum AuthorityRequestError {
+    /// TCP connection to the endpoint failed.
+    #[error("tcp connection error: {0}")]
+    TcpConnect(std::io::Error),
+
+    /// [`tor_dirclient`] failed at performing the request.
+    ///
+    /// This usually indicates some failures in HTTP/1.0, such as the response
+    /// not being valid HTTP/1.0; although Tor generally has some specialities
+    /// here and there with regard to this, hence why we have dirclient in the
+    /// first place.
+    #[error("dirclient error: {0}")]
+    Request(Box<tor_dirclient::RequestFailedError>),
+
+    /// A response does not make semantic sense.
+    ///
+    /// This for example may include cases where we got more netdocs than we
+    /// requested for.
+    #[error("response error: {0}")]
+    Response(&'static str),
+
+    /// A request led to no progress being made.
+    ///
+    /// This is the case if the response only consists of netdocs we did not
+    /// request or no netdocs at all, leading to no progress.
+    ///
+    /// The correct error handling strategy for this case is to pick a different
+    /// endpoint, as the current one is either not useful for us anymore or
+    /// is maliciously tricking us into something that should not happen.
+    #[error("request resulted in no progress")]
+    NoRequestedDocumentsReturned,
+
+    /// An internal error.
+    #[error("internal error")]
+    Bug(#[from] tor_error::Bug),
+}
+
+impl From<tor_dirclient::RequestFailedError> for AuthorityRequestError {
+    fn from(value: tor_dirclient::RequestFailedError) -> Self {
+        Self::Request(Box::new(value))
+    }
+}
+
+/// An error related to an operation in the dirmirror FSM.
+//
+// TODO: Rename this to MirrorOperationError.
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub(crate) enum OperationError {
+    /// Request to a directory authority failed.
+    #[error("authority request error: {0}")]
+    AuthorityRequest(#[from] AuthorityRequestError),
+
+    /// Access to the database failed for good.
+    #[error("database error: {0}")]
+    Database(#[from] DatabaseError),
+
+    /// Verificaton of a network document has failed.
+    ///
+    /// This also includes checks for timeliness.
+    ///
+    /// We do not consider this fatal but simply discard the unverified network
+    /// document.
+    #[error("verification error: {0}")]
+    VerifyFailed(#[from] VerifyFailed),
+
+    /// An internal error.
+    #[error("Internal error")]
+    Bug(#[from] tor_error::Bug),
+}
+
 /// The various states for the [`StaticEngine`].
+// TODO DIRMIRROR: Document the state transitions once the refactoring is done.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display)]
 enum State {
     /// Loads the most recent valid (and verified) consensus from the database
     /// into memory.
-    ///
-    /// Transitions from:
-    /// * Start, if a recent valid consensus exists in the database.
-    /// * [`State::StoreConsensus`], if successfully finished.
-    ///
-    /// Transitions into:
-    /// * [`State::Descriptors`]
     LoadConsensus,
 
     /// Downloads the most recent consensus from a directory authority.
-    ///
-    /// Transitions from:
-    /// * Start, if no recent valid consensus exists in the database.
-    /// * [`State::Descriptors`], if ttl is over.
-    /// * [`State::Hibernate`], if ttl is over.
-    ///
-    /// Transitions into:
-    /// * [`State::AuthCerts`], if we miss authority certificates.
-    /// * [`State::StoreConsensus`], if all authority certificates exist in the
-    ///   database.
-    /// * [`State::Hibernate`], if we have insufficient trusted authorities.
     // TODO DIRMIRROR: What to do in the case of getting an invalid consensus
     // such as junk data?  The normal retry logic sounds reasonable here.
     FetchConsensus,
 
     /// Downloads, validates, and stores the missing authority certificates from
     /// the downloaded unvalidated consensus into the database.
-    ///
-    /// Transitions from:
-    /// * [`State::FetchConsensus`], if we miss authority certificates.
-    /// * [`State::AuthCerts`], if we still miss authority certificates.
-    ///
-    /// Transitions into:
-    /// * [`State::AuthCerts`], if we still miss authority certificates.
-    /// * [`State::StoreConsensus`], if we got all authority certificates.
     AuthCerts,
 
     /// Validates and stores the downloaded unvalidated consensus into the
     /// database.
-    ///
-    /// Transitions from:
-    /// * [`State::FetchConsensus`], if we have all authority certificates.
-    /// * [`State::AuthCerts`], if we have all authority certificates.
-    ///
-    /// Transitions into:
-    /// * [`State::LoadConsensus`]
     StoreConsensus,
 
     /// Downloads missing network documents (descriptors) from a directory
     /// authority.
-    ///
-    /// Transitions from:
-    /// * [`State::LoadConsensus`], if we initialize.
-    /// * [`State::Descriptors`], if we still have missing descriptors left.
-    ///
-    /// Transitions into:
-    /// * [`State::FetchConsensus`], if ttl is over.
-    /// * [`State::Descriptors`], if we still have missing descriptors left.
-    /// * [`State::Hibernate`], if nothing is left.
     Descriptors,
 
-    /// Hibernate because nothing is left.
+    /// Final end state signalizing that the FSM is done.
     ///
-    /// Transitions from:
-    /// * [`State::FetchConsensus`], if we have insufficient trusted
-    ///   authorities.
-    /// * [`State::Descriptors`], if we have downloaded all descriptors.
-    ///
-    /// Transitions into:
-    /// * [`State::FetchConsensus`], if the ttl is over.
-    Hibernate,
+    /// The caller should drop [`ConsensusBoundData`] and wait a given time.
+    // TODO DIRMIRROR: This requires a way to signalize the end plus timeout to
+    // the caller.  We will fix that soon with a refactoring of the return types
+    // and by refactoring ConsensusBoundData to be moved through rather than
+    // passed as a mutable reference.
+    End,
 }
 
 /// The execution engine for the finite state machine.
@@ -291,13 +321,11 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // a few database queries, as well as the current time of course.
         let state = match data {
             // ConsensusBoundData::None means that we currently have no
-            // consensus in memory.  This may be the case because we just
-            // started up or because we just downloaded, validated, and inserted
-            // a consensus into the database and reset ConsensusBoundData to
-            // None afterwards.
+            // consensus in memory.  This is the case if we have just started
+            // this run of the finite state machine.
             ConsensusBoundData::None => {
                 // Check whether there is a valid consensus in the database at all.
-                match self.recent_consensus(tx, now)? {
+                match self.fresh_consensus(tx, now)? {
                     // Some consensus means we can load it.
                     Some(_) => State::LoadConsensus,
 
@@ -318,9 +346,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
                     // We will never be able to verify the consensus, better
                     // times may come ...
-                    Err(ConsensusVerifiabilityError::InsufficientTrustedSigners) => {
-                        State::Hibernate
-                    }
+                    Err(ConsensusVerifiabilityError::InsufficientTrustedSigners) => State::End,
 
                     // We need to fetch more authority certificates from the
                     // network.
@@ -328,13 +354,11 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 }
             }
 
-            ConsensusBoundData::Unverified { .. } => State::FetchConsensus,
+            // The TTL is over without us having verified a consensus, end now.
+            ConsensusBoundData::Unverified { .. } => State::End,
 
             // ConsensusBoundData::Verified means that we have successfully
-            // loaded a recent valid consensus from the database using
-            // State::LoadConsensus.  Depending on this, we download the missing
-            // network documents (descriptors) from a directory authority, if
-            // any.
+            // loaded a recent valid consensus from the database.
             ConsensusBoundData::Verified {
                 consensus,
                 ttl,
@@ -366,21 +390,14 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 );
 
                 if *ttl <= now {
-                    // The ttl has been surpassed, download a new
-                    // consensus.  It is very important TO NOT transition to
-                    // State::LoadConsensus here, because the current consensus
-                    // may still be valid but not fresh anymore, in which case
-                    // State::LoadConsensus will continue to obtain it from the
-                    // database until valid-after has been surpassed, which is
-                    // most definitely not what we want.
-                    State::FetchConsensus
+                    // The ttl has been surpassed, we are done.
+                    State::End
                 } else if missing_routers.is_empty()
                     && missing_micros.is_empty()
                     && missing_extras.is_empty()
                 {
-                    // All queues are empty, meaning we are done, until ttl
-                    // ends.
-                    State::Hibernate
+                    // All queues are empty, meaning we are done.
+                    State::End
                 } else {
                     // The ttl has not been surpassed and we have stuff
                     // to download, so we need to obtain the descriptors.
@@ -392,13 +409,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     }
 
     /// Executes a single state iteration in the finite state machine.
-    ///
-    /// The return value is of type [`Result<(), OperationError>`].
-    /// The success type is not of much interest for calling applications.
-    /// However, the error case itself should be passed towards
-    /// [`crate::err::IsFatal::is_fatal()`] in order to either abort the
-    /// application or retry with an appropriate timeout.
-    ///
+    // TODO DIRMIRROR: Explain how this is called externally.
     // TODO: Use tracing instrumentation here.
     // TODO DIRMIRROR: Document the state transition check which we have to do
     // because of database invariances no longer holding true.
@@ -425,9 +436,9 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             State::LoadConsensus => self.load_consensus(pool, data, now, rng),
             State::FetchConsensus => Ok(self.fetch_consensus(data, endpoint, now).await?),
             State::AuthCerts => self.auth_certs(pool, data, endpoint, now).await,
-            State::StoreConsensus => self.store_consensus(pool, data, now),
+            State::StoreConsensus => self.store_consensus(pool, data, now, rng),
             State::Descriptors => self.descriptors(pool, data, endpoint, now).await,
-            State::Hibernate => self.hibernate(data, now).await,
+            State::End => todo!(), // TODO DIRMIRROR: Return error that includes ttl.
         }
     }
 
@@ -451,7 +462,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // In this case, it is probably better to return a bug, as external
         // applications arbitrarily modifying the database while we are running
         // leaves too much room for wrong/weird behavior.
-        let consensus = db::read_tx(pool, |tx| self.recent_consensus(tx, now))??
+        let consensus = db::read_tx(pool, |tx| self.fresh_consensus(tx, now))??
             .ok_or_else(|| internal!("database externally modified?"))?;
         let ttl = consensus.ttl(rng);
         let futile = Box::new(FutileDescriptors::default());
@@ -618,16 +629,15 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     }
 
     /// Verifies a consensus and inserts it into the database.
-    fn store_consensus(
+    ///
+    /// It also utilizes the consensus it just inserted.
+    fn store_consensus<R: Rng>(
         &self,
         pool: &Pool<SqliteConnectionManager>,
         data: &mut ConsensusBoundData<T>,
         now: Timestamp,
+        rng: &mut R,
     ) -> Result<(), OperationError> {
-        // It is fine to replace data with ConsensusBoundData::None because in
-        // both cases, the following state of this will always be LoadConsensus
-        // or FetchConsensus, both of them no longer requiring the previous data.
-        //
         // Yes, we want to explicitly discard this in the case of a recoverable
         // error in order to retry again by fetching a new consensus from a
         // different authority.
@@ -640,17 +650,25 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // diffs.  However, this is a CPU intensive task and needs further
         // coordination with the orport developers.  See arti#2706
 
-        db::rw_tx(pool, |tx| {
+        let meta = db::rw_tx(pool, |tx| {
             let certs_already = self.certs_already(tx, now)?;
             let (verified, sigs) = self.verify_consensus(unverified, &certs_already, now)?;
-            ConsensusMeta::<T>::insert(
+            let meta = ConsensusMeta::<T>::insert(
                 tx,
                 self.encodings.iter().copied(),
                 (&verified, &sigs),
                 &raw,
             )?;
-            Ok::<_, OperationError>(())
-        })?
+            Ok::<_, OperationError>(meta)
+        })??;
+
+        *data = ConsensusBoundData::Verified {
+            consensus: meta,
+            ttl: meta.ttl(rng),
+            futile: Box::new(FutileDescriptors::default()),
+        };
+
+        Ok(())
     }
 
     /// Downloads, verifies, and inserts the descriptors associated with the
@@ -769,30 +787,6 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         Ok(())
     }
 
-    /// Hibernates for the remaining ttl of the consensus.
-    async fn hibernate(
-        &self,
-        data: &mut ConsensusBoundData<T>,
-        now: Timestamp,
-    ) -> Result<(), OperationError> {
-        match data {
-            ConsensusBoundData::None => {
-                return Err(internal!("hibernating without a consensus?").into());
-            }
-            // TODO DIRMIRROR: Should the Unverified case be an error or a
-            // success? In other words: Should we exclude the current authority
-            // from the set of the next authorities to try?
-            ConsensusBoundData::Verified { ttl, .. }
-            | ConsensusBoundData::Unverified { ttl, .. } => {
-                let timeout = *ttl - now;
-                debug!("hibernating for {}s", timeout.as_secs());
-                tokio::time::sleep(timeout).await;
-            }
-        }
-
-        Ok(())
-    }
-
     /// Convenience wrapper around [`tor_dirclient::send_request()`].
     ///
     /// It opens a TCP connection, performs the request, and parses the result.
@@ -882,11 +876,18 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         Ok((resp, parsed))
     }
 
-    /// Queries and validates the most recent consensus from the database.
+    /// Queries and validates the most recent and still fresh consensus from the
+    /// database.
     ///
-    /// Effectively a wrapper around [`StaticEngine::verify_consensus()`] with
-    /// the data obtained from the database.
-    fn recent_consensus(
+    /// This is a bit stricter in terms of timeliness than one might expect.
+    /// It only returns a consensus if and only if `now` lies exactly inside
+    /// valid-after and fresh-until.  The reason for this is, that we otherwise
+    /// have no way of knowing whether it is already time to fetch a new
+    /// consensus or not, as a previous iteration of the finite state machine
+    /// may have already waited up until a random point between
+    /// `(fresh_until - valid_after)/2` and this iteration of the finite state
+    /// machine picks later random point in time still in this interval.
+    fn fresh_consensus(
         &self,
         tx: &Transaction<'_>,
         now: Timestamp,
@@ -908,8 +909,21 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
         let certs_already = self.certs_already(tx, now)?;
 
-        match self.verify_consensus(unverified, &certs_already, now) {
-            Ok(_) => Ok(Some(meta)),
+        match unverified.verify(self.authorities.v3idents(), &certs_already) {
+            Ok(verified) => {
+                // Only if now is exactly between valid-after and fresh-until.
+                let meta = TimeRangeBound::build_intersect(move |times| {
+                    let body = verified.unwrap_with(times);
+                    let lifetime = body.lifetime();
+                    TimeRangeBound::new((), lifetime.valid_after.0..=lifetime.fresh_until.0)
+                        .unwrap_with(times);
+                    Ok::<_, Infallible>(meta)
+                })
+                .expect("infallible should not fail")
+                .if_valid_at(&now.into())
+                .ok();
+                Ok(meta)
+            }
             Err(e) => {
                 // TODO DIRMIRROR: Perhaps we should remove it?
                 debug!("ignoring invalid consensus in database: {meta:?} {e}");
@@ -1690,7 +1704,7 @@ mod test {
         })
         .unwrap()
         .unwrap();
-        assert_eq!(state, State::Hibernate);
+        assert_eq!(state, State::End);
     }
 
     /// Checks whether we can probably load and parse all certificates from
@@ -1747,6 +1761,10 @@ mod test {
                 DELETE FROM consensus_descriptor_member;
                 DELETE FROM consensus_authority_voter;
                 DELETE FROM consensus;
+
+                -- Otherwise we will not transition into State::Descriptors
+                -- because we have all descriptors.
+                DELETE FROM descriptor;
                 "
             ))
             .unwrap();
@@ -1756,10 +1774,22 @@ mod test {
             .unwrap()
             .unwrap();
         assert_eq!(state, State::StoreConsensus);
-        engine.store_consensus(&pool, &mut data, now).unwrap();
-        assert!(matches!(&data, ConsensusBoundData::None));
+        engine
+            .store_consensus(&pool, &mut data, now, &mut testing_rng())
+            .unwrap();
+        assert!(matches!(&data, ConsensusBoundData::Verified { .. }));
 
-        // Verify that it got inserted.
+        // Verify that it loaded.
+        let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state, State::Descriptors);
+
+        // If we now discard ConsensusBoundData and load again, it should
+        // still yield the same result.  This may happen if we suddenly restart
+        // the entire process.
+        let data_prev = data;
+        let mut data = ConsensusBoundData::None;
         let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
             .unwrap()
             .unwrap();
@@ -1767,7 +1797,23 @@ mod test {
         engine
             .load_consensus(&pool, &mut data, now, &mut testing_rng())
             .unwrap();
-        assert!(matches!(data, ConsensusBoundData::Verified { .. }));
+        // Ensure that the loaded consensus after a full reset is equal to the
+        // previous one.  Not necessarily guaranteed but it happens to be the
+        // case in our test because we assume that the database has not been
+        // touched in the meantime.
+        match (data, data_prev) {
+            (
+                ConsensusBoundData::Verified {
+                    consensus: meta1, ..
+                },
+                ConsensusBoundData::Verified {
+                    consensus: meta2, ..
+                },
+            ) => {
+                assert_eq!(meta1, meta2);
+            }
+            _ => panic!("meta1 != meta2 and/or not verified?"),
+        }
     }
 
     /// Agnostic test for the descriptor state.
