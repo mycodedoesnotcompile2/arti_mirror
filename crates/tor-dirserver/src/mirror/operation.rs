@@ -30,6 +30,7 @@ use educe::Educe;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rand::Rng;
+use retry_error::RetryError;
 use rusqlite::Transaction;
 use thiserror::Error;
 use tokio::net::TcpStream;
@@ -161,6 +162,175 @@ pub(crate) enum OperationError {
     Bug(#[from] tor_error::Bug),
 }
 
+/// Top-level return type from dirmirror operation.
+#[derive(Debug)]
+pub(crate) struct OperationResult<T: FlavoredConsensusUnverified> {
+    /// The state we have operated in.
+    ///
+    /// Will only be [`None`] if we encounter a [`DatabaseError`] while
+    /// calculating the state.
+    state: Option<State>,
+
+    /// Information about the request we performed.
+    // TODO DIRMIRROR: Replace String with something like dyn Requestable but
+    // Rust's typesystem makes this tricky when trying to derive Debug.
+    request: Option<String>,
+
+    /// The actual result, will either be an [`OperationStatus`] or an
+    /// [`OperationError2`].
+    res: Result<OperationStatus<T>, OperationError2<T>>,
+
+    /// Additional non-fatal error that are helpful for contextual information
+    /// but ignored in the retry strategy.  These can be present in [`Ok`] as
+    /// well as in [`Err`] and represents non-fatal errors that were encountered
+    /// during processing but do not influence the final result.
+    ///
+    /// For example, assume we download a batch of 64 micro descriptors and 2
+    /// of them turn out to be invalid.  In this case, `res` will contain `Ok`
+    /// but `additional_errors` will still keep track of these two
+    /// [`OperationErrorKind::UnparseableNetdocReceived`] that encountered
+    /// during the runtime.  Likewise, if all of those micro descriptors would
+    /// be invalid, we would have 64 individual errors here and an
+    /// [`OperationErrorKind::NoRequestedDocumentsReturned`] in the `res` field.
+    additional_errors: RetryError<OperationErrorKind>,
+}
+
+/// A successful invocation of a single execution step of the finite state
+/// machine.
+// TODO DIRMIRROR: Implement Display.
+#[derive(Debug, Clone)]
+pub(crate) struct OperationStatus<T: FlavoredConsensusUnverified> {
+    /// The [`ConsensusBoundData`] that shall be passed to the next execution.
+    #[allow(private_interfaces)] // TODO 2881
+    cbd: ConsensusBoundData<T>,
+
+    /// The progress of the descriptor bootstrapping.
+    progress: Option<OperationStatusProgress>,
+    // TODO DIMRIRROR: Add an identifier for the current consensus.
+    // TODO DIRMIRROR: Make this less descriptor specific, e.g. also include
+    // information about authority certificates, etc.
+}
+
+/// The progress of the descriptor bootstrapping expressed in total numbers.
+#[derive(Debug, Clone)]
+pub(crate) struct OperationStatusProgress {
+    /// The number of descriptors for the current consensus tha we already have.
+    have: usize,
+
+    /// The total number of descriptors the current consensus contains.
+    total: usize,
+
+    /// The number of descriptors we refuse to further download, due to
+    /// futility.
+    refused: usize,
+}
+
+/// Top-level error type contained in [`OperationResult`].
+///
+/// Indicates whether the error is fatal, non-fatal, or whether the caller
+/// should re-initialize the FSM because it has finished.
+// TODO 2881: Rename to OperationError and remove the legacy type.
+#[derive(Debug)]
+pub(crate) enum OperationError2<T: FlavoredConsensusUnverified> {
+    /// The caller should wait before initializing a new [`ConsensusBoundData`]
+    /// again.
+    ///
+    /// This may either happen due to [`State::End`] or the TTL being over,
+    /// with the exact reason being identifiable via [`OperationResult::state`].
+    Reset {
+        /// The [`Duration`] to wait before starting again.
+        timeout: Duration,
+    },
+
+    /// The finite state machine encountered a non-fatal error, the caller
+    /// should wait before trying again at a different authority.
+    NonFatal {
+        /// The [`ConsensusBoundData`] for the next invocation.
+        #[allow(private_interfaces)] // TODO 2881
+        cbd: ConsensusBoundData<T>,
+        /// The [`Duration`] to wait before executing again.
+        timeout: Duration,
+        /// Details about the non-fatal error.
+        kind: OperationErrorKind,
+    },
+
+    /// The finite state machine encountered a fatal error, the caller should
+    /// stop the execution.
+    Fatal {
+        /// Details about the fatal error.
+        kind: OperationErrorKind,
+    },
+}
+
+/// Details about an error.
+///
+/// Usually, this is only useful if contained within an [`OperationResult`],
+/// as many useful contextual information can only be incepted from that, e.g.
+/// the endpoint that was currently used, the request that we just performed,
+/// etc.
+#[derive(Debug, Error)]
+pub(crate) enum OperationErrorKind {
+    /// TCP connection failure.
+    #[error("TCP connection failure: {0}")]
+    TcpConnect(std::io::Error),
+
+    /// [`tor_dirclient`] failed at performing the request.
+    #[error("dirclient error: {0}")]
+    Request(Box<tor_dirclient::RequestFailedError>),
+
+    /// Incorrect number of documents received.  May happen if we request one
+    /// consensus but end up obtaining two.
+    ///
+    /// The surrounding error context provides more information about the
+    /// requested document.
+    #[error("incorrect number of documents received: want={want}, have={have}")]
+    IncorrectQuantityReceived {
+        /// Number of netdocs we expect.
+        want: usize,
+        /// Number of netdocs we got instead.
+        have: usize,
+    },
+
+    /// An unparseable netdoc was received.
+    // TODO DIRMIRROR: Include at least a part of the netdoc in this error msg.
+    #[error("unparseable netdoc received: {err}")]
+    UnparseableNetdocReceived {
+        /// The netdoc as it was received.
+        raw: String,
+        /// The reason on why we were unable to parse it.
+        err: ParseError,
+    },
+
+    /// A netdoc is cryptographically invalid.
+    // TODO DIRMIRROR: Include at least a part of the netdoc in this error msg.
+    #[error("cryptographically invalid netdoc found: {err}")]
+    InvalidNetdocReceived {
+        /// The original unverified netdoc for debug information.
+        unverified: String,
+        /// The reason why the verification failed.
+        err: VerifyFailed,
+    },
+
+    /// A request led to no progress being made.
+    ///
+    /// This is the case if the response only consists of netdocs we did not
+    /// request or no netdocs at all, leading to no progress.
+    ///
+    /// The correct error handling strategy for this case is to pick a different
+    /// endpoint, as the current one is either not useful for us anymore or
+    /// is maliciously tricking us into something that should not happen.
+    #[error("request resulted in no progress")]
+    NoRequestedDocumentsReturned,
+
+    /// Error accessing the database, almost always fatal.
+    #[error("database error: {0}")]
+    Database(#[from] DatabaseError),
+
+    /// An internal error that should not have happened.
+    #[error("internal error: {0}")]
+    Bug(#[from] tor_error::Bug),
+}
+
 /// The various states for the [`StaticEngine`].
 // TODO 2881: Document the state transitions once the refactoring is done.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display)]
@@ -252,8 +422,8 @@ struct StaticEngine<T> {
 ///   at any time without data loss, such as content-addressable caches.
 ///   These caches must be pure in the sense that a cache miss must always
 ///   return the same result as a cache hit and vice versa.
-//
-// TODO DIRMIRROR: This is probably better of as a struct instead of an enum.
+// TODO 2881: For this to fully unleash its potential, we must make it a struct
+// that also contains the endpoints and RetryDelay.
 #[derive(Debug, Clone)]
 enum ConsensusBoundData<T: FlavoredConsensusUnverified> {
     /// No state is loaded in memory at the moment.
