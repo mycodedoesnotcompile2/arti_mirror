@@ -594,29 +594,77 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     async fn execute<R: Rng>(
         &self,
         pool: &Pool<SqliteConnectionManager>,
-        data: &mut ConsensusBoundData<T>,
+        mut data: ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
         rng: &mut R,
-    ) -> Result<(), OperationError> {
+    ) -> OperationResult<T> {
         // TODO DIRMIRROR: Right now, we pass around the pool object which is
         // not very nice.  Instead, we should match based on the following
         // criteria: Needs write transaction, needs read transaction, needs
         // pool, needs no database access.
 
+        // TODO 2881: Do TTL check here.
+
         // TODO: Should we return DatabaseError or something like
         // StateDeterminationError?  Either way, both cases should be seriously
         // fatal.
-        let state = db::read_tx(pool, |tx| self.determine_state(tx, data, now))??;
-        debug!("state is {state}");
+        let state = match db::read_tx(pool, |tx| self.determine_state(tx, &data, now)).flatten() {
+            Ok(state) => state,
+            Err(e) => return OperationResult {
+                state: None, // The only time when state can be None.
+                request: None,
+                res: Err(OperationError2::Fatal {
+                    kind: e.into(),
+                }),
+                additional_errors: RetryError::in_attempt_to("state determination"),
+            },
+        };
 
-        match state {
-            State::LoadConsensus => self.load_consensus(pool, data, now, rng),
-            State::FetchConsensus => Ok(self.fetch_consensus(data, endpoint, now).await?),
-            State::AuthCerts => self.auth_certs(pool, data, endpoint, now).await,
-            State::StoreConsensus => self.store_consensus(pool, data, now, rng),
-            State::Descriptors => self.descriptors(pool, data, endpoint, now).await,
+        let res = match state {
+            State::LoadConsensus => self.load_consensus(pool, &mut data, now, rng),
+            State::FetchConsensus => self.fetch_consensus(&mut data, endpoint, now).await,
+            State::AuthCerts => self.auth_certs(pool, &mut data, endpoint, now).await,
+            State::StoreConsensus => self.store_consensus(pool, &mut data, now, rng),
+            State::Descriptors => self.descriptors(pool, &mut data, endpoint, now).await,
             State::End => todo!(), // TODO 2881: Return error that includes ttl.
+        };
+
+        let res = match res {
+            Ok(()) => Ok(OperationStatus {
+                cbd: data,
+                progress: None, // TODO 2881: Implement this.
+            }),
+            Err(kind) => match kind {
+                // Non-fatal errors.
+                OperationErrorKind::TcpConnect(..)
+                | OperationErrorKind::Request(..)
+                | OperationErrorKind::IncorrectQuantityReceived { .. }
+                | OperationErrorKind::UnparseableNetdocReceived { .. }
+                | OperationErrorKind::InvalidNetdocReceived { .. }
+                | OperationErrorKind::NoRequestedDocumentsReturned => Err(
+                    OperationError2::NonFatal {
+                        cbd: data,
+                        // TODO 2881: Use max(ttl, RetryDelay) here.
+                        timeout: Duration::ZERO,
+                        kind,
+                    },
+                ),
+                OperationErrorKind::Database(..)
+                | OperationErrorKind::Bug(..) => Err(
+                    OperationError2::Fatal {
+                        kind,
+                    }
+                ),
+            },
+        };
+
+        OperationResult {
+            state: Some(state),
+            request: None,
+            res,
+            // TODO 2881: Implement this.
+            additional_errors: RetryError::in_attempt_to(state.to_string()),
         }
     }
 
@@ -632,7 +680,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         now: Timestamp,
         rng: &mut R,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         // Load the most recent valid consensus from the database.
         //
         // If there is no consensus, we should have not entered the state, which
@@ -661,7 +709,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
-    ) -> Result<(), AuthorityRequestError> {
+    ) -> Result<(), OperationErrorKind> {
         // Obtain the consensus.
         let (raw, consensus) = self
             .send_request(endpoint, ConsensusRequest::new(T::flavor()))
@@ -670,23 +718,21 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
         // Check for the correct number of results.
         if consensus.len() != 1 {
-            return Err(AuthorityRequestError::Response(
-                "invalid number of consensus?",
-            ));
+            Err(OperationErrorKind::IncorrectQuantityReceived {
+                have: consensus.len(),
+                want: 1
+            })?;
         }
         let (consensus, start, end) = match consensus.pop_front().expect("pop failed?") {
             (Ok(consensus), start, end) => (consensus, start, end),
             // We do not mark unparseable consensuses as futile because they
             // cannot be referenced in a semi-unique fashion but rather depend
             // on the time only.
-            //
-            // TODO DIRMIRROR: Return a more descriptive error; ideally in
-            // all places where only one document was returned and that document
-            // failed to parse.
-            (Err(_), _, _) => {
-                return Err(AuthorityRequestError::Response(
-                    "invalid consensus received",
-                ));
+            (Err(e), start, end) => {
+                Err(OperationErrorKind::UnparseableNetdocReceived {
+                    raw: raw.get(start..end).unwrap_or("N/A").to_string(),
+                    err: e,
+                })?
             }
         };
         let raw = raw[start..end].to_string();
@@ -711,7 +757,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         let certs_already = db::read_tx(pool, |tx| self.certs_already(tx, now))??;
 
         // Obtain the missing authority certificate identifiers.
@@ -719,10 +765,10 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             ConsensusBoundData::Unverified { consensus, .. } => {
                 match consensus.can_verify(self.authorities.v3idents(), &certs_already) {
                     Err(ConsensusVerifiabilityError::MissingAuthCerts { missing, .. }) => missing,
-                    _ => return Err(OperationError::Bug(internal!("we have all auth certs"))),
+                    _ => Err(OperationErrorKind::Bug(internal!("we have all auth certs")))?,
                 }
             }
-            _ => return Err(OperationError::Bug(internal!("data is not unverified"))),
+            _ => Err(OperationErrorKind::Bug(internal!("data is not unverified")))?,
         };
 
         // Compose the request.
@@ -739,6 +785,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // Verify each certificate.  Invalid certificates and other problems get
         // logged and filtered out, with the result being then inserted into
         // the database.
+        // TODO 2881: Do not log and filter them but rather use RetryError.
         let certs = certs
             .into_iter()
             .filter_map(|(unverified, start, end)| {
@@ -792,7 +839,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // i.e. the authority only returned certificates we were not interested
         // in.
         if certs.is_empty() {
-            Err(AuthorityRequestError::NoRequestedDocumentsReturned)?;
+            Err(OperationErrorKind::NoRequestedDocumentsReturned)?;
         }
 
         // Finally, insert them all into the database.
@@ -815,13 +862,13 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         now: Timestamp,
         rng: &mut R,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         // Yes, we want to explicitly discard this in the case of a recoverable
         // error in order to retry again by fetching a new consensus from a
         // different authority.
         let (unverified, raw) = match mem::replace(data, ConsensusBoundData::None) {
             ConsensusBoundData::Unverified { consensus, raw, .. } => (consensus, raw),
-            _ => return Err(OperationError::Bug(internal!("data is not unverified"))),
+            _ => Err(OperationErrorKind::Bug(internal!("data is not unverified")))?,
         };
 
         // TODO DIRMIRROR: Somewhere in here, we should generate the consensus
@@ -830,14 +877,18 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
         let meta = db::rw_tx(pool, |tx| {
             let certs_already = self.certs_already(tx, now)?;
-            let (verified, sigs) = self.verify_consensus(unverified, &certs_already, now)?;
+            let (verified, sigs) = self.verify_consensus(unverified, &certs_already, now)
+                .map_err(|e| OperationErrorKind::InvalidNetdocReceived {
+                    unverified: raw.clone(),
+                    err: e,
+                })?;
             let meta = ConsensusMeta::<T>::insert(
                 tx,
                 self.encodings.iter().copied(),
                 (&verified, &sigs),
                 &raw,
             )?;
-            Ok::<_, OperationError>(meta)
+            Ok::<_, OperationErrorKind>(meta)
         })??;
 
         *data = ConsensusBoundData::Verified {
@@ -857,7 +908,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         match T::flavor() {
             ConsensusFlavor::Plain => {
                 // TODO DIRMIRROR: Add extras.
@@ -874,7 +925,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         debug_assert_eq!(T::flavor(), ConsensusFlavor::Plain);
         self.descriptors_agnostic::<RdDownloader>(pool, data, endpoint, now)
             .await
@@ -887,7 +938,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         debug_assert_eq!(T::flavor(), ConsensusFlavor::Microdesc);
         self.descriptors_agnostic::<MdDownloader>(pool, data, endpoint, now)
             .await
@@ -901,12 +952,12 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         let (meta, futile) = match data {
             ConsensusBoundData::Verified {
                 consensus, futile, ..
             } => (consensus, futile),
-            _ => return Err(OperationError::Bug(internal!("data not verified"))),
+            _ => Err(OperationErrorKind::Bug(internal!("data not verified")))?,
         };
 
         // Obtain the missing descriptors.
@@ -919,9 +970,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             // as not found or refused, in which case we must try the next
             // authority as it may have the not found descriptors.
             debug!("not downloading any descriptors");
-            Err(OperationError::AuthorityRequest(
-                AuthorityRequestError::NoRequestedDocumentsReturned,
-            ))?;
+            Err(OperationErrorKind::NoRequestedDocumentsReturned)?;
         }
 
         debug!("downloading the following descriptors: {descriptors:?}");
@@ -932,6 +981,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // Process all downloads isolated, so that we do not return early
         // on accident.  While we still have one minor exception below with
         // regard to DatabaseError, that one is well documented.
+        // TODO 2881: Utilize RetryError here.
         let downloads = DescriptorDownloads::from_missing(descriptors.into_iter());
         let downloads = D::process_downloads(self, downloads, docs, raw, now);
 
@@ -957,9 +1007,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // If no progress, return with an error.  We can do so here because
         // we have finally marked descriptors as futile.
         if progress.is_none() {
-            Err(OperationError::AuthorityRequest(
-                AuthorityRequestError::NoRequestedDocumentsReturned,
-            ))?;
+            Err(OperationErrorKind::NoRequestedDocumentsReturned)?;
         }
 
         Ok(())
@@ -988,16 +1036,16 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         &self,
         endpoint: &DownloadAuthority,
         requ: R,
-    ) -> Result<(String, Vec<(Result<D, ParseError>, usize, usize)>), AuthorityRequestError> {
+    ) -> Result<(String, Vec<(Result<D, ParseError>, usize, usize)>), OperationErrorKind> {
         // The check is required to not let Tokio panic.
         if endpoint.is_empty() {
-            return Err(AuthorityRequestError::Bug(internal!("empty endpoint?")));
+            Err(OperationErrorKind::Bug(internal!("empty endpoint?")))?;
         }
 
         // Open the TCP connection.
         let mut stream = TcpStream::connect(endpoint)
             .await
-            .map_err(AuthorityRequestError::TcpConnect)?
+            .map_err(OperationErrorKind::TcpConnect)?
             .compat();
 
         // Perform the request and map the result nicely.
@@ -1038,12 +1086,12 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
                 // All other errors imply an underlying error with the
                 // respective endpoint, suggesting a switch.
-                _ => Err(outer.clone().into()),
+                _ => Err(OperationErrorKind::Request(outer.clone().into())),
             },
 
             // Should not happen because the other DirClientErrors are either
             // Bug or related to CircMgr, which we do not use.
-            Err(e) => Err(AuthorityRequestError::Bug(internal!(
+            Err(e) => Err(OperationErrorKind::Bug(internal!(
                 "unhandled dirclient error: {e}"
             ))),
         }?;
@@ -2095,9 +2143,7 @@ mod test {
         assert!(matches!(
             res,
             Ok(())
-                | Err(OperationError::AuthorityRequest(
-                    AuthorityRequestError::NoRequestedDocumentsReturned
-                ))
+                | Err(OperationErrorKind::NoRequestedDocumentsReturned)
         ));
 
         // Now, the missing descriptors should equal the ones that were not
