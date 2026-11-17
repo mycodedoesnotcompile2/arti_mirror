@@ -103,8 +103,8 @@ pub(crate) struct OperationResult<T: FlavoredConsensusUnverified> {
     request: Option<String>,
 
     /// The actual result, will either be an [`OperationStatus`] or an
-    /// [`OperationError2`].
-    res: Result<OperationStatus<T>, OperationError2<T>>,
+    /// [`OperationError`].
+    res: Result<OperationStatus<T>, OperationError<T>>,
 
     /// Additional non-fatal error that are helpful for contextual information
     /// but ignored in the retry strategy.  These can be present in [`Ok`] as
@@ -155,9 +155,8 @@ pub(crate) struct OperationStatusProgress {
 ///
 /// Indicates whether the error is fatal, non-fatal, or whether the caller
 /// should re-initialize the FSM because it has finished.
-// TODO 2881: Rename to OperationError and remove the legacy type.
 #[derive(Debug)]
-pub(crate) enum OperationError2<T: FlavoredConsensusUnverified> {
+pub(crate) enum OperationError<T: FlavoredConsensusUnverified> {
     /// The caller should wait before initializing a new [`ConsensusBoundData`]
     /// again.
     ///
@@ -541,7 +540,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 return OperationResult {
                     state: None, // The only time when state can be None.
                     request: None,
-                    res: Err(OperationError2::Fatal { kind: e.into() }),
+                    res: Err(OperationError::Fatal { kind: e.into() }),
                     additional_errors: RetryError::in_attempt_to("state determination"),
                 };
             }
@@ -569,7 +568,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 | OperationErrorKind::UnparseableNetdocReceived { .. }
                 | OperationErrorKind::InvalidNetdocReceived { .. }
                 | OperationErrorKind::NoRequestedDocumentsReturned => {
-                    Err(OperationError2::NonFatal {
+                    Err(OperationError::NonFatal {
                         cbd: data,
                         // TODO 2881: Use max(ttl, RetryDelay) here.
                         timeout: Duration::ZERO,
@@ -577,7 +576,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                     })
                 }
                 OperationErrorKind::Database(..) | OperationErrorKind::Bug(..) => {
-                    Err(OperationError2::Fatal { kind })
+                    Err(OperationError::Fatal { kind })
                 }
             },
         };
