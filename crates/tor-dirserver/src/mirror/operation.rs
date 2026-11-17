@@ -127,7 +127,6 @@ pub(crate) struct OperationResult<T: FlavoredConsensusUnverified> {
 #[derive(Debug, Clone)]
 pub(crate) struct OperationStatus<T: FlavoredConsensusUnverified> {
     /// The [`ConsensusBoundData`] that shall be passed to the next execution.
-    #[allow(private_interfaces)] // TODO 2881
     cbd: ConsensusBoundData<T>,
 
     /// The progress of the descriptor bootstrapping.
@@ -171,7 +170,6 @@ pub(crate) enum OperationError<T: FlavoredConsensusUnverified> {
     /// should wait before trying again at a different authority.
     NonFatal {
         /// The [`ConsensusBoundData`] for the next invocation.
-        #[allow(private_interfaces)] // TODO 2881
         cbd: ConsensusBoundData<T>,
         /// The [`Duration`] to wait before executing again.
         timeout: Duration,
@@ -345,7 +343,7 @@ struct StaticEngine<T> {
 /// * The item exists purely for optimizational purposes and can be thrown away
 ///   without any data loss penalities.
 #[derive(Debug, Clone)]
-struct ConsensusBoundData<T: FlavoredConsensusUnverified> {
+pub(crate) struct ConsensusBoundData<T: FlavoredConsensusUnverified> {
     /// The currently active consensus.
     consensus: ActiveConsensus<T>,
 
