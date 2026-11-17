@@ -35,6 +35,7 @@ use rusqlite::Transaction;
 use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncReadCompatExt;
+use tor_basic_utils::retry::RetryDelay;
 use tor_checkable::{TimeBound, TimeRangeBound};
 use tor_dirclient::{
     Error as DirClientError, RequestError, RequestFailedError,
@@ -368,7 +369,9 @@ pub(crate) struct ConsensusBoundData<T: FlavoredConsensusUnverified> {
     /// a low-level networking failure, which are usually temporary in nature.
     // TODO DIRMIRROR: Change inner to Box<[SocketAddr]>.
     endpoints: VecDeque<Vec<SocketAddr>>,
-    // TODO 2881: Add RetryDelay here.
+
+    /// [`RetryDelay`] instance for proper exponential back-off retrying.
+    retry_delay: RetryDelay,
     // TODO DIRMIRROR: Implement cache here.
 }
 
@@ -583,10 +586,14 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                     data.endpoints
                         .pop_front()
                         .expect("endpoints should not be empty");
+
+                    // Exponential back-off timeout, but never longer than
+                    // data.ttl - now.
+                    let timeout = data.retry_delay.next_delay(rng).min(data.ttl - now);
+
                     Err(OperationError::NonFatal {
                         cbd: data,
-                        // TODO 2881: Use max(ttl, RetryDelay) here.
-                        timeout: Duration::ZERO,
+                        timeout,
                         kind,
                     })
                 }
@@ -1168,6 +1175,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             ttl: now + UNVERIFIED_TTL,
             futile: Default::default(),
             endpoints,
+            retry_delay: Default::default(),
         }
     }
 }
