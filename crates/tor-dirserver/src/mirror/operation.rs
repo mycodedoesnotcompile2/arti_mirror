@@ -611,14 +611,14 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // fatal.
         let state = match db::read_tx(pool, |tx| self.determine_state(tx, &data, now)).flatten() {
             Ok(state) => state,
-            Err(e) => return OperationResult {
-                state: None, // The only time when state can be None.
-                request: None,
-                res: Err(OperationError2::Fatal {
-                    kind: e.into(),
-                }),
-                additional_errors: RetryError::in_attempt_to("state determination"),
-            },
+            Err(e) => {
+                return OperationResult {
+                    state: None, // The only time when state can be None.
+                    request: None,
+                    res: Err(OperationError2::Fatal { kind: e.into() }),
+                    additional_errors: RetryError::in_attempt_to("state determination"),
+                };
+            }
         };
 
         let res = match state {
@@ -642,20 +642,17 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 | OperationErrorKind::IncorrectQuantityReceived { .. }
                 | OperationErrorKind::UnparseableNetdocReceived { .. }
                 | OperationErrorKind::InvalidNetdocReceived { .. }
-                | OperationErrorKind::NoRequestedDocumentsReturned => Err(
-                    OperationError2::NonFatal {
+                | OperationErrorKind::NoRequestedDocumentsReturned => {
+                    Err(OperationError2::NonFatal {
                         cbd: data,
                         // TODO 2881: Use max(ttl, RetryDelay) here.
                         timeout: Duration::ZERO,
                         kind,
-                    },
-                ),
-                OperationErrorKind::Database(..)
-                | OperationErrorKind::Bug(..) => Err(
-                    OperationError2::Fatal {
-                        kind,
-                    }
-                ),
+                    })
+                }
+                OperationErrorKind::Database(..) | OperationErrorKind::Bug(..) => {
+                    Err(OperationError2::Fatal { kind })
+                }
             },
         };
 
@@ -720,7 +717,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         if consensus.len() != 1 {
             Err(OperationErrorKind::IncorrectQuantityReceived {
                 have: consensus.len(),
-                want: 1
+                want: 1,
             })?;
         }
         let (consensus, start, end) = match consensus.pop_front().expect("pop failed?") {
@@ -728,12 +725,10 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             // We do not mark unparseable consensuses as futile because they
             // cannot be referenced in a semi-unique fashion but rather depend
             // on the time only.
-            (Err(e), start, end) => {
-                Err(OperationErrorKind::UnparseableNetdocReceived {
-                    raw: raw.get(start..end).unwrap_or("N/A").to_string(),
-                    err: e,
-                })?
-            }
+            (Err(e), start, end) => Err(OperationErrorKind::UnparseableNetdocReceived {
+                raw: raw.get(start..end).unwrap_or("N/A").to_string(),
+                err: e,
+            })?,
         };
         let raw = raw[start..end].to_string();
 
@@ -877,7 +872,8 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
         let meta = db::rw_tx(pool, |tx| {
             let certs_already = self.certs_already(tx, now)?;
-            let (verified, sigs) = self.verify_consensus(unverified, &certs_already, now)
+            let (verified, sigs) = self
+                .verify_consensus(unverified, &certs_already, now)
                 .map_err(|e| OperationErrorKind::InvalidNetdocReceived {
                     unverified: raw.clone(),
                     err: e,
@@ -2142,8 +2138,7 @@ mod test {
         let res = engine.descriptors(&pool, &mut data, &[endpoint], now).await;
         assert!(matches!(
             res,
-            Ok(())
-                | Err(OperationErrorKind::NoRequestedDocumentsReturned)
+            Ok(()) | Err(OperationErrorKind::NoRequestedDocumentsReturned)
         ));
 
         // Now, the missing descriptors should equal the ones that were not
