@@ -17,6 +17,7 @@
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    convert::Infallible,
     fmt::Debug,
     hash::Hash,
     marker::PhantomData,
@@ -29,10 +30,12 @@ use educe::Educe;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rand::Rng;
+use retry_error::RetryError;
 use rusqlite::Transaction;
+use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncReadCompatExt;
-use tor_checkable::TimeBound;
+use tor_checkable::{TimeBound, TimeRangeBound};
 use tor_dirclient::{
     Error as DirClientError, RequestError, RequestFailedError,
     request::{
@@ -57,17 +60,14 @@ use tracing::{debug, warn};
 
 use crate::{
     database::{
-        self as db, AuthCertMeta, ConsensusMeta, ContentEncoding, DescriptorMeta, Sha1, Sha256,
-        Timestamp,
+        self as db, AuthCertMeta, ConsensusMeta, ContentEncoding, DatabaseError, DescriptorMeta,
+        Sha1, Sha256, Timestamp,
     },
-    err::{AuthorityRequestError, DatabaseError, OperationError},
     types::{
-        FlavoredConsensusUnverified, FlavoredDescriptor, FlavoredDescriptorMd,
-        FlavoredDescriptorPlain,
+        FlavoredConsensusBody, FlavoredConsensusUnverified, FlavoredDescriptor,
+        FlavoredDescriptorMd, FlavoredDescriptorPlain,
     },
 };
-
-mod poc;
 
 /// The duration to try verifying an unverified consensus.
 ///
@@ -88,82 +88,203 @@ const DESCRIPTOR_LIMIT: Option<u64> = Some(92);
 /// The endpoint(s) of a download authority identifying it.
 type DownloadAuthority = [SocketAddr];
 
+/// Top-level return type from dirmirror operation.
+#[derive(Debug)]
+pub(crate) struct OperationResult<T: FlavoredConsensusUnverified> {
+    /// The state we have operated in.
+    ///
+    /// Will only be [`None`] if we encounter a [`DatabaseError`] while
+    /// calculating the state.
+    state: Option<State>,
+
+    /// Information about the request we performed.
+    // TODO DIRMIRROR: Replace String with something like dyn Requestable but
+    // Rust's typesystem makes this tricky when trying to derive Debug.
+    request: Option<String>,
+
+    /// The actual result, will either be an [`OperationStatus`] or an
+    /// [`OperationError`].
+    res: Result<OperationStatus<T>, OperationError<T>>,
+
+    /// Additional non-fatal error that are helpful for contextual information
+    /// but ignored in the retry strategy.  These can be present in [`Ok`] as
+    /// well as in [`Err`] and represents non-fatal errors that were encountered
+    /// during processing but do not influence the final result.
+    ///
+    /// For example, assume we download a batch of 64 micro descriptors and 2
+    /// of them turn out to be invalid.  In this case, `res` will contain `Ok`
+    /// but `additional_errors` will still keep track of these two
+    /// [`OperationErrorKind::UnparseableNetdocReceived`] that encountered
+    /// during the runtime.  Likewise, if all of those micro descriptors would
+    /// be invalid, we would have 64 individual errors here and an
+    /// [`OperationErrorKind::NoRequestedDocumentsReturned`] in the `res` field.
+    additional_errors: RetryError<OperationErrorKind>,
+}
+
+/// A successful invocation of a single execution step of the finite state
+/// machine.
+// TODO DIRMIRROR: Implement Display.
+#[derive(Debug, Clone)]
+pub(crate) struct OperationStatus<T: FlavoredConsensusUnverified> {
+    /// The [`ConsensusBoundData`] that shall be passed to the next execution.
+    #[allow(private_interfaces)] // TODO 2881
+    cbd: ConsensusBoundData<T>,
+
+    /// The progress of the descriptor bootstrapping.
+    progress: Option<OperationStatusProgress>,
+    // TODO DIMRIRROR: Add an identifier for the current consensus.
+    // TODO DIRMIRROR: Make this less descriptor specific, e.g. also include
+    // information about authority certificates, etc.
+}
+
+/// The progress of the descriptor bootstrapping expressed in total numbers.
+#[derive(Debug, Clone)]
+pub(crate) struct OperationStatusProgress {
+    /// The number of descriptors for the current consensus tha we already have.
+    have: usize,
+
+    /// The total number of descriptors the current consensus contains.
+    total: usize,
+
+    /// The number of descriptors we refuse to further download, due to
+    /// futility.
+    refused: usize,
+}
+
+/// Top-level error type contained in [`OperationResult`].
+///
+/// Indicates whether the error is fatal, non-fatal, or whether the caller
+/// should re-initialize the FSM because it has finished.
+#[derive(Debug)]
+pub(crate) enum OperationError<T: FlavoredConsensusUnverified> {
+    /// The caller should wait before initializing a new [`ConsensusBoundData`]
+    /// again.
+    ///
+    /// This may either happen due to [`State::End`] or the TTL being over,
+    /// with the exact reason being identifiable via [`OperationResult::state`].
+    Reset {
+        /// The [`Duration`] to wait before starting again.
+        timeout: Duration,
+    },
+
+    /// The finite state machine encountered a non-fatal error, the caller
+    /// should wait before trying again at a different authority.
+    NonFatal {
+        /// The [`ConsensusBoundData`] for the next invocation.
+        #[allow(private_interfaces)] // TODO 2881
+        cbd: ConsensusBoundData<T>,
+        /// The [`Duration`] to wait before executing again.
+        timeout: Duration,
+        /// Details about the non-fatal error.
+        kind: OperationErrorKind,
+    },
+
+    /// The finite state machine encountered a fatal error, the caller should
+    /// stop the execution.
+    Fatal {
+        /// Details about the fatal error.
+        kind: OperationErrorKind,
+    },
+}
+
+/// Details about an error.
+///
+/// Usually, this is only useful if contained within an [`OperationResult`],
+/// as many useful contextual information can only be incepted from that, e.g.
+/// the endpoint that was currently used, the request that we just performed,
+/// etc.
+#[derive(Debug, Error)]
+pub(crate) enum OperationErrorKind {
+    /// TCP connection failure.
+    #[error("TCP connection failure: {0}")]
+    TcpConnect(std::io::Error),
+
+    /// [`tor_dirclient`] failed at performing the request.
+    #[error("dirclient error: {0}")]
+    Request(Box<tor_dirclient::RequestFailedError>),
+
+    /// Incorrect number of documents received.  May happen if we request one
+    /// consensus but end up obtaining two.
+    ///
+    /// The surrounding error context provides more information about the
+    /// requested document.
+    #[error("incorrect number of documents received: want={want}, have={have}")]
+    IncorrectQuantityReceived {
+        /// Number of netdocs we expect.
+        want: usize,
+        /// Number of netdocs we got instead.
+        have: usize,
+    },
+
+    /// An unparseable netdoc was received.
+    // TODO DIRMIRROR: Include at least a part of the netdoc in this error msg.
+    #[error("unparseable netdoc received: {err}")]
+    UnparseableNetdocReceived {
+        /// The netdoc as it was received.
+        raw: String,
+        /// The reason on why we were unable to parse it.
+        err: ParseError,
+    },
+
+    /// A netdoc is cryptographically invalid.
+    // TODO DIRMIRROR: Include at least a part of the netdoc in this error msg.
+    #[error("cryptographically invalid netdoc found: {err}")]
+    InvalidNetdocReceived {
+        /// The original unverified netdoc for debug information.
+        unverified: String,
+        /// The reason why the verification failed.
+        err: VerifyFailed,
+    },
+
+    /// A request led to no progress being made.
+    ///
+    /// This is the case if the response only consists of netdocs we did not
+    /// request or no netdocs at all, leading to no progress.
+    ///
+    /// The correct error handling strategy for this case is to pick a different
+    /// endpoint, as the current one is either not useful for us anymore or
+    /// is maliciously tricking us into something that should not happen.
+    #[error("request resulted in no progress")]
+    NoRequestedDocumentsReturned,
+
+    /// Error accessing the database, almost always fatal.
+    #[error("database error: {0}")]
+    Database(#[from] DatabaseError),
+
+    /// An internal error that should not have happened.
+    #[error("internal error: {0}")]
+    Bug(#[from] tor_error::Bug),
+}
+
 /// The various states for the [`StaticEngine`].
+// TODO 2881: Document the state transitions once the refactoring is done.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display)]
 enum State {
     /// Loads the most recent valid (and verified) consensus from the database
     /// into memory.
-    ///
-    /// Transitions from:
-    /// * Start, if a recent valid consensus exists in the database.
-    /// * [`State::StoreConsensus`], if successfully finished.
-    ///
-    /// Transitions into:
-    /// * [`State::Descriptors`]
     LoadConsensus,
 
     /// Downloads the most recent consensus from a directory authority.
-    ///
-    /// Transitions from:
-    /// * Start, if no recent valid consensus exists in the database.
-    /// * [`State::Descriptors`], if ttl is over.
-    /// * [`State::Hibernate`], if ttl is over.
-    ///
-    /// Transitions into:
-    /// * [`State::AuthCerts`], if we miss authority certificates.
-    /// * [`State::StoreConsensus`], if all authority certificates exist in the
-    ///   database.
-    /// * [`State::Hibernate`], if we have insufficient trusted authorities.
     // TODO DIRMIRROR: What to do in the case of getting an invalid consensus
     // such as junk data?  The normal retry logic sounds reasonable here.
     FetchConsensus,
 
     /// Downloads, validates, and stores the missing authority certificates from
     /// the downloaded unvalidated consensus into the database.
-    ///
-    /// Transitions from:
-    /// * [`State::FetchConsensus`], if we miss authority certificates.
-    /// * [`State::AuthCerts`], if we still miss authority certificates.
-    ///
-    /// Transitions into:
-    /// * [`State::AuthCerts`], if we still miss authority certificates.
-    /// * [`State::StoreConsensus`], if we got all authority certificates.
     AuthCerts,
 
     /// Validates and stores the downloaded unvalidated consensus into the
     /// database.
-    ///
-    /// Transitions from:
-    /// * [`State::FetchConsensus`], if we have all authority certificates.
-    /// * [`State::AuthCerts`], if we have all authority certificates.
-    ///
-    /// Transitions into:
-    /// * [`State::LoadConsensus`]
     StoreConsensus,
 
     /// Downloads missing network documents (descriptors) from a directory
     /// authority.
-    ///
-    /// Transitions from:
-    /// * [`State::LoadConsensus`], if we initialize.
-    /// * [`State::Descriptors`], if we still have missing descriptors left.
-    ///
-    /// Transitions into:
-    /// * [`State::FetchConsensus`], if ttl is over.
-    /// * [`State::Descriptors`], if we still have missing descriptors left.
-    /// * [`State::Hibernate`], if nothing is left.
     Descriptors,
 
-    /// Hibernate because nothing is left.
+    /// Final end state signalizing that the FSM is done.
     ///
-    /// Transitions from:
-    /// * [`State::FetchConsensus`], if we have insufficient trusted
-    ///   authorities.
-    /// * [`State::Descriptors`], if we have downloaded all descriptors.
-    ///
-    /// Transitions into:
-    /// * [`State::FetchConsensus`], if the ttl is over.
-    Hibernate,
+    /// The caller should drop [`ConsensusBoundData`] and wait a given time.
+    End,
 }
 
 /// The execution engine for the finite state machine.
@@ -228,8 +349,8 @@ struct StaticEngine<T> {
 ///   at any time without data loss, such as content-addressable caches.
 ///   These caches must be pure in the sense that a cache miss must always
 ///   return the same result as a cache hit and vice versa.
-//
-// TODO DIRMIRROR: This is probably better of as a struct instead of an enum.
+// TODO 2881: For this to fully unleash its potential, we must make it a struct
+// that also contains the endpoints and RetryDelay.
 #[derive(Debug, Clone)]
 enum ConsensusBoundData<T: FlavoredConsensusUnverified> {
     /// No state is loaded in memory at the moment.
@@ -287,17 +408,27 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &ConsensusBoundData<T>,
         now: Timestamp,
     ) -> Result<State, DatabaseError> {
+        // TODO 2881: For historical reasons, determine_state() transitions into
+        // State::End in two cases: Either because we are done or because the
+        // TTL is over.  The latter one is not good because it implicitly means
+        // that State::End can more or less always be the following state to
+        // any given state.  Ideally, we want ConsensusBoundData to be a struct
+        // that contains a global TTL field.  This TTL is checked as the first
+        // thing in execute().  If the TTL has been surpassed, we should then
+        // directly issue a Reset error.  In other words: We want to refactor
+        // the FSM in a way that End implies Reset but Reset does not imply End.
+        // This will also be necessary for properly handling other error cases,
+        // e.g. all endpoints have been tried.
+
         // Determine the state primarily upon ConsensusBoundData combined with
         // a few database queries, as well as the current time of course.
         let state = match data {
             // ConsensusBoundData::None means that we currently have no
-            // consensus in memory.  This may be the case because we just
-            // started up or because we just downloaded, validated, and inserted
-            // a consensus into the database and reset ConsensusBoundData to
-            // None afterwards.
+            // consensus in memory.  This is the case if we have just started
+            // this run of the finite state machine.
             ConsensusBoundData::None => {
                 // Check whether there is a valid consensus in the database at all.
-                match self.recent_consensus(tx, now)? {
+                match self.fresh_consensus(tx, now)? {
                     // Some consensus means we can load it.
                     Some(_) => State::LoadConsensus,
 
@@ -318,9 +449,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
                     // We will never be able to verify the consensus, better
                     // times may come ...
-                    Err(ConsensusVerifiabilityError::InsufficientTrustedSigners) => {
-                        State::Hibernate
-                    }
+                    Err(ConsensusVerifiabilityError::InsufficientTrustedSigners) => State::End,
 
                     // We need to fetch more authority certificates from the
                     // network.
@@ -328,13 +457,11 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 }
             }
 
-            ConsensusBoundData::Unverified { .. } => State::FetchConsensus,
+            // The TTL is over without us having verified a consensus, end now.
+            ConsensusBoundData::Unverified { .. } => State::End,
 
             // ConsensusBoundData::Verified means that we have successfully
-            // loaded a recent valid consensus from the database using
-            // State::LoadConsensus.  Depending on this, we download the missing
-            // network documents (descriptors) from a directory authority, if
-            // any.
+            // loaded a recent valid consensus from the database.
             ConsensusBoundData::Verified {
                 consensus,
                 ttl,
@@ -366,21 +493,14 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 );
 
                 if *ttl <= now {
-                    // The ttl has been surpassed, download a new
-                    // consensus.  It is very important TO NOT transition to
-                    // State::LoadConsensus here, because the current consensus
-                    // may still be valid but not fresh anymore, in which case
-                    // State::LoadConsensus will continue to obtain it from the
-                    // database until valid-after has been surpassed, which is
-                    // most definitely not what we want.
-                    State::FetchConsensus
+                    // The ttl has been surpassed, we are done.
+                    State::End
                 } else if missing_routers.is_empty()
                     && missing_micros.is_empty()
                     && missing_extras.is_empty()
                 {
-                    // All queues are empty, meaning we are done, until ttl
-                    // ends.
-                    State::Hibernate
+                    // All queues are empty, meaning we are done.
+                    State::End
                 } else {
                     // The ttl has not been surpassed and we have stuff
                     // to download, so we need to obtain the descriptors.
@@ -392,42 +512,81 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     }
 
     /// Executes a single state iteration in the finite state machine.
-    ///
-    /// The return value is of type [`Result<(), OperationError>`].
-    /// The success type is not of much interest for calling applications.
-    /// However, the error case itself should be passed towards
-    /// [`crate::err::IsFatal::is_fatal()`] in order to either abort the
-    /// application or retry with an appropriate timeout.
-    ///
+    // TODO 2881: Explain how this is called externally.
     // TODO: Use tracing instrumentation here.
     // TODO DIRMIRROR: Document the state transition check which we have to do
     // because of database invariances no longer holding true.
     async fn execute<R: Rng>(
         &self,
         pool: &Pool<SqliteConnectionManager>,
-        data: &mut ConsensusBoundData<T>,
+        mut data: ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
         rng: &mut R,
-    ) -> Result<(), OperationError> {
+    ) -> OperationResult<T> {
         // TODO DIRMIRROR: Right now, we pass around the pool object which is
         // not very nice.  Instead, we should match based on the following
         // criteria: Needs write transaction, needs read transaction, needs
         // pool, needs no database access.
 
+        // TODO 2881: Do TTL check here.
+
         // TODO: Should we return DatabaseError or something like
         // StateDeterminationError?  Either way, both cases should be seriously
         // fatal.
-        let state = db::read_tx(pool, |tx| self.determine_state(tx, data, now))??;
-        debug!("state is {state}");
+        let state = match db::read_tx(pool, |tx| self.determine_state(tx, &data, now)).flatten() {
+            Ok(state) => state,
+            Err(e) => {
+                return OperationResult {
+                    state: None, // The only time when state can be None.
+                    request: None,
+                    res: Err(OperationError::Fatal { kind: e.into() }),
+                    additional_errors: RetryError::in_attempt_to("state determination"),
+                };
+            }
+        };
 
-        match state {
-            State::LoadConsensus => self.load_consensus(pool, data, now, rng),
-            State::FetchConsensus => Ok(self.fetch_consensus(data, endpoint, now).await?),
-            State::AuthCerts => self.auth_certs(pool, data, endpoint, now).await,
-            State::StoreConsensus => self.store_consensus(pool, data, now),
-            State::Descriptors => self.descriptors(pool, data, endpoint, now).await,
-            State::Hibernate => self.hibernate(data, now).await,
+        let res = match state {
+            State::LoadConsensus => self.load_consensus(pool, &mut data, now, rng),
+            State::FetchConsensus => self.fetch_consensus(&mut data, endpoint, now).await,
+            State::AuthCerts => self.auth_certs(pool, &mut data, endpoint, now).await,
+            State::StoreConsensus => self.store_consensus(pool, &mut data, now, rng),
+            State::Descriptors => self.descriptors(pool, &mut data, endpoint, now).await,
+            State::End => todo!(), // TODO 2881: Return error that includes ttl.
+        };
+
+        let res = match res {
+            Ok(()) => Ok(OperationStatus {
+                cbd: data,
+                progress: None, // TODO 2881: Implement this.
+            }),
+            Err(kind) => match kind {
+                // Non-fatal errors.
+                OperationErrorKind::TcpConnect(..)
+                | OperationErrorKind::Request(..)
+                | OperationErrorKind::IncorrectQuantityReceived { .. }
+                | OperationErrorKind::UnparseableNetdocReceived { .. }
+                | OperationErrorKind::InvalidNetdocReceived { .. }
+                | OperationErrorKind::NoRequestedDocumentsReturned => {
+                    Err(OperationError::NonFatal {
+                        cbd: data,
+                        // TODO 2881: Use max(ttl, RetryDelay) here.
+                        timeout: Duration::ZERO,
+                        kind,
+                    })
+                }
+                OperationErrorKind::Database(..) | OperationErrorKind::Bug(..) => {
+                    Err(OperationError::Fatal { kind })
+                }
+            },
+        };
+
+        OperationResult {
+            state: Some(state),
+            request: None,
+            res,
+            // TODO 2881: Implement this.
+            additional_errors: RetryError::in_attempt_to(state.to_string()),
         }
     }
 
@@ -443,7 +602,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         now: Timestamp,
         rng: &mut R,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         // Load the most recent valid consensus from the database.
         //
         // If there is no consensus, we should have not entered the state, which
@@ -451,7 +610,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // In this case, it is probably better to return a bug, as external
         // applications arbitrarily modifying the database while we are running
         // leaves too much room for wrong/weird behavior.
-        let consensus = db::read_tx(pool, |tx| self.recent_consensus(tx, now))??
+        let consensus = db::read_tx(pool, |tx| self.fresh_consensus(tx, now))??
             .ok_or_else(|| internal!("database externally modified?"))?;
         let ttl = consensus.ttl(rng);
         let futile = Box::new(FutileDescriptors::default());
@@ -472,7 +631,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
-    ) -> Result<(), AuthorityRequestError> {
+    ) -> Result<(), OperationErrorKind> {
         // Obtain the consensus.
         let (raw, consensus) = self
             .send_request(endpoint, ConsensusRequest::new(T::flavor()))
@@ -481,24 +640,20 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
         // Check for the correct number of results.
         if consensus.len() != 1 {
-            return Err(AuthorityRequestError::Response(
-                "invalid number of consensus?",
-            ));
+            Err(OperationErrorKind::IncorrectQuantityReceived {
+                have: consensus.len(),
+                want: 1,
+            })?;
         }
         let (consensus, start, end) = match consensus.pop_front().expect("pop failed?") {
             (Ok(consensus), start, end) => (consensus, start, end),
             // We do not mark unparseable consensuses as futile because they
             // cannot be referenced in a semi-unique fashion but rather depend
             // on the time only.
-            //
-            // TODO DIRMIRROR: Return a more descriptive error; ideally in
-            // all places where only one document was returned and that document
-            // failed to parse.
-            (Err(_), _, _) => {
-                return Err(AuthorityRequestError::Response(
-                    "invalid consensus received",
-                ));
-            }
+            (Err(e), start, end) => Err(OperationErrorKind::UnparseableNetdocReceived {
+                raw: raw.get(start..end).unwrap_or("N/A").to_string(),
+                err: e,
+            })?,
         };
         let raw = raw[start..end].to_string();
 
@@ -522,7 +677,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         let certs_already = db::read_tx(pool, |tx| self.certs_already(tx, now))??;
 
         // Obtain the missing authority certificate identifiers.
@@ -530,10 +685,10 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             ConsensusBoundData::Unverified { consensus, .. } => {
                 match consensus.can_verify(self.authorities.v3idents(), &certs_already) {
                     Err(ConsensusVerifiabilityError::MissingAuthCerts { missing, .. }) => missing,
-                    _ => return Err(OperationError::Bug(internal!("we have all auth certs"))),
+                    _ => Err(OperationErrorKind::Bug(internal!("we have all auth certs")))?,
                 }
             }
-            _ => return Err(OperationError::Bug(internal!("data is not unverified"))),
+            _ => Err(OperationErrorKind::Bug(internal!("data is not unverified")))?,
         };
 
         // Compose the request.
@@ -550,6 +705,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // Verify each certificate.  Invalid certificates and other problems get
         // logged and filtered out, with the result being then inserted into
         // the database.
+        // TODO 2881: Do not log and filter them but rather use RetryError.
         let certs = certs
             .into_iter()
             .filter_map(|(unverified, start, end)| {
@@ -603,7 +759,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // i.e. the authority only returned certificates we were not interested
         // in.
         if certs.is_empty() {
-            Err(AuthorityRequestError::NoRequestedDocumentsReturned)?;
+            Err(OperationErrorKind::NoRequestedDocumentsReturned)?;
         }
 
         // Finally, insert them all into the database.
@@ -618,39 +774,51 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     }
 
     /// Verifies a consensus and inserts it into the database.
-    fn store_consensus(
+    ///
+    /// It also utilizes the consensus it just inserted.
+    fn store_consensus<R: Rng>(
         &self,
         pool: &Pool<SqliteConnectionManager>,
         data: &mut ConsensusBoundData<T>,
         now: Timestamp,
-    ) -> Result<(), OperationError> {
-        // It is fine to replace data with ConsensusBoundData::None because in
-        // both cases, the following state of this will always be LoadConsensus
-        // or FetchConsensus, both of them no longer requiring the previous data.
-        //
+        rng: &mut R,
+    ) -> Result<(), OperationErrorKind> {
         // Yes, we want to explicitly discard this in the case of a recoverable
         // error in order to retry again by fetching a new consensus from a
         // different authority.
         let (unverified, raw) = match mem::replace(data, ConsensusBoundData::None) {
             ConsensusBoundData::Unverified { consensus, raw, .. } => (consensus, raw),
-            _ => return Err(OperationError::Bug(internal!("data is not unverified"))),
+            _ => Err(OperationErrorKind::Bug(internal!("data is not unverified")))?,
         };
 
         // TODO DIRMIRROR: Somewhere in here, we should generate the consensus
         // diffs.  However, this is a CPU intensive task and needs further
         // coordination with the orport developers.  See arti#2706
 
-        db::rw_tx(pool, |tx| {
+        let meta = db::rw_tx(pool, |tx| {
             let certs_already = self.certs_already(tx, now)?;
-            let (verified, sigs) = self.verify_consensus(unverified, &certs_already, now)?;
-            ConsensusMeta::<T>::insert(
+            let (verified, sigs) = self
+                .verify_consensus(unverified, &certs_already, now)
+                .map_err(|e| OperationErrorKind::InvalidNetdocReceived {
+                    unverified: raw.clone(),
+                    err: e,
+                })?;
+            let meta = ConsensusMeta::<T>::insert(
                 tx,
                 self.encodings.iter().copied(),
                 (&verified, &sigs),
                 &raw,
             )?;
-            Ok::<_, OperationError>(())
-        })?
+            Ok::<_, OperationErrorKind>(meta)
+        })??;
+
+        *data = ConsensusBoundData::Verified {
+            consensus: meta,
+            ttl: meta.ttl(rng),
+            futile: Box::new(FutileDescriptors::default()),
+        };
+
+        Ok(())
     }
 
     /// Downloads, verifies, and inserts the descriptors associated with the
@@ -661,7 +829,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         match T::flavor() {
             ConsensusFlavor::Plain => {
                 // TODO DIRMIRROR: Add extras.
@@ -678,7 +846,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         debug_assert_eq!(T::flavor(), ConsensusFlavor::Plain);
         self.descriptors_agnostic::<RdDownloader>(pool, data, endpoint, now)
             .await
@@ -691,7 +859,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         debug_assert_eq!(T::flavor(), ConsensusFlavor::Microdesc);
         self.descriptors_agnostic::<MdDownloader>(pool, data, endpoint, now)
             .await
@@ -705,12 +873,12 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
         now: Timestamp,
-    ) -> Result<(), OperationError> {
+    ) -> Result<(), OperationErrorKind> {
         let (meta, futile) = match data {
             ConsensusBoundData::Verified {
                 consensus, futile, ..
             } => (consensus, futile),
-            _ => return Err(OperationError::Bug(internal!("data not verified"))),
+            _ => Err(OperationErrorKind::Bug(internal!("data not verified")))?,
         };
 
         // Obtain the missing descriptors.
@@ -723,9 +891,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             // as not found or refused, in which case we must try the next
             // authority as it may have the not found descriptors.
             debug!("not downloading any descriptors");
-            Err(OperationError::AuthorityRequest(
-                AuthorityRequestError::NoRequestedDocumentsReturned,
-            ))?;
+            Err(OperationErrorKind::NoRequestedDocumentsReturned)?;
         }
 
         debug!("downloading the following descriptors: {descriptors:?}");
@@ -736,6 +902,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // Process all downloads isolated, so that we do not return early
         // on accident.  While we still have one minor exception below with
         // regard to DatabaseError, that one is well documented.
+        // TODO 2881: Utilize RetryError here.
         let downloads = DescriptorDownloads::from_missing(descriptors.into_iter());
         let downloads = D::process_downloads(self, downloads, docs, raw, now);
 
@@ -761,33 +928,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // If no progress, return with an error.  We can do so here because
         // we have finally marked descriptors as futile.
         if progress.is_none() {
-            Err(OperationError::AuthorityRequest(
-                AuthorityRequestError::NoRequestedDocumentsReturned,
-            ))?;
-        }
-
-        Ok(())
-    }
-
-    /// Hibernates for the remaining ttl of the consensus.
-    async fn hibernate(
-        &self,
-        data: &mut ConsensusBoundData<T>,
-        now: Timestamp,
-    ) -> Result<(), OperationError> {
-        match data {
-            ConsensusBoundData::None => {
-                return Err(internal!("hibernating without a consensus?").into());
-            }
-            // TODO DIRMIRROR: Should the Unverified case be an error or a
-            // success? In other words: Should we exclude the current authority
-            // from the set of the next authorities to try?
-            ConsensusBoundData::Verified { ttl, .. }
-            | ConsensusBoundData::Unverified { ttl, .. } => {
-                let timeout = *ttl - now;
-                debug!("hibernating for {}s", timeout.as_secs());
-                tokio::time::sleep(timeout).await;
-            }
+            Err(OperationErrorKind::NoRequestedDocumentsReturned)?;
         }
 
         Ok(())
@@ -816,16 +957,16 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         &self,
         endpoint: &DownloadAuthority,
         requ: R,
-    ) -> Result<(String, Vec<(Result<D, ParseError>, usize, usize)>), AuthorityRequestError> {
+    ) -> Result<(String, Vec<(Result<D, ParseError>, usize, usize)>), OperationErrorKind> {
         // The check is required to not let Tokio panic.
         if endpoint.is_empty() {
-            return Err(AuthorityRequestError::Bug(internal!("empty endpoint?")));
+            Err(OperationErrorKind::Bug(internal!("empty endpoint?")))?;
         }
 
         // Open the TCP connection.
         let mut stream = TcpStream::connect(endpoint)
             .await
-            .map_err(AuthorityRequestError::TcpConnect)?
+            .map_err(OperationErrorKind::TcpConnect)?
             .compat();
 
         // Perform the request and map the result nicely.
@@ -866,12 +1007,12 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
                 // All other errors imply an underlying error with the
                 // respective endpoint, suggesting a switch.
-                _ => Err(outer.clone().into()),
+                _ => Err(OperationErrorKind::Request(outer.clone().into())),
             },
 
             // Should not happen because the other DirClientErrors are either
             // Bug or related to CircMgr, which we do not use.
-            Err(e) => Err(AuthorityRequestError::Bug(internal!(
+            Err(e) => Err(OperationErrorKind::Bug(internal!(
                 "unhandled dirclient error: {e}"
             ))),
         }?;
@@ -882,11 +1023,15 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         Ok((resp, parsed))
     }
 
-    /// Queries and validates the most recent consensus from the database.
+    /// Queries and validates the most recent and still fresh consensus from the
+    /// database.
     ///
-    /// Effectively a wrapper around [`StaticEngine::verify_consensus()`] with
-    /// the data obtained from the database.
-    fn recent_consensus(
+    /// This is a bit stricter in terms of timeliness than one might expect.
+    /// It only returns a consensus if and only if `now` lies exactly inside
+    /// valid-after and fresh-until.
+    ///
+    // TODO 2881: Explain why this matters.
+    fn fresh_consensus(
         &self,
         tx: &Transaction<'_>,
         now: Timestamp,
@@ -908,8 +1053,21 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
         let certs_already = self.certs_already(tx, now)?;
 
-        match self.verify_consensus(unverified, &certs_already, now) {
-            Ok(_) => Ok(Some(meta)),
+        match unverified.verify(self.authorities.v3idents(), &certs_already) {
+            Ok(verified) => {
+                // Only if now is exactly between valid-after and fresh-until.
+                let meta = TimeRangeBound::build_intersect(move |times| {
+                    let body = verified.unwrap_with(times);
+                    let lifetime = body.lifetime();
+                    TimeRangeBound::new((), lifetime.valid_after.0..=lifetime.fresh_until.0)
+                        .unwrap_with(times);
+                    Ok::<_, Infallible>(meta)
+                })
+                .expect("infallible should not fail")
+                .if_valid_at(&now.into())
+                .ok();
+                Ok(meta)
+            }
             Err(e) => {
                 // TODO DIRMIRROR: Perhaps we should remove it?
                 debug!("ignoring invalid consensus in database: {meta:?} {e}");
@@ -1690,7 +1848,7 @@ mod test {
         })
         .unwrap()
         .unwrap();
-        assert_eq!(state, State::Hibernate);
+        assert_eq!(state, State::End);
     }
 
     /// Checks whether we can probably load and parse all certificates from
@@ -1747,6 +1905,10 @@ mod test {
                 DELETE FROM consensus_descriptor_member;
                 DELETE FROM consensus_authority_voter;
                 DELETE FROM consensus;
+
+                -- Otherwise we will not transition into State::Descriptors
+                -- because we have all descriptors.
+                DELETE FROM descriptor;
                 "
             ))
             .unwrap();
@@ -1756,10 +1918,22 @@ mod test {
             .unwrap()
             .unwrap();
         assert_eq!(state, State::StoreConsensus);
-        engine.store_consensus(&pool, &mut data, now).unwrap();
-        assert!(matches!(&data, ConsensusBoundData::None));
+        engine
+            .store_consensus(&pool, &mut data, now, &mut testing_rng())
+            .unwrap();
+        assert!(matches!(&data, ConsensusBoundData::Verified { .. }));
 
-        // Verify that it got inserted.
+        // Verify that it loaded.
+        let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state, State::Descriptors);
+
+        // If we now discard ConsensusBoundData and load again, it should
+        // still yield the same result.  This may happen if we suddenly restart
+        // the entire process.
+        let data_prev = data;
+        let mut data = ConsensusBoundData::None;
         let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
             .unwrap()
             .unwrap();
@@ -1767,7 +1941,23 @@ mod test {
         engine
             .load_consensus(&pool, &mut data, now, &mut testing_rng())
             .unwrap();
-        assert!(matches!(data, ConsensusBoundData::Verified { .. }));
+        // Ensure that the loaded consensus after a full reset is equal to the
+        // previous one.  Not necessarily guaranteed but it happens to be the
+        // case in our test because we assume that the database has not been
+        // touched in the meantime.
+        match (data, data_prev) {
+            (
+                ConsensusBoundData::Verified {
+                    consensus: meta1, ..
+                },
+                ConsensusBoundData::Verified {
+                    consensus: meta2, ..
+                },
+            ) => {
+                assert_eq!(meta1, meta2);
+            }
+            _ => panic!("meta1 != meta2 and/or not verified?"),
+        }
     }
 
     /// Agnostic test for the descriptor state.
@@ -1873,10 +2063,7 @@ mod test {
         let res = engine.descriptors(&pool, &mut data, &[endpoint], now).await;
         assert!(matches!(
             res,
-            Ok(())
-                | Err(OperationError::AuthorityRequest(
-                    AuthorityRequestError::NoRequestedDocumentsReturned
-                ))
+            Ok(()) | Err(OperationErrorKind::NoRequestedDocumentsReturned)
         ));
 
         // Now, the missing descriptors should equal the ones that were not
