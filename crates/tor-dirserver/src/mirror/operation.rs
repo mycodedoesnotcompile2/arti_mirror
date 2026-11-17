@@ -29,7 +29,7 @@ use std::{
 use educe::Educe;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rand::Rng;
+use rand::{Rng, seq::SliceRandom};
 use retry_error::RetryError;
 use rusqlite::Transaction;
 use thiserror::Error;
@@ -354,7 +354,20 @@ pub(crate) struct ConsensusBoundData<T: FlavoredConsensusUnverified> {
     ///
     /// We want to reset this after every FSM run.
     futile: Box<FutileDescriptors>,
-    // TODO 2881: Move endpoints here.
+
+    /// The endpoints we want to probe.
+    ///
+    /// This list is randomly shuffled version of the directory authority
+    /// endpoints.  We always pick the first directory authority from this list.
+    /// If we get a non-fatal error, we will pop the first endpoint, leading
+    /// to a different authority being probed the next time.  This will continue
+    /// until the FSM gets resetted.  The list being empty, i.e. all directory
+    /// authorities have been probed, will trigger a reset with a non-zero
+    /// timeout.  Doing this seems like a sensible error strategy, as the
+    /// failure to probe all directory authorities is most likely related to
+    /// a low-level networking failure, which are usually temporary in nature.
+    // TODO DIRMIRROR: Change inner to Box<[SocketAddr]>.
+    endpoints: VecDeque<Vec<SocketAddr>>,
     // TODO 2881: Add RetryDelay here.
     // TODO DIRMIRROR: Implement cache here.
 }
@@ -478,7 +491,6 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         &self,
         pool: &Pool<SqliteConnectionManager>,
         mut data: ConsensusBoundData<T>,
-        endpoint: &DownloadAuthority,
         now: Timestamp,
         rng: &mut R,
     ) -> OperationResult<T> {
@@ -515,6 +527,26 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             };
         }
 
+        // Pick the first endpoint in the (shuffled) list of endpoints.
+        // An empty list leads to a reset of the FSM, thereby also resetting
+        // the list of endpoints.
+        let endpoint = match data.endpoints.front().cloned() {
+            Some(endpoint) => endpoint,
+            None => {
+                return OperationResult {
+                    state: Some(state),
+                    request: None,
+                    res: Err(OperationError::Reset {
+                        // We do not want to restart immediately, it is most likely
+                        // a network failure.
+                        timeout: data.ttl - now,
+                    }),
+                    additional_errors: RetryError::in_attempt_to("endpoint selection"),
+                };
+            }
+        };
+        let endpoint = endpoint.as_ref();
+
         let res = match state {
             State::LoadConsensus => self.load_consensus(pool, &mut data, now, rng),
             State::FetchConsensus => self.fetch_consensus(&mut data, endpoint).await,
@@ -546,6 +578,11 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 | OperationErrorKind::UnparseableNetdocReceived { .. }
                 | OperationErrorKind::InvalidNetdocReceived { .. }
                 | OperationErrorKind::NoRequestedDocumentsReturned => {
+                    // Try the next endpoint in the next run.  We have checked
+                    // whether the list is empty above, so .expect() is fine.
+                    data.endpoints
+                        .pop_front()
+                        .expect("endpoints should not be empty");
                     Err(OperationError::NonFatal {
                         cbd: data,
                         // TODO 2881: Use max(ttl, RetryDelay) here.
@@ -1121,13 +1158,16 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     ///
     /// Sets the initial TTL to `now` plus [`UNVERIFIED_TTL`].  A failure to
     /// obtain a verified consensus renders this [`ConsensusBoundData`] invalid.
-    // TODO 2881: Method of StaticEngine because we want to eventually embed
-    // info from AuthorityContacts here.
-    fn new_cbd(&self, now: Timestamp) -> ConsensusBoundData<T> {
+    fn new_cbd<R: Rng>(&self, now: Timestamp, rng: &mut R) -> ConsensusBoundData<T> {
+        let mut endpoints = self.authorities.downloads().clone();
+        endpoints.shuffle(rng);
+        let endpoints = endpoints.into();
+
         ConsensusBoundData {
             consensus: ActiveConsensus::None,
             ttl: now + UNVERIFIED_TTL,
             futile: Default::default(),
+            endpoints,
         }
     }
 }
@@ -1608,7 +1648,7 @@ mod test {
         let engine = static_engine::<Plain>();
 
         let time: Timestamp = testdata2::valid_system_time().into();
-        let mut data = engine.new_cbd(time);
+        let mut data = engine.new_cbd(time, &mut testing_rng());
         let fresh_until: Timestamp = testdata2::current_consensus_ns()
             .0
             .preamble
@@ -1682,7 +1722,7 @@ mod test {
         let pool = testdata2::test_db();
         let engine = static_engine::<Plain>();
         let now = Timestamp::from(testdata2::invalid_system_time());
-        let mut data = engine.new_cbd(now);
+        let mut data = engine.new_cbd(now, &mut testing_rng());
 
         let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
             .unwrap()
@@ -1723,7 +1763,7 @@ mod test {
         let pool = testdata2::test_db();
         let now = testdata2::valid_system_time().into();
         let mut engine = static_engine::<Plain>();
-        let mut data = engine.new_cbd(now);
+        let mut data = engine.new_cbd(now, &mut testing_rng());
         data.consensus = ActiveConsensus::Unverified(
             parse2::parse_netdoc(&ParseInput::new(testdata2::current_consensus_ns().2, ""))
                 .unwrap(),
@@ -1862,7 +1902,7 @@ mod test {
                 .unwrap();
         let engine = static_engine();
         let now = Timestamp::from(testdata2::valid_system_time());
-        let mut data = engine.new_cbd(now);
+        let mut data = engine.new_cbd(now, &mut testing_rng());
         data.consensus = ActiveConsensus::Unverified(
             unverified.clone(),
             testdata2::current_consensus_ns().2.to_string(),
@@ -1904,7 +1944,7 @@ mod test {
         // still yield the same result.  This may happen if we suddenly restart
         // the entire process.
         let data_prev = data;
-        let mut data = engine.new_cbd(now);
+        let mut data = engine.new_cbd(now, &mut testing_rng());
         let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
             .unwrap()
             .unwrap();
@@ -1935,7 +1975,7 @@ mod test {
         let pool = testdata2::test_db();
         let engine = static_engine::<T>();
         let now = Timestamp::from(testdata2::valid_system_time());
-        let mut data = engine.new_cbd(now);
+        let mut data = engine.new_cbd(now, &mut testing_rng());
         let rng = &mut testing_rng();
 
         // Server task that can at most handle two requests.
