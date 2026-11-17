@@ -330,70 +330,52 @@ struct StaticEngine<T> {
     _phantom: PhantomData<T>,
 }
 
-/// Additional state machine data concerning a single consensus.
-///
-/// This data type exists to store data that cannot be stored in the database,
-/// including the consensus that is currently verified, the consensus that is
-/// currently served, the timestamp until we will serve it, etc.
+/// Additional data for the finite state machine that cannot be stored in the
+/// database and is bound to a single consensus.
 ///
 /// # Field Requirements
 ///
 /// In order for a field to be contained here, at least one of the following
 /// criteria should be met:
-/// * The item needs to persist between multiple invocation and cannot be
-///   obtained from the database.
-/// * The item itself serves as an identifier to the database and querying it
-///   it again can not be done in a pure fashion, e.g. a [`ConsensusMeta`]
-///   identifier.
-/// * The item exists purely for optimization purposes and can be thrown away
-///   at any time without data loss, such as content-addressable caches.
-///   These caches must be pure in the sense that a cache miss must always
-///   return the same result as a cache hit and vice versa.
-// TODO 2881: For this to fully unleash its potential, we must make it a struct
-// that also contains the endpoints and RetryDelay.
+/// * The item needs to persist between multiple invocations and cannot be
+///   obtained from the database, e.g. an unverified consensus.
+/// * The item itself serves as a top-level identifier for the database and
+///   querying it again might have side effects, such as it depending on the
+///   current time, etc.
+/// * The item exists purely for optimizational purposes and can be thrown away
+///   without any data loss penalities.
 #[derive(Debug, Clone)]
-enum ConsensusBoundData<T: FlavoredConsensusUnverified> {
-    /// No state is loaded in memory at the moment.
+struct ConsensusBoundData<T: FlavoredConsensusUnverified> {
+    /// The currently active consensus.
+    consensus: ActiveConsensus<T>,
+
+    /// The time to live before we halt the FSM in any case.
+    ttl: Timestamp,
+
+    /// Descriptors we refuse to further download.
+    ///
+    /// We want to reset this after every FSM run.
+    futile: Box<FutileDescriptors>,
+    // TODO 2881: Move endpoints here.
+    // TODO 2881: Add RetryDelay here.
+    // TODO DIRMIRROR: Implement cache here.
+}
+
+/// The consensus that is currently actively served.
+///
+/// This is stored as an enum because the FSM can track a consensus in multiple
+/// stages which are mutually exclusive to each other.
+#[derive(Debug, Clone)]
+enum ActiveConsensus<T: FlavoredConsensusUnverified> {
+    /// At start, nothing downloaded or checked yet.
     None,
 
-    /// We have downloaded a consensus but it is not yet verified.
-    Unverified {
-        /// The unverified parsed consensus we have.
-        consensus: T,
+    /// Downloaded and parsed a consensus but we have not verified it yet.
+    Unverified(T, String),
 
-        /// The unparsed raw consensus we have.
-        raw: String,
-
-        /// When to stop dealing with this consensus and download again.
-        ///
-        /// Useful to have in order to not stuck forever in a verification
-        /// loop, i.e. due to unavailable authentication certificates, etc.
-        ttl: Timestamp,
-    },
-
-    /// We have downloaded and verified a consensus.
-    Verified {
-        /// The verified consensus we have.
-        ///
-        /// Contained in this structure because it is the only way we can
-        /// uniquely identify a consensus, which is crucial for operation, as
-        /// things like the `ttl` are derived from it.
-        ///
-        /// While methods like [`ConsensusMeta::query`] would probably also
-        /// work correctly, relying on them feels rather wrong, as they were
-        /// not made to be pure.
-        consensus: ConsensusMeta<T>,
-
-        /// When to stop dealing with this consensus and fetching a new one.
-        ttl: Timestamp,
-
-        /// Descriptors we refuse to further download.
-        ///
-        /// Right now, this state gets cleaned, everytime we restart or obtain
-        /// a new consensus.  This is probably okay, as we most likely do not
-        /// want to store it on disk.
-        futile: Box<FutileDescriptors>,
-    },
+    /// Consensus exists verified in the database and we are actively processing
+    /// it.
+    Verified(ConsensusMeta<T>),
 }
 
 impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
@@ -419,14 +401,17 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // the FSM in a way that End implies Reset but Reset does not imply End.
         // This will also be necessary for properly handling other error cases,
         // e.g. all endpoints have been tried.
+        if now > data.ttl {
+            return Ok(State::End);
+        }
 
-        // Determine the state primarily upon ConsensusBoundData combined with
+        // Determine the state primarily upon ActiveConsensus combined with
         // a few database queries, as well as the current time of course.
-        let state = match data {
-            // ConsensusBoundData::None means that we currently have no
+        let state = match &data.consensus {
+            // ActiveConsensus::None means that we currently have no
             // consensus in memory.  This is the case if we have just started
             // this run of the finite state machine.
-            ConsensusBoundData::None => {
+            ActiveConsensus::None => {
                 // Check whether there is a valid consensus in the database at all.
                 match self.fresh_consensus(tx, now)? {
                     // Some consensus means we can load it.
@@ -437,11 +422,11 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 }
             }
 
-            // ConsensusBoundData::Unverified means that we recently downloaded
+            // ActiveConsensus::Unverified means that we recently downloaded
             // a consensus through State::FetchConsensus.  It is not fully
             // validated yet and we may not even be able due to missing
             // authority certificates.
-            ConsensusBoundData::Unverified { consensus, ttl, .. } if now < *ttl => {
+            ActiveConsensus::Unverified(consensus, ..) => {
                 let certs_already = self.certs_already(tx, now)?;
                 match consensus.can_verify(self.authorities.v3idents(), &certs_already) {
                     // We can verify and insert the consensus.
@@ -457,16 +442,9 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 }
             }
 
-            // The TTL is over without us having verified a consensus, end now.
-            ConsensusBoundData::Unverified { .. } => State::End,
-
             // ConsensusBoundData::Verified means that we have successfully
             // loaded a recent valid consensus from the database.
-            ConsensusBoundData::Verified {
-                consensus,
-                ttl,
-                futile,
-            } => {
+            ActiveConsensus::Verified(meta) => {
                 // See if there are any missing descriptors that are not Refused
                 // yet.  It is important to not exclude the NotFound descriptors
                 // here because they may be available at a different authority.
@@ -487,15 +465,12 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 // errors, we should do something about it, as in macros and/or
                 // traits.
                 let (missing_routers, missing_micros, missing_extras) = (
-                    consensus.missing_routers(tx, futile.routers.refused(), Some(1))?,
-                    consensus.missing_micros(tx, futile.micros.refused(), Some(1))?,
-                    consensus.missing_extras(tx, futile.extras.refused(), Some(1))?,
+                    meta.missing_routers(tx, data.futile.routers.refused(), Some(1))?,
+                    meta.missing_micros(tx, data.futile.micros.refused(), Some(1))?,
+                    meta.missing_extras(tx, data.futile.extras.refused(), Some(1))?,
                 );
 
-                if *ttl <= now {
-                    // The ttl has been surpassed, we are done.
-                    State::End
-                } else if missing_routers.is_empty()
+                if missing_routers.is_empty()
                     && missing_micros.is_empty()
                     && missing_extras.is_empty()
                 {
@@ -612,14 +587,10 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // leaves too much room for wrong/weird behavior.
         let consensus = db::read_tx(pool, |tx| self.fresh_consensus(tx, now))??
             .ok_or_else(|| internal!("database externally modified?"))?;
-        let ttl = consensus.ttl(rng);
-        let futile = Box::new(FutileDescriptors::default());
 
-        *data = ConsensusBoundData::Verified {
-            consensus,
-            ttl,
-            futile,
-        };
+        data.consensus = ActiveConsensus::Verified(consensus);
+        data.ttl = consensus.ttl(rng);
+
         Ok(())
     }
 
@@ -630,7 +601,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         &self,
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
-        now: Timestamp,
+        _now: Timestamp, // XXX: Remove
     ) -> Result<(), OperationErrorKind> {
         // Obtain the consensus.
         let (raw, consensus) = self
@@ -657,14 +628,8 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         };
         let raw = raw[start..end].to_string();
 
-        let ttl = now + UNVERIFIED_TTL;
-
         // And store it.
-        *data = ConsensusBoundData::Unverified {
-            consensus,
-            raw,
-            ttl,
-        };
+        data.consensus = ActiveConsensus::Unverified(consensus, raw);
 
         Ok(())
     }
@@ -681,8 +646,8 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         let certs_already = db::read_tx(pool, |tx| self.certs_already(tx, now))??;
 
         // Obtain the missing authority certificate identifiers.
-        let missing = match data {
-            ConsensusBoundData::Unverified { consensus, .. } => {
+        let missing = match &data.consensus {
+            ActiveConsensus::Unverified(consensus, ..) => {
                 match consensus.can_verify(self.authorities.v3idents(), &certs_already) {
                     Err(ConsensusVerifiabilityError::MissingAuthCerts { missing, .. }) => missing,
                     _ => Err(OperationErrorKind::Bug(internal!("we have all auth certs")))?,
@@ -786,8 +751,8 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // Yes, we want to explicitly discard this in the case of a recoverable
         // error in order to retry again by fetching a new consensus from a
         // different authority.
-        let (unverified, raw) = match mem::replace(data, ConsensusBoundData::None) {
-            ConsensusBoundData::Unverified { consensus, raw, .. } => (consensus, raw),
+        let (unverified, raw) = match mem::replace(&mut data.consensus, ActiveConsensus::None) {
+            ActiveConsensus::Unverified(consensus, raw) => (consensus, raw),
             _ => Err(OperationErrorKind::Bug(internal!("data is not unverified")))?,
         };
 
@@ -812,11 +777,8 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             Ok::<_, OperationErrorKind>(meta)
         })??;
 
-        *data = ConsensusBoundData::Verified {
-            consensus: meta,
-            ttl: meta.ttl(rng),
-            futile: Box::new(FutileDescriptors::default()),
-        };
+        data.consensus = ActiveConsensus::Verified(meta);
+        data.ttl = meta.ttl(rng); // Update TTL, important!
 
         Ok(())
     }
@@ -874,12 +836,11 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         endpoint: &DownloadAuthority,
         now: Timestamp,
     ) -> Result<(), OperationErrorKind> {
-        let (meta, futile) = match data {
-            ConsensusBoundData::Verified {
-                consensus, futile, ..
-            } => (consensus, futile),
+        let meta = match &data.consensus {
+            ActiveConsensus::Verified(meta) => meta,
             _ => Err(OperationErrorKind::Bug(internal!("data not verified")))?,
         };
+        let futile = &mut data.futile;
 
         // Obtain the missing descriptors.
         let descriptors = db::read_tx(pool, |tx| D::query(tx, meta, futile, endpoint))??;
@@ -1152,6 +1113,20 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             certs_already.push(timely);
         }
         Ok(certs_already)
+    }
+
+    /// Creates a new [`ConsensusBoundData`] with a given [`Timestamp`].
+    ///
+    /// Sets the initial TTL to `now` plus [`UNVERIFIED_TTL`].  A failure to
+    /// obtain a verified consensus renders this [`ConsensusBoundData`] invalid.
+    // TODO 2881: Method of StaticEngine because we want to eventually embed
+    // info from AuthorityContacts here.
+    fn new_cbd(&self, now: Timestamp) -> ConsensusBoundData<T> {
+        ConsensusBoundData {
+            consensus: ActiveConsensus::None,
+            ttl: now + UNVERIFIED_TTL,
+            futile: Default::default(),
+        }
     }
 }
 
@@ -1628,10 +1603,10 @@ mod test {
     #[tokio::test]
     async fn state_load_consensus() {
         let pool = testdata2::test_db();
-        let mut data = ConsensusBoundData::<Plain>::None;
-        let engine = static_engine();
+        let engine = static_engine::<Plain>();
 
         let time: Timestamp = testdata2::valid_system_time().into();
+        let mut data = engine.new_cbd(time);
         let fresh_until: Timestamp = testdata2::current_consensus_ns()
             .0
             .preamble
@@ -1665,9 +1640,10 @@ mod test {
             .load_consensus(&pool, &mut data, time, &mut testing_rng())
             .unwrap();
 
-        // El-cheapo assert_eq due to lack of PartialEq for tor-netdoc poc.
-        match data {
-            ConsensusBoundData::Verified { consensus, ttl, .. } => {
+        assert!(data.ttl >= fresh_until);
+        assert!(data.ttl <= fresh_until_half);
+        match data.consensus {
+            ActiveConsensus::Verified(consensus) => {
                 // If everything worked properly, then the queue should only
                 // contain the relay we removed, because that is missing now.
                 db::read_tx(&pool, |tx| {
@@ -1689,8 +1665,6 @@ mod test {
                     );
                 })
                 .unwrap();
-                assert!(ttl >= fresh_until);
-                assert!(ttl <= fresh_until_half);
             }
             _ => panic!("data is not verified"),
         }
@@ -1704,9 +1678,9 @@ mod test {
     #[tokio::test]
     async fn state_fetch_consensus() {
         let pool = testdata2::test_db();
-        let mut data = ConsensusBoundData::<Plain>::None;
-        let engine = static_engine();
+        let engine = static_engine::<Plain>();
         let now = Timestamp::from(testdata2::invalid_system_time());
+        let mut data = engine.new_cbd(now);
 
         let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
             .unwrap()
@@ -1732,10 +1706,10 @@ mod test {
             .fetch_consensus(&mut data, &[saddr], now)
             .await
             .unwrap();
-        match data {
-            ConsensusBoundData::Unverified { raw, ttl, .. } => {
+        assert_eq!(data.ttl, now + UNVERIFIED_TTL);
+        match data.consensus {
+            ActiveConsensus::Unverified(_, raw) => {
                 assert_eq!(raw, testdata2::current_consensus_ns().2);
-                assert_eq!(ttl, now + UNVERIFIED_TTL);
             }
             _ => panic!("data is not unverified"),
         }
@@ -1748,16 +1722,14 @@ mod test {
     #[tokio::test]
     async fn state_auth_certs() {
         let pool = testdata2::test_db();
-        let mut data = ConsensusBoundData::<Plain>::Unverified {
-            consensus: parse2::parse_netdoc(&ParseInput::new(
-                testdata2::current_consensus_ns().2,
-                "",
-            ))
-            .unwrap(),
-            raw: testdata2::current_consensus_ns().2.to_owned(),
-            ttl: Timestamp::from(testdata2::valid_system_time()) + UNVERIFIED_TTL,
-        };
-        let mut engine = static_engine();
+        let now = testdata2::valid_system_time().into();
+        let mut engine = static_engine::<Plain>();
+        let mut data = engine.new_cbd(now);
+        data.consensus = ActiveConsensus::Unverified(
+            parse2::parse_netdoc(&ParseInput::new(testdata2::current_consensus_ns().2, ""))
+                .unwrap(),
+            testdata2::current_consensus_ns().2.to_owned(),
+        );
 
         // We want to download authority certificates; for this, remove
         // one of them from the database.
@@ -1891,11 +1863,11 @@ mod test {
                 .unwrap();
         let engine = static_engine();
         let now = Timestamp::from(testdata2::valid_system_time());
-        let mut data = ConsensusBoundData::<Plain>::Unverified {
-            consensus: unverified.clone(),
-            raw: testdata2::current_consensus_ns().2.to_string(),
-            ttl: now + UNVERIFIED_TTL,
-        };
+        let mut data = engine.new_cbd(now);
+        data.consensus = ActiveConsensus::Unverified(
+            unverified.clone(),
+            testdata2::current_consensus_ns().2.to_string(),
+        );
 
         // Clean all consensus related tables.
         pool.get()
@@ -1921,7 +1893,7 @@ mod test {
         engine
             .store_consensus(&pool, &mut data, now, &mut testing_rng())
             .unwrap();
-        assert!(matches!(&data, ConsensusBoundData::Verified { .. }));
+        assert!(matches!(&data.consensus, ActiveConsensus::Verified(..)));
 
         // Verify that it loaded.
         let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
@@ -1933,7 +1905,7 @@ mod test {
         // still yield the same result.  This may happen if we suddenly restart
         // the entire process.
         let data_prev = data;
-        let mut data = ConsensusBoundData::None;
+        let mut data = engine.new_cbd(now);
         let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
             .unwrap()
             .unwrap();
@@ -1945,15 +1917,8 @@ mod test {
         // previous one.  Not necessarily guaranteed but it happens to be the
         // case in our test because we assume that the database has not been
         // touched in the meantime.
-        match (data, data_prev) {
-            (
-                ConsensusBoundData::Verified {
-                    consensus: meta1, ..
-                },
-                ConsensusBoundData::Verified {
-                    consensus: meta2, ..
-                },
-            ) => {
+        match (data.consensus, data_prev.consensus) {
+            (ActiveConsensus::Verified(meta1), ActiveConsensus::Verified(meta2)) => {
                 assert_eq!(meta1, meta2);
             }
             _ => panic!("meta1 != meta2 and/or not verified?"),
@@ -1971,7 +1936,7 @@ mod test {
         let pool = testdata2::test_db();
         let engine = static_engine::<T>();
         let now = Timestamp::from(testdata2::valid_system_time());
-        let mut data = ConsensusBoundData::None;
+        let mut data = engine.new_cbd(now);
         let rng = &mut testing_rng();
 
         // Server task that can at most handle two requests.
@@ -2035,12 +2000,9 @@ mod test {
 
         // Afterwards, the queue for missing descriptors should be empty
         // as well as futile.
-        let (meta, futile) = match &data {
-            ConsensusBoundData::Verified {
-                consensus: meta,
-                futile,
-                ..
-            } => (*meta, futile.clone()),
+        let futile = data.futile.clone();
+        let meta = match &data.consensus {
+            ActiveConsensus::Verified(meta) => *meta,
             _ => panic!(),
         };
         let missing = db::read_tx(&pool, |tx| D::query(tx, &meta, &futile, &[endpoint]))
@@ -2071,10 +2033,7 @@ mod test {
         let missing = db::read_tx(&pool, |tx| D::query(tx, &meta, &futile, &[endpoint]))
             .unwrap()
             .unwrap();
-        let futile = match &data {
-            ConsensusBoundData::Verified { futile, .. } => futile,
-            _ => panic!(),
-        };
+        let futile = &data.futile;
         assert!(!missing.is_empty());
         assert_eq!(
             missing,
