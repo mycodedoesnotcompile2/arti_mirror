@@ -523,7 +523,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
         let res = match state {
             State::LoadConsensus => self.load_consensus(pool, &mut data, now, rng),
-            State::FetchConsensus => self.fetch_consensus(&mut data, endpoint, now).await,
+            State::FetchConsensus => self.fetch_consensus(&mut data, endpoint).await,
             State::AuthCerts => self.auth_certs(pool, &mut data, endpoint, now).await,
             State::StoreConsensus => self.store_consensus(pool, &mut data, now, rng),
             State::Descriptors => self.descriptors(pool, &mut data, endpoint, now).await,
@@ -601,7 +601,6 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         &self,
         data: &mut ConsensusBoundData<T>,
         endpoint: &DownloadAuthority,
-        _now: Timestamp, // XXX: Remove
     ) -> Result<(), OperationErrorKind> {
         // Obtain the consensus.
         let (raw, consensus) = self
@@ -1702,10 +1701,7 @@ mod test {
             stream.write_all(resp.as_bytes()).await.unwrap();
         });
 
-        engine
-            .fetch_consensus(&mut data, &[saddr], now)
-            .await
-            .unwrap();
+        engine.fetch_consensus(&mut data, &[saddr]).await.unwrap();
         assert_eq!(data.ttl, now + UNVERIFIED_TTL);
         match data.consensus {
             ActiveConsensus::Unverified(_, raw) => {
