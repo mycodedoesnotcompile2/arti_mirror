@@ -16,6 +16,9 @@ For tasks or futures that don't need to do anything besides "Stop",
 we provide a Cancellable<> wrapper around Future that takes
 a ShutdownReceiver.
 
+For stream-driven tasks,
+we may provide a wrapper that makes a stream "done" once we are shutting down.
+
 There is also a ShutdownCompletion future.  When the last
 ShutdownReceiver for a ShutdownSender is dropped, then ShutdownCompletion
 becomes ready.
@@ -36,6 +39,9 @@ If so, what does that look like?  Does that use a different mechanism?
 
 Presuming that we use this mechanism with `arti` proxies via RPC,
 what's the API to get those things a ShutdownReceiver?
+
+Do we really need to audit every place that we spawn something?
+How do we know that we actually shut everything down correctly?
 
 Does this interact with dormant status?  If so, how?
 
