@@ -42,6 +42,8 @@ derive-deftly = { version = "~1.14.0", features = ["full", "beta"] }
 derive_more = { version = "2.1.1", features = ["full"] }
 digest = "0.11.3"
 educe = "0.4.23"
+itertools = "0.15.0"
+paste = "1.0.15"
 thiserror = "2"
 tor-checkable = { path = "../tor-checkable", version = "0.48.0" }
 tor-dirauth = { path = "../tor-dirauth", version = "0.48.0" }
@@ -50,6 +52,5 @@ tor-llcrypto = { version = "0.48.0", path = "../tor-llcrypto" }
 tor-netdoc = { path = "../tor-netdoc", version = "0.48.0", features = ["full", "retain-unknown"] }
 
 [dev-dependencies]
-itertools = "0.15.0"
 test-temp-dir = { version = "0.9.0", path = "../test-temp-dir" }
 tor-netdoc = { path = "../tor-netdoc", version = "0.48.0", features = ["testing"] }
