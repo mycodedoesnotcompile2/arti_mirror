@@ -388,21 +388,6 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         data: &ConsensusBoundData<T>,
         now: Timestamp,
     ) -> Result<State, DatabaseError> {
-        // TODO 2881: For historical reasons, determine_state() transitions into
-        // State::End in two cases: Either because we are done or because the
-        // TTL is over.  The latter one is not good because it implicitly means
-        // that State::End can more or less always be the following state to
-        // any given state.  Ideally, we want ConsensusBoundData to be a struct
-        // that contains a global TTL field.  This TTL is checked as the first
-        // thing in execute().  If the TTL has been surpassed, we should then
-        // directly issue a Reset error.  In other words: We want to refactor
-        // the FSM in a way that End implies Reset but Reset does not imply End.
-        // This will also be necessary for properly handling other error cases,
-        // e.g. all endpoints have been tried.
-        if now > data.ttl {
-            return Ok(State::End);
-        }
-
         // Determine the state primarily upon ActiveConsensus combined with
         // a few database queries, as well as the current time of course.
         let state = match &data.consensus {
@@ -502,8 +487,6 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // criteria: Needs write transaction, needs read transaction, needs
         // pool, needs no database access.
 
-        // TODO 2881: Do TTL check here.
-
         // TODO: Should we return DatabaseError or something like
         // StateDeterminationError?  Either way, both cases should be seriously
         // fatal.
@@ -519,13 +502,35 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             }
         };
 
+        // Perform the TTL check after the state determination because it is
+        // useful to include the state in which it got stuck.
+        if now > data.ttl {
+            return OperationResult {
+                state: Some(state),
+                request: None,
+                res: Err(OperationError::Reset {
+                    timeout: Duration::ZERO,
+                }),
+                additional_errors: RetryError::in_attempt_to("TTL being over"),
+            };
+        }
+
         let res = match state {
             State::LoadConsensus => self.load_consensus(pool, &mut data, now, rng),
             State::FetchConsensus => self.fetch_consensus(&mut data, endpoint).await,
             State::AuthCerts => self.auth_certs(pool, &mut data, endpoint, now).await,
             State::StoreConsensus => self.store_consensus(pool, &mut data, now, rng),
             State::Descriptors => self.descriptors(pool, &mut data, endpoint, now).await,
-            State::End => todo!(), // TODO 2881: Return error that includes ttl.
+            State::End => {
+                return OperationResult {
+                    state: Some(State::End),
+                    request: None,
+                    res: Err(OperationError::Reset {
+                        timeout: data.ttl - now,
+                    }),
+                    additional_errors: RetryError::in_attempt_to("End"),
+                };
+            }
         };
 
         let res = match res {
