@@ -20,8 +20,8 @@
 //!
 //! | RELAY cmd  | Received in | Handled in            | Description                            |
 //! |------------|-------------|-----------------------|----------------------------------------|
-//! | DROP       | F           | FH::handle_meta_msg() | Passed to PaddingController for        |
-//! |            |             |                       | validation                             |
+//! | DROP       | F           | F                     | Ignored in FH::handle_forward_cell(),  |
+//! |            |             |                       | before the PaddingController sees it   |
 //! |------------|-------------|-----------------------|----------------------------------------|
 //! | EXTEND2    | F           | FH::handle_meta_msg() | Handled by the ExtendRequestHandler    |
 //! |            |             |                       | See [forward::extend_handler].         |
@@ -1141,6 +1141,78 @@ pub(crate) mod test {
 
             // There is no next hop because we haven't extended the circuit,
             // so only expect the DESTROY to be sent toward the client (Backward).
+            assert_destroy_sent(&mut ctrl, DestroyReason::NONE, DestroyDirection::Backward);
+        });
+    }
+
+    #[traced_test]
+    #[test]
+    fn drop_ignored() {
+        tor_rtmock::MockRuntime::test_with_various(|rt| async move {
+            let (mut ctrl, mut incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]).await;
+            rt.advance_until_stalled().await;
+
+            // The C-tor function `circpad_deliver_recognized_relay_cell_events()` does not
+            // consider anything other than the relay command and therefore also ignores a DROP
+            // cell that has a stream ID.
+            let drop = relaymsg::Drop::default().into();
+            ctrl.send_fwd(StreamId::new(7), drop, Recognized::Yes, false)
+                .await;
+            rt.advance_until_stalled().await;
+
+            // That many DATA cells would be enough to trigger a circuit-level SENDME (because
+            // cc_sendme_inc is 31), except that DROP does not count against the SENDME
+            // windows.
+            for _ in 0..32 {
+                let drop = relaymsg::Drop::default().into();
+                ctrl.send_fwd(None, drop, Recognized::Yes, false).await;
+                rt.advance_until_stalled().await;
+            }
+
+            // No answer to a DROP is sent
+            assert!(ctrl.try_read_inbound().is_none());
+            assert!(!ctrl.is_closing());
+            assert!(logs_contain("Ignoring DROP cell"));
+
+            // A subsequent BEGIN after the DROPs still gets us an incoming stream
+            let begin = relaymsg::Begin::new("127.0.0.1", 1111, 0).unwrap().into();
+            ctrl.send_fwd(StreamId::new(1), begin, Recognized::Yes, false)
+                .await;
+            rt.advance_until_stalled().await;
+
+            let pending = incoming_streams.next().await.unwrap();
+            assert!(matches!(pending.request(), IncomingStreamRequest::Begin(_)));
+        });
+    }
+
+    #[traced_test]
+    #[test]
+    fn drop_bad_length() {
+        tor_rtmock::MockRuntime::test_with_various(|rt| async move {
+            let (mut ctrl, _incoming_streams) =
+                ReactorTestCtrl::spawn_reactor(&rt, &[RelayCmd::BEGIN]).await;
+            rt.advance_until_stalled().await;
+
+            // A V0 DROP cell body with the given length field.
+            let drop_with_len = |len: u16| {
+                let mut body = [0_u8; 509];
+                body[0] = RelayCmd::DROP.into();
+                body[9..11].copy_from_slice(&len.to_be_bytes());
+                AnyChanMsg::Relay(chanmsg::Relay::from(Box::new(body)))
+            };
+
+            // Like C-tor's `relay_msg_decode_cell_in_place()`, we will allow a V0 length
+            // of up to 509 - 11 = 498.
+            ctrl.recognized_tx.send(Recognized::Yes).unwrap();
+            ctrl.send_fwd_cmsg(drop_with_len(498)).await;
+            rt.advance_until_stalled().await;
+            assert!(!ctrl.is_closing());
+
+            ctrl.recognized_tx.send(Recognized::Yes).unwrap();
+            ctrl.send_fwd_cmsg(drop_with_len(499)).await;
+            rt.advance_until_stalled().await;
+            assert!(logs_contain("Unable to parse DROP message"));
             assert_destroy_sent(&mut ctrl, DestroyReason::NONE, DestroyDirection::Backward);
         });
     }

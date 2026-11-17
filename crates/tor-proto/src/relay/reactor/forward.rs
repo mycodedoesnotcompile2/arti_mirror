@@ -167,18 +167,6 @@ impl Forward {
         Ok((hopnum, CellDecodeResult::Recognized(tag, decode_res)))
     }
 
-    /// Handle a DROP message.
-    #[allow(clippy::unnecessary_wraps)] // Returns Err if circ-padding is enabled
-    fn handle_drop(&mut self) -> StdResult<(), ReactorError> {
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "circ-padding")] {
-                Err(internal!("relay circuit padding not yet supported").into())
-            } else {
-                Ok(())
-            }
-        }
-    }
-
     /// Handle the outcome of handling an EXTEND2.
     fn handle_extend_result(
         &mut self,
@@ -225,6 +213,26 @@ impl Forward {
             }
             CellDecodeResult::Recognized(tag, res) => (tag, res),
         };
+
+        if decode_res.is_padding() {
+            // We return here because the generic reactor's padding accounting would regard
+            // non-negotiated padding as a protocol violation, whereas relays are required
+            // to drop any DROP they receive:
+            // https://spec.torproject.org/tor-spec/opening-streams.html#transmitting
+            // C-tor does so in `circpad_deliver_recognized_relay_cell_events()`.
+            //
+            // TODO(relay): This bypasses the PaddingController, which relay padding will
+            // need, and also the hop cell limit, which currently isn't set on relay
+            // circuits.
+            for msg in decode_res.into_parts().0 {
+                // As with C-tor's `relay_msg_decode_cell_in_place()`, don't
+                // accept an overflowing length.
+                msg.decode::<tor_cell::relaycell::msg::Drop>()
+                    .map_err(|e| Error::from_bytes_err(e, "DROP message"))?;
+            }
+            trace!(circ_uniq_id = %self.unique_id, "Ignoring DROP cell");
+            return Ok(None);
+        }
 
         Ok(Some(ForwardCellDisposition::HandleRecognizedRelay {
             cell: decode_res,
@@ -319,7 +327,10 @@ impl ForwardHandler for Forward {
         _relay_cell_format: RelayCellFormat,
     ) -> StdResult<(), ReactorError> {
         match msg.cmd() {
-            RelayCmd::DROP => self.handle_drop(),
+            // Only if the DROP is packed with other messages, a situation that
+            // could not happen on V0/V1, does it make it through
+            // `handle_relay_cell()`.
+            RelayCmd::DROP => Ok(()),
             RelayCmd::EXTEND2 => self.extend_handler.handle_extend2(runtime, early, msg),
             RelayCmd::TRUNCATE => self.handle_truncate(),
             cmd => Err(internal!("relay cmd {cmd} not supported").into()),
