@@ -257,3 +257,159 @@ pub(crate) fn read_compute(
 
     compute(now, &trusted, votes.into_iter())
 }
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use super::*;
+    use crate::authority_plugin::test::test_invocation;
+    use itertools::chain;
+    use std::fs;
+    use std::io::Write as _;
+    use std::str::FromStr as _;
+    use test_temp_dir::test_temp_dir;
+    use tor_dirauth::consensus::SupportedConsensusMethod;
+    use tor_netdoc::{
+        doc::authcert::AuthCertUnverified,
+        encode::encode_netdoc_fields,
+        parse2::{HasUnverifiedParsedBody, ParseInput, parse_netdoc},
+        test_support::{find_vote_by_authority_id, raw_find_item_rhs, regsub},
+        testdata2,
+        types::Iso8601TimeSp,
+    };
+
+    #[test]
+    fn test_compute_consensus() -> anyhow::Result<()> {
+        let tmp = test_temp_dir!();
+        tmp.used_by(|tmp| {
+            let tmp: String = tmp
+                .as_os_str()
+                .to_str()
+                .expect("tmp must be utf-8")
+                .to_owned();
+
+            // We do something terrible.  We edit the vote so it has our method as its
+            // (only) supported method!  This means we must re-sign it.
+
+            let authcert = parse_netdoc::<AuthCertUnverified>(&ParseInput::new(
+                testdata2::keys::AUTHORITY_CERTIFICATE,
+                "authcert",
+            ))?
+            .unwrap_unverified()
+            .0;
+
+            let k_sign = tor_llcrypto::pk::rsa::KeyPair::from_der(
+                pem::parse(testdata2::keys::AUTHORITY_SIGNING_KEY)?.contents(),
+            )
+            .unwrap();
+
+            let hk = authcert.key_ids();
+
+            let vote = find_vote_by_authority_id(
+                &ParseInput::new(testdata2::V3_STATUS_VOTES, "votes"),
+                hk.id_fingerprint,
+            )
+            .1;
+            let nominal_time = *raw_find_item_rhs(vote, "valid-after").parse::<Iso8601TimeSp>()?;
+
+            let mut vote = vote
+                .split_once("\ndirectory-signature ")
+                .unwrap()
+                .0
+                .to_owned();
+            vote += "\n";
+            regsub(
+                &mut vote,
+                "(?m)^consensus-methods [0-9 ]+",
+                format!("consensus-methods {}", SupportedConsensusMethod::MAX),
+            );
+
+            let directory_signature = netstatus::Signature::sign_text(
+                &k_sign,
+                &vote,
+                netstatus::DirectorySignatureHashAlgo::Sha256,
+                hk,
+            )?;
+            vote += &encode_netdoc_fields(
+                &netstatus::vote::NetworkStatusSignaturesConstructor {
+                    directory_signature,
+                }
+                .construct(),
+            )?;
+
+            // Now, having prepared our input vote, we can finally run the test:
+
+            let votes_f = format!("{tmp}/votes");
+            fs::write(&votes_f, vote).context("write vote file")?;
+
+            let ids_f = format!("{tmp}/ids");
+            (|| {
+                let mut ids = fs::File::create(&ids_f)?;
+                writeln!(
+                    ids,
+                    "auth thevoter {}",
+                    Fingerprint::from(hk.id_fingerprint)
+                )?;
+                writeln!(
+                    ids,
+                    "auth nonvoter {}",
+                    Fingerprint::from_str("1234123412341234123412341234123412341234")?
+                )?;
+                ids.flush()?;
+                Ok::<_, anyhow::Error>(())
+            })()
+            .context("write ids file")?;
+
+            let input_empty_f = format!("{tmp}/input-empty");
+            fs::write(&input_empty_f, "").context("write empty file")?;
+
+            let plain_f = format!("{tmp}/plain");
+            let md_f = format!("{tmp}/md");
+
+            let nominal_time_arg = Iso8601TimeNoSp(nominal_time).to_string();
+            test_invocation(chain!(
+                ["compute-consensus"],
+                ["--ids", &ids_f],
+                ["--votes", &input_empty_f],
+                ["--votes", &votes_f],
+                ["--votes", &input_empty_f],
+                ["--plain-out", &plain_f],
+                ["--md-out", &md_f],
+                ["-t", &nominal_time_arg],
+            ))?;
+
+            // Check that the output parses, at least
+
+            fn check_output_parses<D>(f: &str) -> Result<(), anyhow::Error>
+            where
+                D: HasUnverifiedParsedBody,
+            {
+                let text = fs::read_to_string(f).with_context(|| f.to_string())?;
+                parse_netdoc::<D::UnverifiedParsedBody>(&ParseInput::new(&text, f))
+                    .context("parse")?;
+                Ok(())
+            }
+
+            // The output isn't very complete.  It might not have any routers in it,
+            // for example.  But that's not what we're testing here.
+            check_output_parses::<netstatus::plain::NetworkStatus>(&plain_f)?;
+            check_output_parses::<netstatus::md::NetworkStatus>(&md_f)?;
+
+            Ok(())
+        })
+        .into_untracked()
+    }
+}

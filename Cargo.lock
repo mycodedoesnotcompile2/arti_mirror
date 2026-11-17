@@ -375,6 +375,7 @@ dependencies = [
  "educe",
  "itertools 0.15.0",
  "paste",
+ "pem",
  "test-temp-dir",
  "thiserror 2.0.21",
  "tor-checkable",
