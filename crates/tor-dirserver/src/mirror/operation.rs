@@ -23,7 +23,7 @@ use std::{
     marker::PhantomData,
     mem,
     net::SocketAddr,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use educe::Educe;
@@ -57,7 +57,7 @@ use tor_netdoc::{
     },
 };
 use tor_rtcompat::PreferredRuntime;
-use tracing::{debug, warn};
+use tracing::{Span, debug, error, error_span, instrument, warn};
 
 use crate::{
     database::{
@@ -1596,6 +1596,100 @@ impl<K: Eq + Hash, D: FlavoredDescriptor> DescriptorDownloads<K, D> {
                 .map(|digest| (digest, DescriptorDownloadResult::NotFound))
                 .collect(),
         )
+    }
+}
+
+/// Top-level entry point for the dirmirror FSM.
+///
+/// Intended to be run in an individual Tokio task forever; only returns in the
+/// case of a fatal error.
+///
+/// The idea is to run one instance of this per consensus flavor operating on
+/// the same database.
+#[instrument(name = "fsm", level = "error", skip_all, fields(flavor = T::flavor().name()))]
+pub(crate) async fn operate<T: FlavoredConsensusUnverified, R: Rng>(
+    pool: Pool<SqliteConnectionManager>,
+    tolerance: DirTolerance,
+    encodings: HashSet<ContentEncoding>,
+    authorities: AuthorityContacts,
+    now_fn: fn() -> SystemTime,
+    rng: &mut R,
+) -> OperationErrorKind {
+    let Ok(rt) = PreferredRuntime::current() else {
+        return OperationErrorKind::Bug(internal!("no runtime?"));
+    };
+
+    let engine = StaticEngine::<T> {
+        tolerance,
+        rt,
+        encodings,
+        authorities,
+        _phantom: Default::default(),
+    };
+
+    loop {
+        let mut data = engine.new_cbd(now_fn().into(), rng);
+        loop {
+            let res = engine.execute(&pool, data, now_fn().into(), rng).await;
+
+            // Evaluate the result in another tracing span that contains further
+            // information specific to that run.
+            let (cbd, timeout, fatal) = error_span!("fsm run").in_scope(|| {
+                let span = Span::current();
+                if let Some(state) = res.state {
+                    span.record("state", state.to_string());
+                }
+                if let Some(requ) = res.request {
+                    span.record("request", requ);
+                }
+                if !res.additional_errors.is_empty() {
+                    debug!("encountered additional errors:");
+                    for err in res.additional_errors.sources() {
+                        debug!("{err}");
+                    }
+                }
+
+                match res.res {
+                    Ok(OperationStatus { cbd, progress }) => {
+                        debug!("successful fsm run: {progress:?}");
+                        (Some(cbd), None, None)
+                    }
+
+                    Err(OperationError::Reset { timeout }) => {
+                        debug!("resetting fsm");
+                        (None, Some(timeout), None)
+                    }
+
+                    Err(OperationError::NonFatal { cbd, timeout, kind }) => {
+                        debug!("non-fatal error in fsm run: {kind}");
+                        (Some(cbd), Some(timeout), None)
+                    }
+
+                    Err(OperationError::Fatal { kind }) => {
+                        error!("fatal fsm error: {kind}");
+                        (None, None, Some(kind))
+                    }
+                }
+            });
+
+            // Check for a fatal error and return early.
+            if let Some(fatal) = fatal {
+                return fatal;
+            }
+
+            // If there is a timeout, wait for it now.
+            if let Some(timeout) = timeout {
+                debug!("next fsm run in {}s", timeout.as_secs());
+                tokio::time::sleep(timeout).await;
+            }
+
+            // Get ownership back or do the reset.
+            if let Some(cbd) = cbd {
+                data = cbd;
+            } else {
+                break;
+            }
+        }
     }
 }
 
