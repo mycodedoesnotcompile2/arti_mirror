@@ -4,6 +4,7 @@ BREAKING: `NetParams<T>` split up into `NetParams` and `ParamValues<T>`
 BREAKING: Rename `RelayFamilyId` to `HappyFamilyId`
 BREAKING: Rename `RelayFamilyIds` to `HappyFamilyIds`
 BREAKING: Rename `RelayFamily` to `LegacyFamily`
+ADDED: Support for ignoring malformatted family entries in parse2
 ADDED: `NetParamValues` type alias
 ADDED: `RouterStatusMdDigestsVoteConstructor`
 ADDED: `RouterStatusMdDigestsVote::iter_cross_product_digests`
