@@ -31,6 +31,8 @@ you might want to check out these links:
 
    * [Frequently Asked Questions](./doc/FAQ.md)
 
+   * [Showcase](./doc/SHOWCASE.md)
+
 ## Why rewrite Tor in Rust?
 
 Rust is *more secure than C*.  Despite our efforts, it's all too simple to
