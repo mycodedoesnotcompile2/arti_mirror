@@ -415,9 +415,7 @@ fn select_guard<'a, RT: Runtime>(
     if let Some(avoid_target) = compatible_with {
         let mut family = RelayIdSet::new();
         family.extend(avoid_target.identities().map(|id| id.to_owned()));
-        if let Some(avoid_relay) = netdir.by_ids(avoid_target) {
-            family.extend(netdir.known_family_members(&avoid_relay).map(|r| *r.id()));
-        }
+        // XXXX AvoidAllIds does not respect family!
         b.restrictions()
             .push(tor_guardmgr::GuardRestriction::AvoidAllIds(family));
     }

@@ -15,3 +15,5 @@ ADDED: `NetParams::clear`, `ParamValues::clear`
 ADDED: `RelayBandwidth::value`
 BREAKING: `parse2::ParseInput::retain_unknown_values` now returns a copy rather than mutating
 BREAKING: `vote::NetworkStatusUnverified` now takes an `&mut VoteVerifier`
+BREAKING: Removed legacy family support from microdescriptors.
+

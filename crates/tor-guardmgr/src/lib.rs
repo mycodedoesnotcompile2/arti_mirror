@@ -1880,6 +1880,7 @@ impl GuardUsageBuilder {
 pub enum GuardRestriction {
     /// Don't pick a guard with the provided identity.
     AvoidId(RelayId),
+
     /// Don't pick a guard with any of the provided Ed25519 identities.
     AvoidAllIds(RelayIdSet),
 }
