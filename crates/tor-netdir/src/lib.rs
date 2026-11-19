@@ -79,6 +79,7 @@ use tor_llcrypto as ll;
 use tor_llcrypto::pk::{ed25519::Ed25519Identity, rsa::RsaIdentity};
 use tor_netdoc::doc::microdesc::{MdDigest, MicrodescAndHash};
 use tor_netdoc::doc::netstatus::{self, MdConsensus, MdRouterStatus};
+use tor_netdoc::types::family::HappyFamilyId;
 #[cfg(feature = "hs-common")]
 use {hsdir_ring::HsDirRing, std::iter};
 
@@ -264,8 +265,6 @@ impl SubnetConfig {
 /// Derived from network parameters.
 #[derive(Clone, Copy, Debug)]
 pub struct FamilyRules {
-    /// If true, we use family information from lists of family members.
-    use_family_lists: bool,
     /// If true, we use family information from lists of family IDs and from family certs.
     use_family_ids: bool,
 }
@@ -273,7 +272,6 @@ pub struct FamilyRules {
 impl<'a> From<&'a NetParameters> for FamilyRules {
     fn from(params: &'a NetParameters) -> Self {
         FamilyRules {
-            use_family_lists: bool::from(params.use_family_lists),
             use_family_ids: bool::from(params.use_family_ids),
         }
     }
@@ -283,7 +281,6 @@ impl FamilyRules {
     /// Return a `FamilyRules` that will use all recognized kinds of family information.
     pub fn all_family_info() -> Self {
         Self {
-            use_family_lists: true,
             use_family_ids: true,
         }
     }
@@ -291,16 +288,8 @@ impl FamilyRules {
     /// Return a `FamilyRules` that will ignore all family information declared by relays.
     pub fn ignore_declared_families() -> Self {
         Self {
-            use_family_lists: false,
             use_family_ids: false,
         }
-    }
-
-    /// Configure this `FamilyRules` to use (or not use) family information from
-    /// lists of family members.
-    pub fn use_family_lists(&mut self, val: bool) -> &mut Self {
-        self.use_family_lists = val;
-        self
     }
 
     /// Configure this `FamilyRules` to use (or not use) family information from
@@ -314,7 +303,6 @@ impl FamilyRules {
     /// requested by `self` or by `other`.
     pub fn union(&self, other: &Self) -> Self {
         Self {
-            use_family_lists: self.use_family_lists || other.use_family_lists,
             use_family_ids: self.use_family_ids || other.use_family_ids,
         }
     }
@@ -442,6 +430,9 @@ pub struct NetDir {
     /// This is constructed at the same time as the NetDir object, so it
     /// can be immutable.
     rsidx_by_rsa: Arc<HashMap<RsaIdentity, RouterStatusIdx>>,
+
+    /// Map from family ID to an index for every member of that family.
+    family_members: HashMap<HappyFamilyId, Vec<RouterStatusIdx>>,
 
     /// Hash ring(s) describing the onion service directory.
     ///
@@ -972,6 +963,7 @@ impl PartialNetDir {
             weights,
             #[cfg(feature = "geoip")]
             country_codes,
+            family_members: HashMap::new(),
         };
 
         PartialNetDir {
@@ -1066,6 +1058,14 @@ impl NetDir {
             // consensus listing the same ID... but if there is,
             // we'll let the most recent one win.
             self.rsidx_by_ed.insert(*md.ed25519_id(), rsidx);
+
+            // List this md as member of all of its families.
+            for family_id in md.family_ids() {
+                self.family_members
+                    .entry(family_id.clone())
+                    .or_default()
+                    .push(rsidx);
+            }
 
             // Happy path: we did indeed want this one.
             self.mds[rsidx] = Some(md);
@@ -1432,8 +1432,10 @@ impl NetDir {
         assert_eq!(rs.rsa_identity(), rsa_id);
         Some(self.relay_from_rs_and_rsidx(rs, rsidx))
     }
+
     /// Return the relay with a given RSA identity, if we have one
     /// and it is [usable](NetDir#usable).
+    #[cfg(test)]
     fn by_rsa_id(&self, rsa_id: &RsaIdentity) -> Option<Relay<'_>> {
         self.by_rsa_id_unchecked(rsa_id)?.into_relay()
     }
@@ -1860,8 +1862,8 @@ impl NetDir {
     ///
     /// # Limitations
     ///
-    /// Two relays only belong to the same family if _each_ relay
-    /// claims to share a family with the other.  But if we are
+    /// Two relays only belong to the same family if they both list the same
+    /// family ID. But if we are
     /// missing a microdescriptor for one of the relays listed by this
     /// relay, we cannot know whether it acknowledges family
     /// membership with this relay or not.  Therefore, this function
@@ -1871,11 +1873,19 @@ impl NetDir {
         &'a self,
         relay: &'a Relay<'a>,
     ) -> impl Iterator<Item = Relay<'a>> {
-        let relay_rsa_id = relay.rsa_id();
-        relay.md.family().members().filter_map(move |other_rsa_id| {
-            self.by_rsa_id(other_rsa_id)
-                .filter(|other_relay| other_relay.md.family().contains(relay_rsa_id))
-        })
+        relay
+            .md
+            .family_ids()
+            .iter()
+            .flat_map(|fam_id| {
+                self.family_members
+                    .get(fam_id)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[])
+            })
+            .copied()
+            .unique()
+            .flat_map(|rs_idx| self.relay_by_rs_idx(rs_idx))
     }
 
     /// Return the current hidden service directory "time period".
@@ -2966,40 +2976,6 @@ mod test {
         );
     }
 
-    #[test]
-    fn family_list() {
-        let netdir = construct_custom_netdir(|pos, n, _| {
-            if pos == 0x0a {
-                n.md.family(
-                    "$0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B \
-                     $0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C \
-                     $0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D"
-                        .parse()
-                        .unwrap(),
-                );
-            } else if pos == 0x0c {
-                n.md.family("$0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A0A".parse().unwrap());
-            }
-        })
-        .unwrap()
-        .unwrap_if_sufficient()
-        .unwrap();
-
-        // In the testing netdir, adjacent members are in the same family by default...
-        let r0 = netdir.by_id(&Ed25519Identity::from([0; 32])).unwrap();
-        let family: Vec<_> = netdir.known_family_members(&r0).collect();
-        assert_eq!(family.len(), 1);
-        assert_eq!(family[0].id(), &Ed25519Identity::from([1; 32]));
-
-        // But we've made this relay claim membership with several others.
-        let r10 = netdir.by_id(&Ed25519Identity::from([10; 32])).unwrap();
-        let family: HashSet<_> = netdir.known_family_members(&r10).map(|r| *r.id()).collect();
-        assert_eq!(family.len(), 2);
-        assert!(family.contains(&Ed25519Identity::from([11; 32])));
-        assert!(family.contains(&Ed25519Identity::from([12; 32])));
-        // Note that 13 doesn't get put in, even though it's listed, since it doesn't claim
-        //  membership with 10.
-    }
     #[test]
     #[cfg(feature = "geoip")]
     fn relay_has_country_code() {

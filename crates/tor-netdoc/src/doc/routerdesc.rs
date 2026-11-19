@@ -217,9 +217,11 @@ pub struct RouterDesc {
 
     /// `family` --- Group relays for the purpose of path selection.
     ///
+    /// Legacy usage only; this is a ZST that contains no data.
+    ///
     /// <https://spec.torproject.org/dir-spec/server-descriptor-format.html#item:family>
     #[deftly(netdoc(default(skip)))]
-    pub family: Intern<LegacyFamily>,
+    pub family: LegacyFamily,
 
     /// `family-cert` --- Prove membership in a relay family.
     ///
@@ -856,11 +858,6 @@ impl RouterDesc {
         .chain(self.or_address.iter().copied())
     }
 
-    /// Return the declared family of this descriptor.
-    pub fn family(&self) -> Intern<LegacyFamily> {
-        Intern::clone(&self.family)
-    }
-
     /// Return the authenticated family IDs of this descriptor.
     pub fn family_ids(&self) -> HappyFamilyIds {
         HappyFamilyIds::from_iter(
@@ -1153,19 +1150,9 @@ impl RouterDesc {
 
         // Family
         let family = {
-            let mut family = body
-                .maybe(FAMILY)
+            body.maybe(FAMILY)
                 .parse_args_as_str::<LegacyFamily>()?
-                .unwrap_or_else(LegacyFamily::new);
-            if !family.is_empty() {
-                // If this family is nonempty, we add our own RSA id to it, on
-                // the theory that doing so will improve the odds of having a
-                // canonical family shared by all of the members of this family.
-                // If the family is empty, there's no point in adding our own ID
-                // to it, and doing so would only waste memory.
-                family.push(rsa_identity);
-            }
-            family.intern()
+                .unwrap_or_else(LegacyFamily::new)
         };
 
         // Family ids (for "happy families")
@@ -1495,7 +1482,7 @@ mod test {
         assert_eq!(rd.router.dirport, 0);
         assert_eq!(rd.uptime, Some(1036923));
         assert_eq!(
-            rd.family.as_ref(),
+            &rd.family,
             &LegacyFamily::from_str(
                 "$303509ab910ef207b7438c27435c4a2fd579f1b1 \
                  $56927e61b51e6f363fb55498150a6ddfcf7077f2"

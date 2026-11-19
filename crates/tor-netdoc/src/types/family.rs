@@ -7,18 +7,21 @@ use crate::types::misc::LongIdent;
 use crate::{NetdocErrorKind, NormalItemArgument, Pos};
 use base64ct::Encoding;
 use derive_deftly::Deftly;
-use tor_basic_utils::derive_deftly_template_GloballyInternable;
-use tor_basic_utils::intern::{GloballyInternable, Intern};
 use tor_llcrypto::pk::ed25519::{ED25519_ID_LEN, Ed25519Identity};
-use tor_llcrypto::pk::rsa::RsaIdentity;
 
-/// Information about a relay family.
+/// A ZST indicating that we have parsed a legacy relay family.
 ///
-/// Tor relays may declare that they belong to the same family, to
+/// Tor relays once used lists of Relay IDs to
+/// declare that they belong to the same family, to
 /// indicate that they are controlled by the same party or parties,
 /// and as such should not be used in the same circuit. Two relays
 /// belong to the same family if and only if each one lists the other
 /// as belonging to its family.
+///
+/// Now, HappyFamilyIds are used for this purpose.
+/// This type remains to indicate that a family list has been parsed.
+/// The actual members of the list are not retained, however, since they
+/// are no longer used for anything.
 ///
 /// NOTE: when parsing, this type always discards incorrectly-formatted
 /// entries, including entries that are only nicknames.
@@ -30,47 +33,14 @@ use tor_llcrypto::pk::rsa::RsaIdentity;
 //   - Where they do warrant newtype wrappers the API should be appropriate for that
 // See <https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4117#note_3428678>
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Ord, PartialOrd, Deftly)]
-#[derive_deftly(ItemValueEncodable, ItemValueParseable, GloballyInternable)]
-pub struct LegacyFamily(Vec<LongIdent>);
+#[derive_deftly(ItemValueEncodable, ItemValueParseable)]
+#[non_exhaustive]
+pub struct LegacyFamily;
 
 impl LegacyFamily {
     /// Return a new empty LegacyFamily.
     pub fn new() -> Self {
         LegacyFamily::default()
-    }
-
-    /// Add `rsa_id` to this family.
-    pub fn push(&mut self, rsa_id: RsaIdentity) {
-        self.0.push(rsa_id.into());
-    }
-
-    /// Convert this family to a standard format (with all IDs sorted and de-duplicated).
-    fn normalize(&mut self) {
-        self.0.sort_by_key(|v| v.0);
-        self.0.dedup();
-    }
-
-    /// Consume this family, and return a new canonical interned representation
-    /// of the family.
-    pub fn intern(mut self) -> Intern<Self> {
-        self.normalize();
-        Self::into_intern(self)
-    }
-
-    /// Does this family include the given relay?
-    pub fn contains(&self, rsa_id: &RsaIdentity) -> bool {
-        self.0.contains(&LongIdent(*rsa_id))
-    }
-
-    /// Return an iterator over the RSA identity keys listed in this
-    /// family.
-    pub fn members(&self) -> impl Iterator<Item = &RsaIdentity> {
-        self.0.iter().map(|id| &id.0)
-    }
-
-    /// Return true if this family has no members.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
     }
 }
 
@@ -82,7 +52,8 @@ impl std::str::FromStr for LegacyFamily {
             .map(|e| e.parse::<LongIdent>())
             .filter(Result::is_ok)
             .collect();
-        Ok(LegacyFamily(v?))
+        let _ignore = v?;
+        Ok(LegacyFamily)
     }
 }
 
@@ -224,55 +195,9 @@ mod test {
     use crate::Result;
     #[test]
     fn family() -> Result<()> {
-        let f = "nickname1 nickname2 $ffffffffffffffffffffffffffffffffffffffff=foo eeeeeeeeeeeeeeeeeeeEEEeeeeeeeeeeeeeeeeee ddddddddddddddddddddddddddddddddd  $cccccccccccccccccccccccccccccccccccccccc~blarg ".parse::<LegacyFamily>()?;
-        let v = vec![
-            RsaIdentity::from_bytes(
-                &hex::decode("ffffffffffffffffffffffffffffffffffffffff").unwrap()[..],
-            )
-            .unwrap(),
-            RsaIdentity::from_bytes(
-                &hex::decode("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee").unwrap()[..],
-            )
-            .unwrap(),
-            RsaIdentity::from_bytes(
-                &hex::decode("cccccccccccccccccccccccccccccccccccccccc").unwrap()[..],
-            )
-            .unwrap(),
-        ];
-        assert_eq!(f.members().cloned().collect::<Vec<_>>(), v);
+        let _f = "nickname1 nickname2 $ffffffffffffffffffffffffffffffffffffffff=foo eeeeeeeeeeeeeeeeeeeEEEeeeeeeeeeeeeeeeeee ddddddddddddddddddddddddddddddddd  $cccccccccccccccccccccccccccccccccccccccc~blarg ".parse::<LegacyFamily>()?;
         Ok(())
     }
-
-    #[test]
-    fn test_contains() -> Result<()> {
-        let family =
-            "ffffffffffffffffffffffffffffffffffffffff eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-                .parse::<LegacyFamily>()?;
-        let in_family = RsaIdentity::from_bytes(
-            &hex::decode("ffffffffffffffffffffffffffffffffffffffff").unwrap()[..],
-        )
-        .unwrap();
-        let not_in_family = RsaIdentity::from_bytes(
-            &hex::decode("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").unwrap()[..],
-        )
-        .unwrap();
-        assert!(family.contains(&in_family), "Relay not found in family");
-        assert!(
-            !family.contains(&not_in_family),
-            "Extra relay found in family"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn mutable() {
-        let mut family = LegacyFamily::default();
-        let key = RsaIdentity::from_hex("ffffffffffffffffffffffffffffffffffffffff").unwrap();
-        assert!(!family.contains(&key));
-        family.push(key);
-        assert!(family.contains(&key));
-    }
-
     #[test]
     fn family_ids() {
         let ed_str_rep = "ed25519:7sToQRuge1bU2hS0CG0ViMndc4m82JhO4B4kdrQey80";
@@ -304,14 +229,7 @@ mod test {
         assert_eq!(
             parsed,
             Wrapper {
-                family: LegacyFamily(vec![
-                    RsaIdentity::from_hex("0000000000000000000000000000000000000000")
-                        .unwrap()
-                        .into(),
-                    RsaIdentity::from_hex("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")
-                        .unwrap()
-                        .into()
-                ])
+                family: LegacyFamily
             }
         );
     }
