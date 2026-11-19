@@ -5,6 +5,23 @@ use extend::ext;
 /// Iterator extension trait to implement a counting filter.
 #[ext(name = IteratorExt)]
 pub impl<I: Iterator> I {
+    /// Filter items using a fallible predicate
+    ///
+    /// Returns an iterator of `Result`.
+    //
+    // TODO promote this to itertools or std?  It would want a concrete iterator type.
+    fn try_filter<'r, F, E>(self, mut f: F) -> impl Iterator<Item = Result<I::Item, E>> + 'r
+    where
+        I: 'r,
+        F: FnMut(&I::Item) -> Result<bool, E> + 'r,
+    {
+        self.filter_map(move |item| match f(&item) {
+            Ok(false) => None,
+            Ok(true) => Some(Ok(item)),
+            Err(e) => Some(Err(e)),
+        })
+    }
+
     /// Return an iterator that contains every member of this iterator, and
     /// which records its progress in `count`.
     ///
