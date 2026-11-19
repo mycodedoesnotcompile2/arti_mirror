@@ -99,8 +99,10 @@ pub struct RequestHandle {
 pub struct SuccessResponse(Utf8CString);
 
 impl SuccessResponse {
-    /// Helper: Decode the `result` field of this response as an instance of D.
-    fn decode<D: DeserializeOwned>(&self) -> Result<D, serde_json::Error> {
+    /// Decode the `result` field of this response as an instance of D.
+    ///
+    /// The parameter `D` should be deserializable from a json Object (a.k.a, a map).
+    pub fn decode<D: DeserializeOwned>(&self) -> Result<D, serde_json::Error> {
         /// Helper object for decoding the "result" field.
         #[derive(Deserialize)]
         struct Response<R> {
@@ -122,6 +124,22 @@ impl SuccessResponse {
 #[derive(Clone, Debug, derive_more::AsRef, derive_more::Into)]
 #[as_ref(forward)]
 pub struct UpdateResponse(Utf8CString);
+
+impl UpdateResponse {
+    /// Decode the `result` field of this response as an instance of D.
+    ///
+    /// The parameter `D` should be deserializable from a json Object (a.k.a, a map).
+    pub fn decode<D: DeserializeOwned>(&self) -> Result<D, serde_json::Error> {
+        /// Helper object for decoding the "update" field.
+        #[derive(Deserialize)]
+        struct Update<R> {
+            /// The decoded value.
+            update: R,
+        }
+        let response: Update<D> = serde_json::from_str(self.as_ref())?;
+        Ok(response.update)
+    }
+}
 
 /// A Error Response from Arti, indicating that an error occurred.
 ///
@@ -180,7 +198,7 @@ type FinalResponse = Result<SuccessResponse, ErrorResponse>;
 
 /// Any of the three types of Arti responses.
 #[derive(Clone, Debug)]
-#[allow(clippy::exhaustive_structs)]
+#[allow(clippy::exhaustive_enums)]
 pub enum AnyResponse {
     /// The request has succeeded; no more response will be given.
     Success(SuccessResponse),
@@ -212,6 +230,28 @@ impl AnyResponse {
             AnyResponse::Update(m) => m.into(),
         }
     }
+
+    /// Try to deserialize this response into either a known success type,
+    /// or a known update type.
+    ///
+    /// If the response does not actually conform to those types,
+    /// return a [serde_json::Error].
+    ///
+    /// If no updates are allowable, set the parameter U to NoneExpected.
+    /// If no (final) successes are allowable, set the parameter S to NoneExpected.
+    ///
+    /// This will cause disallowed updates/successes to cause an error.
+    pub fn decode<S, U>(&self) -> Result<Result<DecodedResponse<S, U>, RpcError>, serde_json::Error>
+    where
+        S: serde::de::DeserializeOwned,
+        U: serde::de::DeserializeOwned,
+    {
+        Ok(match self {
+            AnyResponse::Success(r) => Ok(DecodedResponse::Success(r.decode()?)),
+            AnyResponse::Update(r) => Ok(DecodedResponse::Update(r.decode()?)),
+            AnyResponse::Error(r) => Err(r.decode()),
+        })
+    }
 }
 
 impl AsRef<str> for AnyResponse {
@@ -220,6 +260,69 @@ impl AsRef<str> for AnyResponse {
             AnyResponse::Success(r) => r.as_ref(),
             AnyResponse::Error(r) => r.as_ref(),
             AnyResponse::Update(r) => r.as_ref(),
+        }
+    }
+}
+
+/// A decoded, non-error response to an RPC command.
+///
+/// The parameter S represents the success type;
+/// the parameter U represents the update type.
+/// Both should be decodable from json Objects (a.k.a maps).
+#[derive(Clone, Debug)]
+#[allow(clippy::exhaustive_enums)]
+pub enum DecodedResponse<S, U = NoneExpected> {
+    /// A decoded successful response from Arti
+    Success(S),
+
+    /// A decoded non-final response from Arti.
+    Update(U),
+}
+
+/// An uninhabited structure representing a situation where the success or update case
+/// of a [`DecodedResponse`] is not expected to be present.
+///
+/// Attempting to deserialize one of these will produce an error.
+//
+// We can't use !, because it isn't available at our MSRV.
+// We can't use void::Void directly, because it doesn't implement Deserialize.
+#[derive(Clone, Debug)]
+pub struct NoneExpected(void::Void);
+
+impl<'de> serde::Deserialize<'de> for NoneExpected {
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error as _;
+        Err(D::Error::custom(
+            "Encountered an update (or reply) where none was expected",
+        ))
+    }
+}
+
+impl<S> DecodedResponse<S, NoneExpected> {
+    /// Consume this [`DecodedResponse`], and return its successful response.
+    ///
+    /// (Note the type requirement on `Self`: this method requires
+    /// that the update parameter `U` is [`NoneExpected`])
+    pub fn unwrap(self) -> S {
+        match self {
+            DecodedResponse::Success(s) => s,
+            DecodedResponse::Update(NoneExpected(void)) => void::unreachable(void),
+        }
+    }
+}
+
+impl<U> DecodedResponse<NoneExpected, U> {
+    /// Consume this [`DecodedResponse`], and return its update response.
+    ///
+    /// (Note the type requirement on `Self`: this method requires
+    /// that the successful-response parameter `S` is [`NoneExpected`])
+    pub fn unwrap_update(self) -> U {
+        match self {
+            DecodedResponse::Success(NoneExpected(void)) => void::unreachable(void),
+            DecodedResponse::Update(u) => u,
         }
     }
 }

@@ -62,8 +62,9 @@ mod util;
 mod testing;
 
 pub use conn::{
-    BuilderError, ConnPtDescription, ConnectError, ConnectFailure, ProtoError, RpcConn,
-    RpcConnBuilder, RpcPoll, StreamError, UserTag, WouldBlock,
+    AnyResponse, BuilderError, ConnPtDescription, ConnectError, ConnectFailure, NoneExpected,
+    ProtoError, RpcConn, RpcConnBuilder, RpcPoll, StreamError, SuccessResponse, UpdateResponse,
+    UserTag, WouldBlock,
 };
 pub use ll_conn::{EventLoop, SendRequestError};
 pub use msgs::{AnyRequestId, ObjectId, request::InvalidRequestError, response::RpcError};
