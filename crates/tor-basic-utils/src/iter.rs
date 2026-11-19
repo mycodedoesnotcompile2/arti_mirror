@@ -64,6 +64,33 @@ pub impl<I: Iterator> I {
     }
 }
 
+/// Extension trait on iterators of `(Option<_>, Option<_>)`
+#[ext(name = IteratorExtUnzip)]
+pub impl<AI, BI, I> I
+where
+    I: Iterator<Item = (Option<AI>, Option<BI>)>,
+{
+    /// Collect and filter an iterator yielding tuples of options into two collections.
+    ///
+    /// Takes an iterator yielding `(Option<AI>, Option<AB>)` and collects the
+    /// `Some`s into a tuple of the two collections, of `AI` and `BI` respectively.
+    //
+    // TODO promote this to itertools or std?  It would want generalisation over tuple sizes.
+    fn filter_collect_unzip<AC, BC>(self) -> (AC, BC)
+    where
+        AC: Default + Extend<AI>,
+        BC: Default + Extend<BI>,
+    {
+        let mut ac = AC::default();
+        let mut bc = BC::default();
+        for (ao, bo) in self {
+            ac.extend(ao);
+            bc.extend(bo);
+        }
+        (ac, bc)
+    }
+}
+
 /// A record of how many items a [`CountingFilter`] returned by
 /// [`IteratorExt::filter_cnt`] accepted and rejected.
 ///
