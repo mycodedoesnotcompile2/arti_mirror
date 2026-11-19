@@ -214,6 +214,16 @@ impl AnyResponse {
     }
 }
 
+impl AsRef<str> for AnyResponse {
+    fn as_ref(&self) -> &str {
+        match self {
+            AnyResponse::Success(r) => r.as_ref(),
+            AnyResponse::Error(r) => r.as_ref(),
+            AnyResponse::Update(r) => r.as_ref(),
+        }
+    }
+}
+
 impl RpcConn {
     /// Return the ObjectId for the negotiated Session.
     ///
