@@ -235,6 +235,22 @@ mod test {
     }
 
     #[test]
+    fn filter_collect_unzip() {
+        let (evens, fives): (String, Vec<_>) = (0..10)
+            .into_iter()
+            .map(|n| {
+                (
+                    (n % 2 == 0).then_some(('a' as u32 + n) as u8 as char),
+                    (n % 5 == 0).then_some(n),
+                )
+            })
+            .filter_collect_unzip();
+
+        assert_eq!(evens, "acegi");
+        assert_eq!(fives, [0, 5]);
+    }
+
+    #[test]
     fn counting_filter() {
         let mut count = FilterCount::default();
         let v = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
