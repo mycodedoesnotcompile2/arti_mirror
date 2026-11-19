@@ -188,6 +188,24 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
+    use itertools::Itertools;
+
+    #[test]
+    fn try_filter() {
+        #[derive(Debug, PartialEq)]
+        struct DivByZero;
+
+        fn divides_ten(n: i32) -> Result<bool, DivByZero> {
+            let rem = 10_i32.checked_rem(n).ok_or(DivByZero)?;
+            Ok(rem == 0)
+        }
+
+        let outputs = (0..10)
+            .into_iter()
+            .try_filter(|n| divides_ten(*n))
+            .collect_vec();
+        assert_eq!(outputs, [Err(DivByZero), Ok(1), Ok(2), Ok(5),]);
+    }
 
     #[test]
     fn counting_filter() {
