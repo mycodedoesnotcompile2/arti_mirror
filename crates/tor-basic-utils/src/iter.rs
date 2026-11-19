@@ -1,7 +1,10 @@
 //! Iterator helpers for Arti.
 
+use extend::ext;
+
 /// Iterator extension trait to implement a counting filter.
-pub trait IteratorExt: Iterator {
+#[ext(name = IteratorExt)]
+pub impl<I: Iterator> I {
     /// Return an iterator that contains every member of this iterator, and
     /// which records its progress in `count`.
     ///
@@ -33,7 +36,7 @@ pub trait IteratorExt: Iterator {
     fn filter_cnt<P>(self, count: &mut FilterCount, pred: P) -> CountingFilter<'_, P, Self>
     where
         Self: Sized,
-        P: FnMut(&Self::Item) -> bool,
+        P: FnMut(&I::Item) -> bool,
     {
         *count = FilterCount::default();
         CountingFilter {
@@ -43,8 +46,6 @@ pub trait IteratorExt: Iterator {
         }
     }
 }
-
-impl<I> IteratorExt for I where I: Iterator {}
 
 /// A record of how many items a [`CountingFilter`] returned by
 /// [`IteratorExt::filter_cnt`] accepted and rejected.
