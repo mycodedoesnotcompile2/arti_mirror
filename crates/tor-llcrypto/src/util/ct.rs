@@ -153,6 +153,15 @@ pub fn ct_lookup<T, F>(array: &[T], matches: F) -> Option<&T>
 where
     F: Fn(&T) -> Choice,
 {
+    ct_lookup_idx(array, matches).map(|idx| &array[idx])
+}
+
+/// As ct_lookup, but return the idx within `array` for which `matches` returned true,
+/// rather than the object.
+pub fn ct_lookup_idx<T, F>(array: &[T], matches: F) -> Option<usize>
+where
+    F: Fn(&T) -> Choice,
+{
     // ConditionallySelectable isn't implemented for usize, so we need
     // to use u64.
     let mut idx: u64 = 0;
@@ -165,7 +174,8 @@ where
     }
 
     if found.into() {
-        Some(&array[idx as usize])
+        let idx = idx as usize;
+        Some(idx)
     } else {
         None
     }
