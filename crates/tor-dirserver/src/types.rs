@@ -15,7 +15,7 @@ use tor_netdoc::{
             ConsensusFlavor, ConsensusVerifiabilityError, ConsensusVerifyFailed, Lifetime, md,
             plain,
         },
-        routerdesc::{ExtraInfoDigests, RouterDesc, RouterDescUnverified},
+        routerdesc::{RouterDesc, RouterDescUnverified},
     },
     parse2::{NetdocParseable, NetdocParseableUnverified, SignaturesData},
 };
@@ -194,9 +194,6 @@ pub(crate) trait FlavoredDescriptor: Clone {
     /// Returns the [`RsaIdentity`] of this descriptor, if present.
     fn id_rsa(&self) -> Option<RsaIdentity>;
 
-    /// Returns the [`ExtraInfoDigests`] of this descriptor, if present.
-    fn extra_info_sha1(&self) -> Option<ExtraInfoDigests>;
-
     /// Returns the SHA-1 of the signed part of the consensus.
     ///
     /// Failures are considered a bug and should never happen.
@@ -218,10 +215,6 @@ impl FlavoredDescriptor for FlavoredDescriptorPlain {
 
     fn id_rsa(&self) -> Option<RsaIdentity> {
         Some(self.0.signing_key.to_rsa_identity())
-    }
-
-    fn extra_info_sha1(&self) -> Option<ExtraInfoDigests> {
-        self.0.extra_info_digest.clone()
     }
 
     fn sha1(&self) -> Result<Sha1, tor_error::Bug> {
@@ -249,10 +242,6 @@ impl FlavoredDescriptor for FlavoredDescriptorMd {
     }
 
     fn id_rsa(&self) -> Option<RsaIdentity> {
-        None
-    }
-
-    fn extra_info_sha1(&self) -> Option<ExtraInfoDigests> {
         None
     }
 
