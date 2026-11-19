@@ -79,6 +79,7 @@ use tor_llcrypto as ll;
 use tor_llcrypto::pk::{ed25519::Ed25519Identity, rsa::RsaIdentity};
 use tor_netdoc::doc::microdesc::{MdDigest, MicrodescAndHash};
 use tor_netdoc::doc::netstatus::{self, MdConsensus, MdRouterStatus};
+use tor_netdoc::types::family::HappyFamilyId;
 #[cfg(feature = "hs-common")]
 use {hsdir_ring::HsDirRing, std::iter};
 
@@ -429,6 +430,9 @@ pub struct NetDir {
     /// This is constructed at the same time as the NetDir object, so it
     /// can be immutable.
     rsidx_by_rsa: Arc<HashMap<RsaIdentity, RouterStatusIdx>>,
+
+    /// Map from family ID to an index for every member of that family.
+    family_members: HashMap<HappyFamilyId, Vec<RouterStatusIdx>>,
 
     /// Hash ring(s) describing the onion service directory.
     ///
@@ -959,6 +963,7 @@ impl PartialNetDir {
             weights,
             #[cfg(feature = "geoip")]
             country_codes,
+            family_members: HashMap::new(),
         };
 
         PartialNetDir {
@@ -1053,6 +1058,14 @@ impl NetDir {
             // consensus listing the same ID... but if there is,
             // we'll let the most recent one win.
             self.rsidx_by_ed.insert(*md.ed25519_id(), rsidx);
+
+            // List this md as member of all of its families.
+            for family_id in md.family_ids() {
+                self.family_members
+                    .entry(family_id.clone())
+                    .or_default()
+                    .push(rsidx);
+            }
 
             // Happy path: we did indeed want this one.
             self.mds[rsidx] = Some(md);
@@ -1860,10 +1873,19 @@ impl NetDir {
         &'a self,
         relay: &'a Relay<'a>,
     ) -> impl Iterator<Item = Relay<'a>> {
-        // XXXX: This is not an efficient implementation.
-        let family_ids = relay.md.family_ids();
-        self.relays()
-            .filter(|r| r.md.family_ids().iter().any(|id| family_ids.contains(id)))
+        relay
+            .md
+            .family_ids()
+            .iter()
+            .flat_map(|fam_id| {
+                self.family_members
+                    .get(fam_id)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[])
+            })
+            .copied()
+            .unique()
+            .flat_map(|rs_idx| self.relay_by_rs_idx(rs_idx))
     }
 
     /// Return the current hidden service directory "time period".
