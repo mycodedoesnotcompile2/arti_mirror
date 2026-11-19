@@ -23,6 +23,7 @@ pub(crate) use tracing::{debug, info};
 pub(crate) use typed_index_collections::{TiSlice, TiVec, ti_vec};
 
 pub(crate) use tor_basic_utils::intern::{GloballyInternable as _, Intern};
+pub(crate) use tor_basic_utils::iter::{IteratorExt as _, IteratorExtUnzip as _};
 pub(crate) use tor_error::{Bug, internal, into_internal};
 pub(crate) use tor_netdoc::{
     doc::microdesc::{Microdesc, MicrodescConstructor},

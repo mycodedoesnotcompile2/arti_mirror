@@ -1,7 +1,27 @@
 //! Iterator helpers for Arti.
 
+use extend::ext;
+
 /// Iterator extension trait to implement a counting filter.
-pub trait IteratorExt: Iterator {
+#[ext(name = IteratorExt)]
+pub impl<I: Iterator> I {
+    /// Filter items using a fallible predicate
+    ///
+    /// Returns an iterator of `Result`.
+    //
+    // TODO promote this to itertools or std?  It would want a concrete iterator type.
+    fn try_filter<'r, F, E>(self, mut f: F) -> impl Iterator<Item = Result<I::Item, E>> + 'r
+    where
+        I: 'r,
+        F: FnMut(&I::Item) -> Result<bool, E> + 'r,
+    {
+        self.filter_map(move |item| match f(&item) {
+            Ok(false) => None,
+            Ok(true) => Some(Ok(item)),
+            Err(e) => Some(Err(e)),
+        })
+    }
+
     /// Return an iterator that contains every member of this iterator, and
     /// which records its progress in `count`.
     ///
@@ -33,7 +53,7 @@ pub trait IteratorExt: Iterator {
     fn filter_cnt<P>(self, count: &mut FilterCount, pred: P) -> CountingFilter<'_, P, Self>
     where
         Self: Sized,
-        P: FnMut(&Self::Item) -> bool,
+        P: FnMut(&I::Item) -> bool,
     {
         *count = FilterCount::default();
         CountingFilter {
@@ -44,7 +64,32 @@ pub trait IteratorExt: Iterator {
     }
 }
 
-impl<I> IteratorExt for I where I: Iterator {}
+/// Extension trait on iterators of `(Option<_>, Option<_>)`
+#[ext(name = IteratorExtUnzip)]
+pub impl<AI, BI, I> I
+where
+    I: Iterator<Item = (Option<AI>, Option<BI>)>,
+{
+    /// Collect and filter an iterator yielding tuples of options into two collections.
+    ///
+    /// Takes an iterator yielding `(Option<AI>, Option<AB>)` and collects the
+    /// `Some`s into a tuple of the two collections, of `AI` and `BI` respectively.
+    //
+    // TODO promote this to itertools or std?  It would want generalisation over tuple sizes.
+    fn filter_collect_unzip<AC, BC>(self) -> (AC, BC)
+    where
+        AC: Default + Extend<AI>,
+        BC: Default + Extend<BI>,
+    {
+        let mut ac = AC::default();
+        let mut bc = BC::default();
+        for (ao, bo) in self {
+            ac.extend(ao);
+            bc.extend(bo);
+        }
+        (ac, bc)
+    }
+}
 
 /// A record of how many items a [`CountingFilter`] returned by
 /// [`IteratorExt::filter_cnt`] accepted and rejected.
@@ -170,6 +215,40 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use super::*;
+    use itertools::Itertools;
+
+    #[test]
+    fn try_filter() {
+        #[derive(Debug, PartialEq)]
+        struct DivByZero;
+
+        fn divides_ten(n: i32) -> Result<bool, DivByZero> {
+            let rem = 10_i32.checked_rem(n).ok_or(DivByZero)?;
+            Ok(rem == 0)
+        }
+
+        let outputs = (0..10)
+            .into_iter()
+            .try_filter(|n| divides_ten(*n))
+            .collect_vec();
+        assert_eq!(outputs, [Err(DivByZero), Ok(1), Ok(2), Ok(5),]);
+    }
+
+    #[test]
+    fn filter_collect_unzip() {
+        let (evens, fives): (String, Vec<_>) = (0..10)
+            .into_iter()
+            .map(|n| {
+                (
+                    (n % 2 == 0).then_some(('a' as u32 + n) as u8 as char),
+                    (n % 5 == 0).then_some(n),
+                )
+            })
+            .filter_collect_unzip();
+
+        assert_eq!(evens, "acegi");
+        assert_eq!(fives, [0, 5]);
+    }
 
     #[test]
     fn counting_filter() {
