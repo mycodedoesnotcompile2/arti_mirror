@@ -82,6 +82,7 @@ mod config;
 mod keys;
 mod relay;
 mod stream;
+mod subcommands;
 mod tasks;
 mod util;
 
@@ -169,17 +170,14 @@ fn main_main(cli: cli::Cli) -> anyhow::Result<()> {
             println!("Host triple: {}", env!("BUILD_HOST"));
         }
         cli::Commands::Run(args) => start_relay(args, cli.global)?,
+        cli::Commands::Identity(args) => subcommands::identity::run(&args, &cli.global)?,
     }
 
     Ok(())
 }
 
-/// Initialize and start the relay.
-// Pass by value so that we don't need to clone fields, which keeps the code simpler.
-#[allow(clippy::needless_pass_by_value)]
-fn start_relay(_args: cli::RunArgs, global_args: cli::GlobalArgs) -> anyhow::Result<()> {
-    // TODO: Warn (or exit?) if running as root; see 'arti::process::running_as_root()'.
-
+/// Load the relay configuration from the sources given on the command line.
+pub(crate) fn load_config(global_args: &cli::GlobalArgs) -> anyhow::Result<TorRelayConfig> {
     let mut cfg_sources = global_args
         .config()
         .context("Failed to get configuration sources")?;
@@ -208,8 +206,16 @@ fn start_relay(_args: cli::RunArgs, global_args: cli::GlobalArgs) -> anyhow::Res
     let cfg = cfg_sources
         .load()
         .context("Failed to load configuration sources")?;
-    let config =
-        tor_config::resolve::<TorRelayConfig>(&cfg).context("Failed to resolve configuration")?;
+    tor_config::resolve::<TorRelayConfig>(&cfg).context("Failed to resolve configuration")
+}
+
+/// Initialize and start the relay.
+// Pass by value so that we don't need to clone fields, which keeps the code simpler.
+#[allow(clippy::needless_pass_by_value)]
+fn start_relay(_args: cli::RunArgs, global_args: cli::GlobalArgs) -> anyhow::Result<()> {
+    // TODO: Warn (or exit?) if running as root; see 'arti::process::running_as_root()'.
+
+    let config = load_config(&global_args)?;
 
     // TODO: Configure a proper logger, not just a simple stderr logger.
     // TODO: We may want this to be the global logger, but if we use arti's `setup_logging` in the
