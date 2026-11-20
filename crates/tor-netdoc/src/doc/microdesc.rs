@@ -152,6 +152,11 @@ impl Microdesc {
 }
 
 impl MicrodescAndHash {
+    /// Construct a new MicrodescAndHash from its parts.
+    pub fn new(md: Microdesc, sha256: MdDigest) -> Self {
+        Self { md, sha256 }
+    }
+
     /// Create a new MicrodescBuilder that can be used to construct
     /// microdescriptors.
     ///
