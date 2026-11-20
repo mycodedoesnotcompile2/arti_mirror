@@ -33,7 +33,11 @@ fn construct_socketpair_inner() -> io::Result<(SocketpairStream, SocketpairStrea
         let addr = listener.local_addr()?;
         let s1 = std::net::TcpStream::connect(addr)?;
         let (s2, s2_addr) = listener.accept()?;
-        assert_eq!(s1.local_addr().unwrap(), s2_addr);
+        #[allow(clippy::unwrap_used)]
+        // This cannot fail because we are connecting to the same address.
+        {
+            assert_eq!(s1.local_addr().unwrap(), s2_addr);
+        }
         Ok((s1, s2))
     }
 }
