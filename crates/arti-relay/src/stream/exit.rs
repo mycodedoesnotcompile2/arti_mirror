@@ -1,9 +1,294 @@
 //! Exit streams
 
-use tor_proto::stream::IncomingStream;
+use std::io::ErrorKind;
+use std::net::{IpAddr, SocketAddr};
+use std::str::FromStr as _;
+use std::time::Duration;
 
-/// Handle an incoming exit stream
-#[allow(clippy::unused_async)] // TODO(relay)
-pub(super) async fn handle_begin(_incoming: IncomingStream) -> anyhow::Result<()> {
-    todo!()
+use either::Either;
+use futures::io::BufReader;
+use tor_cell::relaycell::msg::{BeginFlags, Connected, End, EndReason};
+use tor_error::{internal, trace_report, warn_report};
+use tor_proto::stream::{IncomingStream, IncomingStreamRequest};
+use tor_rtcompat::SleepProviderExt as _;
+use tor_rtcompat::{NetStreamProvider, Runtime, TimeoutError};
+use tracing::{debug, info, trace};
+
+use crate::stream::dns::resolver::{DnsResolver, LookupAnswers, LookupError, RecordData};
+
+/// Handle an incoming exit stream.
+///
+/// This is expected to be called from a task dedicated to this stream,
+/// so it may async-block (for example to establish the exit connection and proxy traffic).
+/// It should not be used with a timeout.
+pub(super) async fn handle_begin<R: Runtime>(
+    runtime: R,
+    incoming: IncomingStream,
+    resolver: DnsResolver,
+) -> anyhow::Result<()> {
+    let connect_options = Default::default();
+
+    // It would be nice to have a better API on `IncomingStream`
+    // so that we don't need this extra match.
+    let msg = match incoming.request() {
+        IncomingStreamRequest::Begin(msg) => msg,
+        s => {
+            return Err(anyhow::anyhow!(
+                "unexpected stream request type {s:?}; should be unreachable"
+            ));
+        }
+    };
+
+    // TODO(relay): This is temporary. Remove this once we have exit policy support.
+    // This is to help prevent us from accidentally running a public exit while we're testing.
+    match std::env::var("ARTI_EXIT") {
+        Ok(val) if val.trim() == "1" => {}
+        _ => {
+            info!("Rejecting incoming stream since `ARTI_EXIT` env variable is not set to '1'");
+            return Ok(());
+        }
+    }
+
+    // Assign these to local variables to ensure we use all of them.
+    let (addr, port, flags) = (msg.addr(), msg.port(), msg.flags());
+
+    if port == 0 {
+        incoming
+            .reject(End::new_with_reason(EndReason::EXITPOLICY))
+            .await?;
+        debug!("Rejecting incoming stream with 0 port");
+        return Ok(());
+    }
+
+    // TODO(relay): It would be good to parse this in a more principled way.
+    // More specifically, the parsing/decoding should probably be handled by `Begin` in tor-cell
+    // that ensures that it's parsed according to the spec.
+    // See https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4421.
+    let Ok(addr) = std::str::from_utf8(addr) else {
+        incoming
+            .reject(End::new_with_reason(EndReason::TORPROTOCOL))
+            .await?;
+        debug!("Rejecting incoming stream with non-utf8 address");
+        return Ok(());
+    };
+
+    // A future for everything we want to include within the timeout.
+    // Returns the TCP stream, and on error returns the END reason.
+    let exit_stream_fut = match IpAddr::from_str(addr) {
+        Ok(addr) => {
+            let addr = SocketAddr::new(addr, port);
+            let fut = connect_ip(&runtime, addr, flags, &connect_options);
+            Either::Left(fut)
+        }
+        Err(_) => {
+            let fut = connect_hostname(
+                &runtime,
+                addr.as_bytes(),
+                port,
+                flags,
+                resolver,
+                &connect_options,
+            );
+            Either::Right(fut)
+        }
+    };
+
+    // TODO(relay-tuning): timeout chosen arbitrarily
+    let timeout = Duration::from_secs(30);
+    let exit_stream = match runtime.timeout(timeout, exit_stream_fut).await {
+        Ok(Ok(stream)) => stream,
+        Ok(Err(end_reason)) => {
+            incoming.reject(End::new_with_reason(end_reason)).await?;
+            return Ok(());
+        }
+        Err(TimeoutError) => {
+            incoming
+                .reject(End::new_with_reason(EndReason::TIMEOUT))
+                .await?;
+            return Ok(());
+        }
+    };
+
+    let tor_stream = incoming.accept_data(Connected::new_empty()).await?;
+
+    // TODO(relay-tuning): copied from arti
+    const STREAM_BUF_LEN: usize = 4096;
+    let exit_stream = BufReader::with_capacity(STREAM_BUF_LEN, exit_stream);
+    let tor_stream = BufReader::with_capacity(STREAM_BUF_LEN, tor_stream);
+
+    let res = futures_copy::copy_buf_bidirectional(
+        tor_stream,
+        exit_stream,
+        futures_copy::eof::Close,
+        futures_copy::eof::Close,
+    )
+    .await;
+
+    match res {
+        Ok((tor_to_exit, exit_to_tor)) => {
+            trace!(
+                count_fwd = tor_to_exit,
+                count_bwd = exit_to_tor,
+                "Stream bidirectional copy finished",
+            );
+        }
+        // TODO(relay): arti does something complicated here; see `report_proxy_error()`
+        Err(e) => {
+            warn_report!(e, "Error while proxying data on exit stream");
+        }
+    }
+
+    Ok(())
+}
+
+/// For a BEGIN message containing the socket address and flags,
+/// attempt to connect to the address.
+async fn connect_ip<R: Runtime>(
+    runtime: &R,
+    addr: SocketAddr,
+    _flags: BeginFlags,
+    connect_options: &<R as NetStreamProvider<SocketAddr>>::ConnectOptions,
+) -> Result<<R as NetStreamProvider<SocketAddr>>::Stream, EndReason> {
+    // We ignore the `IPV4_NOT_OKAY`, `IPV6_OKAY`, and `IPV6_PREFERRED` flags.
+    //
+    // torspec:
+    // > Flags 1 through 3 are ignored if ADDRESS is an IP address.
+
+    // Apply the exit policy filter.
+    if !exit_policy_allows(addr) {
+        trace!("Rejecting incoming stream due to the exit policy");
+        return Err(EndReason::EXITPOLICY);
+    }
+
+    match runtime.connect(&addr, connect_options).await {
+        Ok(x) => Ok(x),
+        Err(e) => Err(io_error_kind_to_end_reason(e.kind())),
+    }
+}
+
+/// For a BEGIN message containing a hostname and flags,
+/// attempt to connect to the hostname.
+async fn connect_hostname<R: Runtime>(
+    runtime: &R,
+    hostname: &[u8],
+    port: u16,
+    flags: BeginFlags,
+    mut resolver: DnsResolver,
+    connect_options: &<R as NetStreamProvider<SocketAddr>>::ConnectOptions,
+) -> Result<<R as NetStreamProvider<SocketAddr>>::Stream, EndReason> {
+    let answers = match resolver.resolve(hostname).await {
+        Ok(x) => x,
+        Err(LookupError::NonAsciiHostname) => {
+            // `Begin::decode_from_reader()` does not allow non-ascii addresses,
+            // so if we get here something has gone wrong and we should probably investigate.
+            let bug = internal!("the `Begin` type should have prevented this");
+            trace_report!(bug, "Hostname for BEGIN message had non-ascii hostname");
+            return Err(EndReason::TORPROTOCOL);
+        }
+        Err(LookupError::Hickory(e)) => {
+            trace!("Name resolution for exit stream failed due to hickory error: {e}");
+            return Err(EndReason::RESOLVEFAILED);
+        }
+        Err(LookupError::Bug(e)) => {
+            trace_report!(e, "Name resolution for exit stream failed due to bug");
+            return Err(EndReason::INTERNAL);
+        }
+    };
+
+    // Remove any hostname answers.
+    // We could instead error if any answers were hostnames,
+    // but I don't see a reason to do that.
+    let answers = answers.into_iter().filter_map(|x| match x {
+        RecordData::Ip(x) => Some(x),
+        RecordData::Hostname(_) => None,
+    });
+
+    // Filter the addresses based on provided flags.
+    // I prefer it how it's written to how clippy wants it.
+    #[allow(clippy::needless_bool)]
+    let answers = answers.filter(|ip| {
+        if ip.is_ipv4() && flags.contains(BeginFlags::IPV4_NOT_OKAY) {
+            return false;
+        }
+
+        // torspec:
+        // > 3 -- IPv6 preferred. [...] This flag implies the flag at bit "1" (IPv6 okay).
+        let ipv6_okay = flags.intersects(BeginFlags::IPV6_OKAY | BeginFlags::IPV6_PREFERRED);
+        if ip.is_ipv6() && !ipv6_okay {
+            return false;
+        }
+
+        true
+    });
+
+    // Collect to check the length before we apply the exit policy.
+    let answers: LookupAnswers<IpAddr> = answers.collect();
+    if answers.is_empty() {
+        trace!("Rejecting incoming stream since the domain resolution had no usable IP answers");
+        return Err(EndReason::RESOLVEFAILED);
+    }
+
+    // Apply the exit policy filter.
+    let answers = answers
+        .into_iter()
+        .filter(|ip| exit_policy_allows(SocketAddr::new(*ip, port)));
+
+    // Collect so that we can sort them.
+    let mut answers: LookupAnswers<IpAddr> = answers.collect();
+    if answers.is_empty() {
+        trace!("Rejecting incoming stream due to the exit policy");
+        return Err(EndReason::EXITPOLICY);
+    }
+
+    // torspec:
+    // > 3 -- IPv6 preferred. If there are both IPv4 and IPv6 addresses,
+    // >      we want to connect to the IPv6 one. (By default, we connect
+    // >      to the IPv4 address.)
+    if flags.contains(BeginFlags::IPV6_PREFERRED) {
+        // `false` is sorted before `true`, and `!ip.is_ipv6()` is false for ipv6 addresses
+        answers.sort_by_key(|ip| !ip.is_ipv6());
+    } else {
+        // `false` is sorted before `true`, and `!ip.is_ipv4()` is false for ipv4 addresses
+        answers.sort_by_key(|ip| !ip.is_ipv4());
+    }
+
+    // TODO: We maybe want to do happy eyeballs in the future.
+    // https://gitlab.torproject.org/tpo/core/arti/-/work_items/2878
+
+    // Use the first address in the list.
+    let addr = match answers.first() {
+        Some(ip) => ip,
+        None => {
+            let bug = internal!("we checked above before sorting that the list is non-empty");
+            trace_report!(bug, "No address answers for BEGIN hostname lookup");
+            return Err(EndReason::RESOLVEFAILED);
+        }
+    };
+
+    let addr = SocketAddr::new(*addr, port);
+
+    match runtime.connect(&addr, connect_options).await {
+        Ok(x) => Ok(x),
+        Err(e) => Err(io_error_kind_to_end_reason(e.kind())),
+    }
+}
+
+/// Does our exit policy allow the given address?
+//
+// TODO: Later we will probably have some sort of exit policy object,
+// and we can remove this function and just call `exit_policy.allows(addr)` or something.
+fn exit_policy_allows(addr: SocketAddr) -> bool {
+    // TODO(relay): Need to support an exit policy. Currently we allow exits to anywhere (except
+    // basic loopback checks) for testing purposes.
+    !addr.ip().to_canonical().is_loopback() && !addr.ip().to_canonical().is_unspecified()
+}
+
+/// For a TCP error, get the reason we should use in the END message.
+fn io_error_kind_to_end_reason(e: ErrorKind) -> EndReason {
+    // TODO(relay): Check if there are other error kinds to map to end reasons.
+    match e {
+        ErrorKind::ConnectionRefused => EndReason::CONNECTREFUSED,
+        ErrorKind::ConnectionReset => EndReason::CONNRESET,
+        _ => EndReason::MISC,
+    }
 }

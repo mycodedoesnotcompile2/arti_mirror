@@ -206,6 +206,16 @@ Note that these features will still be enabled if you build with the
   the feature flag does nothing.
 * `counter-galois-onion`: This functionality is now always-on;
   the feature flag does nothing.
+* `keymgr`: Key management functionality can be turned on
+  by enabling one of the onion service or onion service client features;
+  the feature flag does nothing
+* `ctor-keystore`: Client and onion service C Tor keystore support can be turned on
+  by enabling `onion-service-client` and `onion-service-service`, respectively;
+  the feature flag does nothing
+* `opentelemetry-appender-tracing`: Previously enabled an optional dependency
+  which was unused; the feature flag does nothing.
+* `secmem-proc`: This functionality should now be enabled via the `harden`
+  feature
 
 ## Limitations
 

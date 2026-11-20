@@ -24,6 +24,7 @@
 #![warn(clippy::needless_borrow)]
 #![warn(clippy::needless_pass_by_value)]
 #![warn(clippy::option_option)]
+#![warn(clippy::or_fun_call)]
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 #![warn(clippy::rc_buffer)]
@@ -45,10 +46,13 @@
 #![allow(clippy::collapsible_if)] // See arti#2342
 #![deny(clippy::unused_async)]
 #![deny(clippy::string_slice)] // See arti#2571
+#![allow(recursion_depth_exceeding_limit)] // arti#2715, rust/issues/159228
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 
 // TODO #1645 (either remove this, or decide to have it everywhere)
 #![cfg_attr(not(all(feature = "full")), allow(unused))]
+// TODO: add to the list maintained by maint/add_warning once it's available on all crates
+#![warn(unnameable_types)]
 
 use crate::dense_range_map::DenseRangeMap;
 pub use crate::err::Error;
@@ -61,6 +65,9 @@ use std::sync::{Arc, OnceLock};
 
 mod dense_range_map;
 mod err;
+
+#[cfg(feature = "rpc")]
+pub mod rpc;
 
 /// A parsed copy of the embedded database.
 #[cfg(feature = "embedded-db")]
@@ -81,6 +88,10 @@ static EMBEDDED_DB_PARSED: OnceLock<Arc<GeoipDb>> = OnceLock::new();
 /// "anonymous proxies", since doing so would mean putting nearly all Tor relays
 /// into one of those countries.
 #[derive(Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde_with::DeserializeFromStr, serde_with::SerializeDisplay)
+)]
 #[repr(transparent)]
 pub struct CountryCode {
     /// The underlying value (two printable ASCII characters, stored uppercase).
@@ -220,6 +231,8 @@ type Asn = NonZeroU32;
 
 /// A database of IP addresses to country codes.
 #[derive(Clone, Eq, PartialEq, Debug)]
+#[cfg_attr(feature = "rpc", derive(derive_deftly::Deftly))]
+#[cfg_attr(feature = "rpc", derive_deftly(tor_rpcbase::Object))]
 pub struct GeoipDb {
     /// The IPv4 subset of the database, with v4 addresses stored as 32-bit integers.
     map_v4: DenseRangeMap<u32, CountryCode, Asn>,
@@ -301,7 +314,7 @@ impl GeoipDb {
 
     /// Get a 2-letter country code for the given IP address, if this data is available.
     pub fn lookup_country_code(&self, ip: IpAddr) -> Option<&CountryCode> {
-        match ip {
+        match ip.to_canonical() {
             IpAddr::V4(v4) => self.map_v4.get1(&v4.into()),
             IpAddr::V6(v6) => self.map_v6.get1(&v6.into()),
         }
@@ -335,7 +348,7 @@ impl GeoipDb {
 
     /// Return the ASN the IP address is in, if this data is available.
     pub fn lookup_asn(&self, ip: IpAddr) -> Option<u32> {
-        let cc = match ip {
+        let cc = match ip.to_canonical() {
             IpAddr::V4(v4) => self.map_v4.get2(&v4.into()),
             IpAddr::V6(v6) => self.map_v6.get2(&v6.into()),
         };
@@ -389,17 +402,17 @@ where
     let mut split = line.split(',');
     let from = split
         .next()
-        .ok_or(Error::BadFormat("empty line somehow?".into()))?
+        .ok_or_else(|| Error::BadFormat("empty line somehow?".into()))?
         .parse::<T>()?
         .to_int();
     let to = split
         .next()
-        .ok_or(Error::BadFormat("line with insufficient commas".into()))?
+        .ok_or_else(|| Error::BadFormat("line with insufficient commas".into()))?
         .parse::<T>()?
         .to_int();
     let cc = split
         .next()
-        .ok_or(Error::BadFormat("line with insufficient commas".into()))?;
+        .ok_or_else(|| Error::BadFormat("line with insufficient commas".into()))?;
     let cc = match cc {
         "" => None,
         cc => OptionCc::from_str(cc)?.0,
@@ -514,7 +527,7 @@ mod test {
     #[test]
     fn basic_lookups() {
         let src_v4 = r#"
-        16909056,16909311,GB
+        16909056,16909311,GB,64496
         "#;
         let src_v6 = r#"
         dead:beef::,dead:ffff::,??
@@ -547,6 +560,16 @@ mod test {
             db.lookup_country_code("dead:beef::1".parse().unwrap()),
             None
         );
+
+        let mapped: IpAddr = "::ffff:1.2.3.4".parse().unwrap();
+        assert_eq!(
+            db.lookup_country_code(mapped).map(|x| x.as_ref()),
+            Some("GB")
+        );
+        assert_eq!(db.lookup_asn(mapped), Some(64496));
+
+        let compatible: IpAddr = "::1.2.3.4".parse().unwrap();
+        assert_eq!(db.lookup_country_code(compatible), None);
     }
 
     #[test]

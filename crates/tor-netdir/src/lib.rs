@@ -24,6 +24,7 @@
 #![warn(clippy::needless_borrow)]
 #![warn(clippy::needless_pass_by_value)]
 #![warn(clippy::option_option)]
+#![warn(clippy::or_fun_call)]
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 #![warn(clippy::rc_buffer)]
@@ -45,7 +46,11 @@
 #![allow(clippy::collapsible_if)] // See arti#2342
 #![deny(clippy::unused_async)]
 #![deny(clippy::string_slice)] // See arti#2571
+#![allow(recursion_depth_exceeding_limit)] // arti#2715, rust/issues/159228
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
+
+// TODO: add to the list maintained by maint/add_warning once it's available on all crates
+#![warn(unnameable_types)]
 
 pub mod details;
 mod err;
@@ -727,6 +732,7 @@ pub trait NetDirProvider: UpcastArcNetDirProvider + Send + Sync {
     fn protocol_statuses(&self) -> Option<(SystemTime, Arc<netstatus::ProtoStatuses>)>;
 }
 
+#[async_trait]
 impl<T> NetDirProvider for Arc<T>
 where
     T: NetDirProvider,
@@ -745,6 +751,23 @@ where
 
     fn params(&self) -> Arc<dyn AsRef<NetParameters>> {
         self.deref().params()
+    }
+
+    async fn wait_for_netdir(
+        &self,
+        timeliness: Timeliness,
+    ) -> std::result::Result<Arc<NetDir>, NetdirProviderShutdown> {
+        self.deref().wait_for_netdir(timeliness).await
+    }
+
+    async fn wait_for_netdir_to_list(
+        &self,
+        target: &tor_linkspec::RelayIds,
+        timeliness: Timeliness,
+    ) -> std::result::Result<(), NetdirProviderShutdown> {
+        self.deref()
+            .wait_for_netdir_to_list(target, timeliness)
+            .await
     }
 
     fn protocol_statuses(&self) -> Option<(SystemTime, Arc<netstatus::ProtoStatuses>)> {
@@ -847,7 +870,7 @@ impl PartialNetDir {
     /// the consensus with those from `replacement_params`.
     pub fn new(
         consensus: MdConsensus,
-        replacement_params: Option<&netstatus::NetParams<i32>>,
+        replacement_params: Option<&netstatus::NetParamValues>,
     ) -> Self {
         Self::new_inner(
             consensus,
@@ -864,7 +887,7 @@ impl PartialNetDir {
     #[cfg(feature = "geoip")]
     pub fn new_with_geoip(
         consensus: MdConsensus,
-        replacement_params: Option<&netstatus::NetParams<i32>>,
+        replacement_params: Option<&netstatus::NetParamValues>,
         geoip_db: &GeoipDb,
     ) -> Self {
         Self::new_inner(consensus, replacement_params, Some(geoip_db))
@@ -873,7 +896,7 @@ impl PartialNetDir {
     /// Implementation of the `new()` functions.
     fn new_inner(
         consensus: MdConsensus,
-        replacement_params: Option<&netstatus::NetParams<i32>>,
+        replacement_params: Option<&netstatus::NetParamValues>,
         #[cfg(feature = "geoip")] geoip_db: Option<&GeoipDb>,
     ) -> Self {
         let mut params = NetParameters::default();
@@ -881,7 +904,9 @@ impl PartialNetDir {
         // (We ignore unrecognized options here, since they come from
         // the consensus, and we don't expect to recognize everything
         // there.)
-        let _ = params.saturating_update(consensus.params().iter());
+        //
+        // TODO this is rather duplicative of NetParameters::from_netstatus
+        let _ = params.saturating_update(consensus.params().without_defaults().iter());
 
         // Now see if the user has any parameters to override.
         // (We have to do this now, or else changes won't be reflected in our
@@ -1152,10 +1177,10 @@ impl NetDir {
     /// After this function is done, the netdir's parameters will be those in
     /// the consensus, overridden by settings from `new_replacement`.  Any
     /// settings in the old replacement parameters will be discarded.
-    pub fn replace_overridden_parameters(&mut self, new_replacement: &netstatus::NetParams<i32>) {
+    pub fn replace_overridden_parameters(&mut self, new_replacement: &netstatus::NetParamValues) {
         // TODO(nickm): This is largely duplicate code from PartialNetDir::new().
         let mut new_params = NetParameters::default();
-        let _ = new_params.saturating_update(self.consensus.params().iter());
+        let _ = new_params.saturating_update(self.consensus.params().without_defaults().iter());
         for u in new_params.saturating_update(new_replacement.iter()) {
             warn!("Unrecognized option: override_net_params.{}", u);
         }

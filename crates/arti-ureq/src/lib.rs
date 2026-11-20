@@ -24,6 +24,7 @@
 #![warn(clippy::needless_borrow)]
 #![warn(clippy::needless_pass_by_value)]
 #![warn(clippy::option_option)]
+#![warn(clippy::or_fun_call)]
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 #![warn(clippy::rc_buffer)]
@@ -45,7 +46,11 @@
 #![allow(clippy::collapsible_if)] // See arti#2342
 #![deny(clippy::unused_async)]
 #![deny(clippy::string_slice)] // See arti#2571
+#![allow(recursion_depth_exceeding_limit)] // arti#2715, rust/issues/159228
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
+
+// TODO: add to the list maintained by maint/add_warning once it's available on all crates
+#![warn(unnameable_types)]
 
 use std::sync::{Arc, Mutex};
 
@@ -396,7 +401,7 @@ impl<R: Runtime> ConnectorBuilder<R> {
             None => TorClient::with_runtime(self.runtime).create_unbootstrapped()?,
         };
 
-        let tls_provider = self.tls_provider.unwrap_or(get_default_tls_provider());
+        let tls_provider = self.tls_provider.unwrap_or_else(get_default_tls_provider);
 
         Ok(Connector {
             client,
@@ -458,13 +463,23 @@ impl<R: Runtime + ToplevelBlockOn> UreqResolver for Resolver<R> {
             .block_on(async { self.client.resolve(&host).await })
             .map_err(Error::from)?;
 
-        let mut array_vec: ArrayVec<core::net::SocketAddr, 16> = ArrayVec::from_fn(|_| {
+        let mut array_vec: ResolvedSocketAddrs = ArrayVec::from_fn(|_| {
             core::net::SocketAddr::new(core::net::IpAddr::V4(core::net::Ipv4Addr::UNSPECIFIED), 0)
         });
 
-        for ip in ips {
+        for ip in ips.into_iter() {
             let socket_addr = core::net::SocketAddr::new(ip, port);
-            array_vec.push(socket_addr);
+
+            // If the ResolvedSocketAddrs is full, we stop pushing
+            // and discard the remaining addresses.
+            //
+            // Eventually, we may want to do something more clever here,
+            // like shuffling the addresses, or making sure we always return
+            // a good mix of address families, etc., but this seems good enough
+            // for now.
+            if array_vec.try_push(socket_addr).is_err() {
+                break;
+            }
         }
 
         Ok(array_vec)

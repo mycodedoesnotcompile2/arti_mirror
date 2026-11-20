@@ -167,6 +167,13 @@ impl<R: Runtime, Q> State<R, Q> {
             suggested_effort: *self.suggested_effort.lock().expect("Lock poisoned"),
         }
     }
+
+    /// Remove a verifier and delete the backing file.
+    fn remove_verifier(&mut self, seed: &SeedHead) {
+        if let Some((_, replay_log)) = self.verifiers.remove(seed) {
+            let _ = replay_log.into_inner().expect("Lock poisoned").delete();
+        }
+    }
 }
 
 /// How frequently the suggested effort should be recalculated.
@@ -242,7 +249,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
         let on_disk_state = storage_handle
             .load()
             .map_err(StartupError::LoadState)?
-            .unwrap_or(PowManagerStateRecord::default());
+            .unwrap_or_else(PowManagerStateRecord::default);
 
         let seeds: HashMap<TimePeriod, SeedsForTimePeriod> =
             on_disk_state.seeds.into_iter().collect();
@@ -358,7 +365,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
         let runtime = self.0.write().expect("Lock poisoned").runtime.clone();
 
         let mut last_suggested_effort_update = runtime.now();
-        let mut last_published_suggested_effort: u32 = (*self
+        let last_published_suggested_effort: u32 = (*self
             .0
             .read()
             .expect("Lock poisoned")
@@ -366,6 +373,9 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             .lock()
             .expect("Lock poisoned"))
         .into();
+        // Deal with effort values as i64 in this part of the code
+        // to allow for subtracting them without worring about underflow.
+        let mut last_published_suggested_effort: i64 = last_published_suggested_effort.into();
 
         let netdir_provider = self
             .0
@@ -393,10 +403,11 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
                     last_suggested_effort_update = runtime.now();
                     let new_suggested_effort: u32 =
                         (*inner.suggested_effort.lock().expect("Lock poisoned")).into();
+                    let new_suggested_effort: i64 = new_suggested_effort.into();
 
-                    let percent_change =
-                        f64::from(new_suggested_effort - last_published_suggested_effort)
-                            / f64::from(last_published_suggested_effort);
+                    let percent_change = (new_suggested_effort - last_published_suggested_effort)
+                        as f64
+                        / last_published_suggested_effort as f64;
                     if percent_change.abs() >= SUGGESTED_EFFORT_DEADZONE {
                         last_published_suggested_effort = new_suggested_effort;
 
@@ -568,7 +579,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             for time_period in expired_tps {
                 if let Some(seeds) = state.seeds.remove(&time_period) {
                     for seed in seeds.seeds {
-                        state.verifiers.remove(&seed.head());
+                        state.remove_verifier(&seed.head());
                     }
                 }
             }
@@ -582,7 +593,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> PowManagerGeneric<R, Q
             }
 
             for seed_head in expired_verifiers {
-                state.verifiers.remove(&seed_head);
+                state.remove_verifier(&seed_head);
             }
 
             let record = state.to_record();
@@ -970,9 +981,10 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
 
         let decay_adjustment_fraction = net_params.hs_pow_v1_default_decay_adjustment.as_fraction();
 
-        if inner.num_dequeued != 0 {
-            let update_period_duration = inner.runtime.now() - inner.update_period_start;
+        let update_period_duration = inner.runtime.now() - inner.update_period_start;
+        if inner.num_dequeued != 0 && update_period_duration.as_millis() != 0 {
             let avg_request_duration = update_period_duration / inner.num_dequeued;
+            let num_dequeued = f64::from(inner.num_dequeued);
             if inner.queue.is_empty() {
                 let now = inner.runtime.now();
                 let last_transition = inner.last_transition;
@@ -990,24 +1002,27 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
 
             let mut suggested_effort = inner.suggested_effort.lock().expect("Lock poisoned");
             let suggested_effort_inner: u32 = (*suggested_effort).into();
+            let suggested_effort_inner_f64 = f64::from(suggested_effort_inner);
 
             if busy_fraction == 0.0 {
+                // Infallible, this takes the previous suggested effort and
+                // reduces it, so overflow is not possible, since the netdir
+                // code enforces that it's in the range of 0.0 - 0.99.
+                debug_assert!(decay_adjustment_fraction < 1.0);
                 let new_suggested_effort =
-                    u32::from_f64(f64::from(suggested_effort_inner) * decay_adjustment_fraction)
+                    u32::from_f64(suggested_effort_inner_f64 * decay_adjustment_fraction)
                         .expect("Conversion error");
                 *suggested_effort = Effort::from(new_suggested_effort);
             } else {
-                let theoretical_num_dequeued =
-                    f64::from(inner.num_dequeued) * (1.0 / busy_fraction);
-                let num_enqueued_gte_suggested_f64 =
-                    f64::from_usize(inner.num_enqueued_gte_suggested).expect("Conversion error");
+                // The rust `as` operator is used here to provide saturating conversions,
+                // to avoid panicking if the effort calculation would be lossy due to extremely
+                // large values. In practice, the values should be low enough that this shouldn't
+                // come up, but it is worth being defensive.
+                let theoretical_num_dequeued = num_dequeued * (1.0 / busy_fraction);
+                let num_enqueued_gte_suggested_f64 = inner.num_enqueued_gte_suggested as f64;
 
                 if num_enqueued_gte_suggested_f64 >= theoretical_num_dequeued {
-                    let effort_per_dequeued = u32::from_f64(
-                        f64::from_u64(inner.total_effort).expect("Conversion error")
-                            / f64::from(inner.num_dequeued),
-                    )
-                    .expect("Conversion error");
+                    let effort_per_dequeued = (inner.total_effort as f64 / num_dequeued) as u32;
                     *suggested_effort = Effort::from(std::cmp::max(
                         effort_per_dequeued,
                         suggested_effort_inner + 1,
@@ -1015,9 +1030,7 @@ impl<R: Runtime, Q: MockableRendRequest + Send + 'static> RendRequestReceiver<R,
                 } else {
                     let decay = num_enqueued_gte_suggested_f64 / theoretical_num_dequeued;
                     let adjusted_decay = decay + ((1.0 - decay) * decay_adjustment_fraction);
-                    let new_suggested_effort =
-                        u32::from_f64(f64::from(suggested_effort_inner) * adjusted_decay)
-                            .expect("Conversion error");
+                    let new_suggested_effort = (suggested_effort_inner_f64 * adjusted_decay) as u32;
                     *suggested_effort = Effort::from(new_suggested_effort);
                 }
             }
@@ -1370,15 +1383,14 @@ mod test {
         let netdir_provider: Arc<TestNetDirProvider> = Arc::new(netdir.into());
         let status_tx = StatusSender::new(OnionServiceStatus::new_shutdown()).into();
         let nickname = HsNickname::new("test-hs".to_string()).unwrap();
-        let (config_tx, config_rx) = postage::watch::channel_with(Arc::new(
-            config.unwrap_or(
+        let (config_tx, config_rx) =
+            postage::watch::channel_with(Arc::new(config.unwrap_or_else(|| {
                 OnionServiceConfigBuilder::default()
                     .nickname(nickname.clone())
                     .enable_pow(true)
                     .build()
-                    .unwrap(),
-            ),
-        ));
+                    .unwrap()
+            })));
         let receiver: RendRequestReceiver<_, MockRendRequest> = RendRequestReceiver::new(
             runtime.clone(),
             nickname.clone(),

@@ -10,6 +10,8 @@
 //!
 //! See [`crate::doc::ns_variety_definition_macros`].
 
+use void::ResultVoidExt;
+
 use super::*;
 
 ns_use_this_variety! {
@@ -36,7 +38,7 @@ pub struct RouterStatusBuilder {
     /// See [`RouterStatus::protos`].
     protos: Option<Protocols>,
     /// See [`RouterStatus::weight`].
-    weight: Option<RelayWeight>,
+    weight: Option<RelayBandwidth>,
 }
 
 impl RouterStatusBuilder {
@@ -120,14 +122,18 @@ impl RouterStatusBuilder {
     /// Set the weight of this routerstatus for random selection.
     ///
     /// This value is optional; it defaults to 0.
-    pub fn weight(&mut self, weight: RelayWeight) -> &mut Self {
+    pub fn weight(&mut self, weight: RelayBandwidth) -> &mut Self {
         self.weight = Some(weight);
         self
     }
     /// Try to build a GenericRouterStatus from this builder.
     // TODO this function is identical to `build`; decide which one to keep
     pub(super) fn finish(&self) -> Result<RouterStatus> {
-        let nickname = self.nickname.as_deref().unwrap_or("Unnamed").parse()
+        let nickname = self
+            .nickname
+            .as_deref()
+            .unwrap_or("Unnamed")
+            .parse()
             .map_err(|_| Error::CannotBuild("Invalid nickname"))?;
         let identity = self
             .identity
@@ -144,12 +150,17 @@ impl RouterStatusBuilder {
             .as_ref()
             .ok_or(Error::CannotBuild("Missing protocols"))?
             .clone();
-        let weight = self.weight.unwrap_or(RelayWeight::Unmeasured(0));
-        let weight = RelayWeightsItem {
+        let weight = self.weight.unwrap_or(RelayBandwidth::Unmeasured(0));
+        let weight = RelayBandwidthItem {
             effective: weight,
             params: Unknown::new_discard(),
         };
-        let version = self.version.as_deref().map(str::parse).transpose()?;
+        let version = self
+            .version
+            .as_deref()
+            .map(str::parse)
+            .transpose()
+            .void_unwrap();
 
         let mut ip = None;
         let a = self
@@ -185,6 +196,7 @@ impl RouterStatusBuilder {
                 ip: *ip.ip(),
                 or_port: ip.port(),
                 dir_port: 0,
+                __non_exhaustive: (),
             },
             m: m_doc_digest.into(),
             a,
@@ -194,10 +206,11 @@ impl RouterStatusBuilder {
                 known: self.flags,
                 unknown: Unknown::new_discard(),
             },
-            weight,
+            w: weight,
             port_policy: ns_expr!(None, NotPresent, Void {}),
             ed25519_id: NotPresent,
             stats: NotPresent,
+            __non_exhaustive: (),
         })
     }
 

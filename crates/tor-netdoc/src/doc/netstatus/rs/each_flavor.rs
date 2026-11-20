@@ -11,6 +11,7 @@
 //! See [`crate::doc::ns_variety_definition_macros`].
 
 use super::*;
+use void::ResultVoidExt as _;
 
 impl RouterStatus {
     /// Return an iterator of ORPort addresses for this routerstatus
@@ -20,9 +21,14 @@ impl RouterStatus {
             self.a.iter().copied(),
         )
     }
-    /// Return the declared weight of this routerstatus in the directory.
-    pub fn weight(&self) -> &RelayWeight {
-        &self.weight.effective
+    /// Return the declared bandwidth of this routerstatus in the directory.
+    pub fn bandwidth(&self) -> &RelayBandwidth {
+        &self.w.effective
+    }
+    /// Return the declared bandwidth of this routerstatus in the directory.
+    #[deprecated = "use .bandwidth()"]
+    pub fn weight(&self) -> &RelayBandwidth {
+        self.bandwidth()
     }
     /// Return the protovers that this routerstatus says it implements.
     pub fn protovers(&self) -> &Protocols {
@@ -99,9 +105,12 @@ impl RouterStatus {
         use NetstatusKwd::*;
         // R line
         let r_item = sec.required(RS_R)?;
-        let nickname = r_item.required_arg(0)?.parse().map_err(|e: InvalidNickname| {
-            EK::BadArgument.with_msg(e.to_string()).at_pos(r_item.pos())
-        })?;
+        let nickname = r_item
+            .required_arg(0)?
+            .parse()
+            .map_err(|e: InvalidNickname| {
+                EK::BadArgument.with_msg(e.to_string()).at_pos(r_item.pos())
+            })?;
         let ident = r_item.required_arg(1)?;
         let identity = ident.parse::<Base64Fingerprint>()?;
         // Fields to skip in the "r" line.
@@ -138,22 +147,26 @@ impl RouterStatus {
         let flags = DocRelayFlags::from_item_consensus(sec.required(RS_S)?)?;
 
         // V line
-        let version = sec.maybe(RS_V).args_as_str().map(str::parse).transpose()?;
+        let version = sec
+            .maybe(RS_V)
+            .args_as_str()
+            .map(str::parse)
+            .transpose()
+            .void_unwrap();
 
         // PR line
         let protos = {
             let tok = sec.required(RS_PR)?;
-            tok.args_as_str()
-                .parse::<Protocols>()
+            Protocols::from_str_c_compatible(tok.args_as_str())
                 .map_err(|e| EK::BadArgument.at_pos(tok.pos()).with_source(e))?
         };
 
         // W line
         let weight = sec
             .get(RS_W)
-            .map(RelayWeightsItem::from_item)
+            .map(RelayBandwidthItem::from_item)
             .transpose()?
-            .unwrap_or(RelayWeightsItem::new_no_info());
+            .unwrap_or_else(RelayBandwidthItem::new_no_info);
 
         // No p line
         // no ID line
@@ -190,16 +203,18 @@ impl RouterStatus {
                 publication: IgnoredPublicationTimeSp,
                 ip,
                 dir_port: 0,
+                __non_exhaustive: (),
             },
             m: m_doc_digest.into(),
             a,
             flags,
             version,
             protos,
-            weight,
+            w: weight,
             port_policy: ns_expr!(None, NotPresent, Void {}),
             ed25519_id: NotPresent,
             stats: NotPresent,
+            __non_exhaustive: (),
         })
     }
 }

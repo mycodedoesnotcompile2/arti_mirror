@@ -55,12 +55,12 @@ impl Consensus {
 
     /// Return a mapping from keywords to integers representing how
     /// to weight different kinds of relays in different path positions.
-    pub fn bandwidth_weights(&self) -> &NetParams<i32> {
+    pub fn bandwidth_weights(&self) -> &ParamValues<i32> {
         &self.footer.bandwidth_weights
     }
 
     /// Return the map of network parameters that this consensus advertises.
-    pub fn params(&self) -> &NetParams<i32> {
+    pub fn params(&self) -> &NetParams {
         &self.preamble.params
     }
 
@@ -269,8 +269,14 @@ impl Consensus {
         };
 
         // Find the appropriate digest.
-        let signed_str = r.str().get(start_pos..end_pos).ok_or(internal!("chopped utf8"))?;
-        let remainder = r.str().get(end_pos..).ok_or(internal!("chopped utf8"))?;
+        let signed_str = r
+            .str()
+            .get(start_pos..end_pos)
+            .ok_or_else(|| internal!("chopped utf8"))?;
+        let remainder = r
+            .str()
+            .get(end_pos..)
+            .ok_or_else(|| internal!("chopped utf8"))?;
         let (sha256, sha1) = match RouterStatus::flavor() {
             ConsensusFlavor::Plain => (
                 None,
@@ -284,8 +290,6 @@ impl Consensus {
         let hashes = DirectorySignaturesHashesAccu {
             sha256,
             sha1,
-            // TODO #2530 This is wrong.  There isn't one hash, there's two.
-            sha1_unnamed: sha1,
         };
         let siggroup = SignatureGroup {
             hashes,
@@ -377,10 +381,11 @@ impl Preamble {
                 RECOMMENDED_RELAY_PROTOCOLS,
                 REQUIRED_RELAY_PROTOCOLS,
             )?;
-            Arc::new(ProtoStatuses { client, relay })
+            Arc::new(ProtoStatuses { client, relay, __non_exhaustive: () })
         };
 
         let params = sec.maybe(PARAMS).args_as_str().unwrap_or("").parse()?;
+        let params = NetParams { params };
 
         let status: &str = sec.required(VOTE_STATUS)?.arg(0).unwrap_or("");
         if status != "consensus" {
@@ -401,12 +406,11 @@ impl Preamble {
             .map(SharedRandStatus::from_item)
             .transpose()?;
 
-        let voting_delay = if let Some(tok) = sec.get(VOTING_DELAY) {
-            let n1 = tok.parse_arg(0)?;
-            let n2 = tok.parse_arg(1)?;
-            Some((n1, n2))
-        } else {
-            None
+        let voting_delay = {
+            let tok = sec.required(VOTING_DELAY)?;
+            let vote_seconds = tok.parse_arg(0)?;
+            let dist_seconds = tok.parse_arg(1)?;
+            VotingDelayConstructor { vote_seconds, dist_seconds }.construct()
         };
 
         let shared_rand = SharedRandStatuses {
@@ -643,16 +647,16 @@ fn verify_error_netstatus() -> Result<(), anyhow::Error> {
         ( $($verify_args:tt)* ),
         $($assert_matches_rhs:tt)*
     } => {
-        assert_matches! {
+        assert_matches!(
             doc.can_verify($($verify_args)*),
             Err(e)
                 => assert_matches!(e, $($assert_matches_rhs)*)
-        };
-        assert_matches! {
+        );
+        assert_matches!(
             doc.clone().verify($($verify_args)*),
             Err(ConsensusVerifyFailed::CertificationInsufficient(e))
                 => assert_matches!(e, $($assert_matches_rhs)*)
-        };
+        );
     } }
 
     // missing authcerts
@@ -692,27 +696,27 @@ fn verify_error_netstatus() -> Result<(), anyhow::Error> {
 
     doc.sigs.sigs.directory_signature[0].signature.fill(0xff);
 
-    assert_matches! {
+    assert_matches!(
         doc.can_verify(&authorities, &certs),
         Ok(())
-    }
-    assert_matches! {
+    );
+    assert_matches!(
         doc.clone().verify(&authorities, &certs),
         Ok(_)
-    }
+    );
 
     // too few signatories, and one broken signature
 
     doc.sigs.sigs.directory_signature.truncate(authorities.len() / 2 + 1);
 
-    assert_matches! {
+    assert_matches!(
         doc.can_verify(&authorities, &certs),
         Ok(())
-    }
-    assert_matches! {
+    );
+    assert_matches!(
         doc.clone().verify(&authorities, &certs),
         Err(ConsensusVerifyFailed::InvalidSignature(VerifyFailed::VerifyFailed))
-    }
+    );
 
     // too few signatures, no broken signatures
 

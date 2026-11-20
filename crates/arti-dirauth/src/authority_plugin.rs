@@ -19,7 +19,7 @@ use tor_llcrypto::d::Sha256;
 use tor_netdoc::{
     doc::netstatus::ConsensusMethod,
     doc::routerdesc::{RouterDesc, RouterDescUnverified},
-    encode::encode_netdoc_unsigned,
+    encode::{NetdocEncodable, encode_netdoc_unsigned},
     parse2::{self, NetdocParseable},
     types::{Base64Fingerprint, Ed25519Public, FixedB64, Iso8601TimeNoSp},
 };
@@ -125,13 +125,7 @@ fn plugin_impl(args: CliArgs) -> Result<(), CliError> {
             let mut processor =
                 compute_mds::Processor::new(*nominal_time, &mut mds_out, &mut meta_out);
             for i in input {
-                let i = i.start_reading()?;
-                let desc = i.description().to_owned();
-                processor.process_input(parse2::ParseInput::new(
-                    //
-                    &i.read_entire_string()?,
-                    &desc,
-                ))?;
+                processor.process_input(&i.read_entire()?.netdoc_parse2())?;
             }
             mds_out.finish()?;
             meta_out.finish()?;
@@ -151,6 +145,8 @@ pub fn plugin_main() {
         let args = <CliArgs as clap::Parser>::try_parse()
             .context("invalid arguments")
             .map_err(CliError::InvalidInputs)?;
+
+        // TODO DIRAUTH set up logging
 
         plugin_impl(args)
     })() {
@@ -180,5 +176,34 @@ impl CliError {
 impl From<Bug> for CliError {
     fn from(bug: Bug) -> Self {
         CliError::OperationalError(bug.into())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+    use super::*;
+    use itertools::chain;
+
+    pub(super) fn test_invocation<'i>(
+        args: impl IntoIterator<Item = &'i str>,
+    ) -> anyhow::Result<()> {
+        let args = clap::Parser::try_parse_from(chain!(["authority-plugin"], args))
+            .context("parse args")?;
+        plugin_impl(args).context("execute")?;
+        Ok(())
     }
 }

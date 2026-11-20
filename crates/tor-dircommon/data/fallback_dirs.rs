@@ -3,627 +3,241 @@
 /* timestamp=20210412000000 */
 /* source=offer-list */
 //
-// Generated on: Thu, 25 Jun 2026 17:35:19 +0000
+// Generated on: Wed, 28 Oct 2026 13:13:11 +0000
 
 vec![
-    // Nickname: burnaboy
+    // Nickname: djtmuggs
     fallback(
-        "4F067C5C488173987B568CD7245F1CA71DEE996B",
-        "FHUcFKNjymucq0DnjGUpYaI0ecPBOa8TGZFD76Hgcog",
+        "D049A6601302014C5C3362BD856A847D52CE2148",
+        "6Cot1xu87hjOMyN8kc0b8fxmQqOUeVFouZD5BXw00XY",
         &[
-            "64.65.62.122:443"
+            "96.9.98.172:443"
+        ],
+    ),
+    // Nickname: asprinCannon
+    fallback(
+        "B3004A9A9F083C269212D6D2FE42F063DFD9D4D8",
+        "E6ppwdCx/WLEXalnRUOolRu4fisMw5/cZaAuevV17MI",
+        &[
+            "108.181.22.201:443"
+        ],
+    ),
+    // Nickname: fire
+    fallback(
+        "DAF25DF4AD0452B958923AA9D77C54F1A5473ACD",
+        "txyaUtrmNIIiLfVYPU1UVk72bXV7pj24rnZhwjyaZ4g",
+        &[
+            "94.23.68.187:9001"
+        ],
+    ),
+    // Nickname: uelideschwert
+    fallback(
+        "2AB692D3A045C59804FCCE7EB9EFC606DAA7F2B7",
+        "H7Pgc0u00jT9i1Xi81HuPMpaMZFC5Obeuugr++sWZqI",
+        &[
+            "81.6.44.226:9001"
+        ],
+    ),
+    // Nickname: dababy
+    fallback(
+        "9A916B342E293F87BB83928BF5B9772075C7AB70",
+        "WWjH/Gi5ADgPLT7Z8IdT1pjtLGsZFDxC9YIz5hmuNog",
+        &[
+            "64.65.62.81:443"
         ],
     ),
     // Nickname: prsv
     fallback(
-        "E0608745ED237A918A73A370538023330F1BF45D",
-        "ertVpktbAZUEjIyFR55jTHj1ANBE55ZBiwqOiQMCXUI",
+        "4134CDC6B5AEFDE875FA1212DA380201D9BFA286",
+        "aeqQz0/F+ARZNH60gFvKUuc2JR9MaAgYGyEAq9XuYVU",
         &[
-            "162.19.252.137:9200"
+            "51.77.214.113:9100",
+            "[2001:41d0:404:200::7d64]:9100"
         ],
     ),
-    // Nickname: Quetzalcoatl
+    // Nickname: TorHet3
     fallback(
-        "5BDD0633E0AC09763E49641DCD1BA3AB3A21AA83",
-        "HjGp5vQQwfR424gG0FXNDbtqb5hiKnWiIJPnV9oA58k",
+        "0947B12441F69611D7DF7FA94D9188F7AA2B79FF",
+        "63dJUlbW8MsDdhGPNkoN+zyBuUCvI/xolERQDCnfbdc",
         &[
-            "185.183.157.214:9100",
-            "[2a03:4000:1d:b7a:782f:17ff:fef0:a708]:9100"
+            "5.9.14.30:143",
+            "[2a01:4f8:160:8410::3]:143"
         ],
     ),
-    // Nickname: terNOicebeer17
+    // Nickname: forest30
     fallback(
-        "3287F79D9C1687BF7F3A9D140369CA64D2FD111B",
-        "RFYDK0kxL2fbWoMG4slvcRDMekEkppHcT2tZnuNN/+s",
+        "228E44687D0623BC611322397A8AC5FF22153501",
+        "7/IMyiALbQtNdt7lByUSjcHL2nErjLVwV7g6y9/E5ig",
         &[
-            "185.243.218.225:8166",
-            "[2a03:94e0:ffff:185:243:218:0:225]:8166"
+            "115.187.16.42:443"
         ],
     ),
-    // Nickname: gigsuk
+    // Nickname: cyberbits
     fallback(
-        "6EADE4A39AB89F1C6BF989668CC046E9C6ADFC5A",
-        "N8Xgie0DXRFu2fCsMk9odZlaMXo/b4kfzShP+4xTYxs",
+        "F836446663F1EB816F13708955F105D0B2F5C8E0",
+        "IplrodgMBSqVBlMVKuHYUP0mhfgCybx1xnY8hdS3zVs",
         &[
-            "96.9.98.136:443"
+            "51.159.104.35:9001",
+            "[2001:bc8:1201:54:ca1f:66ff:fec9:239]:9001"
         ],
     ),
-    // Nickname: animator
+    // Nickname: ichundes
     fallback(
-        "1932C6B0B3D15F6CDA47632FB2257A5DF3BC014F",
-        "eOvwypPeoag8GweIqMxzIHRW/3YT9wpNRnLn8rDB410",
+        "C5B4E474157C7E50AD246C53FB2A2B00C9D0AE6C",
+        "cnOpg2kw90sXZu5yxCLRq29BQyuWz8uN4h6n9+g08Kg",
         &[
-            "178.254.18.25:9001"
+            "183.89.202.207:9001"
+        ],
+    ),
+    // Nickname: CyberDog
+    fallback(
+        "931728467928329C4F0C68DE91B9286B3CF71662",
+        "KXbCRMAq08uxK47yIndSV9Pglkyxroxz1FCb5ktVugg",
+        &[
+            "37.221.208.133:8080"
+        ],
+    ),
+    // Nickname: tachikoma
+    fallback(
+        "FFE7AD016F3928F33892A0C961873C94C6B228F0",
+        "kOq2hq4Fd52clQzq7XEmvLFAWTJl0WqhLYpiGb09Das",
+        &[
+            "213.107.163.208:60024"
+        ],
+    ),
+    // Nickname: hotsummer
+    fallback(
+        "EF1615AF836941E0126C2C9D70139BC55955F4BF",
+        "QMJSRSS6N60owByBTKKlVDk1jRojWHshwrteDhmFVsg",
+        &[
+            "64.177.116.21:9001",
+            "[2001:19f0:5c00:4044:5400:6ff:fe79:5c10]:9001"
+        ],
+    ),
+    // Nickname: theTorDoor
+    fallback(
+        "423545ABB7ECAADBF904E6CAE5814B695A7489E1",
+        "hfc66MZYVlP4MTOdupjEM0vAq0LBE9WhQjvhstJg7O4",
+        &[
+            "173.249.193.189:9001"
+        ],
+    ),
+    // Nickname: killerclown
+    fallback(
+        "5A00BEA0AA89B7FFB58F22058513F500DC2D7A1D",
+        "/MP2udiqVAPJet0O81OWV1m84gxwx1KKBQIU2CzbefE",
+        &[
+            "188.213.95.146:9001"
+        ],
+    ),
+    // Nickname: NCExit01
+    fallback(
+        "ED3C3B5CF8C524F23A476EC4FB363F55F01B070D",
+        "yfEbjDt4O/yLFW1ELFSIJE7I6g0LXepVTEb29k/W/gs",
+        &[
+            "147.90.234.167:9001",
+            "[2602:f6f6:2:597e::1]:9001"
+        ],
+    ),
+    // Nickname: skyzoobrooklyn
+    fallback(
+        "43C4B296233A29D80479A6839D93B59474336B12",
+        "X+v0nhc27heFJPSNedXxT74/FhU1HAsMurMtGCaMkYg",
+        &[
+            "64.65.0.3:443"
+        ],
+    ),
+    // Nickname: montserrat
+    fallback(
+        "64B05F9A2122B5DB4ADCB0E6F083193F3170A902",
+        "nYr2IZEyRvIswY+xWdZMazDEUBaFoFIwCGq8j9nA4sM",
+        &[
+            "45.90.135.141:9001",
+            "[2a0e:3c0:23::3]:9001"
+        ],
+    ),
+    // Nickname: bkjk
+    fallback(
+        "A5424DEEDD5A913146E7177A79EE48FAF7CB861A",
+        "wt1grprhDMMnb1ovSAEMERaZV1l6jK21KOFGC9y+z3c",
+        &[
+            "23.82.136.232:443"
+        ],
+    ),
+    // Nickname: chooThaineha
+    fallback(
+        "91892720F9262CB37B91A7176D3D2280F7AF14BE",
+        "K8V12xahZ1pl0Sj2HN38VjL/TTq3DU+dcfn+qnm3KYs",
+        &[
+            "46.4.66.178:9001",
+            "[2a01:4f8:140:2459::2]:9001"
+        ],
+    ),
+    // Nickname: AlliumAdPortum
+    fallback(
+        "8D7159CAB26F26A81A8A06A3BF5897576965E35E",
+        "Fi606T2NTSX16mc8Ija+itq5H+LdwV4/sKUpVlbCXzI",
+        &[
+            "174.160.2.27:9001",
+            "[2601:647:6701:5101:649f:a707:76d2:dcea]:9001"
+        ],
+    ),
+    // Nickname: trixie
+    fallback(
+        "39A551CD188151147DC4D19523D06A09B5287C29",
+        "SSyfCc0W9pP9FrOMo2i2MLPyN3mUEh1by4+YqoEIHP8",
+        &[
+            "206.248.146.19:9003"
+        ],
+    ),
+    // Nickname: sarkodie
+    fallback(
+        "59D747AE9F64D1A5A13EE4D9D16F2F644DFAE65A",
+        "5TmM5i3u6vijNwUPOJ7wlouH05RAdp/celWr+kd3yUU",
+        &[
+            "64.65.62.125:443"
+        ],
+    ),
+    // Nickname: GEdubai
+    fallback(
+        "88A22E469C1EB27AE4ACEEE394575D453ABA741D",
+        "MEYgsV3qWJENINTl86njzvnM5yhf4wULBVshoTuTJS4",
+        &[
+            "141.145.150.99:443",
+            "[2603:c026:8000:c600::253]:443"
+        ],
+    ),
+    // Nickname: hosea
+    fallback(
+        "5D4088C5ADE3335332B148FCA0BC9082FA0F6DDE",
+        "YGPyZi7rL9WV0lMH/F2jX6ZLgu5NNS/CywepfUcms/I",
+        &[
+            "123.253.32.12:9001"
+        ],
+    ),
+    // Nickname: seabreeze
+    fallback(
+        "35E93A587C3B65B0686569EE373E8BC0507F7E0D",
+        "NwqNy9exs2J3r73U9pRccf7M42GZQ4vKnp7PptJVRAU",
+        &[
+            "195.34.169.13:9001",
+            "[2a01:130:1000:110d::ff13]:9001"
+        ],
+    ),
+    // Nickname: jaykae
+    fallback(
+        "CE77E80343CCF0D68FAE60EC6637EF1829F64805",
+        "0huR2u3IUhQK3oVjZqkuB7vWTF8bPjy4sXgOgm0zYgk",
+        &[
+            "64.65.62.115:443"
         ],
     ),
     // Nickname: Unnamed
     fallback(
-        "49AD06A955605436C04459E247A724C231234AEA",
-        "w3izn5Lr8b8Gcq2S9qcH4qZQJfzEZskgE6WOaM3Bke0",
+        "270A22B37FD94BFE381B982206CFDF3C4C2C670C",
+        "XI/gb9bg8JD+yldKaxmO09deRPDzgpmVesCWZccBBO0",
         &[
-            "8.211.31.18:9002"
-        ],
-    ),
-    // Nickname: M4dm4ni4c
-    fallback(
-        "70F35FF59D6F37959A6D9B9089BB31C5D73F3956",
-        "5ZYJiyELyzCqCbQGDxgEIR1Xlt2RsyD9uxVhrdITPHM",
-        &[
-            "149.172.60.95:443"
-        ],
-    ),
-    // Nickname: Cyprus
-    fallback(
-        "60A211F20E74C7D2D884BA49202964F5C94FA015",
-        "qA9KdmaU1kEEA6rtflfWI9XZp+Jdv0TTixPTV7T1jdY",
-        &[
-            "195.154.200.146:80",
-            "[2001:bc8:32d7:154::]:80"
-        ],
-    ),
-    // Nickname: sonrisas
-    fallback(
-        "32742AD57C3D243DA0713BB6DFD82118DF573D2E",
-        "eNbe2TOptKrKBCC4HgRMu40jbzkykcCNZekPqI+gjrY",
-        &[
-            "15.204.141.95:8080"
-        ],
-    ),
-    // Nickname: outatime
-    fallback(
-        "730C207C0B7A9B48B4991213E1F5BA26A2E721CF",
-        "epCYATCJ/krtFniSXVNq3EB0kI1auzdtqvkq1a4voMo",
-        &[
-            "217.154.63.133:9001",
-            "[2a00:da00:f447:600::1]:9001"
-        ],
-    ),
-    // Nickname: Beanbag
-    fallback(
-        "A208C66E3BAF32B70920EB6AF8081F7CFA5DB1D1",
-        "mn9YDFyr67LWQNxIkiXZ7t122VIu+9XmaMTp44Q5o0E",
-        &[
-            "136.243.176.179:9002",
-            "[2a01:4f8:171:2594::2]:9002"
-        ],
-    ),
-    // Nickname: MrNiceGuy
-    fallback(
-        "01E8A81D47C488C54064D20FEBC3B9928CADA502",
-        "Bz1Ig9x0EEqvaMCRWtQYM53WyhrJqn0CBH8tEGdchpg",
-        &[
-            "170.117.192.249:420"
-        ],
-    ),
-    // Nickname: ReacTOR
-    fallback(
-        "5C426791CB47BDDDD97A71EB2EFC4CCC84DEB299",
-        "hRDSseypaUQE0/cn7F4XeuQniTo+e1Aky1zjtgkZUNk",
-        &[
-            "162.19.204.163:10000"
-        ],
-    ),
-    // Nickname: mentoreth4
-    fallback(
-        "6DAD7AF818F4E1CDA7909DF2E4018A998BE21113",
-        "vgvIe3e04QGBJRS0rqg+Mvj8K4IKzXKJhuMTgEnV7J8",
-        &[
-            "192.76.153.253:9005",
-            "[2a04:52c0:1000:253::253]:9005"
-        ],
-    ),
-    // Nickname: UnredactedCapricorn
-    fallback(
-        "1938F805DEA65F2F351134465BF5D5F3815E5235",
-        "Z939b5x84B5CnPqAt3q96AxgaZQtphi6umE4bJErTtU",
-        &[
-            "23.191.200.25:443"
-        ],
-    ),
-    // Nickname: ZNK999F
-    fallback(
-        "06165000052A06FF3C6C2B8A7773833622D6AF70",
-        "2mm+vSFKmh8YjG1LK/HpX7+p3qNI2cfrfgnTxWMNXjA",
-        &[
-            "78.80.158.218:433"
-        ],
-    ),
-    // Nickname: prsv
-    fallback(
-        "F795756C04D2458CEECA249613A58BBABFD70143",
-        "wKN6vICZZ1DWy0FRoNg3LVWE1aNY73QaUl229sGMeQs",
-        &[
-            "37.221.208.7:9100",
-            "[2a01:270:9807::1]:9100"
-        ],
-    ),
-    // Nickname: Pegase
-    fallback(
-        "22D2314BC5146890A8E5C19C884D96C0CBFEAA24",
-        "MxkTAE3HiNneW3J2ZKawP3YhYrcLhskYgEsShpKQ/Ew",
-        &[
-            "80.67.167.86:9001",
-            "[2a0b:cbc0:1100:7::1]:9001"
-        ],
-    ),
-    // Nickname: Quetzalcoatl
-    fallback(
-        "D4C4D01625AF1473A8AEABB28CDE7EC8D553C428",
-        "RFMlLkd0rc2zJXqkjmq/DyPq3LUnyi6tZhW2Ih85L5I",
-        &[
-            "62.72.47.105:8430",
-            "[2407:3640:2259:6302::1]:8430"
-        ],
-    ),
-    // Nickname: swisshead
-    fallback(
-        "29711824A49ECE595B9B29594759FD7CDF5B1BA8",
-        "kSPZoMYu9DNmPHpQz+Nlpm8JZ5oR7YVgh/MAHlUH738",
-        &[
-            "75.145.166.75:9001"
-        ],
-    ),
-    // Nickname: eclipse08
-    fallback(
-        "B86F28E63E7972C533D1F20CB94F0F0AAFF3DC5B",
-        "WfnW0MnBBpaM2/JkZULNYDxMxVoWaie2VH88MJp0KO8",
-        &[
-            "185.112.249.156:443"
-        ],
-    ),
-    // Nickname: fabiana
-    fallback(
-        "26BC5109EE3495F4655D133BBE0A77FE1608D9A7",
-        "zG6MhOeZGzrCM3klDy23HI27wzWnNgu0fjzGyrIloog",
-        &[
-            "144.76.26.58:9001",
-            "[2a01:4f8:191:120f::2]:9001"
-        ],
-    ),
-    // Nickname: obzgs5tbmn4q
-    fallback(
-        "7AD80E51B0D3867A8E32785038EA37E41BF4A2B2",
-        "B0KYEUdzJ17pNfR6Z5GEo5wO2zPdLYdilZiDhYIlY2Q",
-        &[
-            "82.153.138.57:9007"
-        ],
-    ),
-    // Nickname: prsv
-    fallback(
-        "D806EC0E00D5E9E83C661E07A9589C3FE5583FB3",
-        "eM9QFN3D0mjoNwMk9rVgY8UO2ydv8hiSlp7cp99LmyI",
-        &[
-            "147.90.235.228:9000",
-            "[2602:f6f6:2:d3cf::1]:9000"
-        ],
-    ),
-    // Nickname: Misaka
-    fallback(
-        "CD2EAAE3552F0F73B9C69FE3301DF0A2BA57CFD4",
-        "iysnzZiolQix8yigWsfB9gZR3EzpnB7iuvLnvsKEHHg",
-        &[
-            "103.152.178.73:9001"
-        ],
-    ),
-    // Nickname: yourPrivacyMatter
-    fallback(
-        "9B260AFE88F69D6C7C981173E21AD8243CA7C42A",
-        "tVElwE48RCmWWBzxEcxn5BqHqt6Ms34IEZbQ9KKSkHM",
-        &[
-            "81.245.98.184:4096"
-        ],
-    ),
-    // Nickname: fluffypancakes001us
-    fallback(
-        "D1A39C70169F2C4B690DC9B6E7B03C3B9ABE907B",
-        "LVGX116bnkZzvaOLi1Gff26cDVeNUrMmfXUpmwoSfiE",
-        &[
-            "195.58.58.72:443",
-            "[2a12:bec0:20c:94bb::1]:443"
-        ],
-    ),
-    // Nickname: yungla
-    fallback(
-        "61FDC20A73FD35D96C3BE5EE984156210B10A491",
-        "u1iIqCQd9DTGizS5ZV0ZRqCThIZUeRSUdFoYjuATFgs",
-        &[
-            "64.65.1.6:443"
-        ],
-    ),
-    // Nickname: TORtelliniExit02
-    fallback(
-        "301DD621B68D0B7257EA221FD938D34FE3794BEE",
-        "8XD4mpqZEZWLdvwwtgXeuXO78QUggqym/Jxu7JIWRoE",
-        &[
-            "45.13.225.78:9001",
-            "[2a0e:97c0:3e3:460:1337:b04b:1337:5]:9001"
-        ],
-    ),
-    // Nickname: firefly
-    fallback(
-        "B42C797CC8CD63C60FB643E820A11D113DF4F5C8",
-        "b8o9wlakh/dsJIKO48gDMDS9Pb5m9sq64mreJIUXz/s",
-        &[
-            "217.23.8.2:9001"
-        ],
-    ),
-    // Nickname: TORlabproject
-    fallback(
-        "C460E8A702592EF52116466BBA2725E11FB82AC9",
-        "YHiQpP0Or9jqZlHWoMn3eksaXzR3LbOSy01Uw/TNTLw",
-        &[
-            "135.125.103.47:9001",
-            "[2001:41d0:404:200::f9f]:9001"
-        ],
-    ),
-    // Nickname: algrothendieck3
-    fallback(
-        "042944E139508E6A8495AA1F6F320D1087D84930",
-        "fvprk9Za8jeOV1dnZgWpSWIQXpOEK6iXW3yk2mtfdPc",
-        &[
-            "80.67.172.162:4443"
-        ],
-    ),
-    // Nickname: younotfound
-    fallback(
-        "09DD0F811808091DACA286CB50CF85919416ABD4",
-        "ZbYPeA0gV8aEff8wytw5ZGe1OCfwSIfA5nwqkmCL4lU",
-        &[
-            "82.141.122.156:442"
-        ],
-    ),
-    // Nickname: DFRI79
-    fallback(
-        "9A561CA579F0918D4E0C7A8533801B91C56FD605",
-        "A5YbHU+zSTpxDG4p8vWRbI/aw5TdTvIGlF5B3a8Av5I",
-        &[
-            "171.25.193.39:81",
-            "[2001:67c:289c:2::40]:81"
-        ],
-    ),
-    // Nickname: PommespanzerDE9
-    fallback(
-        "7E74AEB864E7386E041C5551DD6CE7C0C8B5FE9F",
-        "Y/uNKLIjJr9M0bcygxH8hjJT6qOyuqAykJ0IwS8vj3k",
-        &[
-            "212.132.97.196:443",
-            "[2a01:239:353:8d00::1]:443"
-        ],
-    ),
-    // Nickname: Peacemaker
-    fallback(
-        "1D22FDB094132E415174968BC0B52A53B386D29C",
-        "sG5rQQRUF9UUBzJ/M3k0ZDG2Pyia3pquFeFevafebu8",
-        &[
-            "188.213.94.245:9001",
-            "[2a10:3781:4550:a::131]:9001"
-        ],
-    ),
-    // Nickname: UnredactedLille
-    fallback(
-        "821921A4F18B2E152153C8138E6989FA48745180",
-        "wzHsw7z/ipLAs5pKVYYs+soGj8z6RYeQixX2MOUyOwk",
-        &[
-            "23.191.200.22:443"
-        ],
-    ),
-    // Nickname: LunaTor
-    fallback(
-        "2037A6568C5771A5D8FF5C64FC1819247E6FEE7B",
-        "4XGIqWYUWXEiZsQP4AdhguCGG2kSZQ+1bb6aV8SRhHk",
-        &[
-            "66.146.193.33:9001"
-        ],
-    ),
-    // Nickname: dim
-    fallback(
-        "C4FEABB1C0F7709312B33345040FBC29682877DE",
-        "TLEdoJKUJW5YTQnk5YhkxqSuyr1xBYxTkOjzVIiQbEI",
-        &[
-            "45.137.201.5:9001"
-        ],
-    ),
-    // Nickname: TORKeFFORG5
-    fallback(
-        "FDD9CD7406582E0B56C4A27D44126AE843EAF6DD",
-        "3WQGedrTQmY35JXBGlzb90z2fmJLs1eXNhWQ1Ir5XPc",
-        &[
-            "193.189.100.198:443",
-            "[2a0f:df00:0:255::198]:443"
-        ],
-    ),
-    // Nickname: seenoevil
-    fallback(
-        "345F576F29CA1F2A3B86262A6165E2F9F1AAAD8D",
-        "JrqtogRHONZHoXgGVu7LohVttztM679VOlcLRlHLmfY",
-        &[
-            "162.201.194.145:9001",
-            "[2600:1700:3fc0:cdb0::44]:9001"
-        ],
-    ),
-    // Nickname: Aramis
-    fallback(
-        "CFF9C18036D401579C473177C0D95B463AD371F7",
-        "OC96iqxr5QRCqANnramwt4rChaAXkx/+4FtvPINMrWo",
-        &[
-            "45.83.104.137:9600",
-            "[2a03:4000:46:197:b434:d3ff:fe68:d9e1]:9600"
-        ],
-    ),
-    // Nickname: pdos01
-    fallback(
-        "CEE465A048F5F53261F418C5257A4285E73C3C66",
-        "eF0dYZJwIU+I/iRX78/bsHtDgp70WrtQoav8n8i50F0",
-        &[
-            "128.52.132.189:9002",
-            "[2603:400a:0:9:f816:3eff:fe73:f862]:9002"
-        ],
-    ),
-    // Nickname: ephemer5
-    fallback(
-        "2427E37429BD1E5EE094BDDF417D1D2BE2A2C803",
-        "xJnhW+ROl7alILuSUQsR6gRfAbpwpxpsicsmwTp+oOU",
-        &[
-            "128.232.113.47:9001",
-            "[2a05:b400:110:1199:a6bf:1ff:fe25:b961]:9001"
-        ],
-    ),
-    // Nickname: wagwan
-    fallback(
-        "1442F40CA33AC29441F54EF696FCC04A5A16C307",
-        "l2slkvlUU5hoHaVh9R3cZAHI8RU83yexnQlng++HDCw",
-        &[
-            "50.7.154.218:443"
-        ],
-    ),
-    // Nickname: rotatopotato
-    fallback(
-        "C25A982DCFE86D647273CD66C478EE0A1193FE4E",
-        "pmXOxQEDIb5R5IyOfv2gHdbZjJq0dUQZZuJ/NVeqL7A",
-        &[
-            "158.69.201.83:9001"
-        ],
-    ),
-    // Nickname: ghostemane
-    fallback(
-        "2F32397F39D58E88B0863621FC58C6D7F59491B3",
-        "34dWpL1CfpQUvkBMOTJqv4lzeN/J+MD6nSJ7NqLVqOQ",
-        &[
-            "64.65.1.128:443"
-        ],
-    ),
-    // Nickname: NTH29R1
-    fallback(
-        "007BE01311B98AEFDFDCB7F4A2F167296E696825",
-        "5YI2A0kDCO8wAlPHBe7dBTYs/lM+neoddcQknXH1IcQ",
-        &[
-            "192.42.116.29:443",
-            "[2001:67c:e60:c0c:192:42:116:29]:443"
-        ],
-    ),
-    // Nickname: thelox
-    fallback(
-        "911BE3F16FA3609A056FFF56814CACD6F8669E53",
-        "Ve82zY32cqUBIkJdaEazsXKL+bOcLDVDldFpwimc61I",
-        &[
-            "96.9.98.90:443"
-        ],
-    ),
-    // Nickname: tubealloys
-    fallback(
-        "4B582F3F4BB4DE56D7728DEB22AA255350870F98",
-        "LpOt9BLCrYbw599gg5KgmIestknC3iTp43Z3NaIlAOQ",
-        &[
-            "213.144.142.24:9001",
-            "[2001:1620:ad1::ff24]:9001"
-        ],
-    ),
-    // Nickname: ForPrivacyNET
-    fallback(
-        "E1AF5373E3240566B598FA481AD3860549F6168B",
-        "dJC3RLXvW5JMfcEIUvRzBYm0/dGmoY18IjZ+4m41Mb8",
-        &[
-            "185.220.101.199:8443",
-            "[2a0b:f4c2:2:1::199]:8443"
-        ],
-    ),
-    // Nickname: jackson
-    fallback(
-        "E8CCA1C61EBA1614BAB6B5CA792BDC687F397B4F",
-        "x5c302mwWeffrZmdXVnB266Pwy4FQDx30w8CzmJon58",
-        &[
-            "109.70.100.246:9010",
-            "[2a03:e600:100:c3::10]:9010"
-        ],
-    ),
-    // Nickname: TORKeFFORG19
-    fallback(
-        "E3426F15A222DA8788615224722799975943EE63",
-        "Me2n08KJyabDqArGhsfVWDQDDJ2vWOKIjbkJWAQwrK8",
-        &[
-            "193.189.100.199:444",
-            "[2a0f:df00:0:255::199]:444"
-        ],
-    ),
-    // Nickname: ProSecureRelay
-    fallback(
-        "8AFE4E6F05234B0184327C052B09F10191EAFAF3",
-        "1fT+PnazGE7TicM8z+0vI9yzZoPT1LL+XuCMO5MCAWs",
-        &[
-            "93.237.51.47:30003"
-        ],
-    ),
-    // Nickname: apophenia
-    fallback(
-        "EEEBDC066C59143A2C614DE6600601EDAB85C2B9",
-        "R6LAFV0zAzE3eo9IYj32TWidNJtFoOTVlkdS3h3svuM",
-        &[
-            "82.221.131.86:8443"
-        ],
-    ),
-    // Nickname: BronkJohannesbrg
-    fallback(
-        "EB0EEE7C95D2B4324115C07FE175CB1D1DF18B99",
-        "8kb0RDipzlZx0fgy+6GQ3R5rUD3l3yEnHrhTevfadn0",
-        &[
-            "102.211.56.112:80"
-        ],
-    ),
-    // Nickname: prsv
-    fallback(
-        "D95EA120340506CB35A32512CBACFD671CC0A613",
-        "/QEkE2ZxZV7iFp+i2ed3V+BRwbYQYr+sxLz6QtZXqE4",
-        &[
-            "135.125.183.193:9200",
-            "[2001:41d0:701:1100::9e20]:9200"
-        ],
-    ),
-    // Nickname: DFRI162
-    fallback(
-        "97F70D82466B7EC179641753490EFF91A52C790C",
-        "T+fr0ZtArGCJrJIyewqMFQ1J8GKel9pZolVLrRRA2E8",
-        &[
-            "171.25.193.25:444",
-            "[2001:67c:289c::25]:444"
-        ],
-    ),
-    // Nickname: eo220
-    fallback(
-        "EED7EFB9D49FF1D713F3FA4083A36EB97BA18406",
-        "ZoUOLwy81cG3T1/CwkNNd0KZfG0tKQ5t1zJqAHbik3w",
-        &[
-            "23.129.64.220:443",
-            "[2620:18c:0:192::e0:220]:443"
-        ],
-    ),
-    // Nickname: UnredactedBB
-    fallback(
-        "7AC25DC9E4606154DE38305BDC5A40BCBCB6D04A",
-        "z6eX1n/nnbCAxUr+8tRhZ9FLX2+AdvGMeZm49hum8nw",
-        &[
-            "23.191.200.23:443"
-        ],
-    ),
-    // Nickname: popeye
-    fallback(
-        "460CB72A11A5948FDDDE032603DDBEB837AF662C",
-        "AVnz9/0BQesj5TMeTxDboQSn60cTcDseu30z0ynspRI",
-        &[
-            "162.216.18.62:443",
-            "[2600:3c03::f03c:95ff:fe5d:562]:443"
-        ],
-    ),
-    // Nickname: zgato
-    fallback(
-        "DB9B9D7ED50046DC52D5A09368E1C53E81D40DE5",
-        "Hv9dtcqdXPsp5L2ermrXspj1PdT/HyVL0GH3WWWPSAk",
-        &[
-            "194.156.89.6:9003"
-        ],
-    ),
-    // Nickname: blueandyellow
-    fallback(
-        "249C706F0F360429F367719F01A2246186BC8B17",
-        "FIHLtqMGUH1ZlQZEevbDxm1CykIH9HbrrTbl8aoftT4",
-        &[
-            "141.105.130.119:9001",
-            "[2a01:f500:5:3e00::a]:9001"
-        ],
-    ),
-    // Nickname: prsv
-    fallback(
-        "FD162550A00234ED29E41CE1C78C63741CD1037E",
-        "56wfz6Lg63/976bVS96x1hGuYQtLTFjwGJtrHm1xdK0",
-        &[
-            "193.142.59.74:9100",
-            "[2a13:29c0:7c08:9c12:a883:ab1e:7e4b:1]:9100"
-        ],
-    ),
-    // Nickname: SieNCoAd
-    fallback(
-        "31EF78B9019D61CF259B223DB9F80940994EDA34",
-        "dcY53jP0FOHWplrmlzNtyMG0bOh0mR3LNpF+mRLdJaI",
-        &[
-            "5.255.101.10:443",
-            "[2a04:52c0:106:394:d2c:6372:23ce:da90]:443"
-        ],
-    ),
-    // Nickname: MHcXthX9Eb34WYyEN7H
-    fallback(
-        "964B4E8A75263A69769541F2764563DABDD995D2",
-        "Nkz+lww+07xrnQLr3CkqWM1Fp7mZjwcU3qAawNktbUU",
-        &[
-            "68.67.32.31:9001"
-        ],
-    ),
-    // Nickname: GreenOnion
-    fallback(
-        "FFB4BF2AE896CA8E7B3C419855346415D743E889",
-        "nCkeJWfgQpsb8sr+amuGkGeXEg8lxjl/gv0QD+rFpFs",
-        &[
-            "146.59.15.186:9001"
-        ],
-    ),
-    // Nickname: confidential
-    fallback(
-        "DA8C9D509989F8175EC3E487788815F7BAD2DAEC",
-        "h/VKppbS2SaN/bjJPdAFdx9TGMOLGrJDjs8jQiB+6QA",
-        &[
-            "45.137.199.102:9001",
-            "[2a0b:64c0:10:1:be24:11ff:fee7:119f]:9001"
-        ],
-    ),
-    // Nickname: Quetzalcoatl
-    fallback(
-        "ADC35E769B42A3CAB8557E0B5295D3F152595EF8",
-        "IxJpzDAHPUjzT1GBfCtza3d+zIxGNGweNa9T7rJlKEQ",
-        &[
-            "67.215.234.141:8430",
-            "[2607:9d00:2000:ac::a498:9191]:8430"
-        ],
-    ),
-    // Nickname: dolemite
-    fallback(
-        "438F3EA4C9FB0DB63F5377A3271AB5435FAD7E04",
-        "mL3ZgqOEjbLGw3mh/NP59W0qj1wQJ0T/P2SJLg49+j4",
-        &[
-            "193.108.117.103:9001"
-        ],
-    ),
-    // Nickname: tesseract01
-    fallback(
-        "F12F8DFDDE1969D4E5940781E3DAB326D28C1220",
-        "RIpkdMheQazMxnwxeDlacngR7j2+piEA/NsKxIOoK+g",
-        &[
-            "84.238.10.142:19001"
-        ],
-    ),
-    // Nickname: wfaegfyFDRTlhdtr
-    fallback(
-        "FFAF2849EED3BBB66031173551CFD5E39ECEA324",
-        "qAxD5CcYiTzXCmPjk1lr3N6Hlja3gvDz4T/ZZa1rQ44",
-        &[
-            "185.82.126.57:443"
+            "81.83.44.219:9001"
         ],
     ),
     // Nickname: NeelTorExit1B
@@ -635,794 +249,405 @@ vec![
             "[2602:f6f6:2:ad5c::1]:9003"
         ],
     ),
-    // Nickname: M4ri0
+    // Nickname: 4634mDufourspitze
     fallback(
-        "579E92A3168011112BE428E28F1DB12B847EE662",
-        "f81YGSFbyLYK6Zawj/Enti+r6pQcRK9cz42jLRorFR8",
+        "2E3F15298298A8E262472CD3D55D5D5453AAD289",
+        "/ezr6gTVd6HHBdPWG8UiYcMtTSO4RJIRFNt0tRhRA2g",
         &[
-            "82.41.132.3:9001"
+            "179.237.66.51:443",
+            "[2001:1600:18:103::3f6]:443"
         ],
     ),
-    // Nickname: foolio
+    // Nickname: refan3
     fallback(
-        "8D69CBCD465028B306080C55E8DF8858D986023D",
-        "1MqGKDmWZ99i0ESTkQCI4wQ7P9tekgieajxtiM/b830",
+        "6A406E987DC75C44F6EE8E8B8A3132338774D2F3",
+        "qL53dplyoa660MdHUPX/mNXVjE49xKw5QAFOBpmQqM0",
         &[
-            "96.9.98.64:443"
+            "167.17.40.90:443"
         ],
     ),
-    // Nickname: 2chainz
+    // Nickname: Neuchatel
     fallback(
-        "A06E4ABE8E49E25BDD1DB618ED262706742A215B",
-        "yXUwPZVyc5BSji8s3hhASdaN1I04k+ADyFTI/WWC538",
+        "8B23688C0ED86684CCABB58AAFEC505014548194",
+        "7kPeWzIG0ucVW1DRHwcBs1a1gsXMw/7THwS0KwNtXaw",
         &[
-            "64.65.0.120:443"
+            "91.214.191.5:443",
+            "[2001:1600:13:101::ea6]:443"
         ],
     ),
-    // Nickname: Quetzalcoatl
+    // Nickname: DFRI85
     fallback(
-        "39CE03A66016B0D69BC6C2A1F362C628436FEF7B",
-        "KZgnMAFQj7R220GjaJ5CGaeppQMJfqPIsS6pyoRmFFg",
+        "CF5120484CA5B8DD2B44C17D20454B8737BB4372",
+        "oiFdAqMhwCk3azNoCTFb6W9RsM7uxfyRp/BPzg4/dQQ",
         &[
-            "89.58.26.216:7100",
-            "[2a03:4000:62:8:c855:23ff:fef6:50ee]:7100"
+            "171.25.193.40:444",
+            "[2001:67c:289c:2::39]:444"
         ],
     ),
-    // Nickname: bauruine
+    // Nickname: NoSpyZone
     fallback(
-        "FEEBABA2B6FAF53AE1DC8DDA8681CE026537DFA4",
-        "wo9NA5RXkPAc7sB2301JBpvdk1RvSOGZEzgwuWP/msA",
+        "A192A25545ED951597975F5611C1DA062D5C2703",
+        "gNngDJeMzsnsxF0LGukk83AXhQ+vTnHOs0cxF0RWdNQ",
         &[
-            "185.229.90.81:993",
-            "[2001:1680:101:43f::1]:993"
-        ],
-    ),
-    // Nickname: finrelay
-    fallback(
-        "94351CC9E17E00741D694F0AC3CD57A9C23E1A43",
-        "ljfFNiTvSSkXL38wA9ILv6D56b7xL51xwrSFa215FmE",
-        &[
-            "64.188.93.178:9001",
-            "[2a01:ecc0:1000:a100::2]:9001"
-        ],
-    ),
-    // Nickname: FreeEurope24
-    fallback(
-        "527BFB3CE819BE8D74C2A488B83A2F4332B878B5",
-        "UrgzA4RDHLKu3t3YjNlz+FyZ32UYFN6nWJalRGz29LA",
-        &[
-            "194.49.71.252:9001"
-        ],
-    ),
-    // Nickname: mastaace
-    fallback(
-        "18A65FC409848256101AE4AE90AFCAE2C00E0776",
-        "inZDIze230fJg7XPZoLRH5Yt8S/eav5hknOrqyeeiqg",
-        &[
-            "96.9.98.156:443"
-        ],
-    ),
-    // Nickname: TheMadHackerGoYeet
-    fallback(
-        "AC68C99B4B26E2B4729237B0DBC7065023690940",
-        "gJ26105Pv3nSiUeRhtGFQNTo9UWQgT3olyGMW8ewt5s",
-        &[
-            "70.39.234.182:9001"
-        ],
-    ),
-    // Nickname: zgato
-    fallback(
-        "E4CABFB603248E0C9741EBA4924F93A0445F142D",
-        "Z8mlJZDaBaiAbuZGxuRy0VvWjMNxFaNpWgUcPec30LA",
-        &[
-            "95.17.81.188:9008"
-        ],
-    ),
-    // Nickname: trinity
-    fallback(
-        "49B1EF7777C56048D30D3DD756BE1EEDFFDF470C",
-        "U5MaXGAIH/QpPtys5RMSFVG7P4hVD8+DstueGZaDhw0",
-        &[
-            "91.158.13.188:9001"
-        ],
-    ),
-    // Nickname: Oberwallis
-    fallback(
-        "06F3E28948A3C6E2BA8B0C7D109C7BFC12D69DC5",
-        "l+GxP870VJBzOtbbqyzxLr08gx9gd2FPuS5c7MsE/7I",
-        &[
-            "89.47.51.90:443",
-            "[2001:1600:13:101::1fc7]:443"
-        ],
-    ),
-    // Nickname: 53c70r
-    fallback(
-        "FA561E534DDDE63830FA0B0A484235ED23BB27A3",
-        "4USmucF6HsObQqDlsh38Vuj0ifzkOjAFsMJZJOJkxgk",
-        &[
-            "85.215.67.230:8443",
-            "[2a02:2479:42:f100::1]:8443"
-        ],
-    ),
-    // Nickname: NTH144R1
-    fallback(
-        "3DEE67992679A782BD81D2801275449C763741E3",
-        "C9LjO3gX6trWtLLpFwAb3/SC3UUiqrwHk0afEsIs43c",
-        &[
-            "192.42.116.144:443",
-            "[2001:67c:e60:c0c:192:42:116:144]:443"
+            "66.33.9.236:9001"
         ],
     ),
     // Nickname: prsv
     fallback(
-        "FC003BAD97BC06BF4B1CECB6423929D66FF34932",
-        "2wJ6M3bQOyIr+rb41G56bZ6PNhfHE4j2cYEffzETSo8",
+        "C2B5ABE8FFC44AF2BC2F474CD557410AE139CE41",
+        "3bD65ntJdQlTGEN4xaYkbXwKhbk1mhP7N3oeG8YhaAU",
         &[
-            "51.75.141.87:9100",
-            "[2001:41d0:305:2100::4e75]:9100"
+            "37.221.208.216:9000",
+            "[2a01:270:98d8::1]:9000"
         ],
     ),
-    // Nickname: XORJSRFL
+    // Nickname: pKD9jZ19N1LiTvsjOF3
     fallback(
-        "9F74A77EB9D76F2FCCE591C89A26E0FDBD110AB8",
-        "XUM3iVVPGw0EyPMXtBRsDVWgbM0jaP60r+B4O1fU9TE",
+        "37DDF1906EE3DB96130A717EA54667C64DAC78DF",
+        "HqYNKFI1miiR5tr2rfzYz+zu85Mgye7iE1/n01DZ7T0",
         &[
-            "46.165.252.48:9001"
+            "202.61.224.179:9030",
+            "[2a03:4000:56:c1b::1]:9032"
         ],
     ),
-    // Nickname: tritium1
+    // Nickname: gfguihgrudifhguih
     fallback(
-        "EC5A78D5974701196C93E9D326B8672BC04FAB7C",
-        "vs/o+IMUEbQNgKmDlsaUYWDtqnL6PgCLYTYN3ehtyEE",
+        "8DEA894A93865C1DACC874B0B2340096417EDDB2",
+        "nwValttSnmFw/rgNclEJDEEbQ08Y1U1oYbbbpUAh4zk",
         &[
-            "185.100.87.141:9002",
-            "[2a06:1700:0:e::1]:9002"
+            "185.11.139.198:9001"
         ],
     ),
-    // Nickname: obscuraalm01
+    // Nickname: LysatorRelay3
     fallback(
-        "675C1CFC6FABBFCBE4CB5BE77CFE2A0A8F575B8D",
-        "0EwXHoahhZZM7HOr8UmWbdpGwwlLgWrkBXn0b5q2NRU",
+        "6393CEE122264B1B1628D5EF1D62EC09923EC6F4",
+        "lVC6DCi4OKfOOcidQR+dSa8D+IX9NLOF6PjIhHSF6Xo",
         &[
-            "89.44.193.42:443"
+            "130.236.254.228:443"
         ],
     ),
-    // Nickname: 1blu4DEicebeer02
+    // Nickname: gnampf4i32
     fallback(
-        "0501011B32C77C3FFE68DC4B3E40FC5D27F9501B",
-        "veaYh/efnlzmpMFYFI5K3VLCQ8uzlU44uT/ajY3oR2Q",
+        "4356DDFC83F8335E2AF395D5EA4CA28CC9E57C58",
+        "u3uogAZasN2qsNhLPtkJ0B8fLgUMyi76Ju8jtHxvvH8",
         &[
-            "178.254.44.163:5126"
+            "74.208.60.253:40242",
+            "[2607:b500:425:c000:0:d9f:fd98:556d]:40242"
         ],
     ),
-    // Nickname: Raclette
+    // Nickname: Digitalcourage4ip5b
     fallback(
-        "E339970C7021BB066F033083DC7F402FC95CFCFC",
-        "dGyf1KMn26slK3wAqOL9v/cwd5KCzylZDwlVioNY9Qo",
+        "902A13399F14FFC7E2912463300C78A25C1F76B6",
+        "+rCKUkUR/QgOco8r/24M1ECUqJtHMYBGXSKaCpjAnsY",
         &[
-            "132.243.162.13:443",
-            "[2a0f:5f45:535::d8]:443"
+            "185.220.101.108:993",
+            "[2a0b:f4c2:4::108]:993"
         ],
     ),
-    // Nickname: TonyI
+    // Nickname: metroboomin
     fallback(
-        "1C75E1F02A0A7CBB70E72D194298B3DA3A622CDF",
-        "AmNLJ/zRNounz+U+KORZJHkuDd0ghXV+BCEn0Ypslxs",
+        "860F4B99450C6757C12E4FF7E68072D390FDE552",
+        "koFvNwGQhr9Vk/NTpyi+JYujiNEB6D2hifnjN+awvFE",
         &[
-            "91.226.144.98:80"
+            "64.65.63.70:443"
         ],
     ),
-    // Nickname: BenjaminDover
+    // Nickname: giovanna
     fallback(
-        "2F51D0746765580A0A48BCAA21B56ECF797B903E",
-        "MbRIez1jPIUykSxSo6ZYj2GWmcYD2mEeBUKDKf2CoXU",
+        "1137AB1F84EC2D52DFB1915717F14FF1A10EB392",
+        "Zo1fPk7PZQ0ykVG27y+bMEWQQ9SJWkCbinTPrIxFzFk",
         &[
-            "78.42.200.34:9601",
-            "[2a02:8071:74e0:2033::8484:1111]:9601"
+            "185.227.68.78:443"
         ],
     ),
-    // Nickname: prsv
+    // Nickname: Freebird31
     fallback(
-        "58214F460A2EB3EC745DFED36D190316132AE3B1",
-        "9bEii3vJ6C6VuF1AVuFO9PjgKT63F4vdebfQwQdcYPE",
+        "F9246DEF2B653807236DA134F2AEAB103D58ABFE",
+        "Nk1MWkriq/5vhqfDNBtiJWPTUOGxPi1Xj1ZJBCzSe4c",
         &[
-            "51.178.136.58:9100"
+            "91.143.88.62:443",
+            "[2a02:180:6:1::3d8]:443"
         ],
     ),
-    // Nickname: Rem
+    // Nickname: forest17
     fallback(
-        "47186E3631689057A7EF223ECC5D86918A9E679E",
-        "jshXhB0a64Gqm1TdkboGV2huPju+nCwB4Vnf8ngpIUQ",
+        "E5EAA232F5DBE71006A2C72F928055325D9731AA",
+        "TgnePC0eeRuZcWEUUPTpk1hbgvgU12aJbBQutcBf0IQ",
         &[
-            "92.60.37.247:443",
-            "[2a03:4000:33:c4c:7823:e2ff:fe4d:d4c6]:443"
-        ],
-    ),
-    // Nickname: hong
-    fallback(
-        "0371E4EC901C4FC77FEA2AA5BE4218F0BE1F6CE3",
-        "UUp9bep51Vqdl1vjAohvgf38RCNtTrpBFxfwyM1iZ3Y",
-        &[
-            "209.58.180.236:9001"
+            "92.113.124.30:443",
+            "[2a0f:9400:7393:1f::74]:443"
         ],
     ),
     // Nickname: prsv
     fallback(
-        "5CEA56320C904E731AE827866C71B90D50696F6A",
-        "HuU9wJjR7LVA6arMPAPN2mprsx0KvNZOgWfuc2tDsV8",
+        "D74EA68923AC3449DEA549F10A89E6B33A770A39",
+        "+/G6+pG8C7bMkVWfSfOVe2aFObYmb0UsM3awuLlro3k",
         &[
-            "147.90.235.21:9100"
+            "147.135.129.138:9400"
         ],
     ),
-    // Nickname: skepta
+    // Nickname: DFRI59
     fallback(
-        "C05783305558432D94B024A1C2EC5CDC5B4817F5",
-        "N1IQRYq6xK5s15dyA/pGUkQQHdE1B1jxrmSgMg91WE8",
+        "730474AF35FC417A51B475BC1E4C1AC35915C0AC",
+        "79Acj/9kJSGUInqtcsVrMr7+tiiLc1WVyqg2feczKH8",
         &[
-            "96.9.98.78:443"
+            "171.25.193.36:9050",
+            "[2001:67c:289c:2::35]:9050"
         ],
     ),
-    // Nickname: runesandrelics
+    // Nickname: lunar5
     fallback(
-        "46F9FB943917858F618F2648595DEACD931D4400",
-        "UyE+Ng2VkmVKYMR6dBcfqcvrV0l5SeSNJ3b5ba1MtRU",
+        "84F062F1BBF663D4BA71861AB6AEC74933FE1C2B",
+        "eZKIwpNzAfER4uMQ3IqbQsz1lV9YXvv8eytGFBc5LAs",
         &[
-            "54.36.108.162:443",
-            "[2001:41d0:700:10a2::]:443"
+            "203.55.81.1:19005"
         ],
     ),
-    // Nickname: FJB6
+    // Nickname: simp13s3c
     fallback(
-        "B8FA90A8B7DA9B90A09AA04CD2E81E263AA8DA4C",
-        "Dv2wiAASd97DNsIREU6XDa1taC88Zt1Q1PJMMMa+YLo",
+        "A8F7230F6F5B640F3A01B5FAAFC8AF9481873DEE",
+        "+Cbpr9F2pNWHnPJh9VYDctH4w2CF6e+DksZ7IN2ciDM",
         &[
-            "198.46.168.17:9001"
+            "212.95.50.243:9001"
         ],
     ),
-    // Nickname: AnonsRelay
+    // Nickname: tonyd1
     fallback(
-        "38F14F8F0B30D35C491AAB5EC6770000A6CA794C",
-        "jWttcfJGucSRF5ouBVrnY5VdtLjS3O1YLJdK5rNfGKI",
+        "496E3F17EB9465B4F511FB362D2152616FEC8BC8",
+        "+5Pf/diPtMeJAmQLEEEc2fNkCBa7AyVoqVKhXlIEoJA",
         &[
-            "77.33.128.196:9001"
+            "64.65.62.111:443"
         ],
     ),
-    // Nickname: jorcanada
+    // Nickname: muffintop
     fallback(
-        "C366391E67A29CE959A15193D0CF2F9ED94F3578",
-        "HA8o+30qbVhcf35BZ7QCsXkrcuPP1FFyNd/a9/AyJfY",
+        "336694735E61C8B0B6D63CC48F78BB7A312BC829",
+        "9XpFN4OB98nOtFHYV6lXAQzD8df+rH7R0VpFL0QhbZU",
         &[
-            "216.197.207.49:9001"
+            "67.217.242.117:443"
         ],
     ),
-    // Nickname: transilvanianrealm
+    // Nickname: FlowerSequence
     fallback(
-        "584E7A714D68266083B873372D766597BDF67939",
-        "qgo/XV9uzrT7jl7Q3tkXYVktb+2/nOfO1IRUeJRl91k",
+        "70811E907A58DB6C5E0EAB3ACB189C1F820ACA6F",
+        "jnVMus6Xdj16eVuJ4bSUtlBqARM+18HlOTT2yOzeoWI",
         &[
-            "117.53.155.113:9001"
+            "45.61.151.166:443",
+            "[2602:fa59:3:4b2::1]:443"
         ],
     ),
-    // Nickname: FireElementX
+    // Nickname: StormyCloud
     fallback(
-        "5A9404C9AF72DB12ADEB2FF810E7DA12D3D66CEF",
-        "74DJvQWHScQYDOiQKpOLeshavOz7lZMM4PVLnVuPtAo",
+        "C9AC72CFB57563C608B3C978C3D9BBB0D8069564",
+        "QaRtVEBwGxxhU8fB63V7hws2elYfwr7RJ8HBvOahtyM",
         &[
-            "194.15.115.93:9001"
+            "23.128.248.166:9001",
+            "[2602:fc05::166]:9001"
         ],
     ),
-    // Nickname: Quetzalcoatl
+    // Nickname: pingu
     fallback(
-        "56D878C942CD38F5287079974950668B18ECC4CD",
-        "/xn7q+eJaeO984A24XBvGKsEfQoMzaa4tprrpu9dOtE",
+        "EFCF5193179FBCBEB4DC920C84F8F308DD67F516",
+        "dmKw163iz14IJ44uSOVtVB7Up7kNDx0D9/CMM6Xuuxg",
         &[
-            "89.58.26.216:9000",
-            "[2a03:4000:62:8:c855:23ff:fef6:50ee]:9000"
+            "65.109.237.123:9001",
+            "[2a01:4f9:c012:dba1::1]:9001"
         ],
     ),
-    // Nickname: AvyAndCal
+    // Nickname: Weltbank
     fallback(
-        "B2FB2A441E2AE4CA0420A187F388F8B5137E51F4",
-        "6OrZRV/ZwkHGnDryThz/XZp6xUMwfJO1SyU6EKKHLzE",
+        "226037A7F36D0C9F45B6A468129821A4B9B76A22",
+        "Fxa8yFZKLpGt1jsONSLcV8HW7HqAQegjW0FFc3BeKws",
         &[
-            "188.245.217.208:444"
+            "147.135.214.61:8443",
+            "[2001:41d0:303:703d::1]:8443"
         ],
     ),
-    // Nickname: slickrick
+    // Nickname: MyHomeRelay
     fallback(
-        "EAAB427C68A509AAE2B246F25423137FC9ED9489",
-        "mbeceD2uPDfzDYiCyezEkfJBDvZQPbPeQ2F38tK2icg",
+        "CCD5A95C74580EFE7305408656A8B68D033C76BD",
+        "yVzh94qVcUHWHVEkywKwpqD7ubJhXp/g+O1DP8eSpVA",
         &[
-            "64.65.1.147:443"
+            "88.153.69.167:9001"
         ],
     ),
-    // Nickname: decicus
+    // Nickname: Patr
     fallback(
-        "617ABB55C145AB81C6322E1082855F0DACC65F64",
-        "ucIq3XjPZy6xFjQfx/qhQGaCOj9brnWQp6XCSQKuY5o",
+        "061273FD35AD52B31E087E60BBE9F9DA1E05C1A2",
+        "rjHp5C7mkMYGhRyLt+bMNGQtsPOHsR5vIYQGlM8qNCI",
         &[
-            "185.181.63.124:9001",
-            "[2a03:94e0:ffff:185:181:63:0:124]:9001"
+            "188.165.136.211:8082"
         ],
     ),
-    // Nickname: trillsammy
+    // Nickname: Digitalcourage4ipeb
     fallback(
-        "CA893A2714E62ACAC7A28548F6F69BA5AF22C026",
-        "iduzvdvzz5L6Wu24PpwGiIC7w2KpUd29C8LTLiFf8pg",
+        "027E75C92F1231AE5F7BD4E1536696FE3040C460",
+        "HembYsYF0veEC6e5HA+Gw4ltIRTQK0i251gODdPJfOo",
         &[
-            "96.9.98.36:443"
+            "185.220.101.100:993",
+            "[2a0b:f4c2:4::100]:993"
         ],
     ),
-    // Nickname: bankrollfresh
+    // Nickname: edoras
     fallback(
-        "5983A781B6525C7918CFD9ABAB035BBA16105B32",
-        "tBYitrMG4t2KeZqD1ashnnTxA7sVywgSWtwBpGxx9oI",
+        "8D98CD79E7C8CA7928AA6BDD0F087E3FD5903B01",
+        "VQhmQZA5xeQJoRggbTAb7ZiQU9eo9MRYFxVrSE6nQto",
         &[
-            "64.65.62.119:443"
+            "45.9.60.88:4711",
+            "[2a03:4000:45:598:483a:a8ff:fe85:1728]:4711"
+        ],
+    ),
+    // Nickname: sputnik
+    fallback(
+        "AD19490C7DBB26D3A68EFC824F67E69B0A96E601",
+        "y8Vd9SygeMOyBkS4oLQVbC0F+9wS4NF5q1P61W80jL0",
+        &[
+            "188.40.128.246:9001",
+            "[2a01:4f8:221:1ac1:dead:beef:7005:9001]:9001"
         ],
     ),
     // Nickname: prsv
     fallback(
-        "BB5C8B377F9078A13653015B8C4538140CE2DD44",
-        "Xd/FNf8+gQ8yUBRSNSmwI1YNGxUvNTyTF6sHq5Dbas8",
+        "68C90FD05B027C9DB04FFC71B6D0EB4AC63F4D24",
+        "OpOK7zxDl4fNLsSEz0xs9+jJElsmr02MpNIDYQJBnFY",
         &[
-            "147.90.235.40:9100",
-            "[2602:f6f6:2:5c9c::1]:9100"
+            "51.222.158.116:9300",
+            "[2607:5300:205:200::6998]:9300"
         ],
     ),
-    // Nickname: Lily
+    // Nickname: skankhunt42nl1
     fallback(
-        "C89976F41351B3F0CDA25C385B41ED26A276579A",
-        "vEkCk5y7mUahR5u55k0QxAk7P55eTPJfVawvokipysE",
+        "57E7AD67EB72B189EE9F5272909DFF7EC5373E92",
+        "pDDT3TJellHmx0Jc5xt4qevCQBUFviC4KTCzPp6+XRI",
         &[
-            "5.255.101.24:9001"
+            "5.253.84.137:9000",
+            "[2a0f:ca80:0:e57f::785:2099]:9000"
         ],
     ),
-    // Nickname: Osiris
+    // Nickname: stephenjackson
     fallback(
-        "D5E9356A5958E4891A124FB749829B30EB7F8D29",
-        "s3tqhmN3BiDsihPDGU7MivmMzsvJgG+JXPA9upFvtWM",
+        "C2F8A89DA5B389A59F1DA21AC91AE9D95CAD6DD5",
+        "znDi27sk4pGSAiDbYJTy+YMrZtNMU0bK8zK/qSZXZuY",
         &[
-            "167.114.103.133:443",
-            "[2607:5300:60:6a85::46]:443"
+            "64.65.62.156:443"
         ],
     ),
-    // Nickname: TRRelay1
+    // Nickname: mystikal
     fallback(
-        "F16FA573E1A9B5B545920972618698235DD78E05",
-        "Aw8/pcjgMROB+oz5qXtIHlbb5ED3rZuTqYGM5zvYQlc",
+        "A1A5C415581004E06D9E93C570FF7766ACEB1BD0",
+        "EBEO4Lw0HPEctpKdHYPnXKZVZ+W2jZgJcQiwzTEFGqU",
         &[
-            "193.31.117.236:443"
+            "64.65.1.148:443"
         ],
     ),
-    // Nickname: spongeybob
+    // Nickname: DuckDuckDev
     fallback(
-        "400EF1A0A38600641CB845875568828DC1D14C89",
-        "XxV2WQwipYh8h0fZTFB6ehpZvBtUmYOfcZbIfx5ldM4",
+        "11F67DE01F7BCB036D9E8D32BF9F014F191A023D",
+        "cOahzuR97OhLmWH0JgAN/BGEBnXMh3nzgAvj2JgRiBo",
         &[
-            "52.14.1.170:33123"
+            "62.194.235.139:9001"
         ],
     ),
-    // Nickname: kramse02
+    // Nickname: 0x3d02
     fallback(
-        "07ACFB0801E4F74F5610F870B5FCBB5539DBCBD1",
-        "qXFy8YnPFXU+fG4W9wjyMq8UeHgUh4yQU+e41teXCME",
+        "912A7C57E05606AF602EC63D1D06BBD5C7AAE516",
+        "ZQVqJJlUgh3HMjBC+sNjY/U7smDsrSdvGeyPEV8e68A",
         &[
-            "185.129.62.63:9001",
-            "[2a06:d380:0:103::63]:9001"
+            "135.125.223.108:8001",
+            "[2001:41d0:700:2e6c::1]:8001"
         ],
     ),
-    // Nickname: DFRI46
+    // Nickname: farthinder
     fallback(
-        "0F1C2A846C228EF96A623D9E421EF63B3BD32BD5",
-        "uj/ByKdfurSamHS9jWoaXNe3EXPVr9v0/FAKzNZOuYo",
+        "5312D9D6076D15962AFC0E4A834E8F6B9EAA531D",
+        "6GQTpYsPR3mErdLSTLRCLTuWoMKIjKBdIYK/g+SLwNw",
         &[
-            "171.25.193.35:443",
-            "[2001:67c:289c:2::36]:443"
+            "94.237.8.19:9001",
+            "[2a04:3545:1000:720:4cfe:77ff:fe91:452d]:9001"
         ],
     ),
-    // Nickname: hertlein
+    // Nickname: bubblegum
     fallback(
-        "D12FBEA6247B25C0FCD09D5E123DD59BF943D7BB",
-        "gZYqBuiG8QVpBF9pSg1Cknhkng/gK1ElvF2DUeSyd1g",
+        "CEF4A10B52BCCFF8914E62CB11894CACA244B5F9",
+        "NXfZGno3cG4H0b7ofB6zUz+ZpGasVPm7F1E1KOkcYbM",
         &[
-            "109.70.100.246:9000",
-            "[2a03:e600:100:c3::10]:9000"
-        ],
-    ),
-    // Nickname: robbbanksbroward
-    fallback(
-        "1359BB4BF1382722D11895B298053F9A99A7314E",
-        "57029yGrHGK3j7xxTK+XX0L9q9/F9PUHyLxE+SFfOWQ",
-        &[
-            "64.65.63.66:443"
-        ],
-    ),
-    // Nickname: GL2udrUdaaug
-    fallback(
-        "C16118AB499F579A4F95EE8CBA30758BA6B2F804",
-        "i36i+GccAiBvCZzu/gtGP4JBbxYaPGNLIfo/+ib4Ih4",
-        &[
-            "193.115.253.174:443"
-        ],
-    ),
-    // Nickname: Quetzalcoatl
-    fallback(
-        "66FF32B5D2ED28E310E0C368BFD3CED3799988AC",
-        "9otmQxp1qwyPU614+VrNzegTlc8SIoRrTT+/ex10SEU",
-        &[
-            "154.53.58.161:110",
-            "[2605:a141:2261:4410::1]:110"
-        ],
-    ),
-    // Nickname: RelayUli
-    fallback(
-        "E6007F4B6BF63905470B55807BA996EC48C72D6B",
-        "gdvmRFp9AkYldfg7Kyox9JU0xvjvmIQRlQv5pE97Dac",
-        &[
-            "87.106.44.40:9001"
-        ],
-    ),
-    // Nickname: kbtr7lv
-    fallback(
-        "66C102FA5DDF48C9EEEB048C1630933B66C50ECC",
-        "HtBN8goL5tUqe4B2Q2owUYjUJxaqH3W04bjun2OurPE",
-        &[
-            "94.140.115.114:8443"
-        ],
-    ),
-    // Nickname: Unnamed
-    fallback(
-        "579795881A9BEB88E42FDDA8E5A45EE7606CFC01",
-        "4mYB8U8X0zi/SNDvDB5O4vlDFNKs7K+Jk9Iv+HbcNUo",
-        &[
-            "64.95.10.169:19001"
-        ],
-    ),
-    // Nickname: DFRI130
-    fallback(
-        "7860F0AD272C7045A27C67CD215D467D8E679F45",
-        "OnBoPtM1lr9rpOQNyJFoZamxvbiWA2e0Q3Y7msCNEQY",
-        &[
-            "171.25.193.131:9030",
-            "[2001:67c:289c:4::132]:9030"
+            "38.180.164.218:443"
         ],
     ),
     // Nickname: theTorDoor
     fallback(
-        "B9591189772AD8D32AE960E9570A49292F3A1E40",
-        "7ot2g/gsQnsaQg0tXKfh7JCu/dC04OX9oNWMwljXUtc",
+        "0481EF56CC799D429E618781F6AF416B6792E1A4",
+        "Is1AZ+g6NJuiy4qxA00cAP4Ydyz3GIZHtFyhh/3BO/Y",
         &[
-            "173.249.215.107:9001"
+            "173.249.215.243:9001"
         ],
     ),
-    // Nickname: MetaSucks
+    // Nickname: icespice
     fallback(
-        "A91B7AC7A53D2E08A45DAF748C250FB535DBDE8F",
-        "o2lxPcAraCpoujc8xABgCE3CG0sft1WfF7EZkVE8iiM",
+        "F54A0FA05F13B883CD40C7E6B033D03FB3505E62",
+        "OkZTZu3RcEAyr1+I200Sm1Pv0N0Dlgy8dlLL3PJSHXc",
         &[
-            "45.84.107.84:8443"
+            "96.9.98.35:443"
         ],
     ),
-    // Nickname: Quetzalcoatl
+    // Nickname: GermanCraft3
     fallback(
-        "2E821477E6CB66014DF2385F7C48BE56E7884F1F",
-        "+kCVuBIQEsTa5uslS87Cp2VoUwvx5Mjt6RjlUg+3YeI",
+        "18CA9EA099BB9861E354D2A6FF49337A7E81C2F3",
+        "8gffdU6uaE4cGk9O5nS8ga6AjosK4qDCR1eypU6oiXQ",
         &[
-            "5.104.84.183:7430",
-            "[2400:d320:2261:6860::1]:7430"
+            "45.86.125.102:443",
+            "[2a0c:8900:2:b2f::1]:443"
         ],
     ),
-    // Nickname: prsv
+    // Nickname: acehoodbroward
     fallback(
-        "FC0A83C73D9DA146D3608AE71F54E322890D59C5",
-        "/msZxiT8dMTA7wf2MqNsisrAU+vWTMsaol4jxyu+nCU",
+        "A553E8735D0D784589EBA80752536FA9A23100BA",
+        "87AgHNPvfRi/1x6LJoFOSlxpITGhK2aAgVI1sNdXVbY",
         &[
-            "147.135.129.138:9200"
+            "64.65.63.40:443"
         ],
     ),
-    // Nickname: arbitraryTessa2
+    // Nickname: RelayGeek09
     fallback(
-        "3F43D0584A2613C9DB631382FF486DC6B95EA1C8",
-        "aEKMWjd5yuKcfIUiIX0Ab67bgHgNbnkEzGWzw3ER2jY",
+        "96174A2DDBEBAC256547AE54D4C792E8F9BBFE6C",
+        "83/dZO80CA3dmRy6GjUpQk44g4pdxlQUKygKVt97N8s",
         &[
-            "95.217.112.245:53",
-            "[2a01:4f9:4a:2e4e::2]:53"
+            "23.134.88.58:443",
+            "[2602:fba1:100::58:1]:443"
         ],
     ),
-    // Nickname: Quetzalcoatl
+    // Nickname: theTorDoor
     fallback(
-        "B2A4EFD1B3DAD0F5FA127B5C29BBFE625628A6D9",
-        "QGs2Z5O7Eu9RDyGsg/KSONwlw5JC0dW9LxVdBfWx9JA",
+        "47B01B6ABED603E5B59204A31C2C2028B4EA60BA",
+        "9ibVAB9dQRSqwUBbV38z1tdGe19+kh4I91Lu88GMMtQ",
         &[
-            "67.215.234.141:7430",
-            "[2607:9d00:2000:ac::a498:9191]:7430"
+            "173.249.194.247:9001"
         ],
     ),
-    // Nickname: Unnamed
+    // Nickname: dim
     fallback(
-        "3E18FEBABD94CDC986416C957DF323FEDE97A2BD",
-        "du1L5sWEqoilkwjpv5WP4ZqhpYs0o/S0p3yZR31R4L8",
+        "242B7DD7F589BD3644F60D3C8D688006F8613A27",
+        "0yT7MchnBRHaFcn2v0nerFRhHpysOhpZW/CzaOCzsG0",
         &[
-            "62.210.99.238:39819"
+            "45.9.156.110:9001",
+            "[2a0e:bfc7::216:3cff:fe6d:b40]:9001"
         ],
     ),
-    // Nickname: 0x1ea7deadbeef
+    // Nickname: burnaboy
     fallback(
-        "F475E5987E44A2B7B143A2BEE3F8128EEFD7E5A3",
-        "9pYJ3jnLgOJB63cT9s4fNjaTTQcRvv1KEHLKVoTLOGk",
+        "4F067C5C488173987B568CD7245F1CA71DEE996B",
+        "FHUcFKNjymucq0DnjGUpYaI0ecPBOa8TGZFD76Hgcog",
         &[
-            "45.90.4.235:9001",
-            "[2a03:4000:58:7d:de1:ea7:dead:beef]:9090"
+            "64.65.62.122:443"
         ],
     ),
-    // Nickname: Peru4no
+    // Nickname: Killix
     fallback(
-        "1EA7A6645619538D286FDBED7688AFA7F82E0A51",
-        "f0IuA6atwV8HXjnTA6lUHJemDJ7mg7+yr2bMU7T1bYk",
+        "3D62FC61399E0DB497303BED14B66E0CE22EFA15",
+        "spXYwnB/jRZwrFErN7ihkqQOHgQ7E7S4/yPIXpWJJ5k",
         &[
-            "190.120.229.2:443",
-            "[2800:ba0:2:ee01::7583]:443"
-        ],
-    ),
-    // Nickname: BringMeToLife
-    fallback(
-        "ACD05B04783AC9B868A07DCF945E49C5792679AA",
-        "+MYsyJeY3UDVEzDMsBjhirh5doCHMCM9YaU9hX87LLs",
-        &[
-            "68.185.124.105:42069"
-        ],
-    ),
-    // Nickname: Tuco1
-    fallback(
-        "3E59280EA67C918F5AD5CBF7978643BB70A0C169",
-        "L03mKz20txtoyBHfEbq/QGoXMMZ3EXj+O1HUXmONmE8",
-        &[
-            "193.187.91.79:443"
-        ],
-    ),
-    // Nickname: upsuperRelay2
-    fallback(
-        "96070698714DC07AE2B377864625B7EF64E33BF5",
-        "GmL+QbyzYZ+jvYF/dZTDPHguKIF9a+SLMqywxZtN3Mc",
-        &[
-            "212.24.100.138:9001",
-            "[2a02:7b40:d418:648a::1]:9001"
-        ],
-    ),
-    // Nickname: fuchs2
-    fallback(
-        "509EAB4C5D10C9A9A24B4EA0CE402C047A2D64E6",
-        "O1MbXsxCb4A9rI/I6bnPI3Ds+XdncoMOSmTakJRAZrU",
-        &[
-            "65.21.94.13:9001",
-            "[2a01:4f9:3b:468e::13]:9001"
-        ],
-    ),
-    // Nickname: D4rkKn1gh7
-    fallback(
-        "CA1684516B7FECF3DB76D43FD02F56D8B95E8A69",
-        "PuoZ2zamntyUFHzRpOj/xrqHPmr+1Cdx1O0W8P/W9Lc",
-        &[
-            "142.132.157.35:8443",
-            "[2a01:4f8:261:2ced::2]:8443"
-        ],
-    ),
-    // Nickname: blackstar
-    fallback(
-        "DA71126E1D0B11605533B7AD399DD5A7EC8E2F0E",
-        "tV9IEEy6acJv6F/YLWp/F8+O78xalv7/kLuioMmCL0o",
-        &[
-            "45.80.171.18:9001",
-            "[2a10:3781:1f::5]:9001"
-        ],
-    ),
-    // Nickname: Haxalicious
-    fallback(
-        "90AAC6245388A9A9EC7050810775503004FE40BF",
-        "jdBcwrO8M9FV3O6hN31HkfXiHO8gxzVw2fx9DWtl4f4",
-        &[
-            "23.88.154.69:9001"
-        ],
-    ),
-    // Nickname: Unnamed
-    fallback(
-        "2B1FA70BE95457A0A9DD878D3C05A5FFA45960BF",
-        "vB+waZyspa4uWGboiPxDW9ErOO62zlJvZZvFdtA2OXQ",
-        &[
-            "46.166.165.116:9051"
-        ],
-    ),
-    // Nickname: smino
-    fallback(
-        "9C0952E6E80F51A2D37F2D3053B7B2D5E186EBB9",
-        "qRTtYzb/hMeSd+1Jtw70K+/ZhVJXgGdf5wjV1ep0Il4",
-        &[
-            "64.65.1.157:443"
-        ],
-    ),
-    // Nickname: southside
-    fallback(
-        "8C694E170C33A11C91565D9BC1A2F2648E9167C2",
-        "kzLI7dYE1IIur1N/yzKmF11OsTlGUk7l6jfH57bTQTQ",
-        &[
-            "64.65.63.77:443"
-        ],
-    ),
-    // Nickname: Wildtwister
-    fallback(
-        "03E107A3663E912664F4A934DFF451262C218357",
-        "Qu0XQugOMRGOzA8TpNvZgpi2Uzug1A35ke/nBPDQ8HE",
-        &[
-            "94.100.6.11:443"
-        ],
-    ),
-    // Nickname: PyotrTorpotkinTwo
-    fallback(
-        "019FEB22CE04CBD0489B7F24BE038518B64FA223",
-        "9SZtfxvawADCzwmAx2fwMMnLV/dQ+/gLT8+SKnweo+U",
-        &[
-            "142.44.243.133:9001",
-            "[2607:5300:201:3100::3e59]:9002"
-        ],
-    ),
-    // Nickname: stormyz
-    fallback(
-        "E237E9F386F14456E99EED36B1FAC4F9F77B0F80",
-        "fu7UwfM8TGxYRmbwYRcQlzKv+nsbPJc2WrT68YHL2QA",
-        &[
-            "96.9.98.88:443"
-        ],
-    ),
-    // Nickname: nitrogen9001
-    fallback(
-        "89ECFA01219A76D222EDD68BF3EEB1DCC3A8D2B3",
-        "7NW9pqcHFL7mThW9w7N5zHpJtL/ADVg3+BRYzNPBAIM",
-        &[
-            "23.141.40.7:9001",
-            "[2620:b0:2000:102::7]:9001"
-        ],
-    ),
-    // Nickname: DigiGesTor5e2
-    fallback(
-        "9C61FC0A01401EDF71C4048665E53968E81351FC",
-        "6TJnVXMqhR96j92tmmnBi1SJDw27e9kd2VIdxXPuCJ0",
-        &[
-            "195.176.3.23:8443",
-            "[2001:620:20d0::23]:8443"
-        ],
-    ),
-    // Nickname: reovol
-    fallback(
-        "25317B5C9B83C574351A8F016DFB4B7053893C97",
-        "TqMlzTV2E8IpQ8EBk534Z4mzHqbI7/p8K3LNHada8rU",
-        &[
-            "104.248.233.233:9001"
-        ],
-    ),
-    // Nickname: lunar13
-    fallback(
-        "98697EF93E26DD52CD96D3F998BF20B2A4162291",
-        "PzNbMHy6vlyBssCD02uXEic9I/yy1kMDjgqFAbgh5ws",
-        &[
-            "203.55.81.2:19005"
-        ],
-    ),
-    // Nickname: fabolaffytaffy
-    fallback(
-        "7E338F23CC660D83C0150087473767DAD0FB0556",
-        "lAlnYVKl3G1TeVscesEJVzKIq7n8pi+vkIVhygUy2lE",
-        &[
-            "64.65.1.49:443"
-        ],
-    ),
-    // Nickname: irelayyourtraffic
-    fallback(
-        "9215A08C840208C79235D821C8B57BFB33245945",
-        "Tyu3XVyqylC40iYU/cQOTdHEzSSnyxj52kotPUbcOVU",
-        &[
-            "38.45.67.186:9001"
-        ],
-    ),
-    // Nickname: fluffypancakes007nl
-    fallback(
-        "B792BEE2B51CC5F8F53139638C8F89AE17D71EB1",
-        "v7rp+Cz09K5hrHnLYoJhoED8LNaxoKVukekcEPnVDBk",
-        &[
-            "185.227.70.53:443",
-            "[2a12:bec0:20b:da62::1]:443"
-        ],
-    ),
-    // Nickname: SFRnotCool
-    fallback(
-        "0106DDA8BE86AAACF769D3E1D30867495E9F3E22",
-        "dHvB4QylTthXZ2L4N5AAVFEgWj+QuwjKX+PDLXaQMNQ",
-        &[
-            "90.90.165.58:443"
-        ],
-    ),
-    // Nickname: twofive
-    fallback(
-        "A4E498C6CC34329E607531002A19C5908FEABFD3",
-        "Y8zCzzsLuXy91npz9nn9RDYJ6utXqvezHqsmIp036KA",
-        &[
-            "79.237.214.38:9005",
-            "[2003:f3:cf46:7001::41c]:9005"
-        ],
-    ),
-    // Nickname: origan
-    fallback(
-        "F46854EDACCD16828FEAAFC6C6EDDC07DDF04411",
-        "Wpg1n0e1nNPYdonDn3ZH1YIZpu3nWuqRM5CbM+2EwEQ",
-        &[
-            "217.182.73.157:9001"
-        ],
-    ),
-    // Nickname: qwerty12345
-    fallback(
-        "E094C5DFC402CE402DADF2D699EC8641B9D5B76E",
-        "O1WICyaluZxIWbHAMfhmWraFIT0jHqQmvEsUBNRJk/8",
-        &[
-            "178.239.17.187:9001"
-        ],
-    ),
-    // Nickname: RelayKiritho
-    fallback(
-        "EBF2AB8FB3B4F70CE57C491A6FF37D7F6659159A",
-        "MWXBjWgEg58peUtwYGecS+NaCNl3HsrNpUpb4T3Lc6w",
-        &[
-            "168.138.183.189:9001",
-            "[2603:c024:451f:5f01:0:7114:85c7:fbbc]:9001"
-        ],
-    ),
-    // Nickname: darksource
-    fallback(
-        "87372BFA3477E25ECC0BC82800338BF92DACFEF9",
-        "hwGiDYn9l0uiAyY4rozco73Jq4GE3AMjH7vOi/vUyXQ",
-        &[
-            "185.50.195.27:27016"
-        ],
-    ),
-    // Nickname: turk
-    fallback(
-        "340976A4CBE4B2D8423A8F98914776A85B9151BD",
-        "ZGpFwJbZKwClrt5JPYU9sWFzRHDjrnIzzGrvgymcdDM",
-        &[
-            "64.65.63.7:443"
-        ],
-    ),
-    // Nickname: Unnamed
-    fallback(
-        "37A5E87EBD0B99B09650B32C8F3E085CF83A6EA7",
-        "zc/kZgh1KoqNPhngLSuipsB/QEtdtfnYz0uDT+8nv+w",
-        &[
-            "87.98.242.239:8080"
-        ],
-    ),
-    // Nickname: layziebone
-    fallback(
-        "28A791F9E9CFCAD286D42F83EB676481322E4E99",
-        "0OjF3SeR7tKxRJX9MvFKnGIsi86t/IFLwpqlislmKYc",
-        &[
-            "96.9.98.186:443"
-        ],
-    ),
-    // Nickname: relayonbephomet
-    fallback(
-        "C0E7334A181184ABD07698D04ADC19E15E3EE184",
-        "vlhMRPsRDfKvCkRL8QIlYLiXZ8N9bhkbmEYhdXq15D0",
-        &[
-            "185.220.100.244:9000",
-            "[2a0b:f4c0:16c:12::1]:9000"
-        ],
-    ),
-    // Nickname: Servum
-    fallback(
-        "E31B3E63F132961C70C5FCEE2187F4F935391234",
-        "rKbDW+55SglTm/FbNOfKGR9UGubQlAQA1kYUZ2wHllI",
-        &[
-            "128.0.64.148:8443",
-            "[2a0c:d480:c1c1:1286:ffff:ffff:ffff:ffe]:8443"
+            "185.16.38.185:9091",
+            "[2a03:cfc0:8000:13::b910:26b9]:9091"
         ],
     ),
     // Nickname: archivalrelay1
@@ -1434,267 +659,1046 @@ vec![
             "[2a03:94e0:ffff:185:181:60:0:39]:9001"
         ],
     ),
-    // Nickname: gnunet
+    // Nickname: server70
     fallback(
-        "46DA79FDCCC1BB8AA2D1A6A10A4E59F5A8FB114C",
-        "j5OS+Grg3VgFTgVAtp4S2u62bFdK+t64Nuy43LJB8ts",
+        "89B7B5942CF68F752D456578406656FC01AFCFB3",
+        "UZ+QpYJ4/5XrHBWTc55sPaYiRRmuBcFUEzisc6ehGQU",
         &[
-            "193.5.87.219:9001"
+            "85.17.55.33:9001",
+            "[2001:1af8:4060:a01f::2ddb]:9001"
         ],
     ),
-    // Nickname: IrishBread
+    // Nickname: afterbeam
     fallback(
-        "7EA8AB9F5695B89D682760DB0CF03C32F22D5872",
-        "NDL5yt3gAGkZNYQAgHTVOioA5N2Ioa80BVXbNmb01f4",
+        "D5B957EF873A72B57FC0F8F389D4403326C8F0E2",
+        "mQEcfp8O1nj5ycNZTC+OM5zHFk8gCdXNtoG0QJwSscE",
         &[
-            "217.156.67.176:19890"
+            "89.117.1.123:9001",
+            "[2402:d0c0:21::2df5:510a]:9001"
         ],
     ),
-    // Nickname: hopper
+    // Nickname: sensor
     fallback(
-        "E5A4F065BA4E4CB193E50FFD310BA09788A27856",
-        "AZhxJNZUyKMAemetKU8e5Eq73hBP1MfHaO6F3lv8UUw",
+        "6EE192F5B8ABF12778F411670D6B98000EBB713D",
+        "Cilkbgf0xh0GzlKDD5K1jHuYOlZB4YAN0DvASIfBKyc",
         &[
-            "109.70.100.245:9020",
-            "[2a03:e600:100:c3::11]:9020"
+            "212.90.39.112:9001"
         ],
     ),
-    // Nickname: TheSecondRelay
+    // Nickname: StartOSRelay
     fallback(
-        "0CADF9650BE6F3CB6A09F29D8B91250D93DD91E6",
-        "JjDlaYHcdXDmW+Bj7kUCrX7R4nnFm0bejOJkr8+erjw",
+        "0C997EA49ABDC172F7A783F318F0B900496C719F",
+        "H1Y8JaLoT92BdI3XGMlCAZ/KCqRcMZfxhYjQlud70l4",
         &[
-            "107.189.10.86:9001"
+            "24.230.53.44:9001"
         ],
     ),
-    // Nickname: northerndownpour
+    // Nickname: destroylonely
     fallback(
-        "75C0B7A2650BD317CE0FF4EE37DEA093AAD9019B",
-        "yFWAWIDZ7R62JCsZQfltaocZopm6x2/v4OkmW84hHwU",
+        "61F488FEC8949B21731F994A10AF299DA1B89523",
+        "qnCni8PacsWk1dPg+UKvkHWZmWaySoJYG1UwtPrF0y4",
         &[
-            "5.45.99.251:8080",
-            "[2a03:4000:5:b1:14bb:a9ff:fe0f:70c3]:8080"
+            "96.9.98.23:443"
         ],
     ),
-    // Nickname: guiltysimpson
+    // Nickname: serv01
     fallback(
-        "54EE54565CBDA3793EDB47EC4E5E8C01E2495A36",
-        "2+XqB4ic4Y2zT8CsssEm7axi/yPlSt65WNBg0p0r4ic",
+        "DC0B2CF7EFBE640DF3D1615EB8FE50E82FB53B45",
+        "ZVQtk+ZX94ywEbgGLC5HgQ2srNcBx82lnMOexivDUco",
         &[
-            "64.65.62.160:443"
+            "185.182.193.16:8443"
         ],
     ),
-    // Nickname: LTCSI01
+    // Nickname: kuenguang
     fallback(
-        "8ECBA648364559FE79DBC70246C0CAABE083B46D",
-        "97UBeM3KYm/x14VilB/3WQrGnLhaBW2jDU1+Z0XEZxE",
+        "DE915B27AF0453595540924D28B8BA74D1276D31",
+        "iiR5tmQL69DU2o95s+GH9M/QxqJFmzJBE7UO3BMbLck",
         &[
-            "176.65.134.37:443",
-            "[2602:f915:e:563e::1]:443"
+            "89.39.105.55:9001"
+        ],
+    ),
+    // Nickname: htowndonkee
+    fallback(
+        "8ECCBA855814F6369D3EFDBD02FC6BF5AB258B03",
+        "8PpmMErO9Mbw/XeYcTcT+oJLeZCGFGBM2gqLn41lVLU",
+        &[
+            "64.65.1.82:443"
+        ],
+    ),
+    // Nickname: masstorNYT
+    fallback(
+        "6DC66A94443235265D98FDC52E5E2AEB6D21B64F",
+        "w3acZRU/dJugpS++fPNKWg6pr7kILym6hCpt4/oNqm8",
+        &[
+            "198.46.175.208:443"
+        ],
+    ),
+    // Nickname: lilromeo
+    fallback(
+        "C2488A1039BE3C3AE8217BCA6C34D04B3B063BC2",
+        "JfMEU+I5YqjITBCVoURVXaQN51zERh1tvDQf25WYiWw",
+        &[
+            "64.65.62.103:443"
+        ],
+    ),
+    // Nickname: TheEarlyBasilisk
+    fallback(
+        "42C56C1BE2E5EE9EF1E10522A6AFC113F1D0E458",
+        "7E13BXCuo0XjfUi46Zv268zXkOBoBAnklCyBu89kygA",
+        &[
+            "95.153.31.38:9001"
+        ],
+    ),
+    // Nickname: YayEdSnowden
+    fallback(
+        "5842FB312F60E6C4C912FF76E5F8486967501BA4",
+        "0p0mcuNTD0DpS1Qbp94YXpIB4HXQKTkCbhpYGP2ZxR4",
+        &[
+            "51.81.209.86:9001"
+        ],
+    ),
+    // Nickname: ForPrivacyNET
+    fallback(
+        "2390B303058F5EC1E1BEAAEECE3AAF2CF97B71F4",
+        "gOrpw70QSJUGgFICaWL8b0esaoSfynYOfHXEDnGRzdo",
+        &[
+            "185.220.101.47:10047",
+            "[2a0b:f4c2:2::47]:10047"
+        ],
+    ),
+    // Nickname: NTH72R1
+    fallback(
+        "B48ED936B2FF3A776A333AE8A81D464BEA8FF560",
+        "i4vkMEluBnWbSOm/VAEEc7soFliBcNglvRilp0hx0Oo",
+        &[
+            "192.42.116.72:443",
+            "[2001:67c:e60:c0c:192:42:116:72]:443"
+        ],
+    ),
+    // Nickname: digitalsquid2
+    fallback(
+        "DC7481601C20E7B97226144AEDE15CFF4329CBBC",
+        "w1ITvmmzU6GN+oI1LPx8Od7FTHMFoy7WU9MMtjWFXNs",
+        &[
+            "45.82.66.94:9001"
+        ],
+    ),
+    // Nickname: jonasBebe
+    fallback(
+        "CDAEBA458F6129776643751934076A51D851C348",
+        "qIoFLaNfft950XQdWSF40UoAziLBCjgYeo7OE3HQgKQ",
+        &[
+            "5.9.24.169:9001",
+            "[2a01:4f8:161:391:6::2]:9001"
+        ],
+    ),
+    // Nickname: ForPrivacyNET
+    fallback(
+        "547B98B764B0CC7EE454DF1BEE517D2C50B6223B",
+        "ixPVl+9D7zeSH4aJIXMzWn2BhxJjZnELkeMpsqHWyu8",
+        &[
+            "185.220.101.37:10137",
+            "[2a0b:f4c2:2::37]:10137"
+        ],
+    ),
+    // Nickname: TORKeFFORG5
+    fallback(
+        "FDD9CD7406582E0B56C4A27D44126AE843EAF6DD",
+        "3WQGedrTQmY35JXBGlzb90z2fmJLs1eXNhWQ1Ir5XPc",
+        &[
+            "193.189.100.198:443",
+            "[2a0f:df00:0:255::198]:443"
+        ],
+    ),
+    // Nickname: schaunicht
+    fallback(
+        "850C54812314468879CAAA5F87A2670FB64C19CB",
+        "g+Y3MLPKdgwHRiB7PRn29It3OGdV9WxQeo3W9FiSDEs",
+        &[
+            "159.195.7.151:9001",
+            "[2a00:11c0:5f:4522:b86e:7fff:fee4:92b6]:9001"
+        ],
+    ),
+    // Nickname: PostGuard
+    fallback(
+        "615D541946672D02F31995A48A89A526C7EC3524",
+        "WE8Hcd0ROoo3Lc4n8iWMLvnOqZ5FfHtnVCyWNVoBtc8",
+        &[
+            "37.221.196.71:443",
+            "[2a03:4000:9:635:c48e:47ff:fea8:490]:443"
+        ],
+    ),
+    // Nickname: Guy1Relay
+    fallback(
+        "630C50D3449206B7F2A536098BB2A9C7B4326AD9",
+        "uRxNR4wWIzU8VNwi1d0NPSIDrelZvvmkk4bGKTwa/Wc",
+        &[
+            "23.126.9.217:9001"
+        ],
+    ),
+    // Nickname: madeintyo
+    fallback(
+        "FC4C22BF5685256C48EE7C3CD9F242FEEAA896D6",
+        "V5DZ09nq66wsYS4luH8tHh9I9aMO0mdVJNPI82KxFus",
+        &[
+            "64.65.62.28:443"
+        ],
+    ),
+    // Nickname: Raubritter
+    fallback(
+        "EDEB27C659CA0891773F9498560B9C97975842FB",
+        "7QQLHLSibggNvHXHMJKtwf0x6J72XIQKFCEcUWdjMLs",
+        &[
+            "51.83.197.245:9001",
+            "[2001:41d0:601:1100::8437]:9001"
+        ],
+    ),
+    // Nickname: Skverebu
+    fallback(
+        "A2196F78DCF95107CEED2338760D1E24D77E8A86",
+        "L7y4OdmlDeI0Qhy1y1sdCEVKFfY+eYQQM6QNYso/a+o",
+        &[
+            "172.245.234.197:9001",
+            "[2a11:840:69:1b::2540:44b0]:9001"
+        ],
+    ),
+    // Nickname: koixazk
+    fallback(
+        "79C42B034E4D95A3B026F0F55B75F64557E027B3",
+        "xZBxVe4lKpNFtM/xmn+VgyN1lC8h9ToAUKJ56ig9EIQ",
+        &[
+            "87.106.155.25:9001"
+        ],
+    ),
+    // Nickname: HyperlaserRelay
+    fallback(
+        "FD4260BA395AA7F42DADD5ADBA8E9BD3DD1FE647",
+        "vijmCvd7OU8vnFcCXUjQXmJgOvt+FLSdMeUyhz5Msck",
+        &[
+            "45.140.146.42:443"
+        ],
+    ),
+    // Nickname: NoPrivacy
+    fallback(
+        "098F6B044624C693E1973893637E54ED4777D893",
+        "hNwilqmIrbY5MOqgsX4G+yodtPUE8Nm09aqJ2yLyoN0",
+        &[
+            "104.168.35.199:443"
+        ],
+    ),
+    // Nickname: Ground
+    fallback(
+        "EE28999F9146C3E8045B8B5BF9623CC8F0AEEEA1",
+        "/L9+BmyRko8JbKzcDYIBPMlEpWMmCvVztDTgnveOi5E",
+        &[
+            "132.243.165.83:443",
+            "[2a0c:b641:3a1:1009::1f4]:443"
+        ],
+    ),
+    // Nickname: WOPR8
+    fallback(
+        "578939D3B55C1A378E9B26EAE489A757232A75E8",
+        "0ap5mh6B5UnbX/u1B9eHgqhkR/T7TXtG9FDUYi4+kl4",
+        &[
+            "67.163.153.240:8089",
+            "[2601:540:383:a30:10:100:1:6502]:8089"
+        ],
+    ),
+    // Nickname: Sn0wAliceMIDS1
+    fallback(
+        "09CD16A10AE02BA78E62FE0A9017436D6B0DDD7C",
+        "2OeGDwGhobfOhgOXJ3JLNrTDiTnkQjvwUJxPaXqa9Tw",
+        &[
+            "85.215.184.4:9001"
+        ],
+    ),
+    // Nickname: estgee
+    fallback(
+        "192EE5837A40386D0C6A6832E0496E9E17C2AD05",
+        "uBegGfSYBWEYcIUbV/qx4VzdS4v59DkGb41e8BNGFcw",
+        &[
+            "96.9.98.57:443"
+        ],
+    ),
+    // Nickname: outatime
+    fallback(
+        "730C207C0B7A9B48B4991213E1F5BA26A2E721CF",
+        "epCYATCJ/krtFniSXVNq3EB0kI1auzdtqvkq1a4voMo",
+        &[
+            "217.154.63.133:9001",
+            "[2a00:da00:f447:600::1]:9001"
+        ],
+    ),
+    // Nickname: BGPNetwork214329
+    fallback(
+        "0EA33F46444671E56D6C031A6A416EB7948AF8E5",
+        "8/uglDJzI8Bz6PZJa4NP9oBabZJz/tgK196cXbIrGrY",
+        &[
+            "209.131.126.32:9001",
+            "[2a03:5840:120::12]:9001"
+        ],
+    ),
+    // Nickname: desolate
+    fallback(
+        "F8F2B6BF6B2C2205CE0C110E23716F6A31D993D7",
+        "MSS0fRvVi1TFAQogN/iq6iQBmE4X5XJ6XsLcrBKON2I",
+        &[
+            "217.60.78.223:9001"
+        ],
+    ),
+    // Nickname: BSDrelay10
+    fallback(
+        "C003825610F646FD4CCC82BFCC5F1FD98D9800C7",
+        "4R8BnOH9z8DgqqftJgKCbIFT2WQY2wfOFGwYHbJOvmw",
+        &[
+            "205.185.114.228:443",
+            "[2605:6400:20:147::1]:443"
+        ],
+    ),
+    // Nickname: forest25
+    fallback(
+        "029C0DD3A8DE99F77B07EFE4391418C410102430",
+        "gtx8GapjFMHdYC3Jhsxhtcr3757jCgyuXKrmkDcPv3k",
+        &[
+            "103.6.234.172:443"
+        ],
+    ),
+    // Nickname: lilofatrat
+    fallback(
+        "B02D84C7AFA472D45DBB21758B51C66334A1A0E2",
+        "9Hgt2qczuOId7y75PxDslN1NgylsjQJF6ddx42vgsXQ",
+        &[
+            "64.65.1.96:443"
+        ],
+    ),
+    // Nickname: blockaide
+    fallback(
+        "EA9E042A05E851076A657639CD0C84D8DA86A76F",
+        "1/a3BlT6rnDExKIvMquD2c+9CPTgV7UNKXRYYaK00yQ",
+        &[
+            "188.214.132.18:9001"
+        ],
+    ),
+    // Nickname: ltgk
+    fallback(
+        "C007E78B267C164305D0BD92002073521FF02F7E",
+        "bfVAyycgT29EXArQXUQW9Hg7LomSCUkIQxJTCk298DU",
+        &[
+            "97.116.165.22:9001"
+        ],
+    ),
+    // Nickname: sydfortormd
+    fallback(
+        "DC2484E9D25390B77C3B64CB03D8BB6524B0F189",
+        "oRRE03OIDErwU9bwbfTG0i9seW+g2/q/Qj6qwzjSYFI",
+        &[
+            "170.64.189.121:443"
+        ],
+    ),
+    // Nickname: privacyMatters
+    fallback(
+        "28239BAC771829F821E2A8DD5B5539D7A11B9DB7",
+        "gKijvXauHPUbYvPbAhyJFtkgRWKI0XGF5Cv+KwQdIAE",
+        &[
+            "176.125.242.71:443",
+            "[2001:678:6d4:9202::101]:443"
+        ],
+    ),
+    // Nickname: laukur3000
+    fallback(
+        "ACF7FD5B73681BC01BBE8176C63E4675B274111D",
+        "sVrtIRyrZ3S503UYhh81F+t1chJSekEHQLQMslazgR8",
+        &[
+            "139.162.63.125:443"
+        ],
+    ),
+    // Nickname: NTH151R1
+    fallback(
+        "D7C0A50F9CDCB3A2D9F5F4DE8D1AC2FDC7DBBBA7",
+        "lzxzCtHbzF2felfZzzsdMk5VGeCLYNdMyZBrdYFgEOc",
+        &[
+            "192.42.116.151:443",
+            "[2001:67c:e60:c0c:192:42:116:151]:443"
+        ],
+    ),
+    // Nickname: as215248tor7b
+    fallback(
+        "F16EB458D382DE762D005745486390C43F95E64F",
+        "shnNCb0Y2NSnGd0lpyhysr4THiVhAPTg39iHVIUQT6w",
+        &[
+            "103.149.168.242:9002",
+            "[2a14:38c0:1::242]:9002"
+        ],
+    ),
+    // Nickname: sacco
+    fallback(
+        "6E02FDEA15122A492A799A58C4C11D02637B145A",
+        "7ipRjHzX3K0ZhQDr88KGDEFVFRtEBXSIf3BJU9Rne04",
+        &[
+            "31.129.22.65:9001",
+            "[2a05:541:112:31::1]:9001"
+        ],
+    ),
+    // Nickname: BASEL
+    fallback(
+        "8470EAB36524CA781989E15F04CA6B8F52326554",
+        "UJCrkah9TOMldnRFFgv0OVtmeA7MVCYHS4zx6u13Mko",
+        &[
+            "179.43.134.242:443"
+        ],
+    ),
+    // Nickname: prsv
+    fallback(
+        "FC0A83C73D9DA146D3608AE71F54E322890D59C5",
+        "/msZxiT8dMTA7wf2MqNsisrAU+vWTMsaol4jxyu+nCU",
+        &[
+            "147.135.129.138:9200"
+        ],
+    ),
+    // Nickname: kiriakou
+    fallback(
+        "C98CD99E2BF5F1D7EFA5ED90646AF809CE8F75DF",
+        "KLRfh6n4H4rFssR1EK2T3chZGgsFzxaCXb7OQcGgL6M",
+        &[
+            "23.129.64.140:443",
+            "[2620:18c:0:192::e0:140]:443"
         ],
     ),
     // Nickname: bauruine
     fallback(
-        "3DF62F4EE0A90D59B126EBFA95AB8E79B00A73A3",
-        "LLDwV7LMmUjLct/Tk8mOrRY69LSD74Ayu+6R3fBaNsk",
+        "48EBED655F080DEA249944DDAD22F02C70DCD403",
+        "EdbWsOtcQcpfPevMhuui+WzquDtD0dIJve0tMsXTuzc",
         &[
-            "185.243.218.231:443",
-            "[2a03:94e0:ffff:185:243:218:0:231]:443"
+            "95.215.191.21:8443",
+            "[2a00:51c0:13:1308::15]:8443"
         ],
     ),
-    // Nickname: NeelTorExit7A
+    // Nickname: snowden
     fallback(
-        "8885AF6339F9FEB97FEE16C9227582A255A5E89C",
-        "WJdni0x4q5i2FBHF3s0hvA38/6D3YPXx4UUrqFlaMwA",
+        "86C7A9A256A1ECB034FCFEAC820C638958455DCB",
+        "3RxKpoXbYPb1aJQU18qHd7ljeL9bq5vOly5I+xu3U8E",
         &[
-            "147.90.234.117:9002",
-            "[2602:f6f6:2:941d::1]:9002"
+            "23.129.64.147:443",
+            "[2620:18c:0:192::e0:147]:443"
         ],
     ),
-    // Nickname: galates
+    // Nickname: vielschichtig
     fallback(
-        "502774BA0466D3AE9B7A7A0EA2259CC62B8398A9",
-        "cDdqNA2udTLubKc5WwP1B3wBck6FB/zkvBUASWSHFXM",
+        "AAA417CF6E2477466B6D7CE7668A638441693CA8",
+        "GLBDBwSVQcJ59O2MRTPCBJpjsF5mYm+e4JDfsBCJMzQ",
         &[
-            "94.16.118.23:8443"
+            "49.13.133.38:443",
+            "[2a01:4f8:c010:8fe5::1]:443"
         ],
     ),
-    // Nickname: thicancyborg
+    // Nickname: hopetohelpdoods
     fallback(
-        "EFA4C5E7E9215E8A3C7A8F3C74D3139667DA92A5",
-        "PnX7X82GFmzgIazRS9iZcFAB3hQMnBypr0+jBFjDW7k",
+        "70740F1F1620557BC54C7E0FC994B4346EEDCE26",
+        "LFUAdMJh6W9y41yHrrz6GR2bGtNBam/4K6LI9Wwu0AM",
         &[
-            "94.23.45.103:9001",
-            "[2001:41d0:2:2e67::1]:9001"
+            "73.43.168.84:9074"
         ],
     ),
-    // Nickname: obzgs5tbmn4q
+    // Nickname: BlooseClues
     fallback(
-        "1F9A218BF276554927EBEFFE0B86826697CBDDD2",
-        "u/h77s1ZUxEAiMHYRGi/3aMmRQOAENxZc0FO+1Esiag",
+        "06F12BD681012A6C4C7A085C659BEB8A81F02CB8",
+        "NN45vamc+5g9iw9y8qON7fHTxe4m+YZMaeCc8ECbVnM",
         &[
-            "45.38.20.240:9005",
-            "[2a0f:85c1:356:1b63::1]:9005"
+            "190.120.231.69:8443",
+            "[2800:ba0:8:e2::8999:0]:8443"
         ],
     ),
-    // Nickname: Desertmaster7487
+    // Nickname: 2mpdhack
     fallback(
-        "280F964311BBCC5193C70DDF0C2DA3C38D4578C4",
-        "cLR5jcOBYrU5A8Qm55BKeEfzmBlG0Z2DTS2CeQ96zhE",
+        "CDB2605D2BD28DA31CC91956E8BAD147B7DF8AF9",
+        "9RE+GpScYWm1Lq67KyhkT+PrQ5Y7hGwtfq7TxW4oJrA",
         &[
-            "146.190.212.212:9001"
+            "73.68.62.87:8443"
         ],
     ),
-    // Nickname: TORB
+    // Nickname: shordieshordie
     fallback(
-        "EABB390323F80D4457BAA5CEEE511455700E929D",
-        "FTj3qEMX8E5RrGZcgZmqmoGDRBFCM2/KcAbz0N0Hmro",
+        "525ACA12806F27303A34D79F0DDD9AF5615F4AF6",
+        "tt0k2DvaKH0sE9S49NpKUFvXuYO9vE+kUvqqGZs33EA",
         &[
-            "176.125.242.131:443"
+            "96.9.98.46:443"
         ],
     ),
-    // Nickname: staysInVegas
+    // Nickname: FreePalestine
     fallback(
-        "27A3C6E301B9803F0F57856ADA5FD834DB0412FD",
-        "R3agw+q+5pdlb4HyYLG3lJLhq7UghnZoBD++NpI1XVY",
+        "85F62CC2F7D661140CDC2D3826099F8C5B1571CE",
+        "qjVXE/9zvR/xQ8tpinA95JB+R4f84tEAwY3o1TsvDfk",
         &[
-            "205.185.125.239:443"
+            "142.44.214.179:9001",
+            "[2607:5300:203:23b3::1]:9001"
+        ],
+    ),
+    // Nickname: NetSPTor
+    fallback(
+        "F2FAB7031B66F7CF09AF7BE6D104A3B72D352AE1",
+        "b1HpggnldAGAclVeKPkVOT10H2mi/QMdIuy0XJOoiPA",
+        &[
+            "143.248.248.180:9001"
+        ],
+    ),
+    // Nickname: djunkwalkit
+    fallback(
+        "35CCA524C0D4CF8863D34FEE9D3BB72D06209423",
+        "rclvYjOCJdrWRv2rNeNhf3VGSlIb0L7bB7+4U6i3Xrg",
+        &[
+            "64.65.1.47:443"
+        ],
+    ),
+    // Nickname: 4194mAletschhorn
+    fallback(
+        "FA01576E6B5CB77DF2330DEC999A7259BA3A48A3",
+        "TkKRenQ9J6TnnA8EbiXq2U7+pUX1ejPy6yfoMxnd0is",
+        &[
+            "83.228.247.230:443",
+            "[2001:1600:18:208::225]:443"
+        ],
+    ),
+    // Nickname: Quetzalcoatl
+    fallback(
+        "18283F41623F59578113DA0F11AD5A3874602354",
+        "5WKGDEwnTKigiih5Oe+dO3nKUPfLIq8gmFxRB2OQWH4",
+        &[
+            "89.58.26.216:110",
+            "[2a03:4000:62:8:c855:23ff:fef6:50ee]:110"
+        ],
+    ),
+    // Nickname: 3hn92a
+    fallback(
+        "9511BD8E0BB00B56E82E7A57BD03FDDF872FC0F1",
+        "1iOPGlNxAzLViuriN16dYAWxQNqXTXwoxNabzJDBOJM",
+        &[
+            "185.193.112.222:443"
+        ],
+    ),
+    // Nickname: gottahavemyp0ps
+    fallback(
+        "92A33DCE61A607CED076548CC476441CA4723238",
+        "Ji+5iGfjh1A3tqHxiHg/ybmwGV7rtQZJkejeQsEOrtc",
+        &[
+            "138.201.206.249:9001",
+            "[2a01:4f8:173:16d9::2]:9001"
+        ],
+    ),
+    // Nickname: Kumquat
+    fallback(
+        "04102613D8F998E956A7868D2DE5A532EE2473EA",
+        "G1/Gyp/EE7ms7FaCbIuJHjLCQxN+FxlJBiGbDEVMjjI",
+        &[
+            "207.244.78.230:443"
+        ],
+    ),
+    // Nickname: fivioforeign
+    fallback(
+        "C481DE5781E831DE83920A41B386B375CA9B0BCE",
+        "HG/WRA30vXLqNiCmXFpRzSXny1F2GpeOpDsmQZ7qdEM",
+        &[
+            "96.9.98.175:443"
+        ],
+    ),
+    // Nickname: princetonrelay
+    fallback(
+        "AF2334142F98A88716F6E9679BD94279FFF803A5",
+        "oaxT++UXajtehApWc/8aOAl5T4xMu4p/rym0PkCwccU",
+        &[
+            "128.112.102.39:443"
+        ],
+    ),
+    // Nickname: TrodaireSaoirse
+    fallback(
+        "511432D725B79B1DB832865EFA87BE6C441CCF7E",
+        "GBCEub3fcB2bvhXPk1LhrCF0R7eJVpswzlgOU3FXhWY",
+        &[
+            "71.191.145.2:9001"
+        ],
+    ),
+    // Nickname: NeelTorExit4B
+    fallback(
+        "D74315866B90F5EEC4DCAFF5C78BD65D62DF01AD",
+        "Zv8PO88Z/3r1wT/RSTe1yckzw/DL00uPRdTcVx6k2wE",
+        &[
+            "147.90.234.88:9003",
+            "[2602:f6f6:2:cf34::1]:9003"
+        ],
+    ),
+    // Nickname: Digitalcourage4ip2a
+    fallback(
+        "68EC657DC8A587B38D5D7763D5C72E93C2CD456C",
+        "9tYPAipnih5ABWh5LH+UE1ki1oW5pmrIGChjUHwcpOE",
+        &[
+            "185.220.101.105:443",
+            "[2a0b:f4c2:4::105]:443"
+        ],
+    ),
+    // Nickname: Uri
+    fallback(
+        "7EA759ABE1D95C60D96B8A4F141A5BD4AF1815CB",
+        "U+f2eQtwzM73fK6S4hbqxf6f/M1GaWCv2ElBlqL5sek",
+        &[
+            "89.47.51.114:443",
+            "[2001:1600:13:101::3bb]:443"
+        ],
+    ),
+    // Nickname: csUniHB
+    fallback(
+        "F1CD870D7A8FA364E459ABA70B1737D40B0B4BB3",
+        "kyHbXP9LMi3kFZblcuk5a1EQ1kbDNcHpHvSB7oYyEZQ",
+        &[
+            "134.102.200.101:9001",
+            "[2001:638:708:30c8::65]:9001"
+        ],
+    ),
+    // Nickname: NTH129R1
+    fallback(
+        "978E0392F3EC675624151AAE5B53F59CEDFC4A23",
+        "m64lDO+tk8i5ET1fZYBTg8VXmRqZ3OuLL/u0th0qyyY",
+        &[
+            "192.42.116.129:443",
+            "[2001:67c:e60:c0c:192:42:116:129]:443"
+        ],
+    ),
+    // Nickname: Digitalcourage4ip7b
+    fallback(
+        "D13692D97236C0B8E8E19EA2DD952B5C4F9010BB",
+        "7W3KnshdKM/sxyCfTww7ovrDHAjsmNhzpL+/n9TNSKw",
+        &[
+            "185.220.101.110:993",
+            "[2a0b:f4c2:4::110]:993"
+        ],
+    ),
+    // Nickname: CrimPacTorRelay03
+    fallback(
+        "4F277112E567A1DC5E1912FAE855FD7DF6BA6162",
+        "sqtdYVjCu+KLTKUJc+D8XHJzh1A7lIwer7JnUuLIId4",
+        &[
+            "198.178.138.236:443",
+            "[2602:81c:1000:179::236]:443"
+        ],
+    ),
+    // Nickname: theTorDoor
+    fallback(
+        "C6204A658698376AD78E1D66386F9EF9192421AA",
+        "qfXOrbKqke+niL5/HHXD0E4P8XaAAt/C4zJTcB/NS98",
+        &[
+            "173.249.214.194:9001"
+        ],
+    ),
+    // Nickname: HungryShark
+    fallback(
+        "8ADCA1D516089918654820A659FF109F53A3E008",
+        "fX607vBPw/sQse/pG61a6lUfDMLp0DRyCv0SGVNFYYs",
+        &[
+            "162.19.208.109:9001",
+            "[2001:41d0:700:6532::6de8:5a9c]:9001"
+        ],
+    ),
+    // Nickname: 405tor3
+    fallback(
+        "64FB9F5DFE9EEF76157917646BA394D2321C1AB5",
+        "R9t+dFOe873fJFbXQ/Atlo5ij71EjWJ7K+GNf4LguPs",
+        &[
+            "107.208.159.58:9003"
+        ],
+    ),
+    // Nickname: MBRelayvps99fdee21
+    fallback(
+        "D1AA781B091F2ACF66E7067A6DEE08A16C18CB96",
+        "m3Wd8F1ta7XlL7iVYi8nlLOnmwV5xRRFB/FTvWdojRc",
+        &[
+            "51.255.203.142:9001",
+            "[2001:41d0:305:2100::1:1174]:9001"
+        ],
+    ),
+    // Nickname: vol1
+    fallback(
+        "99348748C22EE093F22D32F1996507DC2E363872",
+        "TqbqB7y1FzLE9gcBlnqPQK7yrm99d0CX5ajuG5sVFrU",
+        &[
+            "108.61.189.136:443"
+        ],
+    ),
+    // Nickname: QuietLantern
+    fallback(
+        "7BF01B6A54DE11F848937ED5E33071066D395D35",
+        "W/mrgo/XicbJpkMZr1ovF/G8c+HBy+GrNk3FYWXjF64",
+        &[
+            "208.64.169.190:9001"
+        ],
+    ),
+    // Nickname: TorRelay1b
+    fallback(
+        "1AA63474AB2277A944E452649EB19044F21314E4",
+        "VqusQHlOJElaagVUUcolAN+aCF37xsGGEHxyIE017uQ",
+        &[
+            "89.58.54.129:587",
+            "[2a03:4000:69:e40::1]:587"
+        ],
+    ),
+    // Nickname: Slavyanka
+    fallback(
+        "EFE89ECF4EE11613A19248777EBBA28719BF5FF7",
+        "ktTHSBb3SSp8goOGI/mssWGRcfmfoN6i/bCnSr4WFCM",
+        &[
+            "194.182.179.34:443",
+            "[2a04:c47:e00:7cdf:4b9:a0ff:fe00:2f0]:443"
+        ],
+    ),
+    // Nickname: Unnamed
+    fallback(
+        "3D1AB7F0D27B23104D16D8D7FE4F602DFDC2F938",
+        "cdzNCZuujC9mSHe93mtram+CAVctoAE8H5ISGd/Y3YU",
+        &[
+            "179.237.109.36:9001",
+            "[2001:1600:18:20a::192]:9001"
+        ],
+    ),
+    // Nickname: eruption
+    fallback(
+        "C47FDE0CA7401922F756C65BC08DB1B6FA41A2C2",
+        "bMnJSBC9GqQpqhjR6EQlcru1ayaLC+ITXLCbhneudfw",
+        &[
+            "38.89.70.34:9001",
+            "[2604:86c0:5001:e:f::]:9001"
+        ],
+    ),
+    // Nickname: Arnelle
+    fallback(
+        "8DFF5BADC75FB3CCD3CF404A9A29040CED16BAA6",
+        "gj05EAdc+pm0LL1T31Mzzi977AzRoYf9OliePtsEllc",
+        &[
+            "193.91.164.188:9001"
+        ],
+    ),
+    // Nickname: dockstader
+    fallback(
+        "790EB3E544E70809FA760DC793469FC5ABAF1E28",
+        "3JJsKTEsc7Sr0ZMExU7PdViKAF/L502IUvFIoskqWIc",
+        &[
+            "209.58.180.90:443"
+        ],
+    ),
+    // Nickname: astarseran
+    fallback(
+        "B125B20FCCA2A54422C50DC2156E872D5B45A368",
+        "QBQRUskHxiOiPIGdZan0P5QjBebY+aKpx77g1tktEqQ",
+        &[
+            "173.249.55.230:9443"
+        ],
+    ),
+    // Nickname: bauruine
+    fallback(
+        "045BBCA9602A22C112984F25003CD4897CFFB9E5",
+        "uSR1Zgf+eHuNjwHUqsKBQDxvq6QXB+GwWjVw34IeDf0",
+        &[
+            "185.229.90.81:443",
+            "[2001:1680:101:43f::1]:443"
+        ],
+    ),
+    // Nickname: fattrelsouthside
+    fallback(
+        "8C33D0386F2C155EE77172B6EC972DE80805F771",
+        "X/zxJ+ulW+xRW43dJ0JOf9PCTB4xRemZKrvQ7FlMuiU",
+        &[
+            "64.65.1.141:443"
+        ],
+    ),
+    // Nickname: DemonHunter
+    fallback(
+        "133BBDA007B04F3EF3BAFEF9DE204425984CA841",
+        "OwinJLZf44esetdGVVp7vkNACkEF0chDLkxmUnFgN6U",
+        &[
+            "45.142.177.89:443",
+            "[2a03:4000:4a:fb8:86c:21ff:fe56:f680]:443"
+        ],
+    ),
+    // Nickname: artikel5ev9b
+    fallback(
+        "E22694E83DA7BCF30DDAF5780EEF394CD0370CC4",
+        "6yLMsywMh2T92wQb9sr+gTaaUnLaygceq4ukfikElJQ",
+        &[
+            "94.16.121.91:444",
+            "[2a03:4000:21:8a8:dead:beef:ca1f:1337]:444"
+        ],
+    ),
+    // Nickname: CanardRelay
+    fallback(
+        "64EE186D7E2E1BB68A913E5115BFACAB5A1E237E",
+        "GfvvBimI+ubbLWprqfr8Ly6fk5aHl8pDHMBx6lBxQHM",
+        &[
+            "54.37.253.23:9001",
+            "[2001:41d0:303:5917::1]:9001"
+        ],
+    ),
+    // Nickname: ParadiseTorRelay2
+    fallback(
+        "AA1A48643697DAF18AF63294989FE48CC5CC49C4",
+        "60sDea2VkAt6Z/YewfJoXjJTfULLlLm5Kwz0Uu1XTJk",
+        &[
+            "193.182.111.42:443",
+            "[2a03:8600::a2]:443"
+        ],
+    ),
+    // Nickname: NTH66R1
+    fallback(
+        "34B8957033F66FEBD3E0613E7A86C724B5F662A0",
+        "IsPAwcSqI6xX03uQLzSs1WctKZMdyNpCVlZfoIBLktM",
+        &[
+            "192.42.116.66:443",
+            "[2001:67c:e60:c0c:192:42:116:66]:443"
+        ],
+    ),
+    // Nickname: lildread
+    fallback(
+        "4BC0121A91FDC9938509110CD6E09FFAF9303F26",
+        "lgJcXQNzJgI+rFn4KxCv247MxW2KVVfzB6PGhNNT70c",
+        &[
+            "64.65.1.69:443"
+        ],
+    ),
+    // Nickname: ArriveInside
+    fallback(
+        "EF329E49CACF6889E2B593D3ABAA7749DC81886C",
+        "/ju4xfd/Hv3zB9njNSeqo6zI9q0zYGDbTx/JSpD9UXg",
+        &[
+            "217.8.198.10:9100"
+        ],
+    ),
+    // Nickname: Nymeria
+    fallback(
+        "C2FBCAE5D74140DC18A348E077CAA02B191B5793",
+        "MvJ6IGDpHRVp0gDDbK/BVLTY8y1tOOH5KeB+1glzk1c",
+        &[
+            "37.59.175.224:444"
+        ],
+    ),
+    // Nickname: plan9leia
+    fallback(
+        "FFBC69467B37D6AC66598BBD295F9B0D74119ADC",
+        "SHEalLb+JC788DfrGLdyOGsGkm1CyOlYgE09gZ5nO2w",
+        &[
+            "88.99.105.161:4433"
         ],
     ),
     // Nickname: zgato
     fallback(
-        "4BD7D8D384FF76BCB5256DF41304DA84F77C8BFA",
-        "q3iZ/FWoapwbDIh/7C0RSwFjeNksGR+KUIFjkEP3M4E",
+        "1B64D198CCD5142F75DD389EF00FDC1A3150E2D8",
+        "w5i9SZRwjb8zDlr11Xf8t64t4ZbDSuHU6/cF66brUZk",
         &[
-            "45.9.168.16:443"
+            "185.141.216.220:9001"
         ],
     ),
-    // Nickname: 2mpe4c
+    // Nickname: VZFFNRMO
     fallback(
-        "BC7A5E911554477F7346FA9B680250D1D84B14AF",
-        "XZbo70Qndxx5FIrnKHXslkub6zC5rv3cyE72nNuDE8A",
+        "3A757089CF1C0D254F1B18E66340E755B1D36577",
+        "jAWu57K9QqI2rad0POYeo5sXrySf+pED/x4JHxt6f9A",
         &[
-            "107.189.5.249:5061",
-            "[2605:6400:30:f04d:2605:6400:30:30]:5061"
+            "45.140.183.80:9001",
+            "[2001:678:6e1:1001:888a:51ff:fe8d:3326]:9001"
         ],
     ),
-    // Nickname: anarchosyndical4
+    // Nickname: ThirdHarey
     fallback(
-        "EFC6EC2BD9BBDC77DD38AA2D87FD636DFC26AAC0",
-        "C0WG8njqv3ZWF1e91rWh5iW4NylHNGjKXze9eZjJoWc",
+        "8AD12BDB0CD1A1DF7FE38B97D649A46B73275D2B",
+        "5CyaQ0P9twTnWDTmrxvUagh/7ygalfaN5SQcL6kY2/4",
         &[
-            "57.128.223.198:9001"
+            "92.249.143.119:9001"
         ],
     ),
-    // Nickname: WeChatSucks
+    // Nickname: hellman
     fallback(
-        "0B725B5FEBE9F7EE0A7052A3F38CEE8392EFC4AA",
-        "CZ9bD+z+VHuT6/3e3YJ1v8PMVxCmqvdRO9j/OBn3IBc",
+        "273135C4EC736A1E88DB82103A179C3C36467019",
+        "yImWgQCPhcg7Z7XADJGAE8LaDsEDjWlREDCC0w9tIco",
         &[
-            "45.84.107.44:80"
+            "23.129.64.155:443",
+            "[2620:18c:0:192::e0:155]:443"
         ],
     ),
-    // Nickname: prsv
+    // Nickname: scootywesson
     fallback(
-        "B23434F504DF500096CB5E5895495E89F6CB30FD",
-        "Eo6PGeslrXfi+qYH0QsTD84pMMiqu87Tz1yaFqYRHlU",
+        "C9561E5C0709389715491346D8A22666247F90F8",
+        "bOWqeCiX8v+Co7ujcAiCGuA3QHmr2+S99cPIWWncz84",
         &[
-            "57.129.110.6:9200",
-            "[2001:41d0:701:1100::490d]:9200"
+            "64.65.1.63:443"
         ],
     ),
-    // Nickname: eo179
+    // Nickname: loadedlux
     fallback(
-        "DAD8815C1AE82B1888F44720C9416B1F891B3639",
-        "8EvlbRa7Uhj8xhDD2xTkRYf9CLGOcSEM+SRxcRf2jTM",
+        "99CBE9E61E65D65DFFB23CE35C541F375FB3652D",
+        "QDdum9FJK53n1rNMlLTJYs83W4ClaCagpDqWMcIKq4E",
         &[
-            "23.129.64.179:443",
-            "[2620:18c:0:192::e0:179]:443"
+            "64.65.62.233:443"
         ],
     ),
-    // Nickname: CopperOri
+    // Nickname: jaycritch
     fallback(
-        "F77D84B0E49F567BFC22AB9BB6E28901D4137CBA",
-        "TUclOVRp9TV5XHb0T0mK9H4JeG/2xW/OAGuVhFZTfbU",
+        "07A7E3F5377E411C1662F5CB9E3A81B97E2F1253",
+        "NcDn58Ls5ddCWL2JPnAu7A1S97bZlICtzHDSoqs+sGU",
         &[
-            "217.116.95.26:9001"
+            "96.9.98.185:443"
         ],
     ),
-    // Nickname: kramse03
+    // Nickname: flokisboat
     fallback(
-        "141C317F74D92DA44FAA072F6BFD0C98DEFF9066",
-        "/U38ISD4EVYBlRkxU6qAZoqJU7aiRmkuronkZwUFYBg",
+        "5822CD8E814A810084FB339FFB8575FC710C7F31",
+        "AGzsekEbtw0R6KxUic70my0ROGdzG8dfjZfk2OkN3ms",
         &[
-            "185.129.62.64:9001",
-            "[2a06:d380:0:103:acab:4c4b:ac4b:1312]:9001"
+            "188.68.50.76:9001",
+            "[2a03:4000:6:d009:2844:1ff:feec:de5e]:9001"
         ],
     ),
-    // Nickname: SkaffaExit
+    // Nickname: marcuse13
     fallback(
-        "6055A518F03989F867DF7C435B61D5776D768B10",
-        "K9MfqxUJAqGXXOETHSmRUS9e2kkMbN07LMfS13PyX7M",
+        "78AD6EAF6904E777103629D6579766DB6466AA3E",
+        "8Pf28V6qLDm7AqjV9LePkZXDYKKMzco5NkBn8BLbA0E",
         &[
-            "66.78.40.91:8500"
+            "178.20.55.182:19005",
+            "[2a00:1b88:4::4]:19005"
         ],
     ),
-    // Nickname: shawtylo
+    // Nickname: jonathan
     fallback(
-        "484E4F9B4865E1A3D772C01930D59694F4BAEF4D",
-        "npwcKm1OpVJUyMqklTYuYvGI+myyxs7TH+iS7PxCDZw",
+        "CC744264F97DE9C3916EE9CEDBA33627F819A537",
+        "s5sRwF95JUZ3iq56rHud+nIIH9BuYQ5OWoL991vN5dM",
         &[
-            "64.65.1.22:443"
+            "171.66.3.87:443"
         ],
     ),
-    // Nickname: ThisNodeDontGlow
+    // Nickname: CryptoHouse
     fallback(
-        "99F78512785F45236A35322A1643AA08DC6399B5",
-        "ODMnatCVaGAU/2c29vzTqmDMVrpVP1Kzqlk0ZZ1tiM0",
+        "91BAB54C6923454F4E5EDC59313C45002B238665",
+        "5b/byK1J9ajhhx/Sng1aa9qvRQlkm+iFqUeSy/LyV/s",
         &[
-            "146.19.213.120:443",
-            "[2001:678:6d4:9114::149]:443"
+            "185.228.138.252:8080",
+            "[2a03:4000:23:409:748d:52ff:fe41:cdcc]:8080"
         ],
     ),
-    // Nickname: prsv
+    // Nickname: BakerMakerBoots
     fallback(
-        "43620A053D56582673F74E0325831646E117C009",
-        "UVTN+RcHbk7HpUMiLpOTeNuoS8+TYbGymwFfDZa3AIw",
+        "8BBDC79C17F19014E20368BB9B43F2E290080253",
+        "kiPCa/7U2+o9Cg3mD4Kwi3LsdZOYoapcqGM1kmXC1EI",
         &[
-            "37.221.208.216:9100",
-            "[2a01:270:98d8::1]:9100"
+            "66.253.180.61:9001"
         ],
     ),
-    // Nickname: xks
+    // Nickname: algrothendieck2
     fallback(
-        "26CD29D07FAE2C27EB316EE551EFC7EF96BA5784",
-        "YV2OT9iaH3HgTVBIocmRDrg97njmopQTGk80cgGFfmg",
+        "59F2831A9BEB7AB3D5803445F946EA9FEEEFA217",
+        "/FXJ95d7mRiF7WUuFJ5IIbSth+RySkZG8a+I8X9VL3Y",
         &[
-            "176.65.149.96:443",
-            "[2a05:b0c7:6cc4::1]:443"
+            "80.67.172.162:9001"
         ],
     ),
-    // Nickname: prsv
+    // Nickname: Zensursula
     fallback(
-        "9825D849919114B8E9005C5D093B95F912511A88",
-        "QcibFKgMTV+rU0RimaPxHtZ1sazgF/tPz+kr+ECzAqs",
+        "4BEB8EA1910947E9492F7C7648DD0643438DD5EB",
+        "4rtoVI5LxJ3PTd77hVLdOar/ahMO1Z+FCqZN9689P+0",
         &[
-            "57.131.31.124:9100",
-            "[2001:41d0:2005:100::1f3f]:9100"
+            "137.74.5.135:446",
+            "[2001:41d0:602:2715:fd1a::b]:446"
         ],
     ),
-    // Nickname: chamillionaire
+    // Nickname: idideditheconfig
     fallback(
-        "143AB48271BB0B2BC7AF8FE94B306E70162FD6C1",
-        "g7wrzmQ20S3GPGF8osOofplPYhTAcMUc64J+v7KCS6o",
+        "7859749A9D823154A2EFCFB99C7490F0C8189AC3",
+        "kmEbT4VyWAkXZwwf0KfCJjzAj/3ghTN5SQXBHwk5tHE",
         &[
-            "64.65.1.152:443"
+            "65.25.108.233:443"
         ],
     ),
-    // Nickname: arlisRelay
+    // Nickname: nsaPwned
     fallback(
-        "64BCBA882D45CE42B56226564435EA0D364A7281",
-        "cVECKE4riMkod4gGxT6ZeRpx5f3BYQC91bIMbpOiVA0",
+        "0C9B3C686421C5A8C20BAA0D7369CD929F43A174",
+        "SbkbHp3bT3e5KzWairYenqUCRktY8gpDQuVYJVlKSBc",
         &[
-            "85.215.249.184:443"
+            "5.75.249.160:1337",
+            "[2a01:4f8:c17:ba99::1]:1337"
+        ],
+    ),
+    // Nickname: digitalsquid4
+    fallback(
+        "ECB6A3F781A8B9612C4E3EF5F5AFC56E2D5D122D",
+        "bCeAbZzxtJJMZ4gVqfI3tqTcFblG3vQSvaYnncN1uiE",
+        &[
+            "45.14.135.183:9001"
+        ],
+    ),
+    // Nickname: domaniharris
+    fallback(
+        "B043C512687C04C4A3DBA9B0D2AFE2D30934BA82",
+        "PreOgGOi9TI0DmwvJ5Sjav0F2KxoP5QxzhBH10VaWZ0",
+        &[
+            "96.9.98.21:443"
+        ],
+    ),
+    // Nickname: okade
+    fallback(
+        "EF4EE975512B4A59CD9B1BC8631A82A0D7C51897",
+        "U143OK0cDXJ0hs7uyVY5QUas9Ie5Q+f8zcRX+lILpzQ",
+        &[
+            "152.53.210.165:9001",
+            "[2a0a:4cc0:2000:cd4c::12]:9001"
+        ],
+    ),
+    // Nickname: xalisoflow
+    fallback(
+        "6FE1A22BAC0635BA510E2EFE1249D7AA4BECBE67",
+        "Hg24YRvYn163UZkBqbGBAD+d2flQ5G2U9wM+9u1iro8",
+        &[
+            "64.65.1.72:443"
+        ],
+    ),
+    // Nickname: Unnamed
+    fallback(
+        "ACF5BCA32B6B5CD4C5A9C1F9E823245981A4C9C2",
+        "XKLTjwD0edyXY/JsHtnSt0i1ANOv4BOhYyRLKLw1rRI",
+        &[
+            "61.220.100.193:443"
+        ],
+    ),
+    // Nickname: karnak
+    fallback(
+        "B9C8AA1EA320CF1BD3E0D158C3E76705A2CB9D2C",
+        "vqHH8apYuk/++jPeINtWR7A7Q3x4sst6nYl7AYVrWqw",
+        &[
+            "95.216.145.1:1066",
+            "[2a01:4f9:c010:8fb::bee]:1066"
+        ],
+    ),
+    // Nickname: vOverR
+    fallback(
+        "B714503FA39076FC30AAE745DEBCDF2FF07C6C88",
+        "Zu0CB9jVT7GRRZMCYkKWVSChbwKTfD3mwka72kaTDho",
+        &[
+            "204.111.16.69:9001"
+        ],
+    ),
+    // Nickname: depression
+    fallback(
+        "8DB0DC26A77F5E622BFBFAFFDFCE63948C7E3B5B",
+        "XNCP+qC5GCCA8Gt8ZNF2tXc3aQRciRS5Z2cmd9riRlM",
+        &[
+            "45.133.73.6:9001",
+            "[2a14:c380:d70:3::a]:9001"
+        ],
+    ),
+    // Nickname: travisscott
+    fallback(
+        "49F1E0CCF7DC6613BAB8D2EFBAF743BF4827924E",
+        "mLMwccSnInaP8jVamZfIv43lhZ5df7gjw36Bpfe3uV8",
+        &[
+            "64.65.62.169:443"
+        ],
+    ),
+    // Nickname: TorRelayvjyymros
+    fallback(
+        "6AFE8F611B5F032AED929743B0FB56C46234DE6C",
+        "bzRnO3QM2BawldH0y4meXyqR4a/c07+mIkhO/Bw0fG4",
+        &[
+            "147.182.191.7:9001"
         ],
     ),
 ]

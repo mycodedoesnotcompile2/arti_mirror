@@ -34,6 +34,7 @@
 #![warn(clippy::needless_borrow)]
 #![warn(clippy::needless_pass_by_value)]
 #![warn(clippy::option_option)]
+#![warn(clippy::or_fun_call)]
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 #![warn(clippy::rc_buffer)]
@@ -55,7 +56,25 @@
 #![allow(clippy::collapsible_if)] // See arti#2342
 #![deny(clippy::unused_async)]
 #![deny(clippy::string_slice)] // See arti#2571
+#![allow(recursion_depth_exceeding_limit)] // arti#2715, rust/issues/159228
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
+
+#![allow(clippy::redundant_field_names)]
+// TODO beta clippy bug, rust-clippy/issues/17525
+
+// TODO: add to the list maintained by maint/add_warning once it's available on all crates
+#![warn(unnameable_types)]
+
+/// Dummy module
+///
+/// TODO MSRV 1.100, change this to `[lints.cargo]` in `Cargo.toml`.
+/// See <https://github.com/rust-lang/cargo/issues/17461>.
+#[allow(unused, clippy::single_component_path_imports)]
+mod _suppress_unused_crate_warnings {
+    // TODO RELAY drop these suppressions (deleting the dep from Cargo.toml too if not needed)
+    #[cfg(feature = "opentelemetry")]
+    use {opentelemetry_appender_tracing, otlp_file_exporter, tracing_opentelemetry};
+}
 
 mod cli;
 mod client;
@@ -85,6 +104,15 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::config::{DEFAULT_LOG_LEVEL, TorRelayConfig, base_resolver};
 use crate::relay::InertTorRelay;
+
+/// Return the protocol capabilities supported by this relay.
+pub(crate) fn supported_protocols() -> tor_protover::Protocols {
+    // WARNING: REMOVING ELEMENTS FROM THIS LIST CAN BE DANGEROUS!
+    // SEE [`tor_protover::doc_changing`]
+    //
+    // TODO(relay): No DirCache capabilities just yet. Missing HSDir/HSRend/HSIntro.
+    tor_proto::supported_relay_protocols().union(&tor_netdoc::supported_protocols())
+}
 
 fn main() {
     // Will exit if '--help' used or there's a parse error.
@@ -181,7 +209,7 @@ fn start_relay(_args: cli::RunArgs, global_args: cli::GlobalArgs) -> anyhow::Res
         .load()
         .context("Failed to load configuration sources")?;
     let config =
-        tor_config::resolve::<TorRelayConfig>(cfg).context("Failed to resolve configuration")?;
+        tor_config::resolve::<TorRelayConfig>(&cfg).context("Failed to resolve configuration")?;
 
     // TODO: Configure a proper logger, not just a simple stderr logger.
     // TODO: We may want this to be the global logger, but if we use arti's `setup_logging` in the

@@ -18,13 +18,7 @@ pub fn compute_microdesc(
     rd: &RouterDesc,
     meth: &TrackedConsensusMethod,
 ) -> Result<Microdesc, MicrodescError> {
-    let mut family = RelayFamily::clone(&rd.family); // avoids Arc::Clone
-    if !family.is_empty() {
-        family.push(rd.signing_key.to_rsa_identity());
-    }
-    let family = family.intern(); // also normalises
-
-    let family_ids: RelayFamilyIds = rd
+    let family_ids: HappyFamilyIds = rd
         .family_cert
         .iter()
         .map(|cert| Ok::<_, Bug>(cert.get()?.family_ed25519.into()))
@@ -34,7 +28,6 @@ pub fn compute_microdesc(
         ip_summary::summarise_policy_v4_approximate(&rd.ipv4_policy, meth)?.into_intern();
 
     let m = Microdesc {
-        family,
         family_ids,
         ipv4_policy,
         ipv6_policy: rd.ipv6_policy.clone(),
@@ -68,7 +61,7 @@ pub type MicrodescsErrors = Vec<(SupportedConsensusMethod, MicrodescError)>;
 ///
 /// This unusual error handling is so that a handful of strange routerdescs,
 /// that trigger bugs in our code, do not cause the whole algorithm to collapse.
-/// See torspec!522  TODO DIRAUTH turn this into a proper spec ref when that's merged.
+/// <https://spec.torproject.org/dir-spec/consensus-formats.html#microdescriptor-generation-error-handling>
 pub fn compute_supported_microdescs(
     rd: &RouterDesc,
 ) -> Result<MicrodescsForRouterDesc, (MicrodescsErrors, MicrodescsForRouterDesc)> {
@@ -200,6 +193,8 @@ mod test {
                 "#,
                 "onion-key\n",
             );
+            // test data may be from method 36 or earlier
+            regsub(&mut exp_md, r#"(?x) ^ family \ .* \n"#, "");
 
             assert_eq_or_diff!(md_txt, exp_md, "for relay {}", relay.nick);
         }

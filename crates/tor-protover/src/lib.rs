@@ -24,6 +24,7 @@
 #![warn(clippy::needless_borrow)]
 #![warn(clippy::needless_pass_by_value)]
 #![warn(clippy::option_option)]
+#![warn(clippy::or_fun_call)]
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 #![warn(clippy::rc_buffer)]
@@ -45,18 +46,26 @@
 #![allow(clippy::collapsible_if)] // See arti#2342
 #![deny(clippy::unused_async)]
 #![deny(clippy::string_slice)] // See arti#2571
+#![allow(recursion_depth_exceeding_limit)] // arti#2715, rust/issues/159228
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 
 #![allow(non_upper_case_globals)]
 #![allow(clippy::upper_case_acronyms)]
+// TODO: add to the list maintained by maint/add_warning once it's available on all crates
+#![warn(unnameable_types)]
 
 use caret::caret_int;
 
 use derive_deftly::Deftly;
+use itertools::chain;
+use std::borrow::Cow;
+use std::collections::BTreeMap;
 use thiserror::Error;
 use tor_basic_utils::intern::{GloballyInternable as _, Intern};
 
 pub mod named;
+pub mod value;
+pub use value::*;
 
 /// Types we export for macros.
 #[doc(hidden)]
@@ -107,9 +116,6 @@ caret_int! {
 /// How many recognized protocols are there?
 const N_RECOGNIZED: usize = 13;
 
-/// Maximum allowable value for a protocol's version field.
-const MAX_VER: usize = 63;
-
 /// A specific, named subversion of a protocol.
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub struct NamedSubver {
@@ -120,7 +126,7 @@ pub struct NamedSubver {
     /// The version of the protocol
     ///
     /// Must be in 1..=MAX_VER
-    version: u8,
+    version: Value,
 }
 
 impl NamedSubver {
@@ -128,10 +134,9 @@ impl NamedSubver {
     ///
     /// # Panics
     ///
-    /// Panics if `kind` is unrecognized or `version` is invalid.
-    const fn new(kind: ProtoKind, version: u8) -> Self {
+    /// Panics if `kind` is unrecognized.
+    const fn new(kind: ProtoKind, version: Value) -> Self {
         assert!((kind.0 as usize) < N_RECOGNIZED);
-        assert!((version as usize) <= MAX_VER);
         Self { kind, version }
     }
 }
@@ -148,6 +153,8 @@ impl NamedSubver {
 //
 // TODO: As with most other types in the crate, we should decide how to rename them as as part
 // of #1934.
+//
+// TODO ought use `Value` so as to have an invariant that version is within range?
 #[derive(Clone, Copy, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct NumberedSubver {
     /// The protocol in question
@@ -173,7 +180,7 @@ impl From<NamedSubver> for NumberedSubver {
     fn from(value: NamedSubver) -> Self {
         Self {
             kind: value.kind,
-            version: value.version,
+            version: value.version.into(),
         }
     }
 }
@@ -202,30 +209,82 @@ impl tor_bytes::Writeable for NumberedSubver {
     }
 }
 
+/// A single recognized or unrecognized protocol.
+///
+/// This does not include the "version" part of a capability;
+/// in a capability like `Relay=7` or `Wombat=42`,
+/// this only represents the `Relay` or `Wombat` part.
+#[derive(Eq, PartialEq, Clone, Debug, Hash, Ord, PartialOrd, derive_more::Display)]
+#[display("{_0}")]
+pub struct Protocol(ProtocolInner<'static>);
+
 /// Representation for a known or unknown protocol.
-#[derive(Eq, PartialEq, Clone, Debug, Hash, Ord, PartialOrd)]
-enum Protocol {
+#[derive(Eq, PartialEq, Clone, Debug, Hash, Ord, PartialOrd, derive_more::Display)]
+enum ProtocolInner<'s> {
     /// A known protocol; represented by one of ProtoKind.
     ///
     /// ProtoKind must always be in the range 0..N_RECOGNIZED.
+    #[display("{_0}")]
     Proto(ProtoKind),
     /// An unknown protocol; represented by its name.
-    Unrecognized(String),
+    ///
+    /// Invariant: is legal syntax, is not a recognized name
+    #[display("{_0}")]
+    Unrecognized(Cow<'s, str>),
 }
 
 impl Protocol {
     /// Return true iff `s` is the name of a protocol we do not recognize.
     fn is_unrecognized(&self, s: &str) -> bool {
-        match self {
-            Protocol::Unrecognized(s2) => s2 == s,
+        match &self.0 {
+            ProtocolInner::Unrecognized(s2) => s2 == s,
             _ => false,
         }
     }
-    /// Return a string representation of this protocol.
-    fn to_str(&self) -> &str {
+}
+
+impl<'s> ProtocolInner<'s> {
+    /// Borrow from a `ProtocolInner`
+    ///
+    /// Gives a new owned `ProtocolInner` which borrows from `self`.
+    fn as_ref(&self) -> ProtocolInner<'_> {
+        use ProtocolInner as PI;
         match self {
-            Protocol::Proto(k) => k.to_str().unwrap_or("<bug>"),
-            Protocol::Unrecognized(s) => s,
+            PI::Proto(p) => PI::Proto(*p),
+            PI::Unrecognized(u) => PI::Unrecognized(Cow::Borrowed(u.as_ref())),
+        }
+    }
+
+    /// Make a static `ProtocolInner`
+    ///
+    /// Returns a new owned `ProtocolInner` describing the same Protocol as `self`.
+    fn into_static(self) -> ProtocolInner<'static> {
+        use ProtocolInner as PI;
+        match self {
+            PI::Proto(p) => PI::Proto(p),
+            PI::Unrecognized(u) => PI::Unrecognized(u.to_string().into()),
+        }
+    }
+}
+
+/// Return true if `s` is a valid protocol name.
+fn is_valid_proto_name(s: &str) -> bool {
+    (1..=100).contains(&s.len()) && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+impl std::str::FromStr for Protocol {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match ProtoKind::from_name(s) {
+            Some(p) => Ok(Protocol(ProtocolInner::Proto(p))),
+            None => {
+                if is_valid_proto_name(s) {
+                    Ok(Protocol(ProtocolInner::Unrecognized(s.to_string().into())))
+                } else {
+                    Err(ParseError::Malformed)
+                }
+            }
         }
     }
 }
@@ -240,6 +299,16 @@ struct SubprotocolEntry {
     /// A bit-vector defining which versions are supported.  If bit
     /// `(1<<i)` is set, then protocol version `i` is supported.
     supported: u64,
+}
+
+/// A degree of strictness with which to parse a Protocols (or one of its components).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParseStrictness {
+    /// We should enforce all rules declared in the spec.
+    Strict,
+
+    /// We should only enforce rules that are also enforced by C tor.
+    CTorCompatible,
 }
 
 /// A set of supported or required subprotocol versions.
@@ -311,7 +380,7 @@ impl Protocols {
     /// (This method should not usually be needed for new parts of Arti:
     /// its only use-case is a legacy piece of hsdesc parsing.)
     pub fn from_kind_and_versions(kind: ProtoKind, versions: &str) -> Result<Self, ParseError> {
-        let versions = parse_version_mask(versions)?;
+        let versions = parse_version_mask(versions, ParseStrictness::Strict)?;
         let mut protocols = ProtocolsInner::default();
 
         if let Some(p) = protocols.recognized.get_mut(usize::from(kind.get())) {
@@ -403,7 +472,7 @@ impl Protocols {
     /// assert!(! protos.supports_named_subver(named::CONFLUX_BASE)); // Conflux=1
     /// ```
     pub fn supports_named_subver(&self, protover: NamedSubver) -> bool {
-        self.supports_known_subver(protover.kind, protover.version)
+        self.supports_known_subver(protover.kind, protover.version.into())
     }
 
     /// Check whether a numbered subprotocol capability is supported.
@@ -502,6 +571,19 @@ impl Protocols {
         r.unrecognized.sort();
         Protocols::from(r)
     }
+
+    /// As the regular `FromStr` implementation,
+    /// but imitate the result of a the C Tor implementation, which is rather more lax.
+    ///
+    /// The principle differences are:
+    /// - We allow all decimal integer formats, even those starting with 0.
+    /// - We allow (and ignore) the integer '0'.
+    /// - We do not require that there is no more than one `SubprotocolEntry` with a given
+    ///   `ProtoKind`; instead, we ignore all but the first.
+    /// - We permit duplicate bits within the same SubprotocolEntry.
+    pub fn from_str_c_compatible(s: &str) -> Result<Self, ParseError> {
+        Self::from_str_impl(s, ParseStrictness::CTorCompatible)
+    }
 }
 
 impl ProtocolsInner {
@@ -512,22 +594,31 @@ impl ProtocolsInner {
     /// for a recognized protocol we've already added.
     ///
     /// WARNING: This method DOES NOT enforce uniqueness for unrecognized protocols.
-    /// The caller is responsible for doing that.
+    /// The caller is responsible for doing that in a way appropriate
+    /// for the provided strictness level.
     ///
     /// Does not preserve sorting order; the caller must call `self.unrecognized.sort()` before returning.
-    fn add(&mut self, foundmask: &mut u64, ent: SubprotocolEntry) -> Result<(), ParseError> {
-        match ent.proto {
-            Protocol::Proto(k) => {
+    fn add(
+        &mut self,
+        foundmask: &mut u64,
+        ent: SubprotocolEntry,
+        strictness: ParseStrictness,
+    ) -> Result<(), ParseError> {
+        match &ent.proto.0 {
+            ProtocolInner::Proto(k) => {
                 let idx = k.get() as usize;
                 assert!(idx < N_RECOGNIZED); // guaranteed by invariant on Protocol::Proto
                 let bit = 1 << u64::from(k.get());
                 if (*foundmask & bit) != 0 {
-                    return Err(ParseError::Duplicate);
+                    match strictness {
+                        ParseStrictness::Strict => return Err(ParseError::Duplicate),
+                        ParseStrictness::CTorCompatible => return Ok(()),
+                    }
                 }
                 *foundmask |= bit;
                 self.recognized[idx] = ent.supported;
             }
-            Protocol::Unrecognized(_) => {
+            ProtocolInner::Unrecognized(_) => {
                 if ent.supported != 0 {
                     self.unrecognized.push(ent);
                 }
@@ -574,15 +665,17 @@ fn bitrange(lo: u64, hi: u64) -> u64 {
 }
 
 /// Helper: return true if the provided string is a valid "integer"
-/// in the form accepted by the protover spec.  This is stricter than
+/// in the form accepted by the protover spec.  This may be stricter than
 /// rust's integer parsing format.
-fn is_good_number(n: &str) -> bool {
-    n.chars().all(|ch| ch.is_ascii_digit()) && !n.starts_with('0')
+fn is_good_number(n: &str, strictness: ParseStrictness) -> bool {
+    if strictness == ParseStrictness::Strict && n.starts_with('0') {
+        return false;
+    }
+    n.chars().all(|ch| ch.is_ascii_digit())
 }
 
 /// Parse a version-list in `versions` into a bitmask.
-#[allow(clippy::string_slice)] // TODO
-fn parse_version_mask(versions: &str) -> Result<u64, ParseError> {
+fn parse_version_mask(versions: &str, strictness: ParseStrictness) -> Result<u64, ParseError> {
     if versions.is_empty() {
         // We need to handle this case specially, since otherwise
         // it would be treated below as a single empty value, which
@@ -597,10 +690,10 @@ fn parse_version_mask(versions: &str) -> Result<u64, ParseError> {
         // treat it as if it were a range v-v.)
         let (lo_s, hi_s) = ent.split_once('-').unwrap_or((ent, ent));
 
-        if !is_good_number(lo_s) {
+        if !is_good_number(lo_s, strictness) {
             return Err(ParseError::Malformed);
         }
-        if !is_good_number(hi_s) {
+        if !is_good_number(hi_s, strictness) {
             return Err(ParseError::Malformed);
         }
         let lo: u64 = lo_s.parse().map_err(|_| ParseError::Malformed)?;
@@ -614,9 +707,11 @@ fn parse_version_mask(versions: &str) -> Result<u64, ParseError> {
         }
         let mask = bitrange(lo, hi);
         // Make sure that no version is included twice.
-        if (supported & mask) != 0 {
+        if strictness == ParseStrictness::Strict && (supported & mask) != 0 {
             return Err(ParseError::Duplicate);
         }
+        // Ignore bit 0, which can be set for non-strict bitmasks.
+        let mask = mask & !1;
         // Add the appropriate bits to the mask.
         supported |= mask;
     }
@@ -627,21 +722,17 @@ fn parse_version_mask(versions: &str) -> Result<u64, ParseError> {
 /// A single SubprotocolEntry is parsed from a string of the format
 /// Name=Versions, where Versions is a comma-separated list of
 /// integers or ranges of integers.
-impl std::str::FromStr for SubprotocolEntry {
-    type Err = ParseError;
-
-    fn from_str(s: &str) -> Result<Self, ParseError> {
+impl SubprotocolEntry {
+    /// Parse a [`SubprotocolEntry`] with a given level of strictness.
+    fn from_str(s: &str, strictness: ParseStrictness) -> Result<Self, ParseError> {
         // split the string on the =.
         let (name, versions) = s.split_once('=').ok_or(ParseError::Malformed)?;
 
         // Look up the protocol by name.
-        let proto = match ProtoKind::from_name(name) {
-            Some(p) => Protocol::Proto(p),
-            None => Protocol::Unrecognized(name.to_string()),
-        };
+        let proto: Protocol = name.parse()?;
         Ok(SubprotocolEntry {
             proto,
-            supported: parse_version_mask(versions)?,
+            supported: parse_version_mask(versions, strictness)?,
         })
     }
 }
@@ -662,6 +753,13 @@ impl std::str::FromStr for Protocols {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, ParseError> {
+        Protocols::from_str_impl(s, ParseStrictness::Strict)
+    }
+}
+
+impl Protocols {
+    /// Parse a [`Protocols`] with the requested degree of strictness.
+    fn from_str_impl(s: &str, strictness: ParseStrictness) -> Result<Self, ParseError> {
         let mut result = ProtocolsInner::default();
         let mut foundmask = 0_u64;
         for ent in s.split(' ') {
@@ -669,16 +767,25 @@ impl std::str::FromStr for Protocols {
                 continue;
             }
 
-            let s: SubprotocolEntry = ent.parse()?;
-            result.add(&mut foundmask, s)?;
+            let s = SubprotocolEntry::from_str(ent, strictness)?;
+            result.add(&mut foundmask, s, strictness)?;
         }
-        result.unrecognized.sort();
-        if result
-            .unrecognized
-            .windows(2)
-            .any(|w| w[0].proto == w[1].proto)
-        {
-            return Err(ParseError::Duplicate);
+        // We require a stable sort here.
+        // We can't use sort_by_key because of lifetime issues.
+        result.unrecognized.sort_by(|a, b| a.proto.cmp(&b.proto));
+        match strictness {
+            ParseStrictness::Strict => {
+                if result
+                    .unrecognized
+                    .windows(2)
+                    .any(|w| w[0].proto == w[1].proto)
+                {
+                    return Err(ParseError::Duplicate);
+                }
+            }
+            ParseStrictness::CTorCompatible => {
+                result.unrecognized.dedup_by(|a, b| a.proto.eq(&b.proto));
+            }
         }
 
         Ok(result.into())
@@ -746,24 +853,92 @@ fn dumpmask(mut mask: u64) -> String {
 impl std::fmt::Display for Protocols {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut entries = Vec::new();
-        for (idx, mask) in self.0.recognized.iter().enumerate() {
-            if *mask != 0 {
-                let pk: ProtoKind = (idx as u8).into();
-                entries.push(format!("{}={}", pk, dumpmask(*mask)));
-            }
-        }
-        for ent in &self.0.unrecognized {
-            if ent.supported != 0 {
-                entries.push(format!(
-                    "{}={}",
-                    ent.proto.to_str(),
-                    dumpmask(ent.supported)
-                ));
-            }
+        for (pk, mask) in self.iter_masks() {
+            entries.push(format!("{}={}", pk, dumpmask(mask)));
         }
         // This sort is required.
         entries.sort();
         write!(f, "{}", entries.join(" "))
+    }
+}
+
+impl Protocols {
+    /// Iterate over all capabilities, known and unknown
+    ///
+    /// Yields each protocol separately, but with all values combined,
+    /// so yields a name (`Protocol`) and bitmask.
+    fn iter_masks(&self) -> impl Iterator<Item = (ProtocolInner<'_>, u64)> + Clone {
+        chain!(
+            self.0.recognized.iter().enumerate().map(|(idx, mask)| {
+                let pk = ProtocolInner::Proto((idx as u8).into());
+                (pk, *mask)
+            }),
+            self.0
+                .unrecognized
+                .iter()
+                .map(|ent| (ent.proto.0.as_ref(), ent.supported)),
+        )
+        .filter(|(_idx, mask)| *mask != 0)
+    }
+
+    /// Iterate over all the specified capabilities
+    ///
+    /// Yields each capability separately, as name (`Protocol`) and value.
+    /// Output is in an arbitrary order.
+    ///
+    /// The output representation is far from compact.
+    /// Depending on the input this could allocate up to 64 a separate `String`s
+    /// for each unknown keyword in `self`.
+    //
+    // We could reduce the separate allocations for each keyword by interning the keywords
+    // individually (but we already intern `Self`) or by inventing a borrowed form of
+    // `Protocol`.  (`Protocol` contains an enum which isn't actually present in `self`,
+    // so we can't yield `&Protocol` here.)
+    //
+    // Or we could allow callers to take advantage of our internal bitmask representation,
+    // perhaps by providing a way to iterate over the `Preotocol`s and the contained `Value`s
+    // separately, and a way to look up whether a `Protocols` contains a `(Protocol, Value)`.
+    //
+    // See also `protostatus_preamble_aggregate` in `tor-dirauth/src/consensus/preamble.rs`
+    // for discussion of the perf at what is currently the only call site.
+    pub fn iter_all(&self) -> impl Iterator<Item = (Protocol, Value)> + Clone {
+        self.iter_masks().flat_map(|(kind, mask)| {
+            // Possibly we could optimise this with `bit-iter` or some such,
+            // if it supports newtypes nicely.
+            Value::iter_all()
+                .filter(move |value| {
+                    let bit = value.to_bit();
+                    (mask & bit) != 0
+                })
+                .map(move |value| (Protocol(kind.clone().into_static()), value))
+        })
+    }
+}
+
+impl FromIterator<(Protocol, Value)> for Protocols {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = (Protocol, Value)>,
+    {
+        let mut out = BTreeMap::<Protocol, u64>::new();
+        for (proto, value) in iter {
+            *out.entry(proto).or_default() |= value.to_bit();
+        }
+        let mut recognized = [0_u64; N_RECOGNIZED];
+        let mut unrecognized = vec![];
+        for (proto, supported) in out {
+            match proto.0 {
+                ProtocolInner::Proto(proto) => recognized[proto.get() as usize] = supported,
+                ProtocolInner::Unrecognized(_) => {
+                    unrecognized.push(SubprotocolEntry { proto, supported });
+                }
+            };
+        }
+        ProtocolsInner {
+            recognized,
+            unrecognized,
+        }
+        .into()
     }
 }
 
@@ -776,8 +951,7 @@ impl FromIterator<NamedSubver> for Protocols {
 
             // These are guaranteed by invariants on NamedSubver.
             assert!(proto_idx < N_RECOGNIZED);
-            assert!(usize::from(proto_ver) <= MAX_VER);
-            r.recognized[proto_idx] |= 1_u64 << proto_ver;
+            r.recognized[proto_idx] |= proto_ver.to_bit();
         }
         Protocols::from(r)
     }
@@ -927,6 +1101,31 @@ mod test {
     }
 
     #[test]
+    fn test_ctor_compat() {
+        for (loose, strict) in &[
+            // With duplicate entries, those after the first are ignored
+            ("Link=0-10 Link=25-30", "Link=1-10"),
+            ("Link=25-30 Link=0-10", "Link=25-30"),
+            ("Zelda=6-8 Link=1-10 Zelda=6-10", "Link=1-10 Zelda=6-8"),
+            // The 0 bit and any 0 prefixes are ignored.
+            ("LinkAuth=0-00040", "LinkAuth=1-40"),
+            ("Foo=0,3,004,5,0010", "Foo=3-5,10"),
+            // Duplicate bits are permitted
+            ("Foo=1-10,2-20,3-5", "Foo=1-20"),
+            ("Link=1-10,2-20,3-5", "Link=1-20"),
+            // Value zero is invalid and discarded
+            ("Link=0-1", "Link=1"),
+            ("Link=0", ""),
+        ] {
+            let p1 = Protocols::from_str_c_compatible(loose).unwrap();
+            let p2 = Protocols::from_str(strict).unwrap();
+            assert_eq!(p1, p2);
+
+            assert!(Protocols::from_str(loose).is_err());
+        }
+    }
+
+    #[test]
     fn test_supports() -> Result<(), ParseError> {
         let p: Protocols = "Link=4,5-7 Padding=2 Lonk=1-3,5".parse()?;
 
@@ -1039,6 +1238,19 @@ mod test {
         .into_iter()
         .collect::<Protocols>();
         assert_eq!(prs, "Link=3-5 HSDir=2 Conflux=1".parse().unwrap());
+    }
+
+    #[test]
+    fn from_iter_all() -> Result<(), ParseError> {
+        let p1: Protocols = "Link=1-10 Desc=5-10 Relay=1,3,5,7,9 Other=7-60 Mine=1-20".parse()?;
+        let p2 = p1.iter_all().collect::<Protocols>();
+        assert_eq!(p1, p2);
+
+        let p3 = std::iter::repeat_n(p1.iter_all(), 3)
+            .flatten()
+            .collect::<Protocols>();
+        assert_eq!(p1, p3);
+        Ok(())
     }
 
     #[test]

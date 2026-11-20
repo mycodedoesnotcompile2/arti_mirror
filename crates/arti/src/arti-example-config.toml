@@ -605,6 +605,9 @@
 # Should we allow attempts to make Tor connections to local addresses?
 #allow_local_addrs = false
 
+# Should we accept and return local addresses in anonymously retrieved DNS answers?
+#allow_resolving_local_addrs = false
+
 # Should Arti make connections to hidden services (.onion services) ?
 #allow_onion_addrs = true
 
@@ -800,7 +803,7 @@
 # Instead, if you want to override the ways in which Arti listens for RPC connections,
 # you should declare one or more of these [rpc.listen] sections.
 # Each of them specifies a place where Arti will look for "connect files".
-# (These are JSON files that tell Arti where to listen for connections,
+# (These are TOML files that tell Arti where to listen for connections,
 # and tell applications how to connect to Arti.
 # For more information on their format, see the RPC documentation at
 # https://gitlab.torproject.org/tpo/core/arti/-/tree/main/doc/dev/rpc-book)
@@ -826,9 +829,9 @@
 #
 # A single connect file.
 #
-#       file = "${HOME}/.arti_connect.json"
+#       file = "${HOME}/.arti_connect.toml"
 #
-# A directory to search for connect files.  Only filenames ending with ".json" are considered.
+# A directory to search for connect files.  Only filenames ending with ".toml" are considered.
 # This option is mutually exclusive with "file".
 # Exactly one of "file" and "dir" must be set.
 #
@@ -837,7 +840,7 @@
 # A map from filenames within "dir" to options to set on those files.
 # Currently only "enable" is supported.
 #
-#       file_options = { "bad_file.json" = { enable = false }}
+#       file_options = { "bad_file.toml" = { enable = false }}
 
 [vanguards]
 # The kind of vanguard to use when building onion service circuits.

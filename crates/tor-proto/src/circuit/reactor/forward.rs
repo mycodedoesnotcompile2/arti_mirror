@@ -18,18 +18,17 @@ use {
     crate::stream::incoming::{
         IncomingStreamRequestFilter, IncomingStreamRequestHandler, StreamReqSender,
     },
-    tor_cell::relaycell::StreamId,
 };
 
 // TODO(circpad): once padding is stabilized, the padding module will be moved out of client.
 use crate::client::circuit::padding::PaddingController;
 
 use tor_cell::chancell::{CircId, msg::AnyChanMsg};
+use tor_cell::relaycell::flow_ctrl::XonKBpsEwma;
 use tor_cell::relaycell::msg::{Sendme, SendmeTag};
 use tor_cell::relaycell::{
-    AnyRelayMsgOuter, RelayCellDecoderResult, RelayCellFormat, RelayCmd, UnparsedRelayMsg,
+    AnyRelayMsgOuter, RelayCellDecoderResult, RelayCmd, StreamId, UnparsedRelayMsg,
 };
-use tor_error::internal;
 use tor_linkspec::HasRelayIds;
 use tor_rtcompat::Runtime;
 
@@ -37,9 +36,8 @@ use derive_deftly::Deftly;
 use futures::SinkExt;
 use futures::channel::mpsc;
 use futures::{FutureExt as _, StreamExt, select_biased};
-use tracing::debug;
-
 use std::result::Result as StdResult;
+use tracing::debug;
 
 use crate::circuit::CircuitRxReceiver;
 
@@ -152,6 +150,22 @@ pub(crate) enum CtrlCmd<C> {
         /// Oneshot channel to notify on completion.
         done: ReactorResultChannel<()>,
     },
+    /// Inform the stream reactor that the drain rate of a stream has changed so that it
+    /// can send an XON if needed.
+    ///
+    /// This is routed to the stream reactor because the it owns the stream map and the
+    /// XON/XOFF state. It is also the reactor that decides to send an XOFF or not. It is
+    /// in charge of sending the XON to the backward reactor if need be.
+    StreamDrainRateUpdate {
+        /// The hop number the stream is on.
+        ///
+        /// Set to None if we are a relay.
+        hop: Option<HopNum>,
+        /// The stream ID to send the XON on.
+        stream_id: StreamId,
+        /// The drain rate to advertise in the XON.
+        rate: XonKBpsEwma,
+    },
     /// An implementation-dependent control command.
     #[allow(unused)] // TODO(relay)
     Custom(C),
@@ -188,7 +202,6 @@ pub(crate) trait ForwardHandler: ControlHandler {
         early: bool,
         hopnum: Option<HopNum>,
         msg: UnparsedRelayMsg,
-        relay_cell_format: RelayCellFormat,
     ) -> StdResult<(), ReactorError>;
 
     /// Handle a forward (TODO terminology) cell.
@@ -203,7 +216,7 @@ pub(crate) trait ForwardHandler: ControlHandler {
     /// Returns `None` if the cell was handled internally by this handler.
     async fn handle_forward_cell<R: Runtime>(
         &mut self,
-        hop_mgr: &mut HopMgr<R>,
+        hop_mgr: &HopMgr<R>,
         cell: Self::CircChanMsg,
     ) -> StdResult<Option<ForwardCellDisposition>, ReactorError>;
 
@@ -308,7 +321,7 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
                 };
 
                 let cell: F::CircChanMsg = cell.try_into()?;
-                let Some(disp) = self.inner.handle_forward_cell(&mut self.hop_mgr, cell).await? else {
+                let Some(disp) = self.inner.handle_forward_cell(&self.hop_mgr, cell).await? else {
                     return Ok(());
                 };
 
@@ -357,6 +370,14 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
 
                 Ok(())
             }
+            CtrlCmd::StreamDrainRateUpdate {
+                hop,
+                stream_id,
+                rate,
+            } => {
+                let msg = stream::CtrlMsg::DrainRateUpdate { stream_id, rate };
+                self.hop_mgr.send(hop, msg).await
+            }
             CtrlCmd::Custom(c) => self.inner.handle_cmd(c),
         }
     }
@@ -371,15 +392,9 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
     /// Note that we have received a RELAY cell.
     ///
     /// Updates the padding and CC state.
-    fn note_relay_cell_received(
-        &self,
-        hopnum: Option<HopNum>,
-        c_t_w: bool,
-    ) -> Result<(RelayCellFormat, bool)> {
+    fn note_relay_cell_received(&self, hopnum: Option<HopNum>, c_t_w: bool) -> Result<bool> {
         let mut hops = self.hop_mgr.hops().write().expect("poisoned lock");
-        let hop = hops
-            .get_mut(hopnum)
-            .ok_or_else(|| internal!("msg from non-existent hop???"))?;
+        let hop = hops.get_mut(hopnum)?;
 
         // Check whether we are allowed to receive more data for this circuit hop.
         hop.inbound.decrement_cell_limit()?;
@@ -395,9 +410,7 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
             false
         };
 
-        let relay_cell_format = hop.settings.relay_crypt_protocol().relay_cell_format();
-
-        Ok((relay_cell_format, send_circ_sendme))
+        Ok(send_circ_sendme)
     }
 
     /// Handle a RELAY cell.
@@ -420,7 +433,7 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
         }
 
         let c_t_w = decode_res.cmds().any(sendme::cmd_counts_towards_windows);
-        let (relay_cell_format, send_circ_sendme) = self.note_relay_cell_received(hopnum, c_t_w)?;
+        let send_circ_sendme = self.note_relay_cell_received(hopnum, c_t_w)?;
 
         // If we do need to send a circuit-level SENDME cell, do so.
         if send_circ_sendme {
@@ -449,10 +462,7 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
 
         let (mut msgs, incomplete) = decode_res.into_parts();
         while let Some(msg) = msgs.next() {
-            match self
-                .handle_relay_msg(early, hopnum, msg, relay_cell_format, c_t_w)
-                .await
-            {
+            match self.handle_relay_msg(early, hopnum, msg, c_t_w).await {
                 Ok(()) => continue,
                 Err(e) => {
                     for m in msgs {
@@ -485,7 +495,6 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
         early: bool,
         hop: Option<HopNum>,
         msg: UnparsedRelayMsg,
-        relay_cell_format: RelayCellFormat,
         cell_counts_toward_windows: bool,
     ) -> StdResult<(), ReactorError> {
         // If this msg wants/refuses to have a Stream ID, does it
@@ -494,11 +503,24 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
 
         // If this doesn't have a StreamId, it's a meta cell,
         // not meant for a particular stream.
-        let Some(sid) = streamid else {
-            return self
-                .handle_meta_msg(early, hop, msg, relay_cell_format)
-                .await;
-        };
+        if let Some(sid) = streamid {
+            self.handle_stream_msg(early, hop, msg, sid, cell_counts_toward_windows)
+                .await
+        } else {
+            self.handle_meta_msg(early, hop, msg).await
+        }
+    }
+
+    /// Handle a stream message arriving on this circuit.
+    async fn handle_stream_msg(
+        &mut self,
+        _early: bool,
+        hop: Option<HopNum>,
+        msg: UnparsedRelayMsg,
+        sid: StreamId,
+        cell_counts_toward_windows: bool,
+    ) -> StdResult<(), ReactorError> {
+        // TODO(relay): return an error if this arrived in an RELAY_EARLY?
 
         let msg = stream::CtrlMsg::DeliverStreamMsg {
             sid,
@@ -520,28 +542,34 @@ impl<R: Runtime, F: ForwardHandler> ForwardReactor<R, F> {
         early: bool,
         hopnum: Option<HopNum>,
         msg: UnparsedRelayMsg,
-        relay_cell_format: RelayCellFormat,
     ) -> StdResult<(), ReactorError> {
         match msg.cmd() {
-            RelayCmd::SENDME => {
-                let sendme = msg
-                    .decode::<Sendme>()
-                    .map_err(|e| Error::from_bytes_err(e, "sendme message"))?
-                    .into_msg();
-
-                let cmd = BackwardReactorCmd::HandleSendme {
-                    hop: hopnum,
-                    sendme,
-                };
-
-                self.send_reactor_cmd(cmd).await
-            }
+            RelayCmd::SENDME => self.handle_sendme(hopnum, msg).await,
             _ => {
                 self.inner
-                    .handle_meta_msg(&self.runtime, early, hopnum, msg, relay_cell_format)
+                    .handle_meta_msg(&self.runtime, early, hopnum, msg)
                     .await
             }
         }
+    }
+
+    /// Handle a circuit SENDME coming from the specified `hopnum`.
+    async fn handle_sendme(
+        &mut self,
+        hopnum: Option<HopNum>,
+        msg: UnparsedRelayMsg,
+    ) -> StdResult<(), ReactorError> {
+        let sendme = msg
+            .decode::<Sendme>()
+            .map_err(|e| Error::from_bytes_err(e, "sendme message"))?
+            .into_msg();
+
+        let cmd = BackwardReactorCmd::HandleSendme {
+            hop: hopnum,
+            sendme,
+        };
+
+        self.send_reactor_cmd(cmd).await
     }
 
     /// Send a command to the backward reactor.

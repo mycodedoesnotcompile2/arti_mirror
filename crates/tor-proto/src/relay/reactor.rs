@@ -106,8 +106,7 @@ impl stream::StreamHandler for StreamHandler {
             .lock()
             .expect("poisoned lock")
             .rtt()
-            .max_rtt_usec()
-            .map(|rtt| Duration::from_millis(u64::from(rtt)))
+            .max_rtt()
             // TODO(relay): we should fallback to a non-zero default here
             // if we don't have any RTT measurements yet
             .unwrap_or_default()
@@ -219,8 +218,9 @@ impl<R: Runtime> Reactor<R> {
             cmd_checker,
             filter: incoming_filter,
         };
-        let mut hop_mgr = HopMgr::new_with_incoming_handler(
+        let hop_mgr = HopMgr::new_relay(
             runtime.clone(),
+            settings.clone(),
             unique_id,
             circ_id,
             StreamHandler,
@@ -228,12 +228,6 @@ impl<R: Runtime> Reactor<R> {
             incoming_handler,
             memquota.clone(),
         );
-
-        // On the relay side, we always have one "hop" (ourselves).
-        //
-        // Clients will need to call this function in response to CtrlMsg::Create
-        // (TODO: for clients, we probably will need to store a bunch more state here)
-        hop_mgr.add_hop(settings.clone())?;
 
         // TODO(relay): currently we don't need buffering on this channel,
         // but we might need it if we start using it for more than just EXTENDED2 events
@@ -540,7 +534,7 @@ pub(crate) mod test {
         let (create_request_handler, _circuit_stream_rx) = CreateRequestHandler::new(
             Arc::downgrade(&chan_provider) as Weak<_>,
             new_circ_net_params(),
-            RelayNtorKeys::new(relay_ntor_keys.into()),
+            RelayNtorKeys::new(Arc::new(relay_ntor_keys.into())),
             // Don't filter any stream requests.
             Box::new(|| Box::new(NoOpRequestFilter) as Box<_>),
             allowed_stream_cmds,

@@ -13,7 +13,10 @@
 use super::*;
 
 ns_use_this_variety! {
-    pub use [crate::doc::netstatus::rs]::?::{RouterStatus};
+    pub use [crate::doc::netstatus::rs]::?::{
+        RouterStatus, RouterStatusConstructor,
+        RouterStatusIntroItem, RouterStatusIntroItemConstructor,
+    };
 }
 
 /// Network status document - consensus, or vote
@@ -146,7 +149,10 @@ pub struct Preamble {
 
     /// How long in seconds should voters wait for votes and
     /// signatures (respectively) to propagate?
-    pub voting_delay: Option<(u32, u32)>,
+    ///
+    /// <https://spec.torproject.org/dir-spec/consensus-formats.html#item:voting-delay>
+    #[deftly(constructor)]
+    pub voting_delay: VotingDelay,
 
     /// List of recommended Tor client versions.
     ///
@@ -176,7 +182,7 @@ pub struct Preamble {
     /// network should operator. Some of these adjust timeouts and
     /// whatnot; some features things on and off.
     #[deftly(constructor)]
-    pub params: NetParams<i32>,
+    pub params: NetParams,
 
     /// Global shared-random values
     #[deftly(netdoc(flatten))]
@@ -222,8 +228,8 @@ impl Preamble {
     /// Calculate the validity range (time interval) for this network status document
     pub fn validity_time_range(&self) -> std::ops::Range<SystemTime> {
         let lifetime = self.lifetime.clone();
-        let delay = self.voting_delay.unwrap_or((0, 0));
-        let dist_interval = time::Duration::from_secs(delay.1.into());
+        let delay = self.voting_delay;
+        let dist_interval = time::Duration::from_secs(delay.dist_seconds.into());
         let starting_time = lifetime.valid_after.saturating_sub(dist_interval);
         starting_time..*lifetime.valid_until
     }

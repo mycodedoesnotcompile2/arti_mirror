@@ -18,7 +18,6 @@ pub mod curve25519 {
     use subtle::ConstantTimeEq;
 
     use crate::util::ct::derive_deftly_template_PartialEqFromCtEq;
-    use crate::util::rng::RngCompat;
 
     /// A keypair containing a [`StaticSecret`] and its corresponding public key.
     #[allow(clippy::exhaustive_structs)]
@@ -66,7 +65,9 @@ pub mod curve25519 {
     /// A curve15519 public key.
     ///
     /// See [`x25519_dalek::PublicKey`] for more information.
-    #[derive(Clone, Copy, Debug, Eq, Deftly)]
+    #[derive(Clone, Copy, Debug, Eq, Hash, Deftly)]
+    // Sadly not Ord because x25519_dalek::PublicKey isn't
+    #[allow(clippy::derived_hash_with_manual_eq)]
     #[derive_deftly(PartialEqFromCtEq)]
     pub struct PublicKey(x25519_dalek::PublicKey);
 
@@ -109,10 +110,10 @@ pub mod curve25519 {
 
     impl EphemeralSecret {
         /// Return a new random ephemeral secret key.
-        pub fn random_from_rng<R: rand_core::Rng + rand_core::CryptoRng>(csprng: R) -> Self {
-            Self(x25519_dalek::EphemeralSecret::random_from_rng(
-                RngCompat::new(csprng),
-            ))
+        pub fn random_from_rng<R: ?Sized + rand_core::Rng + rand_core::CryptoRng>(
+            csprng: &mut R,
+        ) -> Self {
+            Self(x25519_dalek::EphemeralSecret::random_from_rng(csprng))
         }
         /// Negotiate a shared secret using this secret key and a public key.
         pub fn diffie_hellman(self, their_public: &PublicKey) -> SharedSecret {
@@ -121,10 +122,10 @@ pub mod curve25519 {
     }
     impl StaticSecret {
         /// Return a new random static secret key.
-        pub fn random_from_rng<R: rand_core::Rng + rand_core::CryptoRng>(csprng: R) -> Self {
-            Self(x25519_dalek::StaticSecret::random_from_rng(RngCompat::new(
-                csprng,
-            )))
+        pub fn random_from_rng<R: ?Sized + rand_core::Rng + rand_core::CryptoRng>(
+            csprng: &mut R,
+        ) -> Self {
+            Self(x25519_dalek::StaticSecret::random_from_rng(csprng))
         }
         /// Negotiate a shared secret using this secret key and a public key.
         pub fn diffie_hellman(&self, their_public: &PublicKey) -> SharedSecret {

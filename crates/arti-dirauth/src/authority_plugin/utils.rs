@@ -54,6 +54,7 @@ define_derive_deftly! {
 //   - consider whether we should preserve file permissions
 //   - see the comment about leftover `.tmp` files in `write`, below
 //   - fix the locking problem (see the two TODO locking/hang)
+//   - consider whether to keep the unconditional setting of retain_unknown_values in parse2
 #[derive(Debug, Clone)]
 pub(super) enum FilenameOrStdio {
     /// Filename
@@ -71,6 +72,25 @@ pub(super) struct Reading {
     /// Actual open-file
     #[educe(Debug(ignore))]
     handle: io::BufReader<Box<dyn io::Read>>,
+    /// Description (for error messages), already quoted
+    description: String,
+}
+
+/// Input file completely read into memory
+///
+/// Thin wrapper around `String`.
+///
+/// But, also provides a [`.description()`](EntireInput::description)
+/// for use in error reporting.
+///
+/// See [`FilenameOrStdio::read_entire`].
+#[derive(Educe, derive_more::Deref)]
+#[educe(Debug)]
+pub(super) struct EntireInput {
+    /// File data
+    #[educe(Debug(ignore))] // too verbose
+    #[deref(forward)]
+    data: String,
     /// Description (for error messages), already quoted
     description: String,
 }
@@ -210,6 +230,14 @@ impl FilenameOrStdio {
             description,
         })
     }
+
+    /// Read the input file
+    pub(super) fn read_entire(&self) -> Result<EntireInput, CliError> {
+        let i = self.start_reading()?;
+        let description = i.description().to_owned();
+        let data = i.read_entire_string()?;
+        Ok(EntireInput { data, description })
+    }
 }
 
 impl io::Read for Reading {
@@ -252,6 +280,18 @@ impl Reading {
     }
 }
 
+impl EntireInput {
+    /// Provide a human-readable description of what this is (eg for error reporting)
+    pub(crate) fn description(&self) -> &str {
+        &self.description
+    }
+
+    /// Return a `parse2::ParseInput` for this input file
+    pub(crate) fn netdoc_parse2(&self) -> parse2::ParseInput {
+        parse2::ParseInput::new(self, self.description()).retain_unknown_values()
+    }
+}
+
 impl io::Write for Writing {
     fn write(&mut self, b: &[u8]) -> io::Result<usize> {
         self.handle.write(b)
@@ -291,8 +331,17 @@ impl Writing {
             .files
             .as_ref()
             .map(|files| format!("write to {:?}", files.tmp))
-            .unwrap_or("write to stdout".into());
+            .unwrap_or_else(|| "write to stdout".into());
         move |e| convert_output_error(anyhow::Error::from(e).context(msg))
+    }
+
+    /// Write some netdoc(s)
+    pub(super) fn write_netdocs<'d, D: NetdocEncodable + ?Sized + 'd>(
+        &mut self,
+        doc: impl IntoIterator<Item = &'d D>,
+    ) -> Result<(), CliError> {
+        let doc = encode_netdoc_unsigned(doc)?;
+        self.append_with(|w| write!(w, "{doc}"))
     }
 }
 

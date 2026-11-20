@@ -70,6 +70,57 @@ define_list_builder_accessors! {
     }
 }
 
+impl AuthorityContacts {
+    /// Do any identity or IP address entries intersect with `other`?
+    ///
+    /// This compares the flattened lists of entries field-by-field.
+    ///
+    /// This is intended to be used to compare an `AuthorityContacts` as
+    /// configured by the user with the default `AuthorityContacts`,
+    /// to detect if the configured authority contacts use any of
+    /// the authorities from the "live" Tor network.
+    pub fn intersects(&self, other: &Self) -> bool {
+        /// Check for an intersection between two lists of lists of `SocketAddr`s,
+        /// but flatten them once first.
+        fn flatten_addrs_intersect<'a, I>(a: I, b: I) -> bool
+        where
+            I: IntoIterator,
+            I::Item: IntoIterator<Item = &'a SocketAddr>,
+        {
+            let mut a = a.into_iter().flatten();
+            let mut b = b.into_iter().flatten();
+            a.any(|x| b.any(|y| x == y))
+        }
+
+        // Destructure so that we ensure we consider each field.
+        #[deny(unused)]
+        let Self {
+            v3idents,
+            uploads,
+            downloads,
+            votes,
+        } = self;
+
+        if v3idents.iter().any(|id| other.v3idents.contains(id)) {
+            return true;
+        }
+
+        if flatten_addrs_intersect(uploads, &other.uploads) {
+            return true;
+        }
+
+        if flatten_addrs_intersect(downloads, &other.downloads) {
+            return true;
+        }
+
+        if flatten_addrs_intersect(votes, &other.votes) {
+            return true;
+        }
+
+        false
+    }
+}
+
 /// Returns a list of the default [`RsaIdentity`]s for the directory authorities.
 fn default_v3idents() -> Vec<RsaIdentity> {
     fn rsa(hex: &str) -> RsaIdentity {
@@ -77,7 +128,6 @@ fn default_v3idents() -> Vec<RsaIdentity> {
     }
 
     vec![
-        rsa("27102BC123E7AF1D4741AE047E160C91ADC76B21"), // bastet
         rsa("0232AF901C31A04EE9848595AF9BB7620D4C5B2E"), // dannenberg
         rsa("E8A9C45EDE6D711294FADF8E7951F4DE6CA56B58"), // dizum
         rsa("70849B868D606BAECFB6128C5E3D782029AA394F"), // faravahar
@@ -100,11 +150,6 @@ fn default_uploads() -> Vec<Vec<SocketAddr>> {
     }
 
     vec![
-        // bastet
-        vec![
-            sa("204.13.164.118:80"),
-            sa("[2620:13:4000:6000::1000:118]:80"),
-        ],
         // dannenberg
         vec![sa("193.23.244.244:80"), sa("[2001:678:558:1000::244]:80")],
         // dizum
@@ -119,7 +164,7 @@ fn default_uploads() -> Vec<Vec<SocketAddr>> {
         // longclaw
         vec![sa("199.58.81.140:80")],
         // maatuska
-        vec![sa("171.25.193.9:443"), sa("[2001:67c:289c::9]:443")],
+        vec![sa("91.223.231.13:443"), sa("[2001:67c:8a4:1::13]:443")],
         // moria1
         vec![sa("128.31.0.39:9231")],
         // tor26
@@ -164,19 +209,23 @@ mod test {
         assert_eq!(dflt.uploads, default_uploads());
         assert_eq!(dflt.downloads, default_downloads());
         assert_eq!(dflt.votes, default_votes());
+        assert_eq!(dflt.v3idents.len(), dflt.uploads.len());
 
+        // Use tor26's entry for this test. Note that this depends on tor26
+        // being listed last in default_v3idents() and default_uploads().
+        let last = dflt.v3idents.len() - 1;
         assert_eq!(
-            dflt.v3idents[8],
+            dflt.v3idents[last],
             RsaIdentity::from_hex("2F3DF9CA0E5D36F2685A2DA67184EB8DCB8CBA8C").unwrap()
         );
         assert_eq!(
-            dflt.uploads[8],
+            dflt.uploads[last],
             vec![
                 "217.196.147.77:80".parse().unwrap(),
                 "[2a02:16a8:662:2203::1]:80".parse().unwrap()
             ]
         );
-        assert_eq!(dflt.uploads[8], dflt.downloads[8]);
-        assert_eq!(dflt.uploads[8], dflt.votes[8]);
+        assert_eq!(dflt.uploads[last], dflt.downloads[last]);
+        assert_eq!(dflt.uploads[last], dflt.votes[last]);
     }
 }

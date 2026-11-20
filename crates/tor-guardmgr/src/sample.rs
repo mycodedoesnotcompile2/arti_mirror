@@ -10,7 +10,10 @@ use crate::{
     ExternalActivity, GuardParams, GuardUsage, GuardUsageKind, PickGuardError, ids::GuardId,
 };
 use crate::{FirstHop, GuardSetSelector};
+use saturating_time::SaturatingTime as _;
 use tor_basic_utils::iter::{FilterCount, IteratorExt as _};
+use tor_basic_utils::onionperf_types::{OnionperfEvent, OnionperfGuardStatus};
+use tor_error::{internal, warn_report};
 use tor_linkspec::{ByRelayIds, HasRelayIds};
 
 use itertools::Itertools;
@@ -18,7 +21,7 @@ use rand::seq::IndexedRandom;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 use web_time_compat::{Instant, SystemTime};
 
 #[allow(unused_imports)]
@@ -211,14 +214,25 @@ impl GuardSet {
         fix_id_list(&self.guards, &mut self.primary);
     }
 
-    /// Assert that this `GuardSet` is internally consistent.
+    /// Log an internal error if this `GuardSet` is not internally consistent.
+    ///
+    /// If debug assertions are enabled, panic on failure.
     ///
     /// Incidentally fixes the consistency of this `GuardSet` if needed.
     fn assert_consistency(&mut self) {
         let len_pre = self.inner_lengths();
         self.fix_consistency();
         let len_post = self.inner_lengths();
-        assert_eq!(len_pre, len_post);
+        if len_pre != len_post {
+            // This is the most convenient way to get a backtrace.  We want a backtrace so that
+            // we can blame the function where the error actually occurred.
+            let e = internal!("Inner length changed from {len_pre:?} to {len_post:?}");
+            warn_report!(
+                e,
+                "Found guard sample in an inconsistent state, and restored it"
+            );
+            debug_assert_eq!(len_pre, len_post);
+        }
     }
 
     /// Return the guard that has every identity in `id`, if any.
@@ -462,13 +476,21 @@ impl GuardSet {
 
     /// Add `relay` as a new guard.
     ///
-    /// Does nothing if it is already a guard.
+    /// Does nothing if it is already a guard, or if there is an existing guard
+    /// with any of the same ID keys.
     fn add_guard(&mut self, relay: Candidate, now: SystemTime, params: &GuardParams) {
         let id = GuardId::from_relay_ids(&relay.owned_target);
-        if self.guards.by_all_ids(&id).is_some() {
+        if self.guards.contains_any_overlapping(&id) {
             return;
         }
         debug!(guard_id=?id, "Adding guard to sample.");
+        // TODO: I don't think onionperf actually needs the guard fingerpint,
+        // but if it does, add it here.
+        trace!(
+            onionperf = true,
+            event = ?OnionperfEvent::Guard(OnionperfGuardStatus::New),
+            guard_id = ?id,
+        );
         let guard = Guard::from_candidate(relay, now, params);
         self.guards.insert(guard);
         self.sample.push(id);
@@ -576,6 +598,16 @@ impl GuardSet {
     pub(crate) fn expire_old_guards(&mut self, params: &GuardParams, now: SystemTime) {
         self.assert_consistency();
         let n_pre = self.guards.len();
+        // TODO: Might be more ideal to do this after the assert_consistency.
+        for guard in self.guards.values() {
+            if guard.is_expired(params, now) {
+                tracing::trace!(
+                    onionperf = true,
+                    event = ?OnionperfEvent::Guard(OnionperfGuardStatus::Dropped),
+                    guard_id = ?guard.guard_id(),
+                );
+            }
+        }
         self.guards.retain(|g| !g.is_expired(params, now));
         let guards = &self.guards;
         self.sample.retain(|id| guards.by_all_ids(id).is_some());
@@ -734,6 +766,11 @@ impl GuardSet {
         how: Option<ExternalActivity>,
         now: Instant,
     ) {
+        trace!(
+            onionperf = true,
+            event = ?OnionperfEvent::Guard(OnionperfGuardStatus::Down),
+            ?guard_id,
+        );
         // TODO use instant uniformly for in-process, and systemtime for storage?
         let is_primary = self.guard_is_primary(guard_id);
         self.guards.modify_by_all_ids(guard_id, |guard| match how {
@@ -811,9 +848,9 @@ impl GuardSet {
         // _rather_ use are either down, or have had their circuit
         // attempts pending for too long.
 
-        let cutoff = now
-            .checked_sub(params.np_connect_timeout)
-            .expect("Can't subtract connect timeout from now.");
+        // We treat a more-preferred guard with an exploratory circuit created
+        // _after_ this cutoff as preventing us from using `guard_id`.
+        let cutoff = now.saturating_sub(params.np_connect_timeout);
 
         for (src, guard) in self.preference_order() {
             if guard.guard_id() == guard_id {
@@ -1032,7 +1069,7 @@ mod test {
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
     use tor_linkspec::{HasRelayIds, RelayIdType};
     use tor_netdir::NetDir;
-    use tor_netdoc::doc::netstatus::RelayWeight;
+    use tor_netdoc::doc::netstatus::RelayBandwidth;
     use tor_netdoc::types::relay_flags::RelayFlag;
     use web_time_compat::{InstantExt, SystemTimeExt};
 
@@ -1053,7 +1090,7 @@ mod test {
         // too tricky.
         let netdir = tor_netdir::testnet::construct_custom_netdir(|idx, builder, _| {
             // Give every node equal bandwidth.
-            builder.rs.weight(RelayWeight::Measured(1000));
+            builder.rs.weight(RelayBandwidth::Measured(1000));
             // The default network has 40 relays, and the first 10 are
             // not Guard by default.
             if idx >= 10 {
@@ -1562,5 +1599,35 @@ mod test {
             .map(|g| g.guard_id().clone())
             .collect();
         assert_eq!(g1_set, g1_set_new);
+    }
+
+    #[test]
+    // This is far easier to test with bridge-client support.
+    #[cfg(feature = "bridge-client")]
+    fn partial_identity_collision() {
+        use crate::bridge::BridgeSet;
+        use std::sync::Arc;
+        // Construct a configuration with 2 bridges whose IDs overlap partially:
+        // Same RSA, but different Ed25519.
+        let bc = Arc::new([
+            "192.168.0.1:80 $0bac39417268b69b9f514e7f63fa6fba1a788958
+             ed25519:S2Fya2F0ICBXaGF0ICBJcyAgSGUgIERvaW5nIEhlcmU"
+                .parse()
+                .unwrap(),
+            "192.168.0.2:80 $0bac39417268b69b9f514e7f63fa6fba1a788958
+             ed25519:dGhpcyBpcyBbpmNyZWRpYmx5IHNpbGx5ISEhISEhISA"
+                .parse()
+                .unwrap(),
+        ]);
+        let bs = BridgeSet::new(bc, None);
+        // Here we rely on GuardSet not filtering out anything by default, and
+        // on GuardParamas having a max_sample_size >=2.
+        // Otherwise the test won't actually check for correct behavior here.
+        let mut gs = GuardSet::default();
+        let params = GuardParams::default();
+        assert!(params.max_sample_size >= 2);
+        assert_eq!(gs.active_filter, GuardFilter::unfiltered());
+        gs.extend_sample_as_needed(SystemTime::get(), &params, &bs);
+        gs.assert_consistency();
     }
 }

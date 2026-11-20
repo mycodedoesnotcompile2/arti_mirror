@@ -26,7 +26,7 @@ use crate::relay::reactor::CircuitAccount;
 use tor_cell::chancell::msg::{AnyChanMsg, Destroy, PaddingNegotiate, Relay};
 use tor_cell::chancell::{AnyChanCell, BoxedCellBody, ChanMsg, CircId};
 use tor_cell::relaycell::msg::{Extended2, SendmeTag};
-use tor_cell::relaycell::{RelayCellDecoderResult, RelayCellFormat, RelayCmd, UnparsedRelayMsg};
+use tor_cell::relaycell::{RelayCellDecoderResult, RelayCmd, UnparsedRelayMsg};
 use tor_error::internal;
 use tor_linkspec::OwnedChanTarget;
 use tor_rtcompat::Runtime;
@@ -145,7 +145,7 @@ impl Forward {
     /// Decode `cell`, returning its corresponding hop number, tag and decoded body.
     fn decode_relay_cell<R: Runtime>(
         &mut self,
-        hop_mgr: &mut HopMgr<R>,
+        hop_mgr: &HopMgr<R>,
         cell: RelayMaybeEarlyChanMsg,
     ) -> Result<(Option<HopNum>, CellDecodeResult)> {
         // Note: the client reactor will return the actual source hopnum
@@ -157,12 +157,8 @@ impl Forward {
         };
 
         // The message is addressed to us! Now it's time to handle it...
-        let mut hops = hop_mgr.hops().write().expect("poisoned lock");
-        let decode_res = hops
-            .get_mut(hopnum)
-            .ok_or_else(|| internal!("msg from non-existent hop???"))?
-            .inbound
-            .decode(body.into())?;
+        let hops = hop_mgr.hops().read().expect("poisoned lock");
+        let decode_res = hops.get(hopnum)?.inbound.decode(body.into())?;
 
         Ok((hopnum, CellDecodeResult::Recognized(tag, decode_res)))
     }
@@ -202,7 +198,7 @@ impl Forward {
     /// Handle a RELAY or RELAY_EARLY cell.
     fn handle_relay_cell<R: Runtime>(
         &mut self,
-        hop_mgr: &mut HopMgr<R>,
+        hop_mgr: &HopMgr<R>,
         cell: RelayMaybeEarlyChanMsg,
     ) -> StdResult<Option<ForwardCellDisposition>, ReactorError> {
         let early = matches!(cell, RelayMaybeEarlyChanMsg::RelayEarly(_));
@@ -316,7 +312,6 @@ impl ForwardHandler for Forward {
         early: bool,
         _hopnum: Option<HopNum>,
         msg: UnparsedRelayMsg,
-        _relay_cell_format: RelayCellFormat,
     ) -> StdResult<(), ReactorError> {
         match msg.cmd() {
             RelayCmd::DROP => self.handle_drop(),
@@ -328,7 +323,7 @@ impl ForwardHandler for Forward {
 
     async fn handle_forward_cell<R: Runtime>(
         &mut self,
-        hop_mgr: &mut HopMgr<R>,
+        hop_mgr: &HopMgr<R>,
         cell: RelayCircChanMsg,
     ) -> StdResult<Option<ForwardCellDisposition>, ReactorError> {
         use RelayCircChanMsg::*;

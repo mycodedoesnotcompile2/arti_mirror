@@ -144,6 +144,11 @@ Where...
 C Tor SHOULD ignore extra arguments and spaces in this line.
 C Tor SHOULD treat unparseable lines as a total failure of the plugin.
 
+It is C Tor's responsibility to implement a minimum threshold of
+generated microdescriptors,
+as per <https://gitlab.torproject.org/tpo/core/torspec/-/merge_requests/522>.
+(TODO DIRAUTH update this when spec change is final.)
+
 > The formats here are meant to be as close as possible to what we have to
 > put in our votes, and to what C tor expects to put into its md cache(s).
 
@@ -154,7 +159,8 @@ Invocation
 ```
 plugin compute-consensus --ids <KEYFILE> \
        --votes <VOTEFILE> [--votes <VOTEFILE>...]
-       -o <OUTFILE>
+       --plain-out <PLAIN-OUT-FILE> \
+       --md-out <MD-OUT-FILE>
 ```
 
 The `KEYFILE` file will contain zero or more lines, of the form:
@@ -163,7 +169,7 @@ The `KEYFILE` file will contain zero or more lines, of the form:
 * `NICKNAME` is an arbitrary ASCII string without spaces to identify an
 authority when producing error messages.
 
-* `DIGEST` is a hex-encoded SHA256 digest of an authority's `KP_auth_id_rsa`
+* `DIGEST` is a hex-encoded SHA-1 digest of an authority's `KP_auth_id_rsa`
   identity key.
 
 Each entry represents a single valid voting authority.  The number of
@@ -176,12 +182,12 @@ This should be parsed in accordance with the regular
 > DirServer configuration line.
 
 
-Each VOTEFILE contains zero or more concatenated vote documents.
+Each `VOTEFILE` contains zero or more concatenated vote documents.
 
 > In C tor, I think this is just the `v3-status-votes` file.
 > ahf/dgoulet please confirm?
 
-The plugin MUST reject any votes that cannot be parsed,
+The plugin MUST ignore (logging a warning) any votes that cannot be parsed,
 or which come from an unrecognized authority,
 or which are not correctly signed.
 
@@ -189,7 +195,7 @@ The plugin MUST return an error if more than one vote appears for any
 authority.
 
 The plugin MUST return an error if the votes do not have identical
-time ranges.
+time ranges (`valid-after`, `fresh-until`, `valid-until`.)
 
 The plugin MUST exit with error code 10 ("Fall back to C tor Consensus")
 if it finds that the consensus method that should be used
@@ -200,8 +206,11 @@ is less than 100.
 > once they have decided to vote, and only compute a vote themselves
 > if the plugin exits with the error code.
 
-On success, the plugin writes a consensus,
-_without its signature_, to the file at `OUTFILE`.
+On success, the plugin writes
+a plain consensus to the file at `PLAIN-OUT-FILE`,
+and a microdescriptor flavored consensusto the file at `MD-OUT-FILE`,
+in each case
+_without its signature_.
 
 
 ## Sketch of C tor authority behavior

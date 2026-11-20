@@ -1,7 +1,7 @@
 //! Error module for `tor-dirserver`.
 
 use thiserror::Error;
-use tor_netdoc::parse2;
+use tor_netdoc::parse2::VerifyFailed;
 
 /// Indicates that an error variant is fatal.
 ///
@@ -32,7 +32,7 @@ pub(crate) enum AuthorityRequestError {
     /// here and there with regard to this, hence why we have dirclient in the
     /// first place.
     #[error("dirclient error: {0}")]
-    Request(#[from] tor_dirclient::RequestFailedError),
+    Request(Box<tor_dirclient::RequestFailedError>),
 
     /// A response does not make semantic sense.
     ///
@@ -41,13 +41,26 @@ pub(crate) enum AuthorityRequestError {
     #[error("response error: {0}")]
     Response(&'static str),
 
-    /// Invalid netdoc received from the authority.
-    #[error("netdoc parse error: {0}")]
-    Parse(#[from] parse2::ParseError),
+    /// A request led to no progress being made.
+    ///
+    /// This is the case if the response only consists of netdocs we did not
+    /// request or no netdocs at all, leading to no progress.
+    ///
+    /// The correct error handling strategy for this case is to pick a different
+    /// endpoint, as the current one is either not useful for us anymore or
+    /// is maliciously tricking us into something that should not happen.
+    #[error("request resulted in no progress")]
+    NoRequestedDocumentsReturned,
 
     /// An internal error.
     #[error("internal error")]
     Bug(#[from] tor_error::Bug),
+}
+
+impl From<tor_dirclient::RequestFailedError> for AuthorityRequestError {
+    fn from(value: tor_dirclient::RequestFailedError) -> Self {
+        Self::Request(Box::new(value))
+    }
 }
 
 impl IsFatal for AuthorityRequestError {
@@ -110,21 +123,24 @@ pub(crate) enum DatabaseError {
 pub(crate) enum OperationError {
     /// Request to a directory authority failed.
     #[error("authority request error: {0}")]
-    AuthorityRequest(#[from] Box<AuthorityRequestError>),
+    AuthorityRequest(#[from] AuthorityRequestError),
 
     /// Access to the database failed for good.
     #[error("database error: {0}")]
     Database(#[from] DatabaseError),
 
+    /// Verificaton of a network document has failed.
+    ///
+    /// This also includes checks for timeliness.
+    ///
+    /// We do not consider this fatal but simply discard the unverified network
+    /// document.
+    #[error("verification error: {0}")]
+    VerifyFailed(#[from] VerifyFailed),
+
     /// An internal error.
     #[error("Internal error")]
     Bug(#[from] tor_error::Bug),
-}
-
-impl From<AuthorityRequestError> for OperationError {
-    fn from(value: AuthorityRequestError) -> Self {
-        Self::AuthorityRequest(Box::new(value))
-    }
 }
 
 impl IsFatal for OperationError {
@@ -133,7 +149,12 @@ impl IsFatal for OperationError {
     /// Right now, the following variants are considered to be fatal:
     /// * [`OperationError::Database`]
     /// * [`OperationError::Bug`]
+    /// * [`OperationError::AuthorityRequest`] if [`IsFatal`]
     fn is_fatal(&self) -> bool {
-        matches!(&self, Self::Database(_) | Self::Bug(_))
+        match self {
+            Self::Database(_) | Self::Bug(_) => true,
+            Self::AuthorityRequest(e) => e.is_fatal(),
+            _ => false,
+        }
     }
 }

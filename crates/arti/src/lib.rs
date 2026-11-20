@@ -24,6 +24,7 @@
 #![warn(clippy::needless_borrow)]
 #![warn(clippy::needless_pass_by_value)]
 #![warn(clippy::option_option)]
+#![warn(clippy::or_fun_call)]
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 #![warn(clippy::rc_buffer)]
@@ -45,6 +46,7 @@
 #![allow(clippy::collapsible_if)] // See arti#2342
 #![deny(clippy::unused_async)]
 #![deny(clippy::string_slice)] // See arti#2571
+#![allow(recursion_depth_exceeding_limit)] // arti#2715, rust/issues/159228
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 
 // TODO #1645 (either remove this, or decide to have it everywhere)
@@ -426,15 +428,23 @@ where
 
         let cfg = cfg_sources.load()?;
         let (config, client_config) =
-            tor_config::resolve::<ArtiCombinedConfig>(cfg).context("read configuration")?;
+            tor_config::resolve::<ArtiCombinedConfig>(&cfg).context("read configuration")?;
 
         let log_mistrust = client_config.fs_mistrust().clone();
 
-        Ok::<_, Error>((matches, cfg_sources, config, client_config, log_mistrust))
+        Ok::<_, Error>((
+            matches,
+            cfg_sources,
+            cfg,
+            config,
+            client_config,
+            log_mistrust,
+        ))
     })?;
     // Sadly I don't seem to be able to persuade rustfmt to format the two lists of
     // variable names identically.
-    let (matches, cfg_sources, config, client_config, log_mistrust) = pre_config_logging_ret;
+    let (matches, cfg_sources, loaded_cfg_tree, config, client_config, log_mistrust) =
+        pre_config_logging_ret;
 
     let _log_guards = logging::setup_logging(
         config.logging(),
@@ -449,7 +459,7 @@ where
 
     #[cfg(feature = "harden")]
     if !config.application().permit_debugging {
-        if let Err(e) = process::enable_process_hardening() {
+        if let Err(e) = tor_bin_common::process::harden::enable_process_hardening() {
             error!(
                 "Encountered a problem while enabling hardening. To disable this feature, set application.permit_debugging to true."
             );
@@ -459,7 +469,14 @@ where
 
     // Check for the "proxy" subcommand.
     if let Some(proxy_matches) = matches.subcommand_matches("proxy") {
-        return subcommands::proxy::run(runtime, proxy_matches, cfg_sources, config, client_config);
+        return subcommands::proxy::run(
+            runtime,
+            proxy_matches,
+            cfg_sources,
+            loaded_cfg_tree,
+            config,
+            client_config,
+        );
     }
 
     // Check for the optional "keys" and "keys-raw" subcommand.

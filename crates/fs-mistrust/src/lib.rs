@@ -30,6 +30,7 @@
 #![warn(clippy::needless_borrow)]
 #![warn(clippy::needless_pass_by_value)]
 #![warn(clippy::option_option)]
+#![warn(clippy::or_fun_call)]
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 #![warn(clippy::rc_buffer)]
@@ -51,6 +52,7 @@
 #![allow(clippy::collapsible_if)] // See arti#2342
 #![deny(clippy::unused_async)]
 #![deny(clippy::string_slice)] // See arti#2571
+#![allow(recursion_depth_exceeding_limit)] // arti#2715, rust/issues/159228
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 
 // This crate used to have unsafe code to interact with various libc functions.
@@ -60,6 +62,8 @@
 // If this crate grows some other reason to want some unsafe, it is OK to remove this,
 // subject to all the usual considerations when writing unsafe.
 #![forbid(unsafe_code)]
+// TODO: add to the list maintained by maint/add_warning once it's available on all crates
+#![warn(unnameable_types)]
 
 mod dir;
 mod disable;
@@ -347,10 +351,10 @@ impl MistrustBuilder {
 
         // Otherwise, we use our "disable_by_environment" setting to see whether
         // we should check the environment.
-        self.disable_by_environment
-            .as_ref()
-            .unwrap_or(&disable::Disable::default())
-            .should_disable_checks()
+        match &self.disable_by_environment {
+            Some(d) => d.should_disable_checks(),
+            None => disable::Disable::default().should_disable_checks(),
+        }
     }
 
     /// Fill in any values for this `MistrustBuilder` that have defaults,

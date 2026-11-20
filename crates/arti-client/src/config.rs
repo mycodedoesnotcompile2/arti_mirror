@@ -113,6 +113,13 @@ pub struct ClientAddrConfig {
     #[deftly(tor_config(default))]
     pub(crate) allow_local_addrs: bool,
 
+    /// Should we accept and return local addresses in anonymously retrieved DNS answers?
+    ///
+    /// This option is off by default, since (by default) Tor exits will
+    /// always reject connections to such addresses.
+    #[deftly(tor_config(default))]
+    pub(crate) allow_resolving_local_addrs: bool,
+
     /// Should we allow attempts to connect to hidden services (`.onion` services)?
     ///
     /// This option is on by default.
@@ -351,7 +358,7 @@ impl StorageConfig {
 // as otherwise the default config file would generate an unknown section warning.
 #[derive(Debug, Clone, Deftly, Eq, PartialEq)]
 #[derive_deftly(TorConfig)]
-#[deftly(tor_config(pre_build = "validate_bridges_config", attr = "non_exhaustive"))]
+#[deftly(tor_config(pre_build = "validate_bridges_config"))]
 #[non_exhaustive]
 pub struct BridgesConfig {
     /// Should we use configured bridges?
@@ -576,7 +583,7 @@ pub struct TorClientConfig {
         build = "|this: &Self| default_extend(this.override_net_params.clone())",
         extend_with = "extend_with_replace"
     ))]
-    pub(crate) override_net_params: tor_netdoc::doc::netstatus::NetParams<i32>,
+    pub(crate) override_net_params: tor_netdoc::doc::netstatus::NetParamValues,
 
     /// Information about bridges, pluggable transports, and so on
     #[deftly(tor_config(sub_builder))]

@@ -27,6 +27,7 @@
 #![warn(clippy::needless_borrow)]
 #![warn(clippy::needless_pass_by_value)]
 #![warn(clippy::option_option)]
+#![warn(clippy::or_fun_call)]
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 #![warn(clippy::rc_buffer)]
@@ -48,10 +49,13 @@
 #![allow(clippy::collapsible_if)] // See arti#2342
 #![deny(clippy::unused_async)]
 #![deny(clippy::string_slice)] // See arti#2571
+#![allow(recursion_depth_exceeding_limit)] // arti#2715, rust/issues/159228
 //! <!-- @@ end lint list maintained by maint/add_warning @@ -->
 // This file uses `unwrap()` a fair deal, but this is fine in test/bench code
 // because it's OK if tests and benchmarks simply crash if things go wrong.
 #![allow(clippy::unwrap_used)]
+// TODO: add to the list maintained by maint/add_warning once it's available on all crates
+#![warn(unnameable_types)]
 
 use anyhow::{Result, anyhow};
 use arti::cfg::ArtiCombinedConfig;
@@ -67,9 +71,8 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::future::Future;
 use std::io::{Read, Write};
-use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::ops::Deref;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -371,6 +374,14 @@ fn main() -> Result<()> {
                 .value_name("addr:port")
                 .help("SOCKS5 proxy address for a node to benchmark through as well (usually a Chutney node). Optional."),
         )
+        .arg(
+            Arg::new("listen")
+                .long("listen")
+                .action(ArgAction::Set)
+                .value_name("addr")
+                .default_value("127.0.0.1:0")
+                .help("IP address on which to bind a listening server"),
+        )
         .get_matches();
     info!("Parsing Arti configuration...");
     let mut config_sources = ConfigurationSources::new_empty();
@@ -390,11 +401,12 @@ fn main() -> Result<()> {
     config_sources.set_mistrust(mistrust);
 
     let cfg = config_sources.load()?;
-    let (_config, tcc) = tor_config::resolve::<ArtiCombinedConfig>(cfg)?;
+    let (_config, tcc) = tor_config::resolve::<ArtiCombinedConfig>(&cfg)?;
     info!("Binding local TCP listener...");
-    let listener = TcpListener::bind("0.0.0.0:0")?;
+    let listen_addr = matches.get_one::<String>("listen").unwrap().clone();
+    let listener = TcpListener::bind(listen_addr)?;
     let local_addr = listener.local_addr()?;
-    let connect_addr = SocketAddr::new(IpAddr::from_str("127.0.0.1").unwrap(), local_addr.port());
+    let connect_addr = local_addr;
     info!("Bound to {}.", local_addr);
     let upload_bytes = *matches.get_one::<usize>("upload-bytes").unwrap();
     let download_bytes = *matches.get_one::<usize>("download-bytes").unwrap();

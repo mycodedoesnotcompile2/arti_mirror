@@ -46,7 +46,7 @@ pub struct ConsensusBuilder {
     /// See [`Preamble::proto_statuses`]
     relay_protos: ProtoStatus,
     /// See [`Preamble::params`]
-    params: NetParams<i32>,
+    params: NetParamValues,
     /// See [`Preamble::voting_delay`]
     voting_delay: Option<(u32, u32)>,
     /// See [`Preamble::consensus_method`]
@@ -60,7 +60,7 @@ pub struct ConsensusBuilder {
     /// See [`Consensus::relays`]
     relays: Vec<RouterStatus>,
     /// See [`ConsensusFooterFields::bandwidth_weights`]
-    weights: NetParams<i32>,
+    weights: ParamValues<i32>,
 }
 
 impl ConsensusBuilder {
@@ -73,14 +73,14 @@ impl ConsensusBuilder {
             server_versions: Vec::new(),
             client_protos: ProtoStatus::default(),
             relay_protos: ProtoStatus::default(),
-            params: NetParams::new(),
+            params: ParamValues::new(),
             voting_delay: None,
             consensus_method: None,
             shared_rand_previous_value: None,
             shared_rand_current_value: None,
             voters: Vec::new(),
             relays: Vec::new(),
-            weights: NetParams::new(),
+            weights: ParamValues::new(),
         }
     }
 
@@ -167,6 +167,7 @@ impl ConsensusBuilder {
             n_reveals,
             value,
             timestamp: timestamp.map(Iso8601TimeNoSp),
+            __non_exhaustive: (),
         });
         self
     }
@@ -183,6 +184,7 @@ impl ConsensusBuilder {
             n_reveals,
             value,
             timestamp: timestamp.map(Iso8601TimeNoSp),
+            __non_exhaustive: (),
         });
         self
     }
@@ -195,7 +197,7 @@ impl ConsensusBuilder {
         self
     }
     /// Replace all weight parameters for this consensus.
-    pub fn weights(&mut self, weights: NetParams<i32>) -> &mut Self {
+    pub fn weights(&mut self, weights: ParamValues<i32>) -> &mut Self {
         self.weights = weights;
         self
     }
@@ -237,6 +239,7 @@ impl ConsensusBuilder {
         let proto_statuses = Arc::new(ProtoStatuses {
             client: self.client_protos.clone(),
             relay: self.relay_protos.clone(),
+            __non_exhaustive: (),
         });
 
         let consensus_method = self
@@ -254,13 +257,30 @@ impl ConsensusBuilder {
                 .map_err(|_| crate::NetdocErrorKind::BadApiUsage.err())
         };
 
+        let (vote_seconds, dist_seconds) = self
+            .voting_delay
+            .unwrap_or(
+                // This is wrong.  voting-delay is mandatory, and we shouldn't emit
+                // `voting-delay 0 0` in a network status document.
+                //
+                // But, this is the old, deprecated, way to build a consensus document.
+                // We retain compatibility with callers who don't specify a voting-delay
+                // to avoid breaking existing test cases, which are hopefully the only
+                // callers of this whole module.
+                (0, 0)
+            );
+        let voting_delay = VotingDelayConstructor {
+            vote_seconds,
+            dist_seconds,
+        }.construct();
+
         let preamble = Preamble {
             lifetime,
             client_versions: mk_versions(&self.client_versions)?,
             server_versions: mk_versions(&self.server_versions)?,
             proto_statuses,
-            params: self.params.clone(),
-            voting_delay: self.voting_delay,
+            params: self.params.clone().into(),
+            voting_delay,
             consensus_method: (consensus_method,),
             consensus_methods: NotPresent,
             published: NotPresent,

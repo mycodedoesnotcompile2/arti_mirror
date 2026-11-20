@@ -15,12 +15,15 @@ use tracing::{debug, info};
 use arti_client::TorClient;
 use tor_rtcompat::{NetStreamListener as _, Runtime, SpawnExt, general};
 
+semipublic_mod! { pub(crate) mod configuration; }
 pub(crate) mod conntarget;
+mod geoip;
 pub(crate) mod listener;
 mod proxyinfo;
 mod session;
 mod superuser;
 
+pub(crate) use configuration::{ConfigSettings, ConfigValue};
 use listener::RpcListenerSetConfig;
 pub(crate) use session::{RpcStateSender, RpcVisibleArtiState};
 
@@ -33,19 +36,19 @@ use crate::rpc::superuser::RpcSuperuser;
 #[derive(Debug, Clone, Deftly, Eq, PartialEq)]
 #[derive_deftly(TorConfig)]
 #[cfg_attr(feature = "experimental-api", visibility::make(pub))]
-#[cfg_attr(feature = "experimental-api", deftly(tor_config(vis = "pub")))]
+#[cfg_attr(feature = "experimental-api", deftly(tor_config(vis = pub)))]
 pub(crate) struct RpcConfig {
     /// If true, then the RPC subsystem is enabled and will listen for connections.
-    #[deftly(tor_config(default = "false"))] // TODO RPC make this true once we are stable.
+    #[deftly(tor_config(default = false))] // TODO RPC make this true once we are stable.
     enable: bool,
 
     /// A set of named locations in which to find connect files.
-    #[deftly(tor_config(map, default = "listener::listener_map_defaults()"))]
+    #[deftly(tor_config(map, default = listener::listener_map_defaults()))]
     listen: BTreeMap<String, RpcListenerSetConfig>,
 
     /// A list of default connect points to bind
     /// if no enabled connect points are found under `listen`.
-    #[deftly(tor_config(list(element(clone)), default = "listen_defaults_defaults()"))]
+    #[deftly(tor_config(list(element(clone)), default = listen_defaults_defaults()))]
     listen_default: Vec<String>,
 }
 
