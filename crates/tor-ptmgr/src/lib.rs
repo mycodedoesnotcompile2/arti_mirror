@@ -59,7 +59,6 @@ mod managed;
 
 use crate::config::{TransportConfig, TransportOptions};
 use crate::err::PtError;
-use oneshot_fused_workaround as oneshot;
 use std::collections::{HashMap, hash_map::Entry};
 use std::net::SocketAddr;
 use std::path::PathBuf;
