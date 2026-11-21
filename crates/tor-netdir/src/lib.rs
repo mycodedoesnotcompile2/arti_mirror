@@ -85,6 +85,7 @@ use {hsdir_ring::HsDirRing, std::iter};
 
 use derive_more::{From, Into};
 use futures::{StreamExt, stream::BoxStream};
+use itertools::Itertools as _;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use rand::seq::{IndexedRandom as _, SliceRandom as _, WeightError};
 use serde::Deserialize;
@@ -99,7 +100,6 @@ use typed_index_collections::{TiSlice, TiVec};
 
 #[cfg(feature = "hs-common")]
 use {
-    itertools::Itertools,
     std::collections::HashSet,
     std::result::Result as StdResult,
     tor_error::{Bug, internal},
