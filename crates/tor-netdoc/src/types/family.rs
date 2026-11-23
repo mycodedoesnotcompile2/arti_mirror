@@ -3,6 +3,7 @@
 //! Families are opt-in lists of relays with the same operators,
 //! used to avoid building insecure circuits.
 
+use crate::parse2::{ErrorProblem, ItemValueParseable, UnparsedItem};
 use crate::types::misc::LongIdent;
 use crate::{NetdocErrorKind, NormalItemArgument, Pos};
 use base64ct::Encoding;
@@ -30,7 +31,7 @@ use tor_llcrypto::pk::rsa::RsaIdentity;
 //   - Where they do warrant newtype wrappers the API should be appropriate for that
 // See <https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4117#note_3428678>
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Ord, PartialOrd, Deftly)]
-#[derive_deftly(ItemValueEncodable, ItemValueParseable, GloballyInternable)]
+#[derive_deftly(ItemValueEncodable, GloballyInternable)]
 pub struct LegacyFamily(Vec<LongIdent>);
 
 impl LegacyFamily {
@@ -71,6 +72,14 @@ impl LegacyFamily {
     /// Return true if this family has no members.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+}
+
+impl ItemValueParseable for LegacyFamily {
+    fn from_unparsed(item: UnparsedItem<'_>) -> Result<Self, ErrorProblem> {
+        Ok(Self(
+            item.args_copy().filter_map(|fp| fp.parse().ok()).collect(),
+        ))
     }
 }
 
