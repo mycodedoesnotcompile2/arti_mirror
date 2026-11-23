@@ -441,8 +441,8 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
     /// on performance related matters:
     ///
     /// <https://gitlab.torproject.org/tpo/core/arti/-/merge_requests/4378#note_3467300>
-    // TODO DIRMIRROR: This has a large overlap with missing_extras and
-    // missing_micros, we should genericise or macrofy this at one point.
+    // TODO DIRMIRROR: This has a large overlap with missing_micros,
+    // we should genericise or macrofy this at one point.
     pub(crate) fn missing_routers(
         &self,
         tx: &Transaction<'_>,
@@ -454,73 +454,6 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
         }
 
         let mut stmt = tx.prepare_cached(Self::MISSING_ROUTERS_QUERY)?;
-
-        let exclude = exclude.map(Value::from).collect();
-        let exclude: Rc<Vec<Value>> = Rc::new(exclude);
-        let limit = limit.map_or(-1, |n| n.try_into().unwrap_or(i64::MAX));
-        let missing = stmt
-            .query_map(
-                named_params! {":docid": self.docid, ":limit": limit, ":exclude": exclude},
-                |row| row.get(0),
-            )?
-            .collect::<Result<HashSet<_>, _>>()?;
-        Ok(missing)
-    }
-
-    /// Returns the missing extra infos for this consensus to the best of our abilities.
-    ///
-    /// Keep in mind that this does not return **all** missing extra infos but
-    /// only the missing extra infos of router descriptors we have.
-    ///
-    /// `limit` may be given to specify an optional upper limit, in which case
-    /// the result will contain at most `limit` missing extra-infos.
-    ///
-    /// See [`ConsensusMeta::missing_routers()`] for a discussion on
-    /// performance.
-    pub(crate) fn missing_extras(
-        &self,
-        tx: &Transaction<'_>,
-        exclude: impl Iterator<Item = Sha1>,
-        limit: Option<u64>,
-    ) -> Result<HashSet<Sha1>, DatabaseError> {
-        if T::flavor() != ConsensusFlavor::Plain {
-            return Ok(HashSet::new());
-        }
-
-        // Select the missing extra infos for this consensus.
-        //
-        // This return value is not complete because we only know the missing
-        // extra-infos to the best of our abilities.  In other words: We are
-        // only aware of a missing extra-info if we have parsed the respective
-        // router descriptor.
-        //
-        // It works by doing an inner join from
-        // `consensus_descriptor_member` to `descriptor` because
-        // we can only know about the extra-infos of which we have the router
-        // descriptors from.  Afterwards, we do a left join with the
-        // `extra_info` table and filter for all results where the left
-        // join result is null, hence where we have a router descriptor but not
-        // the respective extra-info.
-        //
-        // Parameters:
-        // :docid - The docid of the consensus.
-        // :exclude - The descriptors to skip.
-        // :limit - The maximum number of descriptors to return.
-        let mut stmt = tx.prepare_cached(sql!(
-            "
-            SELECT router.extra_sha1, RANDOM() AS rand
-            FROM consensus_descriptor_member AS cr
-              INNER JOIN descriptor AS router ON cr.sha1 = router.sha1
-              LEFT JOIN extra_info AS extra ON router.extra_sha1 = extra.sha1
-            WHERE
-              cr.consensus_docid = :docid
-              AND router.extra_sha1 IS NOT NULL
-              AND extra.sha1 IS NULL
-              AND extra.sha1 NOT IN rarray(:exclude)
-            ORDER BY rand
-            LIMIT :limit
-            "
-        ))?;
 
         let exclude = exclude.map(Value::from).collect();
         let exclude: Rc<Vec<Value>> = Rc::new(exclude);
@@ -862,9 +795,6 @@ pub(crate) struct DescriptorMeta<Flavor> {
 
     /// Use of the generic for determining the flavor.
     flavor: PhantomData<Flavor>,
-
-    /// The SHA-1 of the extra-info document, if present.
-    pub extra_sha1: Option<Sha1>,
 }
 
 impl<Flavor: FlavoredDescriptor> DescriptorMeta<Flavor> {
@@ -876,7 +806,7 @@ impl<Flavor: FlavoredDescriptor> DescriptorMeta<Flavor> {
     ) -> Result<Option<DescriptorMeta<Flavor>>, DatabaseError> {
         let mut stmt = tx.prepare_cached(sql!(
             "
-            SELECT docid, sha1, sha2, kp_relay_id_rsa_sha1, extra_sha1
+            SELECT docid, sha1, sha2, kp_relay_id_rsa_sha1
             FROM descriptor
             WHERE docid = :docid AND flavor = :flavor
             "
@@ -893,7 +823,6 @@ impl<Flavor: FlavoredDescriptor> DescriptorMeta<Flavor> {
                     sha1: row.get(1)?,
                     sha2: row.get(2)?,
                     kp_relay_id_rsa_sha1: row.get(3)?,
-                    extra_sha1: row.get(4)?,
                     flavor: Default::default(),
                 })
             },
@@ -920,13 +849,12 @@ impl<Flavor: FlavoredDescriptor> DescriptorMeta<Flavor> {
         // :sha256 - The SHA-256 as found in the signature.
         // :id_rsa - The RSA identity key fingerprint, if present.
         // :flavor - The ConsensusFlavor associated with it.
-        // :extra_info - The extra-info SHA-1, if present.
         let mut stmt = tx.prepare_cached(sql!(
             "
             INSERT INTO descriptor
-            (docid, sha1, sha2, kp_relay_id_rsa_sha1, flavor, extra_sha1)
+            (docid, sha1, sha2, kp_relay_id_rsa_sha1, flavor)
             VALUES
-            (:docid, :sha1, :sha256, :id_rsa, :flavor, :extra_info)
+            (:docid, :sha1, :sha256, :id_rsa, :flavor)
             "
         ))?;
 
@@ -937,7 +865,6 @@ impl<Flavor: FlavoredDescriptor> DescriptorMeta<Flavor> {
             ":sha256": descriptor.sha256()?,
             ":id_rsa": descriptor.id_rsa().map(|rsa| Sha1(rsa.to_bytes())),
             ":flavor": Flavor::flavor().name(),
-            ":extra_info": descriptor.extra_info_sha1().map(|extra| Sha1(extra.sha1.0)),
         })?;
 
         Ok(())
@@ -1788,32 +1715,6 @@ mod test {
             assert!(res.is_sorted());
         })
         .unwrap();
-    }
-
-    /// Tests whether the missing extra-info documents are computed properly.
-    // TODO DIRMIRROR: Expand on this once we have proper extra-info support.
-    #[test]
-    fn missing_extra_infos() {
-        let pool = testdata2::test_db();
-        let meta = read_tx(&pool, ConsensusMeta::<Plain>::query)
-            .unwrap()
-            .unwrap()[0];
-        // Ensure that the returned consensus matches the one from testdata2.
-        assert_eq!(
-            meta.docid,
-            DocumentId::digest(testdata2::current_consensus_ns().2.as_bytes())
-        );
-
-        // We should have no missing extra-infos.
-        let missing_extras = read_tx(&pool, |tx| meta.missing_extras(tx, iter::empty(), None))
-            .unwrap()
-            .unwrap();
-        assert!(missing_extras.is_empty());
-
-        // TODO DIRMIRROR: Once we have support for extra-info's, add a test
-        // for this here.  Right now, testing this is pretty useless as we
-        // cannot add it nicely to the testdata2 module if there isn't even
-        // an ExtraInfo struct from tor-netdoc.
     }
 
     /// Tests whether the missing micro descriptor queue is computed properly.
