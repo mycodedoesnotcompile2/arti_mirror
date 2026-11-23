@@ -674,6 +674,25 @@ class ArtiRpcConn(_RpcBase):
         else:
             return (sock, None)
 
+    def shutdown(self):
+        """
+        Tell this connection to begin shutting down.
+
+        After this method is done, no requests will be sent
+        and no replies will be received.
+
+        See arti-rpc-client-core documentation for full details.
+        """
+        IMMEDIATE = 1
+        error = POINTER(arti_rpc.ffi.ArtiRpcError)()
+        rv = self._rpc.arti_rpc_conn_shutdown(self._conn, IMMEDIATE, byref(error))
+        self._handle_error(rv, error)
+
+        # We free the connection and mark it as closed at this point;
+        # if we didn't, then all objects using this Conn would give
+        # errors when we tried to free them on del
+        self.__del__()
+
 
 class ArtiRpcErrorStatus(Enum):
     """
