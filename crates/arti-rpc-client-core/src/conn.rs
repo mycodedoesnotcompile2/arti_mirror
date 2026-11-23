@@ -364,7 +364,38 @@ impl RpcConn {
         Ok((tag, AnyResponse::from_validated(r)))
     }
 
+    /// Shut down this connection and stop sending or receiving data.
+    ///
+    /// The precise behavior is controlled by `how`.
+    pub fn shutdown(&self, how: ShutdownKind) -> Result<(), ProtoError> {
+        match how {
+            ShutdownKind::Immediate => {
+                self.begin_closing()?;
+                Ok(())
+            }
+        }
+    }
+
     // TODO RPC: shutdown() on the socket on Drop.
+}
+
+/// A description of how to shut down an [`RpcConn`].
+///
+/// Used as an argument to [`RpcConn::shutdown()`].
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub enum ShutdownKind {
+    /// Stop writing requests or accepting responses.
+    ///
+    /// If a request has been queued but a reply has not yet been received for that request,
+    /// it is indeterminate whether that request will actually be sent,
+    /// or whether it will be dropped from the outgoing queue.
+    /// If you require a request to be executed, wait until a reply has been received
+    /// before you shut down the RPC connection.
+    ///
+    /// It is unspecified whether the underlying socket is closed immediately,
+    /// or whether it will only close when the [`RpcConn`] is dropped.
+    Immediate,
 }
 
 impl RequestHandle {
@@ -435,6 +466,10 @@ pub enum ShutdownError {
     /// This probably means that Arti has shut down.
     #[error("Connection closed")]
     ConnectionClosed,
+    /// The [`RpcConn::shutdown`] method was called, and either interrupted this
+    /// operation, or prevented it from beginning.
+    #[error("User-initiated shutdown")]
+    UserShutdown,
 }
 
 impl From<crate::msgs::response::DecodeResponseError> for ShutdownError {
@@ -453,7 +488,8 @@ impl From<crate::msgs::response::DecodeResponseError> for ShutdownError {
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ProtoError {
-    /// The RPC connection failed, or was closed by the other side.
+    /// The RPC connection failed, was closed by the other side,
+    /// or was closed by an API call.
     #[error("RPC connection is shut down")]
     Shutdown(#[from] ShutdownError),
 

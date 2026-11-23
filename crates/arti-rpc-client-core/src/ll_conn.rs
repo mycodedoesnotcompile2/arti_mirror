@@ -22,7 +22,7 @@ use std::os::fd::{AsFd as _, BorrowedFd as BorrowedOsHandle};
 use std::os::windows::io::{AsSocket as _, BorrowedSocket as BorrowedOsHandle};
 
 pub(crate) use blocking::BlockingConnection;
-pub(crate) use nonblocking::{NonblockingConnection, PollStatus, WriteHandle};
+pub(crate) use nonblocking::{NonblockingConnection, PollStatus, WriteHandle, WriteStatus};
 
 pub use nonblocking::{EventLoop, SendRequestError};
 
