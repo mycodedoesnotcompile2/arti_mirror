@@ -180,32 +180,32 @@ define_derive_deftly! {
     ${defcond F_DEF fmeta(parse_input(default))}
     ${defcond F_STR not(fmeta(parse_input(default)))}
 
-impl<'s> ParseInput<'s> {
-    /// Prepare to parse an input string
-    pub fn new( $(
-        ${when not(F_DEF)}
-        $fname: &'s str,
-    ) ) -> Self {
-        ParseInput { $(
-            $fname: ${select1
-                      F_STR { $fname }
-                      F_DEF { Default::default() }
-            },
-        ) }
-    }
+    impl<'s> ParseInput<'s> {
+        /// Prepare to parse an input string
+        pub fn new( $(
+            ${when not(F_DEF)}
+            $fname: &'s str,
+        ) ) -> Self {
+            ParseInput { $(
+                $fname: ${select1
+                          F_STR { $fname }
+                          F_DEF { Default::default() }
+                },
+            ) }
+        }
 
-    /// Enable retention of unknown values during parsing
-    ///
-    /// Convenience method to set
-    /// [`.options_mut().retain_unknown_values`](ParseOptions::retain_unknown_values)
-    /// to [`Unknown::Retained`].
-    #[cfg(feature = "retain-unknown")]
-    #[must_use = "retain_unknown_values returns a new ParseInput, which should then be used"]
-    pub fn retain_unknown_values(mut self) -> Self {
-        self.options_mut().retain_unknown_values = Unknown::Retained(());
-        self
+        /// Enable retention of unknown values during parsing
+        ///
+        /// Convenience method to set
+        /// [`.options_mut().retain_unknown_values`](ParseOptions::retain_unknown_values)
+        /// to [`Unknown::Retained`].
+        #[cfg(feature = "retain-unknown")]
+        #[must_use = "retain_unknown_values returns a new ParseInput, which should then be used"]
+        pub fn retain_unknown_values(mut self) -> Self {
+            self.options_mut().retain_unknown_values = Unknown::Retained(());
+            self
+        }
     }
-}
 }
 use derive_deftly_template_ParseInput;
 
