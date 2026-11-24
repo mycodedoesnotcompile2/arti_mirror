@@ -340,7 +340,7 @@ typedef int ArtiRpcShutdownKind;
  * before you shut down the RPC connection.
  *
  * It is unspecified whether the underlying socket is closed immediately,
- * or whether it will only close when the [`RpcConn`] is freed.
+ * or whether it will only close when the [`ArtiRpcConn`] is freed.
  */
 #define ARTI_RPC_SHUTDOWN_IMMEDIATE 1
 
