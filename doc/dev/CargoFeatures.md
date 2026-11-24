@@ -106,5 +106,110 @@ Remove the dependency from the Cargo feature on "__is_experimental".
 Document the feature as stable in the relevant crates' README.md documentation
 
 
+## Abolishing a cargo feature - recipes
 
+These are cooked instructions for abolishing a cargo feature,
+in various circumstances.
+When things get more complicated, you will need to improvise;
+you can mix and match elements of these recipes.
 
+This section does not help decide *whether* to abolish a feature.
+Perhaps see `ProposingBigChanges.md`.
+
+In general, each phase could be done in a separate release,
+but you should make a judgement about timing.
+Small things that are easily replaced can be deprecated quickly.
+
+Everything should be mentioned in `semver.md`.
+
+Often you will find that the `README.md`'s description of the existing
+situation is poor, incomplete, our out of date.  If so you should fix
+that first, before you start adjusting the crate's features.
+
+### Experimental features
+
+Experimental features can be simply renamed/removed/altered.
+
+### Abolishing some functionality, and the feature that gates it
+
+ 1. Deprecation
+ 
+    1. Document the feature as deprecated in `README.md`.
+       (This will usually involve moving it to a separate section
+       there, which you might need to create.)
+
+    2. Add `#[deprecated]` to affected types and entrypoints, mentioning
+       the cargo feature name and that it's is going to be deprecated.
+       (This doesn't have to be done to all of the items;
+       the point is to alert most users.)
+
+    3. No change yet to `Cargo.toml`
+
+ 2. Render experimental
+ 
+    1. Document the feature as deprecated and unstable in `README.md`.
+
+    2. Move the feature from `full` to `experimental` in `Cargo.toml`.
+
+ 3. Remove
+ 
+    1. Remove the feature from `README.md`.
+       (Or, leave behind a note about it in a "removed features" section.)
+
+    2. Remove the feature entirely from `Cargo.toml`.
+
+    3. Delete all the code that is cfg-gated by this feature.
+       The compiler will find all the necessary places to edit.
+
+       (For code with complex cfg's, reduce the cfg.)
+
+### Making code unconditional, and abolishing the cargo feature 
+
+ 0. The feature should be stable!  If not, stabilise it first.
+
+ 1. Make code unconditional
+
+    1. Move the feature to deprecated in `README.md`, and note that
+       it is now empty and retained only for compatibility.
+ 
+    2. Remove all the cfg gates which mention the feature,
+       so that the code is unconditional.
+
+       To make this change, actually delete the feature from `Cargo.toml`
+       in your local branch and see what doesn't compile.
+       You can either do this only locally, or commit it and revert it.
+       If you commit-and-revert, you can reapply it in the next phase.
+
+    3. In `Cargo.toml` make all the things which were gated by
+       this feature unconditional (eg dependencies).
+       Leave the feature itself alone.  It will remain part of `full`.
+
+       (There is no way to get cargo to generate a deprecation
+       warning, unfortunately.)
+
+ 2. Abolish the feature
+
+    1. Remove the feature entirely from `Cargo.toml`.
+
+### Renaming a feature
+
+ 1. Add the new feature name
+ 
+    1. Change to the new name in `README.md`, but add a mention of the
+       old name, as deprecated.
+
+    2. In `Cargo.toml`, rename the feature.
+    
+       Add the old name as an alias:
+       add it as a feature which implies the new name,
+       and have the new name imply the old one.
+
+    3. In the code, change all the cfg gates.
+       (This can be postponed to phase 2.)
+
+ 2. Abolish the old name
+ 
+    1. Remove the old name from `README.md`.
+       (Or, leave behind a note about it in a "removed features" section.)
+
+    2. Remove the old name entirely from `Cargo.toml`.
