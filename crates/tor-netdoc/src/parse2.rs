@@ -154,7 +154,8 @@ pub struct ParseOptions {
 }
 
 /// Input to a network document top-level parsing operation
-#[derive(Debug, Clone, amplify::Getters)]
+#[derive(Debug, Clone, amplify::Getters, Deftly)]
+#[derive_deftly(ParseInput)]
 pub struct ParseInput<'s> {
     /// The actual document text
     #[getter(as_copy)]
@@ -165,18 +166,32 @@ pub struct ParseInput<'s> {
     file: &'s str,
 
     /// Parsing options
+    #[deftly(parse_input(default))]
     #[getter(as_ref, as_mut)]
     options: ParseOptions,
 }
 
+define_derive_deftly! {
+    /// Derives for [`ParseInput`]
+    ///
+    /// Expands to the whole impl block, for convenience
+    ParseInput:
+
+    ${defcond F_DEF fmeta(parse_input(default))}
+    ${defcond F_STR not(fmeta(parse_input(default)))}
+
 impl<'s> ParseInput<'s> {
     /// Prepare to parse an input string
-    pub fn new(input: &'s str, file: &'s str) -> Self {
-        ParseInput {
-            input,
-            file,
-            options: ParseOptions::default(),
-        }
+    pub fn new( $(
+        ${when not(F_DEF)}
+        $fname: &'s str,
+    ) ) -> Self {
+        ParseInput { $(
+            $fname: ${select1
+                      F_STR { $fname }
+                      F_DEF { Default::default() }
+            },
+        ) }
     }
 
     /// Enable retention of unknown values during parsing
@@ -191,6 +206,8 @@ impl<'s> ParseInput<'s> {
         self
     }
 }
+}
+use derive_deftly_template_ParseInput;
 
 //---------- parser ----------
 
