@@ -804,7 +804,7 @@ pub unsafe extern "C" fn arti_rpc_conn_wait(
 /// before you shut down the RPC connection.
 ///
 /// It is unspecified whether the underlying socket is closed immediately,
-/// or whether it will only close when the [`RpcConn`] is freed.
+/// or whether it will only close when the [`ArtiRpcConn`] is freed.
 pub const ARTI_RPC_SHUTDOWN_IMMEDIATE: ArtiRpcShutdownKind = 1;
 
 impl ShutdownKind {
