@@ -207,6 +207,16 @@ class _BuildEntType(Enum):
     LITERAL_PATH = 3
 
 
+class ShutdownKind(Enum):
+    """
+    Instructions for how to invoke ArtiRpcConn.shutdown()
+
+    See arti-rpc-client-core documentation for full details.
+    """
+
+    IMMEDIATE = 1
+
+
 class ArtiRpcConnBuilder(_RpcBase):
     """
     A builder object used to configure connections to Arti.
@@ -674,7 +684,7 @@ class ArtiRpcConn(_RpcBase):
         else:
             return (sock, None)
 
-    def shutdown(self):
+    def shutdown(self, how: ShutdownKind = ShutdownKind.IMMEDIATE):
         """
         Tell this connection to begin shutting down.
 
@@ -683,9 +693,8 @@ class ArtiRpcConn(_RpcBase):
 
         See arti-rpc-client-core documentation for full details.
         """
-        IMMEDIATE = 1
         error = POINTER(arti_rpc.ffi.ArtiRpcError)()
-        rv = self._rpc.arti_rpc_conn_shutdown(self._conn, IMMEDIATE, byref(error))
+        rv = self._rpc.arti_rpc_conn_shutdown(self._conn, how.value, byref(error))
         self._handle_error(rv, error)
 
         # We free the connection and mark it as closed at this point;
