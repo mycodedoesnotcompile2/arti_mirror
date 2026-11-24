@@ -502,7 +502,7 @@ mod test {
             dummy: PortRanges,
         }
         let ranges2 =
-            parse2::parse_netdoc::<Dummy>(&ParseInput::new(&format!("dummy {INPUT}\n"), ""))
+            parse2::parse_netdoc::<Dummy>(&ParseInput::new(format!("dummy {INPUT}\n"), ""))
                 .unwrap();
         assert_eq!(ranges, ranges2.dummy);
     }
