@@ -159,11 +159,11 @@ pub struct ParseOptions {
 pub struct ParseInput<'s> {
     /// The actual document text
     #[getter(skip)]
-    input: &'s str,
+    input: Cow<'s, str>,
 
     /// Filename (for error reporting)
     #[getter(skip)]
-    file: &'s str,
+    file: Cow<'s, str>,
 
     /// Parsing options
     #[deftly(parse_input(default))]
@@ -184,11 +184,11 @@ define_derive_deftly! {
         /// Prepare to parse an input string
         pub fn new( $(
             ${when not(F_DEF)}
-            $fname: &'s str,
+            $fname: impl Into<$ftype>,
         ) ) -> Self {
             ParseInput { $(
                 $fname: ${select1
-                          F_STR { $fname }
+                          F_STR { $fname.into() }
                           F_DEF { Default::default() }
                 },
             ) }
@@ -198,7 +198,7 @@ define_derive_deftly! {
         ${when not(F_DEF)}
 
         ${fattrs doc}
-        pub fn $fname(&self) -> &'s str {
+        pub fn $fname(&self) -> &str {
             &self.$fname
         }
       )
@@ -243,7 +243,7 @@ fn error_handler<D: NetdocParseable>(
     |problem| ParseError {
         problem,
         doctype: D::doctype_for_error(),
-        file: input.file.to_owned(),
+        file: input.file.clone().into_owned(),
         lno: items.lno_for_error(),
         column: problem.column(),
     }

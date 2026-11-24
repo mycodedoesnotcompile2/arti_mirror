@@ -695,7 +695,7 @@ define_derive_deftly! {
     ///     }
     /// }
     ///
-    /// let input = ParseInput::new(&doc_text, "<input>");
+    /// let input = ParseInput::new(doc_text, "<input>");
     /// let doc: NdThingUnverified = parse_netdoc(&input).unwrap();
     /// let doc = doc.verify_foolish().unwrap().dangerously_assume_timely();
     /// assert_eq!(doc.value.0, "something");

@@ -288,7 +288,7 @@ impl EntireInput {
 
     /// Return a `parse2::ParseInput` for this input file
     pub(crate) fn netdoc_parse2(&self) -> parse2::ParseInput {
-        parse2::ParseInput::new(self, self.description()).retain_unknown_values()
+        parse2::ParseInput::new(&**self, self.description()).retain_unknown_values()
     }
 }
 

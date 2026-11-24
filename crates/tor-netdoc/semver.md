@@ -16,3 +16,6 @@ ADDED: `RelayBandwidth::value`
 BREAKING: `parse2::ParseInput::retain_unknown_values` now returns a copy rather than mutating
 BREAKING: `vote::NetworkStatusUnverified` now takes an `&mut VoteVerifier`
 ADDED: `NetworkStatusSignaturesConstructor`
+ADDED: `ParseInput` can take `Cow`s and can therefore be `'static`
+BREAKING: `ParseInput::new` now takes `Into<Cow<str>>` (can break some call sites)
+BREAKING: `ParseInput::file` and `line` now borrow from `self` too
