@@ -7714,6 +7714,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "itertools 0.15.0",
  "lazy_static",
  "lzma-rs",
  "r2d2",
