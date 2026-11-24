@@ -183,7 +183,9 @@ impl UriInterpretation {
                 .map(decode_md_digest)
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(ReqError::Invalid)?;
+            // As in C tor, we only do a single lookup per digest (`DSR_SORT_UNIQ`).
             digests.sort();
+            digests.dedup();
             Ok(UriInterpretation::MdsByDigest(digests))
         } else if let Some(remainder) = path.strip_prefix("/keys/fp-sk/") {
             // LIMITATION: we don't handle other "keys" URIs, since I think clients don't use them.
@@ -277,5 +279,35 @@ impl ReqError {
                 "Database failed"
             )(e))),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+
+    use super::*;
+
+    #[test]
+    fn repeated_md_digest() {
+        let d = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+        let uri = format!("/tor/micro/d/{d}-{d}-{d}.z");
+        let Ok(UriInterpretation::MdsByDigest(digests)) = UriInterpretation::interpret(&uri) else {
+            panic!("microdescriptor request not understood");
+        };
+        assert_eq!(digests, vec![std::array::from_fn(|i| i as u8)]);
     }
 }
