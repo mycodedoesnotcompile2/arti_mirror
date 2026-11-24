@@ -158,11 +158,11 @@ pub struct ParseOptions {
 #[derive_deftly(ParseInput)]
 pub struct ParseInput<'s> {
     /// The actual document text
-    #[getter(as_copy)]
+    #[getter(skip)]
     input: &'s str,
 
     /// Filename (for error reporting)
-    #[getter(as_copy)]
+    #[getter(skip)]
     file: &'s str,
 
     /// Parsing options
@@ -193,6 +193,15 @@ define_derive_deftly! {
                 },
             ) }
         }
+
+      $(
+        ${when not(F_DEF)}
+
+        ${fattrs doc}
+        pub fn $fname(&self) -> &'s str {
+            &self.$fname
+        }
+      )
 
         /// Enable retention of unknown values during parsing
         ///
