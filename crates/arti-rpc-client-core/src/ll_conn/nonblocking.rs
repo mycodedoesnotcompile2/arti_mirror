@@ -335,9 +335,11 @@ impl NonblockingConnection {
 
     /// Try to flush data from the underlying write buffer.
     ///
-    /// Returns Ok(WouldBlock) only if all of the data is flushed, and the write buffer has become empty.
+    /// Returns `Ok(Written)` only if all of the data is flushed, and the write buffer has become empty.
     ///
-    /// Returns Ok()
+    /// Returns `Ok(Closing)` if we have been told to close the connection.
+    ///
+    /// Returns an error if the write failed, including with a `WouldBlock`.
     fn flush_queue(&mut self) -> io::Result<WriteStatus> {
         let mut w = self.write_handle.inner.lock().expect("Poisoned lock.");
 
