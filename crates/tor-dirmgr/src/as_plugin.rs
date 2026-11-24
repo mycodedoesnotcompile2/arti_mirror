@@ -169,15 +169,22 @@ impl UriInterpretation {
             None => (path, false),
         };
 
-        if path.starts_with("/status-vote/current/consensus-md") {
-            // LIMITATION: We don't handle the "/diff" URIs.
+        // A microdesc consensus, possibly followed by a list of authority fingerprints. See
+        // https://spec.torproject.org/dir-spec/general-use-http-urls.html for details.
+        let md_consensus = path
+            .strip_prefix("/status-vote/current/consensus-microdesc")
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'));
+
+        if md_consensus {
+            // LIMITATION: URIs matching "/diff/" also match, giving a complete consensus; C tor
+            //    responds with a 404 if no such diff exists.
             // LIMITATION: We don't serve "ns" consensuses.
             // LIMITATION: We ignore the list of fingerprints that follow this part of the path.
-            // LIMITATION: We behave incorrectly if asked for a flavor that begins with, but is not,
-            //    "md".
 
             Ok(Self::LatestMdConsensus)
         } else if let Some(remainder) = path.strip_prefix("/micro/d/") {
+            // LIMITATION: C tor skips any digests it fails to parse; we return a 400 status code on
+            //    the entire request.
             let mut digests: Vec<_> = remainder
                 .split('-')
                 .map(decode_md_digest)
@@ -186,7 +193,10 @@ impl UriInterpretation {
             digests.sort();
             Ok(UriInterpretation::MdsByDigest(digests))
         } else if let Some(remainder) = path.strip_prefix("/keys/fp-sk/") {
-            // LIMITATION: we don't handle other "keys" URIs, since I think clients don't use them.
+            // LIMITATION: We do not process any other "keys" URIs. When C tor does not have an
+            //    existing certificate for an authority, it requests the "/keys/fp/<F>" URI (in
+            //    `authority_certs_fetch_missing()`). When that fails here, it retries later, maybe
+            //    from a different directory.
             let mut pairs: Vec<_> = remainder
                 .split('+')
                 .map(decode_fp_pair)
@@ -196,6 +206,7 @@ impl UriInterpretation {
             Ok(UriInterpretation::AuthCertsByFpSk(pairs))
         } else {
             // This is some type of URI we don't handle.
+            // LIMITATION: This also includes "/tor/robots.txt", for which C tor replies with a 200.
             Err(ReqError::Unhandled)
         }
     }
@@ -277,5 +288,103 @@ impl ReqError {
                 "Database failed"
             )(e))),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+
+    use super::*;
+    use crate::docmeta::ConsensusMeta;
+    use crate::storage::Store as _;
+    use crate::storage::sqlite::test::new_empty;
+    use std::time::Duration;
+    use tor_netdoc::doc::netstatus::Lifetime;
+
+    /// GET `uri` on a plugin with a store containing `consensus` as the most recent md consensus.
+    fn get_with_md_consensus(
+        consensus: &str,
+        uri: &str,
+    ) -> Result<http::Response<Box<[u8]>>, DirBackendPluginError> {
+        let (_tmp_dir, mut store) = new_empty().unwrap();
+        let valid_after = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let hour = Duration::from_secs(60 * 60);
+        let lifetime = Lifetime::new(valid_after, valid_after + hour, valid_after + 3 * hour);
+        let meta = ConsensusMeta::new(lifetime.unwrap(), [0xAB; 32], [0xBC; 32]);
+        store
+            .store_consensus(&meta, ConsensusFlavor::Microdesc, false, consensus)
+            .unwrap();
+
+        let plugin = DirPlugin {
+            store: Arc::new(Mutex::new(Box::new(store))),
+        };
+        let request = http::Request::builder().uri(uri).body(()).unwrap();
+        plugin.get(&request)
+    }
+
+    #[test]
+    fn md_consensus_urls() {
+        let consensus = "network-status-version 3 microdesc\nvote-status consensus\n";
+
+        // The first one was constructed by C tor's `directory_get_consensus_url()` (taken from the
+        // log of a C tor client running on a test network). It consists of the first three bytes of
+        // each authority's v3 identity, followed by ".z". The next two requests come from Arti's
+        // own `ConsensusRequest`.
+        for uri in [
+            "/tor/status-vote/current/consensus-microdesc/026B34+575CF9+CF80E4+E2FA26.z",
+            "/tor/status-vote/current/consensus-microdesc",
+            "/tor/status-vote/current/consensus-microdesc/03479e93ebf3ff2c58c1c9dbf2de9de9c2801b3e",
+        ] {
+            let response = get_with_md_consensus(consensus, uri).unwrap();
+            assert_eq!(response.status(), http::StatusCode::OK, "{uri}");
+            assert_eq!(&response.body()[..], consensus.as_bytes(), "{uri}");
+        }
+
+        // As we do not have an "ns" consensus, we must not substitute the md consensus.
+        let uri = "/tor/status-vote/current/consensus/026B34+575CF9+CF80E4+E2FA26.z";
+        assert!(matches!(
+            get_with_md_consensus(consensus, uri),
+            Err(DirBackendPluginError::UriNotHandledByPlugin)
+        ));
+
+        // Nor is a flavor that merely begins with "microdesc", or the old "md".
+        for uri in [
+            "/tor/status-vote/current/consensus-microdescx",
+            "/tor/status-vote/current/consensus-microdesc-x/026B34.z",
+            "/tor/status-vote/current/consensus-md",
+        ] {
+            assert!(
+                matches!(UriInterpretation::interpret(uri), Err(ReqError::Unhandled)),
+                "{uri}"
+            );
+        }
+    }
+
+    #[test]
+    fn c_tor_md_digests() {
+        // Handcrafted and formatted the way C tor's `digest256_to_base64()` writes them: 43
+        // character digests without padding. Digests may contain slashes, since "/" is part of the
+        // standard alphabet.
+        let uri = "/tor/micro/d/+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/s-\
+                   AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8.z";
+        let Ok(UriInterpretation::MdsByDigest(digests)) = UriInterpretation::interpret(uri) else {
+            panic!("C tor's microdescriptor request not understood");
+        };
+        let low: MdDigest = std::array::from_fn(|i| i as u8);
+        assert_eq!(digests, vec![low, [0xFB; 32]]);
     }
 }
