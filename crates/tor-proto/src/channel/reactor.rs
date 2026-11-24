@@ -47,6 +47,7 @@ use tracing::{debug, instrument, trace};
 
 #[cfg(feature = "relay")]
 use {
+    super::circmap::PeerCircIdStatus,
     crate::channel::Channel,
     crate::circuit::celltypes::CreateRequest,
     crate::relay::channel::create_handler::{CreateRequestHandler, RelayCircComponents},
@@ -619,7 +620,7 @@ impl<R: Runtime> Reactor<R> {
                     .await
             }
 
-            CreatedFast(_) | Created2(_) => self.deliver_created(circid, msg),
+            CreatedFast(_) | Created2(_) => self.deliver_created(circid, msg).await,
 
             // These are always ignored.
             Padding(_) | Vpadding(_) => Ok(()),
@@ -688,6 +689,53 @@ impl<R: Runtime> Reactor<R> {
             return Err(Error::ChanProto(err));
         };
 
+        // We check the circuit ID before entering the handshake logic, like C-tor's
+        // `command_process_create_cell()`, and we check for dropping a cell before refusing it
+        // (a DESTROY on an ID that is in use would destroy its associated circuit).
+        //
+        // TODO(relay): If the handshake is offloaded (see create_handler.rs) you need to
+        // pre-reserve the ID; otherwise a subsequent CREATE with that ID will hit
+        // add_relay_ent() and tear down the channel.
+        // TODO(relay): once it exists, count the cell in DoS accounting.
+        match self.circs.peer_circ_id_status(circid) {
+            PeerCircIdStatus::InUse => {
+                trace!(channel_id = %self, "{} for circuit {} that is in use", msg.cmd(), circid);
+                // Silently discard that cell according to the spec:
+                //
+                // > When an onion router receives a CREATE/CREATE2 cell, if it already has a
+                // > circuit on the given connection with the given circID, it drops the cell.
+                //
+                // See https://spec.torproject.org/tor-spec/creating-circuits.html
+                return Ok(());
+            }
+            PeerCircIdStatus::NotAllowed => {
+                // We may reject an ID from our half of the range per the spec.
+                //
+                // https://spec.torproject.org/tor-spec/create-created-cells.html#choosing-circid
+                //
+                // Similar to C-tor's `command_process_create_cell()`, we send PROTOCOL as the
+                // reason even though the spec says it should always be NONE:
+                //
+                // https://spec.torproject.org/tor-spec/tearing-down-circuits.html
+                //
+                // The rationale for NONE is to prevent colluding relays from using it to learn
+                // that they're both on the same circuit. In our case, there isn't a circuit yet,
+                // and the reason is just based on an ID chosen by the adjacent peer.
+                let destroy = Destroy::new(DestroyReason::PROTOCOL);
+                let destroy = AnyChanCell::new(Some(circid), destroy.into());
+
+                debug!(
+                    channel_id = %self,
+                    "Received {} with circuit ID {} that the peer may not allocate; sending {}",
+                    msg.cmd(),
+                    circid,
+                    destroy.msg().cmd(),
+                );
+                return self.send_cell(destroy).await;
+            }
+            PeerCircIdStatus::Available => {}
+        }
+
         let Some(chan) = create_request_handler.channel.upgrade() else {
             // This can happen if the last `Arc<Channel>` was dropped before the reactor had a
             // chance to notice.
@@ -733,12 +781,12 @@ impl<R: Runtime> Reactor<R> {
                     padding_ctrl,
                 } = components;
 
-                if let Err(reason) = self.circs.add_relay_ent(circid, circ, sender, padding_ctrl) {
-                    debug!("Unable to add circuit map entry for incoming circuit: {reason}");
-                    CreateResponse::Destroy(Destroy::new(reason))
-                } else {
-                    response
-                }
+                // We've held onto our `&mut self` reference since the ID check,
+                // so it is impossible for this to fail (although see the TODO
+                // there).
+                self.circs
+                    .add_relay_ent(circid, circ, sender, padding_ctrl)?;
+                response
             }
             Err(destroy) => CreateResponse::Destroy(destroy),
         };
@@ -749,7 +797,7 @@ impl<R: Runtime> Reactor<R> {
 
     /// Handle a CREATED{_FAST,2} cell by passing it on to the appropriate
     /// circuit, if that circuit is waiting for one.
-    fn deliver_created(&mut self, circid: Option<CircId>, msg: AnyChanMsg) -> Result<()> {
+    async fn deliver_created(&mut self, circid: Option<CircId>, msg: AnyChanMsg) -> Result<()> {
         let Some(circid) = circid else {
             return Err(Error::ChanProto("'Created' cell without circuit ID".into()));
         };
@@ -766,13 +814,18 @@ impl<R: Runtime> Reactor<R> {
         };
 
         let created = msg.try_into()?;
-        // TODO(nickm) I think that this one actually means the other side
-        // is closed. See arti#269.
-        target.send(created).map_err(|_| {
-            Error::from(internal!(
-                "Circuit queue rejected created message. Is it closing?"
-            ))
-        })
+        if target.send(created).is_err() {
+            // Before we could manage to handle the close, the circuit disappeared. In that
+            // sequence of events C-tor has already marked the circuit for close:
+            // `circuit_get_by_circid_channel()` will fail to find it, the CREATED* will be
+            // discarded, and `circuit_about_to_free()` will send one DESTROY on this channel.
+            // Here, like in `deliver_relay()`, we send that DESTROY rather than wait for the
+            // close event; when that comes, the entry will not be considered open, so it sends
+            // nothing.
+            debug!(channel_id = %self, "CREATED* cell for circuit {} that has gone away", circid);
+            self.outbound_destroy_circ(circid).await?;
+        }
+        Ok(())
     }
 
     /// Handle a DESTROY cell by removing the corresponding circuit
@@ -782,20 +835,24 @@ impl<R: Runtime> Reactor<R> {
             return Err(Error::ChanProto("'Destroy' cell without circuit ID".into()));
         };
 
-        /// Helper to send DESTROY cell.
-        async fn send_destroy(mut sender: CircuitRxSender, msg: AnyChanMsg) -> Result<()> {
-            sender
-                .send(msg)
-                .await
-                // TODO(nickm) I think that this one actually means the other side
-                // is closed. See arti#269.
-                .map_err(|_| internal!("open circuit wasn't interested in destroy cell?").into())
+        /// Helper for passing a DESTROY cell into an open circuit.
+        ///
+        /// If it's no longer around, return false.
+        async fn send_destroy(mut sender: CircuitRxSender, msg: AnyChanMsg) -> bool {
+            sender.send(msg).await.is_ok()
         }
 
         // Remove the circuit from the map: nothing more can be done with it.
+        //
+        // We consider a circuit closed only after we process its close, so if a circuit
+        // disappears before we get there, we assume that the DESTROY came first. Given that
+        // ordering, C-tor's `command_process_destroy_cell()` will have cleared the circuit ID
+        // for this channel, so freeing the circuit does not send any DESTROY down the channel.
+        // This is also the safe thing to do, since our peer has already forgotten the circuit
+        // ID, and might have assigned it again if it was responsible for the allocation.
         let entry = self.circs.remove(circid);
         self.update_disused_since();
-        match entry {
+        let delivered = match entry {
             // If the circuit is waiting for CREATED, tell it that it
             // won't get one.
             Some(CircEnt::Opening {
@@ -803,13 +860,7 @@ impl<R: Runtime> Reactor<R> {
                 ..
             }) => {
                 trace!(channel_id = %self, "Passing destroy to pending circuit {}", circid);
-                create_response_sender
-                    .send(msg.try_into()?)
-                    // TODO(nickm) I think that this one actually means the other side
-                    // is closed. See arti#269.
-                    .map_err(|_| {
-                        internal!("pending circuit wasn't interested in destroy cell?").into()
-                    })
+                create_response_sender.send(msg.try_into()?).is_ok()
             }
             // It's an open origin circuit: tell it that it got a DESTROY cell.
             Some(CircEnt::OpenOrigin { cell_sender, .. }) => {
@@ -823,7 +874,7 @@ impl<R: Runtime> Reactor<R> {
                 send_destroy(cell_sender, msg).await
             }
             // We've sent a destroy; we can leave this circuit removed.
-            Some(CircEnt::DestroySent(_)) => Ok(()),
+            Some(CircEnt::DestroySent(_)) => true,
             // Got a DESTROY cell for a circuit we don't have.
             None => {
                 trace!(channel_id = %self, "Destroy for nonexistent circuit {}", circid);
@@ -833,9 +884,13 @@ impl<R: Runtime> Reactor<R> {
                 //
                 // See https://gitlab.torproject.org/tpo/core/arti/-/work_items/2655#note_3447841
                 drop(msg);
-                Ok(())
+                true
             }
+        };
+        if !delivered {
+            trace!(channel_id = %self, "Circuit {} had gone away before its DESTROY", circid);
         }
+        Ok(())
     }
 
     /// Helper: send a cell on the outbound sink.
@@ -861,6 +916,11 @@ impl<R: Runtime> Reactor<R> {
         // the number of relay cells we'll receive.
         self.circs.destroy_sent(id, HalfCirc::new(3000));
         self.update_disused_since();
+        // For relayed circuits, C-tor sends the reason it closed the circuit with; for locally
+        // created circuits, C-tor sends NONE (in `circuit_mark_for_close_()`). In all cases, we
+        // send NONE as the specification asks:
+        //
+        // https://spec.torproject.org/tor-spec/tearing-down-circuits.html
         let destroy = Destroy::new(DestroyReason::NONE).into();
         let cell = AnyChanCell::new(Some(id), destroy);
         self.send_cell(cell).await?;
@@ -944,6 +1004,13 @@ pub(crate) mod test {
     use tor_linkspec::{OwnedChanTarget, RelayIdsBuilder};
     use tor_rtcompat::SpawnExt;
     use tor_rtcompat::{DynTimeProvider, NoOpStreamOpsHandle, Runtime};
+    use tor_rtmock::MockRuntime;
+
+    #[cfg(feature = "relay")]
+    use {
+        crate::channel::test_utils::new_relay_mode_with_keys, futures::FutureExt as _,
+        tor_cell::chancell::msg::HandshakeType,
+    };
 
     pub(crate) type CodecResult = std::result::Result<AnyChanCell, Error>;
 
@@ -1323,6 +1390,390 @@ pub(crate) mod test {
                 .await
                 .unwrap();
             reactor.run_once().await.unwrap();
+        });
+    }
+
+    // CREATE* cells are not processed by clients.
+    #[test]
+    fn create_on_client_channel() {
+        tor_rtcompat::test_with_all_runtimes!(|rt| async move {
+            let (_chan, mut reactor, _output, mut input) = new_reactor(rt, ChannelMode::Client);
+
+            let create_cells: [AnyChanMsg; 2] = [
+                msg::CreateFast::new(vec![42; 20]).into(),
+                msg::Create2::new(msg::HandshakeType::NTOR, *b"hihi").into(),
+            ];
+            for create_cell in create_cells {
+                input
+                    .send(Ok(AnyChanCell::new(CircId::new(0x8000_0001), create_cell)))
+                    .await
+                    .unwrap();
+                let e = reactor.run_once().await.unwrap_err().unwrap_err();
+                assert!(
+                    format!("{}", e).starts_with("Channel protocol violation: Unexpected cell: ")
+                );
+            }
+        });
+    }
+
+    // We will drop a CREATE* cell for an already-used circuit ID, even
+    // if it's a value our peer is forbidden from allocating.
+    #[cfg(feature = "relay")]
+    #[test]
+    fn create_on_circid_in_use() {
+        // MockRuntime is used to ensure that spawned circuit reactors are done with what
+        // they can do when we look.
+        MockRuntime::test_with_various(|rt| async move {
+            let (mode, _circuit_stream_rx) = new_relay_mode_with_keys();
+            let (_chan, mut reactor, mut output, mut input) = new_reactor(rt.clone(), mode);
+
+            // Our circuit.
+            let (padding_ctrl, _padding_stream) = new_padding(DynTimeProvider::new(rt.clone()));
+            let (snd, _circ_stream_13) = fake_mpsc(64);
+            reactor.circs.put_unchecked(
+                CircId::new(13).unwrap(),
+                CircEnt::OpenOrigin {
+                    cell_sender: snd,
+                    padding_ctrl,
+                },
+            );
+
+            // The peer also created a circuit.
+            let create_fast: AnyChanMsg = msg::CreateFast::new(vec![42; 20]).into();
+            input
+                .send(Ok(AnyChanCell::new(
+                    CircId::new(0x8000_0001),
+                    create_fast.clone(),
+                )))
+                .await
+                .unwrap();
+            reactor.run_once().await.unwrap();
+            let cell = output.next().await.unwrap();
+            assert_eq!(cell.circid(), CircId::new(0x8000_0001));
+            assert!(matches!(cell.msg(), AnyChanMsg::CreatedFast(_)));
+
+            // C-tor drops all such requests, per the `circuit_id_in_use_on_channel()`
+            // check in command.c's `command_process_create_cell()`.
+            let create2: AnyChanMsg = msg::Create2::new(HandshakeType::NTOR, *b"hihi").into();
+            for (id, create_cell) in [
+                (13, create_fast.clone()),
+                (0x8000_0001, create_fast),
+                (0x8000_0001, create2),
+            ] {
+                input
+                    .send(Ok(AnyChanCell::new(CircId::new(id), create_cell)))
+                    .await
+                    .unwrap();
+                reactor.run_once().await.unwrap();
+                rt.progress_until_stalled().await;
+
+                // We don't send anything, and there's no work for the
+                // reactor, such as sending a DESTROY for a circuit that was
+                // dropped.
+                assert!(output.try_recv().is_err());
+                assert!(reactor.run_once().now_or_never().is_none());
+            }
+
+            let ent = reactor.circs.get_mut(CircId::new(13).unwrap());
+            assert!(matches!(*ent.unwrap(), CircEnt::OpenOrigin { .. }));
+            let ent = reactor.circs.get_mut(CircId::new(0x8000_0001).unwrap());
+            assert!(matches!(*ent.unwrap(), CircEnt::OpenRelay { .. }));
+        });
+    }
+
+    // CREATE* cells for circuit IDs that cannot be allocated by the peer are rejected; the
+    // channel remains open.
+    #[cfg(feature = "relay")]
+    #[test]
+    fn create_on_circid_not_allowed() {
+        MockRuntime::test_with_various(|rt| async move {
+            let (mode, _circuit_stream_rx) = new_relay_mode_with_keys();
+            let (_chan, mut reactor, mut output, mut input) = new_reactor(rt.clone(), mode);
+
+            // We've never used the final ID in our half of the ID
+            // space. We have sent a DESTROY message about one of our
+            // circuits on ID 23.
+            reactor.circs.put_unchecked(
+                CircId::new(23).unwrap(),
+                CircEnt::DestroySent(HalfCirc::new(25)),
+            );
+
+            let create_fast: AnyChanMsg = msg::CreateFast::new(vec![42; 20]).into();
+            for id in [0x7fff_ffff, 23] {
+                input
+                    .send(Ok(AnyChanCell::new(CircId::new(id), create_fast.clone())))
+                    .await
+                    .unwrap();
+                reactor.run_once().await.unwrap();
+                rt.progress_until_stalled().await;
+
+                // C-tor responds with `END_CIRC_REASON_TORPROTOCOL`: see the `circ_id_type`
+                // check in `command_process_create_cell()` in command.c.
+                let cell = output.next().await.unwrap();
+                assert_eq!(cell.circid(), CircId::new(id));
+                let AnyChanMsg::Destroy(destroy) = cell.msg() else {
+                    panic!("Expected a DESTROY, got {:?}", cell.msg());
+                };
+                assert_eq!(destroy.reason(), DestroyReason::PROTOCOL);
+
+                // We don't send anything more; the reactor doesn't do anything else.
+                assert!(output.try_recv().is_err());
+                assert!(reactor.run_once().now_or_never().is_none());
+            }
+
+            assert!(
+                reactor
+                    .circs
+                    .get_mut(CircId::new(0x7fff_ffff).unwrap())
+                    .is_none()
+            );
+            let ent = reactor.circs.get_mut(CircId::new(23).unwrap());
+            assert!(matches!(*ent.unwrap(), CircEnt::DestroySent(_)));
+
+            // We're good with the first ID on their side.
+            input
+                .send(Ok(AnyChanCell::new(CircId::new(0x8000_0000), create_fast)))
+                .await
+                .unwrap();
+            reactor.run_once().await.unwrap();
+            let cell = output.next().await.unwrap();
+            assert_eq!(cell.circid(), CircId::new(0x8000_0000));
+            assert!(matches!(cell.msg(), AnyChanMsg::CreatedFast(_)));
+        });
+    }
+
+    // A peer may build a circuit on an ID that we have previously sent a DESTROY for.
+    #[cfg(feature = "relay")]
+    #[test]
+    fn create_on_circid_destroy_sent() {
+        MockRuntime::test_with_various(|rt| async move {
+            let (mode, _circuit_stream_rx) = new_relay_mode_with_keys();
+            let (_chan, mut reactor, mut output, mut input) = new_reactor(rt.clone(), mode);
+
+            let id = CircId::new(0x8000_0017).unwrap();
+            reactor
+                .circs
+                .put_unchecked(id, CircEnt::DestroySent(HalfCirc::new(25)));
+
+            // C-tor doesn't remember the ID once its DESTROY is written
+            // (`channel_note_destroy_not_pending()` in circuitlist.c), so it allows this.
+            let create_fast = msg::CreateFast::new(vec![42; 20]).into();
+            input
+                .send(Ok(AnyChanCell::new(Some(id), create_fast)))
+                .await
+                .unwrap();
+            reactor.run_once().await.unwrap();
+            rt.progress_until_stalled().await;
+
+            let cell = output.next().await.unwrap();
+            assert_eq!(cell.circid(), Some(id));
+            assert!(matches!(cell.msg(), AnyChanMsg::CreatedFast(_)));
+            assert!(output.try_recv().is_err());
+
+            let ent = reactor.circs.get_mut(id);
+            assert!(matches!(*ent.unwrap(), CircEnt::OpenRelay { .. }));
+            assert_eq!(reactor.circs.open_ent_count(), 1);
+        });
+    }
+
+    // For late CREATED* cells, circuits that went away before we handled their close get a
+    // single DESTROY cell, and the channel proceeds normally.
+    #[test]
+    fn created_after_circuit_dropped() {
+        use oneshot_fused_workaround as oneshot;
+
+        MockRuntime::test_with_various(|rt| async move {
+            let (chan, mut reactor, mut output, mut input) =
+                new_reactor(rt.clone(), ChannelMode::Client);
+            let (padding_ctrl, _padding_stream) = new_padding(DynTimeProvider::new(rt));
+
+            let (snd, mut circ_stream_13) = fake_mpsc(64);
+            reactor.circs.put_unchecked(
+                CircId::new(13).unwrap(),
+                CircEnt::OpenOrigin {
+                    cell_sender: snd,
+                    padding_ctrl: padding_ctrl.clone(),
+                },
+            );
+
+            let created_cells: [AnyChanMsg; 2] = [
+                msg::Created2::new(*b"hihi").into(),
+                msg::CreatedFast::new(*b"x").into(),
+            ];
+            for (id, created_cell) in [7, 8].into_iter().zip(created_cells) {
+                let id = CircId::new(id).unwrap();
+                // The circuit has disconnected both of its receivers.
+                let (snd1, _) = oneshot::channel();
+                let (snd2, _) = fake_mpsc(64);
+                reactor.circs.put_unchecked(
+                    id,
+                    CircEnt::Opening {
+                        create_response_sender: snd1,
+                        cell_sender: snd2,
+                        padding_ctrl: padding_ctrl.clone(),
+                    },
+                );
+
+                input
+                    .send(Ok(AnyChanCell::new(Some(id), created_cell.clone())))
+                    .await
+                    .unwrap();
+                reactor.run_once().await.unwrap();
+
+                let cell = output.next().await.unwrap();
+                assert_eq!(cell.circid(), Some(id));
+                let AnyChanMsg::Destroy(destroy) = cell.msg() else {
+                    panic!("Expected a DESTROY, got {:?}", cell.msg());
+                };
+                assert_eq!(destroy.reason(), DestroyReason::NONE);
+                assert!(output.try_recv().is_err());
+                let ent = reactor.circs.get_mut(id);
+                assert!(matches!(*ent.unwrap(), CircEnt::DestroySent(_)));
+
+                // No second DESTROY is sent by either a duplicated CREATED* or the
+                // circuit's closing itself.
+                input
+                    .send(Ok(AnyChanCell::new(Some(id), created_cell)))
+                    .await
+                    .unwrap();
+                reactor.run_once().await.unwrap();
+                chan.close_circuit(id).unwrap();
+                reactor.run_once().await.unwrap();
+                assert!(output.try_recv().is_err());
+            }
+
+            // Circuit 13 remains unaltered, and its cells are sent to it.
+            let relay_cell: AnyChanMsg = msg::Relay::new(b"abc").into();
+            input
+                .send(Ok(AnyChanCell::new(CircId::new(13), relay_cell)))
+                .await
+                .unwrap();
+            reactor.run_once().await.unwrap();
+            let got = circ_stream_13.next().await.unwrap();
+            assert!(matches!(got, AnyChanMsg::Relay(_)));
+        });
+    }
+
+    // If the peer destroys one of our pending or open circuits that no longer exists, we
+    // do not reply but discard it.
+    #[test]
+    fn destroy_after_circuit_dropped() {
+        use oneshot_fused_workaround as oneshot;
+
+        MockRuntime::test_with_various(|rt| async move {
+            let (chan, mut reactor, mut output, mut input) =
+                new_reactor(rt.clone(), ChannelMode::Client);
+            let (padding_ctrl, _padding_stream) = new_padding(DynTimeProvider::new(rt));
+
+            let (snd, mut circ_stream_13) = fake_mpsc(64);
+            reactor.circs.put_unchecked(
+                CircId::new(13).unwrap(),
+                CircEnt::OpenOrigin {
+                    cell_sender: snd,
+                    padding_ctrl: padding_ctrl.clone(),
+                },
+            );
+
+            // The circuit on 7 is waiting to receive CREATED* while the
+            // circuit on 9 has received it, but both have dropped their
+            // receivers.
+            let (snd1, _) = oneshot::channel();
+            let (snd2, _) = fake_mpsc(64);
+            reactor.circs.put_unchecked(
+                CircId::new(7).unwrap(),
+                CircEnt::Opening {
+                    create_response_sender: snd1,
+                    cell_sender: snd2,
+                    padding_ctrl: padding_ctrl.clone(),
+                },
+            );
+            let (snd3, _) = fake_mpsc(64);
+            reactor.circs.put_unchecked(
+                CircId::new(9).unwrap(),
+                CircEnt::OpenOrigin {
+                    cell_sender: snd3,
+                    padding_ctrl,
+                },
+            );
+
+            let destroy_cell: AnyChanMsg = msg::Destroy::new(DestroyReason::NONE).into();
+            for id in [7, 9] {
+                let id = CircId::new(id).unwrap();
+                input
+                    .send(Ok(AnyChanCell::new(Some(id), destroy_cell.clone())))
+                    .await
+                    .unwrap();
+                reactor.run_once().await.unwrap();
+                assert!(reactor.circs.get_mut(id).is_none());
+
+                // Closing the circuit finds nothing left to destroy.
+                chan.close_circuit(id).unwrap();
+                reactor.run_once().await.unwrap();
+                assert!(output.try_recv().is_err());
+            }
+
+            let relay_cell: AnyChanMsg = msg::Relay::new(b"abc").into();
+            input
+                .send(Ok(AnyChanCell::new(CircId::new(13), relay_cell)))
+                .await
+                .unwrap();
+            reactor.run_once().await.unwrap();
+            let got = circ_stream_13.next().await.unwrap();
+            assert!(matches!(got, AnyChanMsg::Relay(_)));
+        });
+    }
+
+    // A peer cannot take down the channel if they fail their own circuit on a relay
+    // channel and then destroy it.
+    #[cfg(feature = "relay")]
+    #[test]
+    fn destroy_after_relay_circuit_failed() {
+        MockRuntime::test_with_various(|rt| async move {
+            let (mode, _circuit_stream_rx) = new_relay_mode_with_keys();
+            let (_chan, mut reactor, mut output, mut input) = new_reactor(rt.clone(), mode);
+
+            let create_fast: AnyChanMsg = msg::CreateFast::new(vec![42; 20]).into();
+            for id in [0x8000_0001, 0x8000_0002] {
+                input
+                    .send(Ok(AnyChanCell::new(CircId::new(id), create_fast.clone())))
+                    .await
+                    .unwrap();
+                reactor.run_once().await.unwrap();
+                let cell = output.next().await.unwrap();
+                assert!(matches!(cell.msg(), AnyChanMsg::CreatedFast(_)));
+            }
+
+            // A RELAY cell that a circuit cannot recognize or forward will cause the
+            // circuit to fail.
+            //
+            // (assuming the relay circuit reactor exits on such a cell)
+            let id = CircId::new(0x8000_0001).unwrap();
+            let relay_cell: AnyChanMsg = msg::Relay::new(b"abc").into();
+            input
+                .send(Ok(AnyChanCell::new(Some(id), relay_cell)))
+                .await
+                .unwrap();
+            reactor.run_once().await.unwrap();
+            rt.progress_until_stalled().await;
+
+            // The circuit has disconnected the receiver and asked us to close it. (The peer's
+            // DESTROY is handled first; we're pretending like `run_once()` chose our input.)
+            let destroy_cell = msg::Destroy::new(DestroyReason::NONE).into();
+            reactor
+                .handle_cell(AnyChanCell::new(Some(id), destroy_cell))
+                .await
+                .unwrap();
+            reactor.run_once().await.unwrap();
+
+            // No data went out; the faulty circuit has been terminated and the other
+            // remains active.
+            assert!(output.try_recv().is_err());
+            assert!(reactor.run_once().now_or_never().is_none());
+            assert!(reactor.circs.get_mut(id).is_none());
+
+            let ent = reactor.circs.get_mut(CircId::new(0x8000_0002).unwrap());
+            assert!(matches!(*ent.unwrap(), CircEnt::OpenRelay { .. }));
+            assert_eq!(reactor.circs.open_ent_count(), 1);
         });
     }
 
