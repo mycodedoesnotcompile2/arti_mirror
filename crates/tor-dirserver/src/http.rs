@@ -72,7 +72,7 @@ mod cache;
 ///
 /// TODO DIRMIRROR: The error handling of endpoint functions may need further
 /// discussions.  Maybe take a look at what other frameworks do?
-type EndpointFn = fn(
+pub(crate) type EndpointFn = fn(
     &Transaction,
     &Request<Incoming>,
 ) -> Result<Response<Vec<DocumentId>>, Box<dyn std::error::Error>>;
@@ -113,7 +113,7 @@ struct DocumentBody(VecDeque<Arc<[u8]>>);
 /// * `/tor/status-vote/current/*/diff/*/*`
 /// * `[Some(""), Some("tor"), Some("status-vote"), Some("current"), None, ...]`
 ///   Maybe a macro could help here though ...
-type Endpoint = (Method, &'static str, EndpointFn);
+pub(crate) type Endpoint = (Method, &'static str, EndpointFn);
 
 /// Representation of the core HTTP server.
 #[derive(Debug)]
