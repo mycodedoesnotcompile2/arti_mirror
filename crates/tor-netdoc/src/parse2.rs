@@ -161,7 +161,7 @@ pub struct ParseInput<'s> {
     #[getter(skip)]
     input: Cow<'s, str>,
 
-    /// Filename (for error reporting)
+    /// Filename (for error reporting); if not from a file, `<...>`
     #[getter(skip)]
     file: Cow<'s, str>,
 
@@ -181,7 +181,12 @@ define_derive_deftly! {
     ${defcond F_STR not(fmeta(parse_input(default)))}
 
     impl<'s> ParseInput<'s> {
-        /// Prepare to parse an input string
+    /// Prepare to parse an input string
+        ///
+        /// `file` is used only for error reporting, and is often used within
+        /// `{file}:{line}` or `{file}{line}.{column}` in error messages.
+        /// If the input didn't come from a file, use a terse human-readable description,
+        /// conventionally formatted as `<...>`.
         pub fn new( $(
             ${when not(F_DEF)}
             $fname: impl Into<$ftype>,
