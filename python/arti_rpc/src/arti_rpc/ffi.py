@@ -101,6 +101,8 @@ EvLoopCb = CFUNCTYPE(c_int, c_void_p)
 
 _ArtiRpcStatus = c_uint32
 
+_ArtiRpcShutdownKind = c_int
+
 _ArtiRpcRawSocket: type
 if os.name == "nt":
     _ArtiRpcRawSocket = c_uintptr
@@ -260,6 +262,13 @@ def _annotate_library(lib: ctypes.CDLL):
         _RpcStrOut,
         _ArtiRpcResponseTypeOut,
         _IntOut,
+        _ErrorOut,
+    ]
+    lib.arti_rpc_poll_poll.restype = _ArtiRpcStatus
+
+    lib.arti_rpc_conn_shutdown.argtypes = [
+        POINTER(ArtiRpcConn),
+        _ArtiRpcShutdownKind,
         _ErrorOut,
     ]
     lib.arti_rpc_poll_poll.restype = _ArtiRpcStatus

@@ -62,6 +62,16 @@ pub(crate) enum PollStatus {
     Msg(UnparsedResponse),
 }
 
+/// Possible return value from [`NonblockingConnection::flush_queue()`] or [`WriteHandle::send_valid()`].
+#[derive(Debug)]
+pub(crate) enum WriteStatus {
+    /// We have written the data.
+    Written,
+
+    /// We are closing this connection; no data was written.
+    Closing,
+}
+
 /// A handle that can be used to queue outgoing messages for a nonblocking stream.
 ///
 /// Note that queueing a message has no effect unless some party is polling the stream,
@@ -76,10 +86,15 @@ pub(crate) struct WriteHandle {
 
 impl WriteHandle {
     /// Queue an outgoing message for a nonblocking stream.
-    pub(crate) fn send_valid(&self, msg: &ValidatedRequest) -> io::Result<()> {
-        let mut w = self.inner.lock().expect("Poisoned lock");
-        let was_empty = w.write_buf.is_empty();
-        w.write_buf.extend_from_slice(msg.as_ref().as_bytes());
+    pub(crate) fn send_valid(&self, msg: &ValidatedRequest) -> io::Result<WriteStatus> {
+        let mut w: std::sync::MutexGuard<'_, WriteHandleImpl> =
+            self.inner.lock().expect("Poisoned lock");
+        let WriteState::Writing(buf) = &mut w.write_buf else {
+            return Ok(WriteStatus::Closing);
+        };
+
+        let was_empty = buf.is_empty();
+        buf.extend_from_slice(msg.as_ref().as_bytes());
 
         // See TOCTOU note on `WriteHandleImpl`:
         // we need to change our interest while we are holding the
@@ -87,6 +102,24 @@ impl WriteHandle {
         if was_empty {
             w.event_loop.start_writing()?;
         }
+        Ok(WriteStatus::Written)
+    }
+
+    /// Initiate a shutdown on this writer.
+    ///
+    ///
+    pub(crate) fn begin_closing(&self) -> io::Result<()> {
+        let mut w = self.inner.lock().expect("Poisoned lock");
+
+        w.write_buf = WriteState::Closing;
+
+        // See TOCTOU note on `WriteHandleImpl`:
+        // we need to change our interest while we are holding the
+        // above mutex.
+        //
+        // We 'start writing' here to ensure that any existing loop wakes up and notices that
+        // this connection is shutting down.
+        w.event_loop.start_writing()?;
         Ok(())
     }
 }
@@ -107,6 +140,21 @@ pub enum SendRequestError {
 }
 define_from_for_arc!( io::Error => SendRequestError [Io] );
 
+/// State object describing what we are doing
+/// for the write side of a connection.
+#[derive(Debug)]
+enum WriteState {
+    /// We're writing from a a buffer (if the buffer is nonempty).
+    //
+    // TODO: Consider using a VecDeque or BytesMut or such.
+    Writing(Vec<u8>),
+
+    /// We are planning to shut down the connection.
+    ///
+    /// No more data is allowed or will be written.
+    Closing,
+}
+
 /// The inner implementation for [`WriteHandle`].
 ///
 /// NOTE: We need to be careful to avoid TOCTOU problems with this type:
@@ -119,10 +167,9 @@ define_from_for_arc!( io::Error => SendRequestError [Io] );
 /// interactor.
 #[derive(derive_more::Debug)]
 struct WriteHandleImpl {
-    /// An underlying buffer holding messages to be sent to the RPC server.
-    //
-    // TODO: Consider using a VecDeque or BytesMut or such.
-    write_buf: Vec<u8>,
+    /// An underlying buffer holding messages to be sent to the RPC server,
+    /// or our shutdown status.
+    write_buf: WriteState,
 
     /// The handle to use to wake the polling loop.
     #[debug(ignore)]
@@ -135,7 +182,7 @@ impl NonblockingConnection {
         Self {
             write_handle: WriteHandle {
                 inner: Arc::new(Mutex::new(WriteHandleImpl {
-                    write_buf: Default::default(),
+                    write_buf: WriteState::Writing(Default::default()),
                     event_loop,
                 })),
             },
@@ -210,7 +257,8 @@ impl NonblockingConnection {
         }
 
         match self.flush_queue() {
-            Ok(()) => {}
+            Ok(WriteStatus::Closing) => return Ok(PollStatus::Closed),
+            Ok(WriteStatus::Written) => {}
             Err(e) if e.kind() == WouldBlock => {}
             Err(e) => return Err(e),
         }
@@ -251,7 +299,10 @@ impl NonblockingConnection {
         let w = self.write_handle.inner.lock().expect("Lock poisoned");
         // See TOCTOU note on WriteHandleImpl: Our rule is to check whether we have data to write
         // within the same lock used to hold the waker, so that we can't lose any data.
-        !w.write_buf.is_empty()
+        match &w.write_buf {
+            WriteState::Writing(b) => !b.is_empty(),
+            WriteState::Closing => false,
+        }
     }
 
     /// Helper: Try to get a message, reading into our read_buf as needed.
@@ -284,19 +335,27 @@ impl NonblockingConnection {
 
     /// Try to flush data from the underlying write buffer.
     ///
-    /// Returns Ok() only if all of the data is flushed, and the write buffer has become empty.
-    fn flush_queue(&mut self) -> io::Result<()> {
+    /// Returns `Ok(Written)` only if all of the data is flushed, and the write buffer has become empty.
+    ///
+    /// Returns `Ok(Closing)` if we have been told to close the connection.
+    ///
+    /// Returns an error if the write failed, including with a `WouldBlock`.
+    fn flush_queue(&mut self) -> io::Result<WriteStatus> {
         let mut w = self.write_handle.inner.lock().expect("Poisoned lock.");
 
         loop {
-            if w.write_buf.is_empty() {
-                return Ok(());
+            let WriteState::Writing(buf) = &mut w.write_buf else {
+                w.event_loop.stop_writing()?;
+                return Ok(WriteStatus::Closing);
+            };
+            if buf.is_empty() {
+                return Ok(WriteStatus::Written);
             }
 
-            let n = retry_eintr(|| self.stream.write(&w.write_buf[..]))?;
-            vec_pop_from_front(&mut w.write_buf, n);
+            let n = retry_eintr(|| self.stream.write(buf))?;
+            vec_pop_from_front(buf, n);
 
-            if w.write_buf.is_empty() {
+            if buf.is_empty() {
                 w.event_loop.stop_writing()?;
             }
 
@@ -460,7 +519,7 @@ pub trait EventLoop: Send + Sync {
     /// Alert the polling thread that we have become interested in write events.
     ///
     /// In a user-provided `EventLoop`,
-    /// this method will only be invoked from within one of the `submit` or `execute` methods
+    /// this method will only be invoked from within one of the `submit`, `execute`, or `shutdown` methods
     /// on [`RpcConn`](crate::RpcConn).
     fn start_writing(&mut self) -> io::Result<()>;
 }

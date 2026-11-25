@@ -416,7 +416,7 @@ pub struct RpcConn {
     pub(super) receiver: Arc<Receiver>,
 
     /// A writer that we use to queue requests to be sent back to Arti.
-    writer: crate::ll_conn::WriteHandle,
+    pub(super) writer: crate::ll_conn::WriteHandle,
 
     /// If set, we are authenticated and we have negotiated a session that has
     /// this ObjectID.
@@ -537,6 +537,7 @@ impl RpcConn {
         msg: &str,
         tag: Q::UserTag,
     ) -> Result<AnyRequestId, ProtoError> {
+        use crate::ll_conn::WriteStatus;
         use std::collections::hash_map::Entry::*;
 
         let mut state = self.receiver.state.lock().expect("poisoned");
@@ -568,15 +569,43 @@ impl RpcConn {
             Err(e) => {
                 // A failed write is a fatal error for everybody.
                 let e = ShutdownError::Write(Arc::new(e));
-                let mut state = self.receiver.state.lock().expect("poisoned");
-                if state.fatal.is_none() {
-                    state.fatal = Some(e.clone());
-                    state.pending.alert_everybody();
-                }
+                self.alert_all_with_error(&e);
                 Err(e.into())
             }
 
-            Ok(()) => Ok(id),
+            Ok(WriteStatus::Written) => Ok(id),
+            Ok(WriteStatus::Closing) => {
+                let e = ShutdownError::UserShutdown;
+                self.alert_all_with_error(&e);
+                Err(e.into())
+            }
+        }
+    }
+
+    /// Helper: If we have not already encountered a fatal error, record `error` as a fatal
+    /// error, and report it to all pending waiters.
+    fn alert_all_with_error(&self, error: &ShutdownError) {
+        let mut state = self.receiver.state.lock().expect("poisoned");
+        if state.fatal.is_none() {
+            state.fatal = Some(error.clone());
+            state.pending.alert_everybody();
+        }
+    }
+
+    /// Begin shutting down this connection.
+    pub(crate) fn begin_closing(&self) -> Result<(), ProtoError> {
+        let shutdown_outcome = self.writer.begin_closing();
+        match shutdown_outcome {
+            Ok(()) => {
+                let e = ShutdownError::UserShutdown;
+                self.alert_all_with_error(&e);
+                Ok(())
+            }
+            Err(e) => {
+                let e = ShutdownError::Write(Arc::new(e));
+                self.alert_all_with_error(&e);
+                Err(e.into())
+            }
         }
     }
 }

@@ -20,6 +20,7 @@ use std::os::fd::{AsRawFd, BorrowedFd};
 #[cfg(windows)]
 use std::os::windows::io::{AsRawSocket, BorrowedSocket};
 
+use crate::conn::ShutdownKind;
 use crate::{
     ObjectId, RpcConnBuilder, RpcPoll,
     conn::{AnyResponse, RequestHandle},
@@ -76,6 +77,9 @@ pub type ArtiRpcResponseType = c_int;
 
 /// The type of an entry prepended to a connect point search path.
 pub type ArtiRpcBuilderEntryType = c_int;
+
+/// The manner in which we should shut down using `arti_rpc_conn_shutdown`.
+pub type ArtiRpcShutdownKind = c_int;
 
 /// The type of a data stream socket.
 /// (This is always `int` on Unix-like platforms,
@@ -787,6 +791,51 @@ pub unsafe extern "C" fn arti_rpc_conn_wait(
             let rtype = response.response_type();
             response_type_out.write_value_if_ptr_set(rtype);
             response_out.write_boxed_value_if_ptr_set(response.into_string());
+        }
+    )
+}
+
+/// Argument for [`arti_rpc_conn_shutdown`]: Shut down immediately.
+///
+/// If a request has been queued but a reply has not yet been received for that request,
+/// it is indeterminate whether that request will actually be sent,
+/// or whether it will be dropped from the outgoing queue.
+/// If you require a request to be executed, wait until a reply has been received
+/// before you shut down the RPC connection.
+///
+/// It is unspecified whether the underlying socket is closed immediately,
+/// or whether it will only close when the [`ArtiRpcConn`] is freed.
+pub const ARTI_RPC_SHUTDOWN_IMMEDIATE: ArtiRpcShutdownKind = 1;
+
+impl ShutdownKind {
+    /// Try to convert `input` to a [`ShutdownKind`].  Return an error if it is not recognized.
+    fn from_c(input: ArtiRpcShutdownKind) -> Result<ShutdownKind, InvalidInput> {
+        Ok(match input {
+            ARTI_RPC_SHUTDOWN_IMMEDIATE => ShutdownKind::Immediate,
+            _ => return Err(InvalidInput::InvalidConstValue),
+        })
+    }
+}
+
+/// Tell an RPC connection to shut down.
+///
+/// The `how` argument determines the exact manner in which the connection is shut down.
+#[allow(clippy::missing_safety_doc)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn arti_rpc_conn_shutdown(
+    rpc_conn: *const ArtiRpcConn,
+    how: ArtiRpcShutdownKind,
+    error_out: *mut *mut ArtiRpcError,
+) -> ArtiRpcStatus {
+    ffi_body_with_err!(
+        {
+            let rpc_conn: Option<&ArtiRpcConn> [in_ptr_opt];
+            err error_out: Option<OutBoxedPtr<ArtiRpcError>>;
+        } in {
+            let rpc_conn = rpc_conn.ok_or(InvalidInput::NullPointer)?;
+            let how = ShutdownKind::from_c(how)?;
+
+            rpc_conn.shutdown(how)?;
         }
     )
 }

@@ -51,3 +51,24 @@ def cancel_self(context):
         assert False
     except ArtiRpcError as e:
         assert "Uncancellable request" in str(e)
+
+
+@arti_test
+def shutdown(context):
+    conn = context.open_rpc_connection()
+
+    client_id = conn.session().invoke("arti:get_client")["id"]
+    client = conn.make_object(client_id)
+
+    # This request provides updates, and runs forever, so we can be certain
+    # that shutting down the connection will cancel it.
+    hnd = client.with_meta(updates=True).invoke_with_handle("arti:watch_client_status")
+
+    conn.shutdown()
+
+    while True:
+        try:
+            hnd.wait()
+        except ArtiRpcError as e:
+            assert "User-initiated shutdown" in str(e)
+            return
