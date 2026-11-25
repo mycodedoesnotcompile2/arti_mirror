@@ -154,43 +154,69 @@ pub struct ParseOptions {
 }
 
 /// Input to a network document top-level parsing operation
-#[derive(Debug, Clone, amplify::Getters)]
+#[derive(Debug, Clone, amplify::Getters, Deftly)]
+#[derive_deftly(ParseInput)]
 pub struct ParseInput<'s> {
     /// The actual document text
-    #[getter(as_copy)]
-    input: &'s str,
+    #[getter(skip)]
+    input: Cow<'s, str>,
 
     /// Filename (for error reporting)
-    #[getter(as_copy)]
-    file: &'s str,
+    #[getter(skip)]
+    file: Cow<'s, str>,
 
     /// Parsing options
+    #[deftly(parse_input(default))]
     #[getter(as_ref, as_mut)]
     options: ParseOptions,
 }
 
-impl<'s> ParseInput<'s> {
-    /// Prepare to parse an input string
-    pub fn new(input: &'s str, file: &'s str) -> Self {
-        ParseInput {
-            input,
-            file,
-            options: ParseOptions::default(),
+define_derive_deftly! {
+    /// Derives for [`ParseInput`]
+    ///
+    /// Expands to the whole impl block, for convenience
+    ParseInput:
+
+    ${defcond F_DEF fmeta(parse_input(default))}
+    ${defcond F_STR not(fmeta(parse_input(default)))}
+
+    impl<'s> ParseInput<'s> {
+        /// Prepare to parse an input string
+        pub fn new( $(
+            ${when not(F_DEF)}
+            $fname: impl Into<$ftype>,
+        ) ) -> Self {
+            ParseInput { $(
+                $fname: ${select1
+                          F_STR { $fname.into() }
+                          F_DEF { Default::default() }
+                },
+            ) }
+        }
+
+      $(
+        ${when not(F_DEF)}
+
+        ${fattrs doc}
+        pub fn $fname(&self) -> &str {
+            &self.$fname
+        }
+      )
+
+        /// Enable retention of unknown values during parsing
+        ///
+        /// Convenience method to set
+        /// [`.options_mut().retain_unknown_values`](ParseOptions::retain_unknown_values)
+        /// to [`Unknown::Retained`].
+        #[cfg(feature = "retain-unknown")]
+        #[must_use = "retain_unknown_values returns a new ParseInput, which should then be used"]
+        pub fn retain_unknown_values(mut self) -> Self {
+            self.options_mut().retain_unknown_values = Unknown::Retained(());
+            self
         }
     }
-
-    /// Enable retention of unknown values during parsing
-    ///
-    /// Convenience method to set
-    /// [`.options_mut().retain_unknown_values`](ParseOptions::retain_unknown_values)
-    /// to [`Unknown::Retained`].
-    #[cfg(feature = "retain-unknown")]
-    #[must_use = "retain_unknown_values returns a new ParseInput, which should then be used"]
-    pub fn retain_unknown_values(mut self) -> Self {
-        self.options_mut().retain_unknown_values = Unknown::Retained(());
-        self
-    }
 }
+use derive_deftly_template_ParseInput;
 
 //---------- parser ----------
 
@@ -217,7 +243,7 @@ fn error_handler<D: NetdocParseable>(
     |problem| ParseError {
         problem,
         doctype: D::doctype_for_error(),
-        file: input.file.to_owned(),
+        file: input.file.clone().into_owned(),
         lno: items.lno_for_error(),
         column: problem.column(),
     }

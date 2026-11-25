@@ -128,8 +128,8 @@ impl<'s> ItemStream<'s> {
     /// Start reading a network document as a series of Items
     pub fn new(input: &'s ParseInput<'s>) -> Self {
         ItemStream {
-            whole_input: input.input,
-            lines: Lines::new(input.input),
+            whole_input: &input.input,
+            lines: Lines::new(&input.input),
             peeked: PeekState::None {
                 yielded_item_lno: 0,
             },

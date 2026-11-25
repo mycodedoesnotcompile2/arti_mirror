@@ -232,7 +232,7 @@ mod test {
                 assert!(!policy.allows_port(*p));
             }
             let policy2 =
-                parse2::parse_netdoc::<Dummy>(&ParseInput::new(&format!("dummy {inp}"), ""))
+                parse2::parse_netdoc::<Dummy>(&ParseInput::new(format!("dummy {inp}"), ""))
                     .unwrap()
                     .dummy;
             for p in allow {
@@ -312,7 +312,7 @@ mod test {
         ] {
             assert!(s.parse::<PortPolicy>().is_err());
             assert!(
-                parse2::parse_netdoc::<Dummy>(&ParseInput::new(&format!("dummy {s}"), "")).is_err()
+                parse2::parse_netdoc::<Dummy>(&ParseInput::new(format!("dummy {s}"), "")).is_err()
             );
         }
     }
