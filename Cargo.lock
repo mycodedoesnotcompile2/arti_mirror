@@ -415,6 +415,7 @@ dependencies = [
  "rustls",
  "safelog",
  "serde",
+ "serde_json",
  "smallvec",
  "strum",
  "thiserror 2.0.21",

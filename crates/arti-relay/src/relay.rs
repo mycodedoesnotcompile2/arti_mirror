@@ -161,7 +161,7 @@ impl InertTorRelay {
     }
 
     /// Create the [key manager](KeyMgr).
-    fn create_keymgr(state_path: &Path, mistrust: &Mistrust) -> anyhow::Result<KeyMgr> {
+    pub(crate) fn create_keymgr(state_path: &Path, mistrust: &Mistrust) -> anyhow::Result<KeyMgr> {
         let key_store_dir = state_path.join("keystore");
 
         let persistent_store = ArtiNativeKeystore::from_path_and_mistrust(&key_store_dir, mistrust)

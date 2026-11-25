@@ -86,6 +86,8 @@ fn cli_cmd_post_processing(cli: Command) -> Command {
 pub(crate) enum Commands {
     /// Run the relay.
     Run(RunArgs),
+    /// Manage the relay identity keys.
+    Identity(crate::subcommands::identity::IdentityArgs),
     /// Print build information.
     BuildInfo,
 }
