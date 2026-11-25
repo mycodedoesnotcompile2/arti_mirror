@@ -55,6 +55,7 @@ use tor_dircommon::{
 #[cfg(feature = "dir-plugin-backend")]
 use tor_dircommon::dir_plugin_backend::DirBackendPlugin;
 
+mod endpoints;
 mod operation;
 
 /// Core data type of a directory mirror.

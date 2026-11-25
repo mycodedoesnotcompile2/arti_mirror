@@ -54,12 +54,12 @@ mod cache;
 /// fn get_consensus(
 ///     tx: &Transaction<'_>,
 ///     requ: &Request<Incoming>
-/// ) -> Result<Response<Vec<DocumentId>>, Box<dyn std::error::Error + Send>>;
+/// ) -> Result<Response<Vec<DocumentId>>, Box<dyn std::error::Error>>;
 /// ```
 ///
 /// The arguments give the endpoint function access to fixed state of the
 /// database ([`Transaction`]) and the incoming [`Request`].  The return type is
-/// a [`Result`] with an arbitrary error that implements [`Send`] and gets logged
+/// a [`Result`] with an arbitrary error that gets logged
 /// but not returned to the client, which will just receive an `Internal Server Error`.
 /// The [`Ok`] type of the [`Result`] is a [`Vec`] consisting of [`DocumentId`]
 /// hashsums identifying (uncompressed) objects in the `store` table.
@@ -72,10 +72,10 @@ mod cache;
 ///
 /// TODO DIRMIRROR: The error handling of endpoint functions may need further
 /// discussions.  Maybe take a look at what other frameworks do?
-type EndpointFn = fn(
+pub(crate) type EndpointFn = fn(
     &Transaction,
     &Request<Incoming>,
-) -> Result<Response<Vec<DocumentId>>, Box<dyn std::error::Error + Send>>;
+) -> Result<Response<Vec<DocumentId>>, Box<dyn std::error::Error>>;
 
 /// A type that implements [`Body`] for a list of [`Arc<[u8]>`] data.
 ///
@@ -113,7 +113,7 @@ struct DocumentBody(VecDeque<Arc<[u8]>>);
 /// * `/tor/status-vote/current/*/diff/*/*`
 /// * `[Some(""), Some("tor"), Some("status-vote"), Some("current"), None, ...]`
 ///   Maybe a macro could help here though ...
-type Endpoint = (Method, &'static str, EndpointFn);
+pub(crate) type Endpoint = (Method, &'static str, EndpointFn);
 
 /// Representation of the core HTTP server.
 #[derive(Debug)]
@@ -886,7 +886,7 @@ pub(in crate::http) mod test {
         fn dummy(
             _: &Transaction,
             _: &Request<Incoming>,
-        ) -> Result<Response<Vec<DocumentId>>, Box<dyn std::error::Error + Send>> {
+        ) -> Result<Response<Vec<DocumentId>>, Box<dyn std::error::Error>> {
             todo!()
         }
 
@@ -969,7 +969,7 @@ pub(in crate::http) mod test {
         fn identity(
             _tx: &Transaction<'_>,
             _requ: &Request<Incoming>,
-        ) -> Result<Response<Vec<DocumentId>>, Box<dyn std::error::Error + Send>> {
+        ) -> Result<Response<Vec<DocumentId>>, Box<dyn std::error::Error>> {
             Ok(Response::new(vec![*IDENTITY_DOCID]))
         }
 
