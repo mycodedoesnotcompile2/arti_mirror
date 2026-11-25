@@ -33,11 +33,15 @@ fn construct_socketpair_inner() -> io::Result<(SocketpairStream, SocketpairStrea
         let addr = listener.local_addr()?;
         let s1 = std::net::TcpStream::connect(addr)?;
         let (s2, s2_addr) = listener.accept()?;
-        #[allow(clippy::unwrap_used)]
-        // This cannot fail because we are connecting to the same address.
-        {
-            assert_eq!(s1.local_addr().unwrap(), s2_addr);
-        }
+        // `s1.local_addr()` returns its own address.
+        // Therefore, `s2_addr` should be the same as `s1.local_addr()`,
+        // if the connection is established by the code above.
+        // If they are not the same, that means there is another connector.
+        // Also, if `local_addr()` fails, it means `c::getsockname` failed.
+        assert_eq!(
+            s1.local_addr().expect("Failed to get local address"),
+            s2_addr
+        );
         Ok((s1, s2))
     }
 }
