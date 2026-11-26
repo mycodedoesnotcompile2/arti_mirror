@@ -458,6 +458,7 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
     /// # Specifications
     ///
     /// * <https://spec.torproject.org/dir-spec/directory-cache-operation.html#download-ns-from-auth>
+    // XXX: Eventually replace with the types.rs thing.
     pub(crate) fn ttl<R: Rng>(&self, rng: &mut R) -> Timestamp {
         assert!(self.valid_after < self.fresh_until);
         assert!(self.fresh_until < self.valid_until);

@@ -4,6 +4,10 @@
 //! directory server that are not related to the database, in which case they
 //! belong to the respective [`crate::database`] module.
 
+use std::time::Duration;
+
+use rand::Rng;
+use tor_basic_utils::RngExt;
 use tor_checkable::TimeRangeBound;
 use tor_error::internal;
 use tor_llcrypto::pk::rsa::RsaIdentity;
@@ -20,7 +24,7 @@ use tor_netdoc::{
     parse2::{NetdocParseable, NetdocParseableUnverified, SignaturesData},
 };
 
-use crate::database::{Sha1, Sha256};
+use crate::database::{Sha1, Sha256, Timestamp};
 
 /// Generic trait representing a flavored verified consensus.
 ///
@@ -28,6 +32,26 @@ use crate::database::{Sha1, Sha256};
 pub(crate) trait FlavoredConsensusBody: Clone {
     /// Returns the [`Lifetime`] of this body.
     fn lifetime(&self) -> &Lifetime;
+
+    /// Calculates the [`Timestamp`] at which the authorities will be queried again.
+    ///
+    /// # Specifications
+    ///
+    /// * <https://spec.torproject.org/dir-spec/directory-cache-operation.html#download-ns-from-auth>
+    fn ttl<R: Rng>(&self, rng: &mut R) -> Timestamp {
+        let lifetime = self.lifetime();
+        let valid_after = Timestamp::from(lifetime.valid_after.0);
+        let fresh_until = Timestamp::from(lifetime.fresh_until.0);
+        let valid_until = Timestamp::from(lifetime.valid_until.0);
+
+        assert!(valid_after < fresh_until);
+        assert!(fresh_until < valid_until);
+
+        let offset = rng
+            .gen_range_checked(0..=((fresh_until - valid_after).as_secs() / 2))
+            .expect("invalid range?");
+        (fresh_until + Duration::from_secs(offset)).min(valid_until)
+    }
 
     /// Returns the doc digests for every router.
     ///
