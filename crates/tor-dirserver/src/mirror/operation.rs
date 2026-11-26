@@ -1498,15 +1498,14 @@ mod test {
             .fresh_until
             .0
             .into();
-        let valid_until: Timestamp = testdata2::current_consensus_ns()
+        let valid_after: Timestamp = testdata2::current_consensus_ns()
             .0
             .preamble
             .lifetime
-            .valid_until
+            .valid_after
             .0
             .into();
-        // This is the middle of valid_until and fresh_until.
-        let fresh_until_half = fresh_until + ((valid_until - fresh_until) / 2);
+        let fresh_until_half = fresh_until + (fresh_until - valid_after) / 2;
 
         // Remove a single router descriptor from our storage to see whether it
         // appears in the download queue as expected.

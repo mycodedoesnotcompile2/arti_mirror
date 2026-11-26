@@ -459,13 +459,13 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
     ///
     /// * <https://spec.torproject.org/dir-spec/directory-cache-operation.html#download-ns-from-auth>
     pub(crate) fn ttl<R: Rng>(&self, rng: &mut R) -> Timestamp {
+        assert!(self.valid_after < self.fresh_until);
         assert!(self.fresh_until < self.valid_until);
 
         let offset = rng
-            .gen_range_checked(0..=((self.valid_until - self.fresh_until).as_secs() / 2))
+            .gen_range_checked(0..=((self.fresh_until - self.valid_after).as_secs() / 2))
             .expect("invalid range?");
-
-        self.fresh_until + Duration::from_secs(offset)
+        (self.fresh_until + Duration::from_secs(offset)).min(self.valid_until)
     }
 
     /// Returns the missing router descriptors for this consensus.
@@ -1662,18 +1662,8 @@ mod test {
         };
         for _ in 0..10000 {
             let when = cons.ttl(&mut testing_rng());
-            assert!(when >= lifetime.fresh_until.0.into());
-            // Computes the half between fresh_until and valid_until.
-            assert!(
-                when <= (lifetime.fresh_until.0
-                    + (lifetime
-                        .valid_until
-                        .0
-                        .duration_since(lifetime.fresh_until.0)
-                        .unwrap()
-                        / 2))
-                    .into()
-            );
+            assert!(when >= cons.fresh_until);
+            assert!(when <= cons.fresh_until + (cons.fresh_until - cons.valid_after) / 2);
         }
     }
 
