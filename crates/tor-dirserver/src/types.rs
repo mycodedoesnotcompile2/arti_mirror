@@ -288,3 +288,52 @@ impl FlavoredDescriptor for FlavoredDescriptorMd {
         Ok(self.2)
     }
 }
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+
+    use tor_basic_utils::test_rng::testing_rng;
+    use crate::testdata2;
+    use super::*;
+
+    /// Tests whether the timeout computation lies within the proper interval.
+    ///
+    /// Because this involves randomness, it performs the test several thousand
+    /// times.  This should be okay performance wise, as it takes about ~250ms
+    /// with a debug build on my machine.
+    fn ttl<Body: FlavoredConsensusBody>(body: Body) {
+        let lifetime = body.lifetime();
+        let valid_after = Timestamp::from(lifetime.valid_after.0);
+        let fresh_until = Timestamp::from(lifetime.fresh_until.0);
+
+        for _ in 0..10000 {
+            let when = body.ttl(&mut testing_rng());
+            assert!(when >= fresh_until);
+            assert!(when <= fresh_until + (fresh_until - valid_after) / 2);
+        }
+    }
+
+    #[test]
+    fn ttl_plain() {
+        ttl(testdata2::current_consensus_ns().0);
+    }
+
+    #[test]
+    fn ttl_md() {
+        ttl(testdata2::current_consensus_md().0);
+    }
+}

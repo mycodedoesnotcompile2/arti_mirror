@@ -1652,33 +1652,6 @@ mod test {
         assert_eq!(missing_descs, missing_descs2);
     }
 
-    /// Tests whether the timeout computation lies within the proper interval.
-    ///
-    /// Because this involves randomness, it performs the test several thousand
-    /// times.  This should be okay performance wise, as it takes about ~250ms
-    /// with a debug build on my machine.
-    #[test]
-    fn sync_timeout() {
-        // We repeat the tests a few thousand times to go over many random values.
-        let docid = Sha256::digest(testdata2::current_consensus_ns().2.as_bytes());
-        let lifetime = testdata2::current_consensus_ns().0.preamble.lifetime;
-        let sha3_256 = testdata2::consensus_sha3(testdata2::current_consensus_ns().2);
-        let cons = ConsensusMeta::<Plain> {
-            docid,
-            sha3_256,
-            valid_after: lifetime.valid_after.0.into(),
-            fresh_until: lifetime.fresh_until.0.into(),
-            valid_until: lifetime.valid_until.0.into(),
-            serve_until: todo!(), // FIXME by moving the test.
-            flavor: Default::default(),
-        };
-        for _ in 0..10000 {
-            let when = cons.ttl(&mut testing_rng());
-            assert!(when >= cons.fresh_until);
-            assert!(when <= cons.fresh_until + (cons.fresh_until - cons.valid_after) / 2);
-        }
-    }
-
     /// Tests whether the missing router descriptor queue is computed properly.
     ///
     /// For this, we remove existing router descriptors from the database and
