@@ -86,6 +86,14 @@ enum CliOperation {
     // Our help output has a link to the rendered version in gitlab
     // (`after_help` attribute on `CliArgs`)
     DumpSpec {},
+
+    /// Test a log message at each log level
+    //
+    // There is no automatically run test for this.  Doing it in `#[test]` is complicated.
+    // It would involve forking and re-invoking, because the tracing logging is a global.
+    // We'd also need to somehow capture ourselves what *actually* goes to stderr,
+    // bypassing #[test]'s stderr capturing arrangements.
+    TestLogging {},
 }
 
 /// Top-level error - program exits with this, or `Ok(())`
@@ -138,6 +146,18 @@ fn plugin_impl(args: CliArgs) -> Result<(), CliError> {
 
         CliOperation::DumpSpec {} => {
             print!("{}", include_str!("../authority-plugin.md"));
+            Ok(())
+        }
+
+        CliOperation::TestLogging {} => {
+            macro_rules! l { { $level:ident } => {
+                tracing::$level!("log message, level {}", stringify!($level));
+            } }
+            l!(trace);
+            l!(debug);
+            l!(info);
+            l!(warn);
+            l!(error);
             Ok(())
         }
     }
