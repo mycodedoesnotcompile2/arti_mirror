@@ -65,7 +65,6 @@ use rusqlite::{
 };
 use saturating_time::SaturatingTime;
 use thiserror::Error;
-use tor_basic_utils::RngExt;
 use tor_error::{internal, into_internal};
 use tor_netdoc::doc::{authcert::AuthCert, netstatus::ConsensusFlavor};
 
@@ -361,6 +360,9 @@ pub(crate) struct ConsensusMeta<T> {
     /// The time after which this consensus stops being valid.
     pub valid_until: Timestamp,
 
+    /// The point in time until we will serve the consensus.
+    pub serve_until: Timestamp,
+
     /// The flavor of the consensus; determined at compile time.
     flavor: PhantomData<T>,
 }
@@ -408,7 +410,7 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
         // Select the most recent flavored consensus document from the database.
         let mut meta_stmt = tx.prepare_cached(sql!(
             "
-            SELECT docid, sha3_256, valid_after, fresh_until, valid_until
+            SELECT docid, sha3_256, valid_after, fresh_until, valid_until, serve_until
             FROM consensus
             WHERE
               flavor = :flavor
@@ -428,6 +430,7 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
                     valid_after: row.get(2)?,
                     fresh_until: row.get(3)?,
                     valid_until: row.get(4)?,
+                    serve_until: row.get(5)?,
                     flavor: Default::default(),
                 })
             },
@@ -451,21 +454,6 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
         })?;
         let raw = String::from_utf8(raw).map_err(into_internal!("utf-8 constraint violated?"))?;
         Ok(raw)
-    }
-
-    /// Calculates the [`Timestamp`] at which the authorities will be queried again.
-    ///
-    /// # Specifications
-    ///
-    /// * <https://spec.torproject.org/dir-spec/directory-cache-operation.html#download-ns-from-auth>
-    pub(crate) fn ttl<R: Rng>(&self, rng: &mut R) -> Timestamp {
-        assert!(self.fresh_until < self.valid_until);
-
-        let offset = rng
-            .gen_range_checked(0..=((self.valid_until - self.fresh_until).as_secs() / 2))
-            .expect("invalid range?");
-
-        self.fresh_until + Duration::from_secs(offset)
     }
 
     /// Returns the missing router descriptors for this consensus.
@@ -637,14 +625,16 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
     /// This method *DOES NOT* compute any consensus diffs but populates
     /// associated meta tables such as `consensus_descriptor_member`
     /// and `consensus_authority_voter` properly.
-    pub(crate) fn insert<I>(
+    pub(crate) fn insert<I, R>(
         tx: &Transaction<'_>,
         encodings: I,
         (body, sigs): (&T::Body, &T::Signatures),
         data: &str,
+        rng: &mut R,
     ) -> Result<ConsensusMeta<T>, DatabaseError>
     where
         I: Iterator<Item = ContentEncoding>,
+        R: Rng,
     {
         // Insert a consensus into the consensus meta table.
         //
@@ -660,9 +650,9 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
         let mut cons_stmt = tx.prepare_cached(sql!(
             "
             INSERT INTO consensus
-            (docid, sha3_256, flavor, valid_after, fresh_until, valid_until)
+            (docid, sha3_256, flavor, valid_after, fresh_until, valid_until, serve_until)
             VALUES
-            (:docid, :sha3_256, :flavor, :valid_after, :fresh_until, :valid_until)
+            (:docid, :sha3_256, :flavor, :valid_after, :fresh_until, :valid_until, :serve_until)
             ON CONFLICT DO NOTHING
             "
         ))?;
@@ -716,6 +706,7 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
             valid_after: lifetime.valid_after.0.into(),
             fresh_until: lifetime.fresh_until.0.into(),
             valid_until: lifetime.valid_until.0.into(),
+            serve_until: body.ttl(rng),
             flavor: Default::default(),
         };
         cons_stmt.execute(named_params! {
@@ -724,6 +715,7 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
             ":valid_after": meta.valid_after,
             ":fresh_until": meta.fresh_until,
             ":valid_until": meta.valid_until,
+            ":serve_until": meta.serve_until,
             ":flavor": T::flavor().name(),
         })?;
 
@@ -1620,6 +1612,7 @@ mod test {
             iter::once(ContentEncoding::Identity),
             (&body, &sigs),
             data,
+            &mut testing_rng(),
         )
         .unwrap();
 
@@ -1631,6 +1624,7 @@ mod test {
                 valid_after: body.preamble.lifetime.valid_after.0.into(),
                 fresh_until: body.preamble.lifetime.fresh_until.0.into(),
                 valid_until: body.preamble.lifetime.valid_until.0.into(),
+                serve_until: meta.serve_until, // This contains randomness.
                 flavor: Default::default()
             }
         );
@@ -1639,42 +1633,6 @@ mod test {
         let missing_descs = meta.missing_routers(&tx, iter::empty(), None).unwrap();
         let missing_descs2 = body.routers.iter().map(|r| Sha1(*r.doc_digest())).collect();
         assert_eq!(missing_descs, missing_descs2);
-    }
-
-    /// Tests whether the timeout computation lies within the proper interval.
-    ///
-    /// Because this involves randomness, it performs the test several thousand
-    /// times.  This should be okay performance wise, as it takes about ~250ms
-    /// with a debug build on my machine.
-    #[test]
-    fn sync_timeout() {
-        // We repeat the tests a few thousand times to go over many random values.
-        let docid = Sha256::digest(testdata2::current_consensus_ns().2.as_bytes());
-        let lifetime = testdata2::current_consensus_ns().0.preamble.lifetime;
-        let sha3_256 = testdata2::consensus_sha3(testdata2::current_consensus_ns().2);
-        let cons = ConsensusMeta::<Plain> {
-            docid,
-            sha3_256,
-            valid_after: lifetime.valid_after.0.into(),
-            fresh_until: lifetime.fresh_until.0.into(),
-            valid_until: lifetime.valid_until.0.into(),
-            flavor: Default::default(),
-        };
-        for _ in 0..10000 {
-            let when = cons.ttl(&mut testing_rng());
-            assert!(when >= lifetime.fresh_until.0.into());
-            // Computes the half between fresh_until and valid_until.
-            assert!(
-                when <= (lifetime.fresh_until.0
-                    + (lifetime
-                        .valid_until
-                        .0
-                        .duration_since(lifetime.fresh_until.0)
-                        .unwrap()
-                        / 2))
-                    .into()
-            );
-        }
     }
 
     /// Tests whether the missing router descriptor queue is computed properly.

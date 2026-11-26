@@ -4,6 +4,10 @@
 //! directory server that are not related to the database, in which case they
 //! belong to the respective [`crate::database`] module.
 
+use std::time::Duration;
+
+use rand::Rng;
+use tor_basic_utils::RngExt;
 use tor_checkable::TimeRangeBound;
 use tor_error::internal;
 use tor_llcrypto::pk::rsa::RsaIdentity;
@@ -20,7 +24,7 @@ use tor_netdoc::{
     parse2::{NetdocParseable, NetdocParseableUnverified, SignaturesData},
 };
 
-use crate::database::{Sha1, Sha256};
+use crate::database::{Sha1, Sha256, Timestamp};
 
 /// Generic trait representing a flavored verified consensus.
 ///
@@ -28,6 +32,26 @@ use crate::database::{Sha1, Sha256};
 pub(crate) trait FlavoredConsensusBody: Clone {
     /// Returns the [`Lifetime`] of this body.
     fn lifetime(&self) -> &Lifetime;
+
+    /// Calculates the [`Timestamp`] at which the authorities will be queried again.
+    ///
+    /// # Specifications
+    ///
+    /// * <https://spec.torproject.org/dir-spec/directory-cache-operation.html#download-ns-from-auth>
+    fn ttl<R: Rng>(&self, rng: &mut R) -> Timestamp {
+        let lifetime = self.lifetime();
+        let valid_after = Timestamp::from(lifetime.valid_after.0);
+        let fresh_until = Timestamp::from(lifetime.fresh_until.0);
+        let valid_until = Timestamp::from(lifetime.valid_until.0);
+
+        assert!(valid_after < fresh_until);
+        assert!(fresh_until < valid_until);
+
+        let offset = rng
+            .gen_range_checked(0..=((fresh_until - valid_after).as_secs() / 2))
+            .expect("invalid range?");
+        (fresh_until + Duration::from_secs(offset)).min(valid_until)
+    }
 
     /// Returns the doc digests for every router.
     ///
@@ -262,5 +286,54 @@ impl FlavoredDescriptor for FlavoredDescriptorMd {
 
     fn sha256(&self) -> Result<Sha256, tor_error::Bug> {
         Ok(self.2)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    // @@ begin test lint list maintained by maint/add_warning @@
+    #![allow(clippy::bool_assert_comparison)]
+    #![allow(clippy::clone_on_copy)]
+    #![allow(clippy::dbg_macro)]
+    #![allow(clippy::mixed_attributes_style)]
+    #![allow(clippy::print_stderr)]
+    #![allow(clippy::print_stdout)]
+    #![allow(clippy::single_char_pattern)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unchecked_time_subtraction)]
+    #![allow(clippy::useless_vec)]
+    #![allow(clippy::needless_pass_by_value)]
+    #![allow(clippy::string_slice)] // See arti#2571
+    //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+
+    use super::*;
+    use crate::testdata2;
+    use tor_basic_utils::test_rng::testing_rng;
+
+    /// Tests whether the timeout computation lies within the proper interval.
+    ///
+    /// Because this involves randomness, it performs the test several thousand
+    /// times.  This should be okay performance wise, as it takes about ~250ms
+    /// with a debug build on my machine.
+    fn ttl<Body: FlavoredConsensusBody>(body: Body) {
+        let lifetime = body.lifetime();
+        let valid_after = Timestamp::from(lifetime.valid_after.0);
+        let fresh_until = Timestamp::from(lifetime.fresh_until.0);
+
+        for _ in 0..10000 {
+            let when = body.ttl(&mut testing_rng());
+            assert!(when >= fresh_until);
+            assert!(when <= fresh_until + (fresh_until - valid_after) / 2);
+        }
+    }
+
+    #[test]
+    fn ttl_plain() {
+        ttl(testdata2::current_consensus_ns().0);
+    }
+
+    #[test]
+    fn ttl_md() {
+        ttl(testdata2::current_consensus_md().0);
     }
 }

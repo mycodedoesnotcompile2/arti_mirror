@@ -439,10 +439,10 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         debug!("state is {state}");
 
         match state {
-            State::LoadConsensus => self.load_consensus(pool, data, now, rng),
+            State::LoadConsensus => self.load_consensus(pool, data, now),
             State::FetchConsensus => Ok(self.fetch_consensus(data, endpoint, now).await?),
             State::AuthCerts => self.auth_certs(pool, data, endpoint, now).await,
-            State::StoreConsensus => self.store_consensus(pool, data, now),
+            State::StoreConsensus => self.store_consensus(pool, data, now, rng),
             State::Descriptors => self.descriptors(pool, data, endpoint, now).await,
             State::Hibernate => self.hibernate(data, now).await,
         }
@@ -452,14 +452,12 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     ///
     /// This method does the following:
     /// * Load the most recent valid consensus from the database.
-    /// * Compute the ttl for it.
     /// * Compute the missing descriptors for it.
-    fn load_consensus<R: Rng>(
+    fn load_consensus(
         &self,
         pool: &Pool<SqliteConnectionManager>,
         data: &mut ConsensusBoundData<T>,
         now: Timestamp,
-        rng: &mut R,
     ) -> Result<(), OperationError> {
         // Load the most recent valid consensus from the database.
         //
@@ -470,12 +468,11 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // leaves too much room for wrong/weird behavior.
         let consensus = db::read_tx(pool, |tx| self.recent_consensus(tx, now))??
             .ok_or_else(|| internal!("database externally modified?"))?;
-        let ttl = consensus.ttl(rng);
         let futile = Box::new(FutileDescriptors::default());
 
         *data = ConsensusBoundData::Verified {
             consensus,
-            ttl,
+            ttl: consensus.serve_until,
             futile,
         };
         Ok(())
@@ -520,6 +517,11 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         let raw = raw[start..end].to_string();
 
         let ttl = now + UNVERIFIED_TTL;
+
+        // TODO DIRMIRROR: Ideally, we should check here whether or not we
+        // already have that consensus in the database and return a no progress
+        // error if that is the case, so we handle consensus computation
+        // failures properly.  This probably requires more thought though.
 
         // And store it.
         *data = ConsensusBoundData::Unverified {
@@ -635,11 +637,12 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     }
 
     /// Verifies a consensus and inserts it into the database.
-    fn store_consensus(
+    fn store_consensus<R: Rng>(
         &self,
         pool: &Pool<SqliteConnectionManager>,
         data: &mut ConsensusBoundData<T>,
         now: Timestamp,
+        rng: &mut R,
     ) -> Result<(), OperationError> {
         // It is fine to replace data with ConsensusBoundData::None because in
         // both cases, the following state of this will always be LoadConsensus
@@ -665,6 +668,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
                 self.encodings.iter().copied(),
                 (&verified, &sigs),
                 &raw,
+                rng,
             )?;
             Ok::<_, OperationError>(())
         })?
@@ -912,6 +916,14 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             &[front] | &[front, ..] => front,
             &[] => return Ok(None),
         };
+
+        // We must not load a consensus if we are never going to serve it,
+        // because that would get us stuck in a LoadConsensus -> Finished ->
+        // LoadConsensus loop up until the consensus is not valid anymore.
+        if now > meta.serve_until {
+            return Ok(None);
+        }
+
         let raw = meta.data(tx)?;
 
         let unverified = match parse2::parse_netdoc::<T>(&ParseInput::new(&raw, "<database>")) {
@@ -1498,15 +1510,14 @@ mod test {
             .fresh_until
             .0
             .into();
-        let valid_until: Timestamp = testdata2::current_consensus_ns()
+        let valid_after: Timestamp = testdata2::current_consensus_ns()
             .0
             .preamble
             .lifetime
-            .valid_until
+            .valid_after
             .0
             .into();
-        // This is the middle of valid_until and fresh_until.
-        let fresh_until_half = fresh_until + ((valid_until - fresh_until) / 2);
+        let fresh_until_half = fresh_until + (fresh_until - valid_after) / 2;
 
         // Remove a single router descriptor from our storage to see whether it
         // appears in the download queue as expected.
@@ -1520,9 +1531,7 @@ mod test {
             )
             .unwrap();
 
-        engine
-            .load_consensus(&pool, &mut data, time, &mut testing_rng())
-            .unwrap();
+        engine.load_consensus(&pool, &mut data, time).unwrap();
 
         // El-cheapo assert_eq due to lack of PartialEq for tor-netdoc poc.
         match data {
@@ -1773,7 +1782,9 @@ mod test {
             .unwrap()
             .unwrap();
         assert_eq!(state, State::StoreConsensus);
-        engine.store_consensus(&pool, &mut data, now).unwrap();
+        engine
+            .store_consensus(&pool, &mut data, now, &mut testing_rng())
+            .unwrap();
         assert!(matches!(&data, ConsensusBoundData::None));
 
         // Verify that it got inserted.
@@ -1781,9 +1792,7 @@ mod test {
             .unwrap()
             .unwrap();
         assert_eq!(state, State::LoadConsensus);
-        engine
-            .load_consensus(&pool, &mut data, now, &mut testing_rng())
-            .unwrap();
+        engine.load_consensus(&pool, &mut data, now).unwrap();
         assert!(matches!(data, ConsensusBoundData::Verified { .. }));
     }
 
@@ -1799,7 +1808,6 @@ mod test {
         let engine = static_engine::<T>();
         let now = Timestamp::from(testdata2::valid_system_time());
         let mut data = ConsensusBoundData::None;
-        let rng = &mut testing_rng();
 
         // Server task that can at most handle two requests.
         //
@@ -1848,7 +1856,7 @@ mod test {
         db::rw_tx(&pool, |tx| tx.execute(sql!("DELETE FROM descriptor"), ()))
             .unwrap()
             .unwrap();
-        engine.load_consensus(&pool, &mut data, now, rng).unwrap();
+        engine.load_consensus(&pool, &mut data, now).unwrap();
         let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
             .unwrap()
             .unwrap();
