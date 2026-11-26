@@ -16,55 +16,6 @@ pub(crate) fn map_range<T, U>(
     f(r.start())..=f(r.end())
 }
 
-#[ext(name = IteratorExtUnzip)]
-pub(crate) impl<AI, BI, I> I
-where
-    I: Iterator<Item = (Option<AI>, Option<BI>)>,
-{
-    /// Collect and filter an iterator yielding tuples of options into two collections.
-    ///
-    /// Takes an iterator yielding `(Option<AI>, Option<AB>)` and collects the
-    /// `Some`s into a tuple of the two collections, of `AI` and `BI` respectively.
-    //
-    // TODO DIRAUTH consider moving this to tor-basic-utils or itertools or something.
-    fn filter_collect_unzip<AC, BC>(self) -> (AC, BC)
-    where
-        AC: Default + Extend<AI>,
-        BC: Default + Extend<BI>,
-    {
-        let mut ac = AC::default();
-        let mut bc = BC::default();
-        for (ao, bo) in self {
-            ac.extend(ao);
-            bc.extend(bo);
-        }
-        (ac, bc)
-    }
-}
-
-#[ext(name = IteratorExt)]
-pub(crate) impl<I> I
-where
-    I: Iterator,
-{
-    /// Filter items using a fallible predicate
-    ///
-    /// Returns an iterator of `Result`.
-    //
-    // TODO DIRAUTH consider moving this to tor-basic-utils or itertools or something.
-    fn try_filter<'r, F, E>(self, mut f: F) -> impl Iterator<Item = Result<I::Item, E>> + 'r
-    where
-        I: 'r,
-        F: FnMut(&I::Item) -> Result<bool, E> + 'r,
-    {
-        self.filter_map(move |item| match f(&item) {
-            Ok(false) => None,
-            Ok(true) => Some(Ok(item)),
-            Err(e) => Some(Err(e)),
-        })
-    }
-}
-
 #[ext(name = TryAddAssign)]
 pub(crate) impl<T: num_traits::CheckedAdd> T {
     /// `+=` but throws bug on overflow.
