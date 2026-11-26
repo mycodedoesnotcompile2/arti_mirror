@@ -65,7 +65,6 @@ use rusqlite::{
 };
 use saturating_time::SaturatingTime;
 use thiserror::Error;
-use tor_basic_utils::RngExt;
 use tor_error::{internal, into_internal};
 use tor_netdoc::doc::{authcert::AuthCert, netstatus::ConsensusFlavor};
 
@@ -455,22 +454,6 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
         })?;
         let raw = String::from_utf8(raw).map_err(into_internal!("utf-8 constraint violated?"))?;
         Ok(raw)
-    }
-
-    /// Calculates the [`Timestamp`] at which the authorities will be queried again.
-    ///
-    /// # Specifications
-    ///
-    /// * <https://spec.torproject.org/dir-spec/directory-cache-operation.html#download-ns-from-auth>
-    // XXX: Eventually replace with the types.rs thing.
-    pub(crate) fn ttl<R: Rng>(&self, rng: &mut R) -> Timestamp {
-        assert!(self.valid_after < self.fresh_until);
-        assert!(self.fresh_until < self.valid_until);
-
-        let offset = rng
-            .gen_range_checked(0..=((self.fresh_until - self.valid_after).as_secs() / 2))
-            .expect("invalid range?");
-        (self.fresh_until + Duration::from_secs(offset)).min(self.valid_until)
     }
 
     /// Returns the missing router descriptors for this consensus.
