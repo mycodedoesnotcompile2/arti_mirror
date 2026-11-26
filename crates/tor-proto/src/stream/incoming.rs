@@ -105,6 +105,11 @@ impl IncomingStream {
         &self.request
     }
 
+    /// Return the stream ID of this stream.
+    pub fn stream_id(&self) -> StreamId {
+        self.components.target.stream_id
+    }
+
     /// Accept this stream as a new [`DataStream`], and send the client a
     /// message letting them know the stream was accepted.
     ///

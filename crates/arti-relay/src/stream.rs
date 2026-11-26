@@ -17,6 +17,7 @@ use tor_rtcompat::{Runtime, SpawnExt as _};
 
 use futures::channel::mpsc;
 use futures::{Stream, StreamExt as _};
+use tracing::debug;
 
 // TODO(#2570): once we dust settles on the implementation,
 // we need to factor this out of the client module.
@@ -80,12 +81,15 @@ async fn handle_circuit_incoming_streams<R: Runtime>(
         if let Err(e) = runtime.spawn(async move {
             let res = match tor_stream.request() {
                 IncomingStreamRequest::Begin(_) => {
+                    debug!(stream_id = %tor_stream.stream_id(), "Incoming BEGIN stream request");
                     exit::handle_begin(runtime_clone, tor_stream, resolver.clone()).await
                 }
                 IncomingStreamRequest::BeginDir(_) => {
+                    debug!(stream_id = %tor_stream.stream_id(), "Incoming BEGIN_DIR stream request");
                     directory::handle_begin_dir(tor_stream, begin_dir_tx).await
                 }
                 IncomingStreamRequest::Resolve(_) => {
+                    debug!(stream_id = %tor_stream.stream_id(), "Incoming RESOLVE stream request");
                     dns::handle_resolve(tor_stream, resolver.clone()).await
                 }
                 s => Err(anyhow::anyhow!("unknown stream request kind {s:?}")),
