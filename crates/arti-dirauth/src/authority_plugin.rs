@@ -166,6 +166,16 @@ fn plugin_impl(args: CliArgs) -> Result<(), CliError> {
 /// Entrypoint for the Arti-in-C-Tor consensus method plugin
 pub fn plugin_main() {
     match (|| {
+        // Ideally the language would provide a way to do this, but it's unstable and in flux.
+        //  https://doc.rust-lang.org/nightly/unstable-book/compiler-flags/on-broken-pipe.html
+        //  https://github.com/rust-lang/rust/issues/97889#issuecomment-3982126714
+        //
+        // Testing this would be very complicated, but it's pretty trivial.
+        #[cfg(unix)]
+        unsafe {
+            libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+        }
+
         let args = <CliArgs as clap::Parser>::try_parse()
             .context("invalid arguments")
             .map_err(CliError::InvalidInputs)?;
