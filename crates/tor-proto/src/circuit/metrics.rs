@@ -84,19 +84,19 @@ impl CircuitMetrics {
                 "direction" => "backward",
             ),
             stream_requests_begin: metrics::counter!(
-                description: "Total number of exit stream requests received",
+                description: "Total number of stream requests received (exit, directory and DNS streams)",
                 unit: metrics::Unit::Count,
                 STREAM_REQUESTS_TOTAL,
                 "type" => "begin",
             ),
             stream_requests_begin_dir: metrics::counter!(
-                description: "Total number of directory requests received",
+                description: "Total number of stream requests received (exit, directory and DNS streams)",
                 unit: metrics::Unit::Count,
                 STREAM_REQUESTS_TOTAL,
                 "type" => "begin_dir",
             ),
             stream_requests_resolve: metrics::counter!(
-                description: "Total number of DNS query requests received",
+                description: "Total number of stream requests received (exit, directory and DNS streams)",
                 unit: metrics::Unit::Count,
                 STREAM_REQUESTS_TOTAL,
                 "type" => "resolve",
