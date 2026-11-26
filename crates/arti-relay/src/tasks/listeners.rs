@@ -49,7 +49,7 @@ pub(crate) async fn or_listener<R: Runtime>(
             Err(_) => WARN, "Dropping connection";
         );
 
-        let Ok((stream, remote_addr, local_addr)) = next else {
+        let Ok((stream, remote_addr, _local_addr)) = next else {
             // We should have logged the error above.
             continue;
         };
@@ -57,7 +57,7 @@ pub(crate) async fn or_listener<R: Runtime>(
         // This may be sensitive (for example if this is a client connecting to a guard).
         let remote_addr = Sensitive::new(remote_addr);
 
-        debug!("New incoming OR connection from {remote_addr} on local address {local_addr}");
+        debug!("New incoming OR connection from {remote_addr}");
 
         // Spawn a task to handle the incoming connection (for example the channel handshake).
         let chan_mgr = Arc::clone(&chan_mgr);
