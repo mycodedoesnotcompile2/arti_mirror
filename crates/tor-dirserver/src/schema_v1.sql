@@ -22,6 +22,9 @@ CREATE TABLE consensus(
     valid_after         INTEGER NOT NULL,
     fresh_until         INTEGER NOT NULL,
     valid_until         INTEGER NOT NULL,
+    -- When we store a consensus, we generate a random time until we will serve
+    -- it.  This is stored in the database to allow for proper resets/retries.
+    serve_until         INTEGER NOT NULL,
     FOREIGN KEY(docid) REFERENCES store(docid),
     CHECK(GLOB('*[^0-9A-F]*', sha3_256) == 0),
     CHECK(LENGTH(sha3_256) == 64),
@@ -30,7 +33,16 @@ CREATE TABLE consensus(
     CHECK(fresh_until >= 0),
     CHECK(valid_until >= 0),
     CHECK(valid_after < fresh_until),
-    CHECK(fresh_until < valid_until)
+    CHECK(fresh_until < valid_until),
+    -- Must be in the first half-interval after the consensus stops being fresh.
+    -- <https://spec.torproject.org/dir-spec/directory-cache-operation.html#download-ns-from-auth>
+    CHECK(
+        serve_until >= fresh_until
+        AND
+        serve_until <= fresh_until + (fresh_until - valid_after)/2
+        AND
+        serve_until <= valid_until
+    )
 ) STRICT;
 
 -- Stores consensus diffs.

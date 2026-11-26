@@ -361,6 +361,9 @@ pub(crate) struct ConsensusMeta<T> {
     /// The time after which this consensus stops being valid.
     pub valid_until: Timestamp,
 
+    /// The point in time until we will serve the consensus.
+    pub serve_until: Timestamp,
+
     /// The flavor of the consensus; determined at compile time.
     flavor: PhantomData<T>,
 }
@@ -408,7 +411,7 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
         // Select the most recent flavored consensus document from the database.
         let mut meta_stmt = tx.prepare_cached(sql!(
             "
-            SELECT docid, sha3_256, valid_after, fresh_until, valid_until
+            SELECT docid, sha3_256, valid_after, fresh_until, valid_until, serve_until
             FROM consensus
             WHERE
               flavor = :flavor
@@ -428,6 +431,7 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
                     valid_after: row.get(2)?,
                     fresh_until: row.get(3)?,
                     valid_until: row.get(4)?,
+                    serve_until: row.get(5)?,
                     flavor: Default::default(),
                 })
             },
@@ -638,14 +642,16 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
     /// This method *DOES NOT* compute any consensus diffs but populates
     /// associated meta tables such as `consensus_descriptor_member`
     /// and `consensus_authority_voter` properly.
-    pub(crate) fn insert<I>(
+    pub(crate) fn insert<I, R>(
         tx: &Transaction<'_>,
         encodings: I,
         (body, sigs): (&T::Body, &T::Signatures),
         data: &str,
+        rng: &mut R,
     ) -> Result<ConsensusMeta<T>, DatabaseError>
     where
         I: Iterator<Item = ContentEncoding>,
+        R: Rng,
     {
         // Insert a consensus into the consensus meta table.
         //
@@ -661,9 +667,9 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
         let mut cons_stmt = tx.prepare_cached(sql!(
             "
             INSERT INTO consensus
-            (docid, sha3_256, flavor, valid_after, fresh_until, valid_until)
+            (docid, sha3_256, flavor, valid_after, fresh_until, valid_until, serve_until)
             VALUES
-            (:docid, :sha3_256, :flavor, :valid_after, :fresh_until, :valid_until)
+            (:docid, :sha3_256, :flavor, :valid_after, :fresh_until, :valid_until, :serve_until)
             ON CONFLICT DO NOTHING
             "
         ))?;
@@ -717,6 +723,7 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
             valid_after: lifetime.valid_after.0.into(),
             fresh_until: lifetime.fresh_until.0.into(),
             valid_until: lifetime.valid_until.0.into(),
+            serve_until: body.ttl(rng),
             flavor: Default::default(),
         };
         cons_stmt.execute(named_params! {
@@ -725,6 +732,7 @@ impl<T: FlavoredConsensusUnverified> ConsensusMeta<T> {
             ":valid_after": meta.valid_after,
             ":fresh_until": meta.fresh_until,
             ":valid_until": meta.valid_until,
+            ":serve_until": meta.serve_until,
             ":flavor": T::flavor().name(),
         })?;
 
@@ -1621,6 +1629,7 @@ mod test {
             iter::once(ContentEncoding::Identity),
             (&body, &sigs),
             data,
+            &mut testing_rng(),
         )
         .unwrap();
 
@@ -1632,6 +1641,7 @@ mod test {
                 valid_after: body.preamble.lifetime.valid_after.0.into(),
                 fresh_until: body.preamble.lifetime.fresh_until.0.into(),
                 valid_until: body.preamble.lifetime.valid_until.0.into(),
+                serve_until: meta.serve_until, // This contains randomness.
                 flavor: Default::default()
             }
         );
@@ -1659,6 +1669,7 @@ mod test {
             valid_after: lifetime.valid_after.0.into(),
             fresh_until: lifetime.fresh_until.0.into(),
             valid_until: lifetime.valid_until.0.into(),
+            serve_until: todo!(), // FIXME by moving the test.
             flavor: Default::default(),
         };
         for _ in 0..10000 {

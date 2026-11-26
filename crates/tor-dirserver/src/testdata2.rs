@@ -38,6 +38,7 @@ use std::{
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::named_params;
+use tor_basic_utils::test_rng::testing_rng;
 use tor_checkable::TimeBound;
 use tor_dircommon::authority::{AuthorityContacts, AuthorityContactsBuilder};
 use tor_llcrypto::pk::rsa::RsaIdentity;
@@ -262,6 +263,7 @@ pub(crate) fn test_db() -> Pool<SqliteConnectionManager> {
         iter::once(ContentEncoding::Identity),
         (&plain_body, &plain_sigs),
         plain_data,
+        &mut testing_rng(),
     )
     .unwrap();
 
@@ -299,6 +301,7 @@ pub(crate) fn test_db() -> Pool<SqliteConnectionManager> {
         iter::once(ContentEncoding::Identity),
         (&md_body, &md_sigs),
         md_data,
+        &mut testing_rng(),
     )
     .unwrap();
 
