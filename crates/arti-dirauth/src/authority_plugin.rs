@@ -11,21 +11,25 @@ use anyhow::{Context as _, anyhow};
 use derive_deftly::{Deftly, define_derive_deftly};
 use digest::Digest as _;
 use educe::Educe;
+use itertools::Itertools as _;
+use paste::paste;
 
 use tor_checkable::TimeBound as _;
 use tor_dirauth::consensus;
-use tor_error::{Bug, ErrorReport as _, HasKind as _};
+use tor_error::{Bug, ErrorReport as _, HasKind as _, internal};
 use tor_llcrypto::d::Sha256;
 use tor_netdoc::{
-    doc::netstatus::ConsensusMethod,
+    derive_deftly_template_ItemValueParseable, derive_deftly_template_NetdocParseable,
+    doc::netstatus::{self, ConsensusMethod},
     doc::routerdesc::{RouterDesc, RouterDescUnverified},
     encode::{NetdocEncodable, encode_netdoc_unsigned},
-    parse2::{self, NetdocParseable},
-    types::{Base64Fingerprint, Ed25519Public, FixedB64, Iso8601TimeNoSp},
+    parse2::{self, NetdocParseable, NetdocParseableUnverified as _},
+    types::{Base64Fingerprint, Ed25519Public, Fingerprint, FixedB64, Iso8601TimeNoSp, Nickname},
 };
 
 #[macro_use]
 mod utils;
+mod compute_consensus;
 mod compute_mds;
 
 use utils::{CTorAnnotated, FilenameOrStdio, Writing};
@@ -73,6 +77,29 @@ enum CliOperation {
         /// Metadata out
         #[arg(long)]
         meta_out: FilenameOrStdio,
+    },
+
+    /// `compute-consensus`, "mode 3"
+    ComputeConsensus {
+        /// Trusted authority keys
+        #[arg(long)]
+        ids: FilenameOrStdio,
+
+        /// Votes
+        #[arg(long)]
+        votes: Vec<FilenameOrStdio>,
+
+        /// plain consensus out
+        #[arg(long)]
+        plain_out: FilenameOrStdio,
+
+        /// md consensus out
+        #[arg(long)]
+        md_out: FilenameOrStdio,
+
+        /// Nominal time (for verification), not passed by C Tor
+        #[arg(short = 't')]
+        nominal_time: Option<Iso8601TimeNoSp>,
     },
 
     /// Print the specification to stdout, in markdown format
@@ -129,6 +156,34 @@ fn plugin_impl(args: CliArgs) -> Result<(), CliError> {
             }
             mds_out.finish()?;
             meta_out.finish()?;
+            Ok(())
+        }
+        CliOperation::ComputeConsensus {
+            ids,
+            votes,
+            plain_out,
+            md_out,
+            nominal_time,
+        } => {
+            let votes: Vec<_> = votes.iter().map(|v| v.read_entire()).try_collect()?;
+            let votes: Vec<_> = votes.iter().map(|v| v.netdoc_parse2()).collect();
+            let outputs = compute_consensus::read_compute(
+                nominal_time.as_deref().copied().unwrap_or_else(|| {
+                    #[allow(clippy::disallowed_methods)] // we don't care about wasm here
+                    {
+                        SystemTime::now()
+                    }
+                }),
+                &ids.read_entire()?.netdoc_parse2(),
+                &votes,
+            )?;
+            macro_rules! output { { $flav:ident } => { paste! {
+                let mut out_file = [<$flav _out>].start_writing()?;
+                out_file.write_netdocs([&outputs.$flav])?;
+                out_file.finish()?;
+            } } }
+            output! { plain }
+            output! { md }
             Ok(())
         }
 

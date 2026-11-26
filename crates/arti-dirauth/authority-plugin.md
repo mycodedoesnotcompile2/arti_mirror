@@ -157,13 +157,13 @@ as per <https://gitlab.torproject.org/tpo/core/torspec/-/merge_requests/522>.
 Invocation
 
 ```
-plugin compute-consensus --ids <KEYFILE> \
+plugin compute-consensus --ids <IDS-FILE> \
        --votes <VOTEFILE> [--votes <VOTEFILE>...]
        --plain-out <PLAIN-OUT-FILE> \
        --md-out <MD-OUT-FILE>
 ```
 
-The `KEYFILE` file will contain zero or more lines, of the form:
+The `IDS-FILE` file will contain zero or more lines, of the form:
 `auth NICKNAME DIGEST`.
 
 * `NICKNAME` is an arbitrary ASCII string without spaces to identify an
