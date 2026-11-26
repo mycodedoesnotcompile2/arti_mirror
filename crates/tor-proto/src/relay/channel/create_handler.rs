@@ -96,7 +96,7 @@ pub struct CreateRequestHandler {
     /// Note: because this MPSC is not associated with any particular circuit or channel,
     /// it does not participate in the memquota system (see [crate::memquota]).
     #[debug(skip)]
-    circuit_stream_tx: mpsc::Sender<Box<dyn Stream<Item = IncomingStream> + Send + Sync + Unpin>>,
+    circuit_stream_tx: mpsc::Sender<<CircuitIncomingStreamReceiver as Stream>::Item>,
     /// The circuit metrics. It is shared with every circuit reactor.
     #[debug(skip)]
     metrics: Arc<CircuitMetrics>,
@@ -176,6 +176,12 @@ impl CreateRequestHandler {
         memquota: &ChannelAccount,
         circ_unique_id: UniqId,
     ) -> Result<(CreateResponse, RelayCircComponents), Destroy> {
+        debug!(
+            circ_uniq_id = %circ_unique_id,
+            cmd = %msg.cmd(),
+            "Handling circuit create request"
+        );
+
         let result = self
             .handle_create_inner(
                 runtime,
@@ -285,7 +291,10 @@ impl CreateRequestHandler {
         let mut circuit_stream_tx = self.circuit_stream_tx.clone();
         // Start the reactor in a task.
         let () = runtime.spawn(async move {
-            if let Err(e) = circuit_stream_tx.send(Box::new(incoming_streams)).await {
+            if let Err(e) = circuit_stream_tx
+                .send((circ_unique_id, Box::new(incoming_streams)))
+                .await
+            {
                 warn_report!(e, "IncomingStream handler disappeared?!");
                 // If we get here, it means the relay stream handler task has gone away,
                 // so there won't be anything handling the incoming streams.
@@ -633,7 +642,7 @@ impl<'a> NtorV3ServerKeys for NtorV3SecretKey<'a> {
 pub struct CircuitIncomingStreamReceiver {
     /// The receiver for the [`Stream`]s of `IncomingStream` of all circuits.
     ///
-    /// Receives one [`Stream`] (of tor streams) per circuit.
+    /// Receives one [`Stream`] (of tor streams) per circuit and the circuit unique ID.
     /// Each of these will be handled in a new task.
     circuit_stream_rx: mpsc::Receiver<<Self as Stream>::Item>,
 }
@@ -642,7 +651,10 @@ impl Stream for CircuitIncomingStreamReceiver {
     // TODO: it would be nice if we could return a type-erased Stream here
     // (impl Stream<...>), but impl Trait in associated types is unstable.
     // See rust issue #63063 <https://github.com/rust-lang/rust/issues/63063>
-    type Item = Box<dyn Stream<Item = IncomingStream> + Send + Sync + Unpin>;
+    type Item = (
+        UniqId,
+        Box<dyn Stream<Item = IncomingStream> + Send + Sync + Unpin>,
+    );
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,

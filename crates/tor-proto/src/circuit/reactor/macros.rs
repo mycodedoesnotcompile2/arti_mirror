@@ -54,7 +54,7 @@ derive_deftly::define_derive_deftly! {
             // May log at a higher level depending on the error kind.
             let msg = format!("{} shut down", ${tmeta(reactor_name) as str});
             match &result {
-                Ok(()) => tracing::trace!(
+                Ok(()) => tracing::debug!(
                     circ_uniq_id = %unique_id,
                     backward_circ_id = %self.circ_id,
                     "{msg}"

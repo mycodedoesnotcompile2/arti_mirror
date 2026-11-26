@@ -55,7 +55,8 @@ pub(super) fn encode_and_sign_router_desc(
             env!("CARGO_PKG_VERSION")
         ))),
         fingerprint: Some(keys.rsa_identity_kp.to_rsa_identity().into()),
-        tunnelled_dir_server: Some(Default::default()),
+        // TODO(relay): When BEGIN_DIR are fully supported, flip this to Some().
+        tunnelled_dir_server: None,
         proto: crate::supported_protocols(),
         uptime: Some(uptime.as_secs()),
         bandwidth: BandwidthConstructor {
@@ -202,7 +203,7 @@ mod test {
         assert_eq!(desc.router.socksport, 0);
         assert_eq!(desc.router.dirport, 0);
         assert_eq!(desc.contact, info.contact);
-        assert!(desc.tunnelled_dir_server.is_some());
+        assert!(desc.tunnelled_dir_server.is_none());
         // TODO(relay): For now we don't support it.
         assert!(desc.hidden_service_dir.is_none());
         assert_eq!(

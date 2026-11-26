@@ -59,7 +59,7 @@ where
     where
         F: FnOnce() -> SystemTime,
     {
-        trace!(stream_id = %self.unique_id(), "sending versions");
+        trace!(channel_id = %self.unique_id(), "sending versions");
         // Send versions cell
         let version_cell = AnyChanCell::new(
             None,
@@ -83,7 +83,7 @@ where
     async fn recv_versions_cell(&mut self) -> Result<u16> {
         // Get versions cell.
         // Get versions cell.
-        trace!(stream_id = %self.unique_id(), "waiting for versions");
+        trace!(channel_id = %self.unique_id(), "waiting for versions");
         // This can be None if we've reached EOF or any type of I/O error on the underlying TCP or
         // TLS stream. Either case, it is unexpected.
         let Some(cell) = self.framed_tls().next().await.transpose()? else {
@@ -96,13 +96,13 @@ where
                 "Unexpected cell, expecting a VERSIONS cell",
             )));
         };
-        trace!(stream_id = %self.unique_id(), "received their VERSIONS {:?}", their_versions);
+        trace!(channel_id = %self.unique_id(), "received their VERSIONS {:?}", their_versions);
 
         // Determine which link protocol we negotiated.
         let link_protocol = their_versions
             .best_shared_link_protocol(LINK_PROTOCOLS)
             .ok_or_else(|| Error::HandshakeProto("No shared link protocols".into()))?;
-        trace!(stream_id = %self.unique_id(), "negotiated version {}", link_protocol);
+        trace!(channel_id = %self.unique_id(), "negotiated version {}", link_protocol);
 
         Ok(link_protocol)
     }
@@ -528,7 +528,8 @@ impl<
         let peer_target = build_filtered_chan_target(self.target_method.take(), &peer_info);
 
         debug!(
-            stream_id = %self.unique_id,
+            channel_id = %self.unique_id,
+            link_protocol = self.link_protocol,
             "Completed handshake without authentication to {}", peer_info
         );
 
@@ -607,7 +608,8 @@ impl<
         channel_mode.check_agrees_with_type(channel_type)?;
 
         debug!(
-            stream_id = %self.unique_id,
+            channel_id = %self.unique_id,
+            link_protocol = self.link_protocol,
             "Completed handshake with peer: {}", peer_info
         );
 

@@ -7,7 +7,7 @@ mod exit;
 use dns::resolver::DnsResolver;
 
 use tor_error::warn_report;
-use tor_proto::circuit::CircHopSyncView;
+use tor_proto::circuit::{CircHopSyncView, UniqId};
 use tor_proto::relay::CircuitIncomingStreamReceiver;
 use tor_proto::stream::{
     IncomingStream, IncomingStreamRequest, IncomingStreamRequestContext,
@@ -17,6 +17,7 @@ use tor_rtcompat::{Runtime, SpawnExt as _};
 
 use futures::channel::mpsc;
 use futures::{Stream, StreamExt as _};
+use tracing::debug;
 
 // TODO(#2570): once we dust settles on the implementation,
 // we need to factor this out of the client module.
@@ -48,12 +49,13 @@ pub(crate) async fn handle_incoming_streams<R: Runtime>(
     mut stream_rx: CircuitIncomingStreamReceiver,
     resolver: DnsResolver,
 ) -> anyhow::Result<void::Void> {
-    while let Some(stream) = stream_rx.next().await {
+    while let Some((circ_uniq_id, stream)) = stream_rx.next().await {
         // Each circuit gets its own stream-handling task
         let rt = runtime.clone();
         let begin_dir_tx = begin_dir_tx.clone();
         runtime.spawn(handle_circuit_incoming_streams(
             rt,
+            circ_uniq_id,
             stream,
             begin_dir_tx,
             resolver.clone(),
@@ -67,6 +69,7 @@ pub(crate) async fn handle_incoming_streams<R: Runtime>(
 /// arriving on a particular circuit.
 async fn handle_circuit_incoming_streams<R: Runtime>(
     runtime: R,
+    circ_uniq_id: UniqId,
     mut stream: impl Stream<Item = IncomingStream> + Unpin,
     begin_dir_tx: mpsc::Sender<tor_proto::Result<DataStream>>,
     resolver: DnsResolver,
@@ -80,12 +83,15 @@ async fn handle_circuit_incoming_streams<R: Runtime>(
         if let Err(e) = runtime.spawn(async move {
             let res = match tor_stream.request() {
                 IncomingStreamRequest::Begin(_) => {
+                    debug!(%circ_uniq_id, stream_id = %tor_stream.stream_id(), "Incoming BEGIN stream request");
                     exit::handle_begin(runtime_clone, tor_stream, resolver.clone()).await
                 }
                 IncomingStreamRequest::BeginDir(_) => {
+                    debug!(%circ_uniq_id, stream_id = %tor_stream.stream_id(), "Incoming BEGIN_DIR stream request");
                     directory::handle_begin_dir(tor_stream, begin_dir_tx).await
                 }
                 IncomingStreamRequest::Resolve(_) => {
+                    debug!(%circ_uniq_id, stream_id = %tor_stream.stream_id(), "Incoming RESOLVE stream request");
                     dns::handle_resolve(tor_stream, resolver.clone()).await
                 }
                 s => Err(anyhow::anyhow!("unknown stream request kind {s:?}")),

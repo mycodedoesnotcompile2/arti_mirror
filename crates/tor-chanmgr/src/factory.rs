@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use crate::event::ChanMgrEventSender;
 use async_trait::async_trait;
 use tor_error::{HasKind, HasRetryTime, internal};
-use tor_linkspec::{HasChanMethod, OwnedChanTarget, PtTransportName};
+use tor_linkspec::{HasChanMethod, HasRelayIds, OwnedChanTarget, PtTransportName};
 use tor_proto::channel::Channel;
 use tor_proto::memquota::ChannelAccount;
 use tracing::{debug, instrument};
@@ -113,7 +113,13 @@ where
         memquota: ChannelAccount,
     ) -> crate::Result<Arc<tor_proto::channel::Channel>> {
         debug!("Attempting to open a new channel from {peer}");
-        self.accept_from_transport(peer, stream, memquota).await
+        let chan = self.accept_from_transport(peer, stream, memquota).await?;
+        debug!(
+            channel_id = %chan.unique_id(),
+            authenticated = HasRelayIds::has_any_identity(chan.as_ref()),
+            "Opened a new channel from {peer}"
+        );
+        Ok(chan)
     }
 }
 

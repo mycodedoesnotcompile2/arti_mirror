@@ -298,9 +298,13 @@ impl DnsCache {
     ///
     /// This is an O(n) operation, so it should be used sparingly.
     /// Currently called on a timer from the main loop of the reactor.
-    fn remove_expired(&mut self, now: Instant) {
+    ///
+    /// Returns the number of entries removed.
+    fn remove_expired(&mut self, now: Instant) -> usize {
+        let before = self.inner.len();
         self.inner.retain(|_, res| !res.is_expired(now));
         self.purge_expired_at = Self::next_expired_purge(now);
+        before - self.inner.len()
     }
 
     /// When remove_expired() should be called next to purge leftover expired entries.
@@ -547,8 +551,9 @@ impl<R: Runtime, M: MockableAsyncResolver> DnsResolverReactor<R, M> {
             select_biased! {
                 () = self.runtime.sleep_until(self.cache.purge_expired_at).fuse() => {
                     let now = self.runtime.now();
-                    debug!("Purging expired entries from DNS cache...");
-                    self.cache.remove_expired(now);
+                    let purged = self.cache.remove_expired(now);
+                    let remaining = self.cache.inner.len();
+                    debug!(purged, remaining, "Purged expired entries from DNS cache");
                 },
                 res = self.pending.inflight.join_next().fuse() => {
                     // inflight can never yield None because
@@ -1003,7 +1008,7 @@ mod test {
             // and the logs are preserved across runs (each test would need to know
             // its position in the MockRuntime::test_with_various's loop to be able
             // to accurately assert how many of these logs there should be)
-            assert!(logs_contain("Purging expired entries from DNS cache"));
+            assert!(logs_contain("Purged expired entries from DNS cache"));
         });
     }
 
