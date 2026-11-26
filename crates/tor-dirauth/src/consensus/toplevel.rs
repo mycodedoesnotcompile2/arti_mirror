@@ -301,7 +301,6 @@ pub(crate) mod test {
         let sig_hashes = &sigs.hashes;
 
         let votes = (0..n_votes)
-            .into_iter()
             .map(move |vnum| {
                 let mut vote = vote_base.clone();
                 populate_md_digests_for_method(method, &mut vote);
