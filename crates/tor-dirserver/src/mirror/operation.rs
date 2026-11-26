@@ -518,6 +518,11 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
         let ttl = now + UNVERIFIED_TTL;
 
+        // TODO DIRMIRROR: Ideally, we should check here whether or not we
+        // already have that consensus in the database and return a no progress
+        // error if that is the case, so we handle consensus computation
+        // failures properly.  This probably requires more thought though.
+
         // And store it.
         *data = ConsensusBoundData::Unverified {
             consensus,
