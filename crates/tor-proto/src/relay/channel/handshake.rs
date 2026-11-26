@@ -134,7 +134,7 @@ impl<
         let slog_digest =
             slog_digest.ok_or_else(|| internal!("Asked for SLOG, but `None` returned?"))?;
 
-        trace!(stream_id = %self.unique_id,
+        trace!(channel_id = %self.unique_id,
             "received handshake, ready to verify.",
         );
 

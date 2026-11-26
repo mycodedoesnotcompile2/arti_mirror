@@ -235,7 +235,7 @@ impl SpecialOutgoing {
 /// Reactor for some other reason.
 impl<R: Runtime> fmt::Display for Reactor<R> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(&self.unique_id, f)
+        fmt::Display::fmt(&self.unique_id, f)
     }
 }
 

@@ -101,11 +101,11 @@ impl<
     {
         match &self.target_method {
             Some(method) => debug!(
-                stream_id = %self.unique_id,
+                channel_id = %self.unique_id,
                 "starting Tor handshake with {:?}",
                 method
             ),
-            None => debug!(stream_id = %self.unique_id, "starting Tor handshake"),
+            None => debug!(channel_id = %self.unique_id, "starting Tor handshake"),
         }
         // Send versions cell.
         let (versions_flushed_at, versions_flushed_wallclock) =
@@ -130,7 +130,7 @@ impl<
             versions_flushed_wallclock,
         );
 
-        trace!(stream_id = %self.unique_id, "received handshake, ready to verify.");
+        trace!(channel_id = %self.unique_id, "received handshake, ready to verify.");
 
         Ok(UnverifiedClientChannel {
             inner: UnverifiedInitiatorChannel {
@@ -246,7 +246,7 @@ impl<
     {
         // Send the NETINFO message.
         let netinfo = msg::Netinfo::from_client(peer_addr.netinfo_addr());
-        trace!(stream_id = %self.inner.unique_id, "Sending netinfo cell.");
+        trace!(channel_id = %self.inner.unique_id, "Sending netinfo cell.");
         self.inner.framed_tls.send(netinfo.into()).await?;
 
         // This could be a client Guard so it is sensitive.
