@@ -176,6 +176,12 @@ impl CreateRequestHandler {
         memquota: &ChannelAccount,
         circ_unique_id: UniqId,
     ) -> Result<(CreateResponse, RelayCircComponents), Destroy> {
+        debug!(
+            circ_uniq_id = %circ_unique_id,
+            cmd = %msg.cmd(),
+            "Handling circuit create request"
+        );
+
         let result = self
             .handle_create_inner(
                 runtime,

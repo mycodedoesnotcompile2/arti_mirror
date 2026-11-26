@@ -529,6 +529,7 @@ impl<
 
         debug!(
             channel_id = %self.unique_id,
+            link_protocol = self.link_protocol,
             "Completed handshake without authentication to {}", peer_info
         );
 
@@ -608,6 +609,7 @@ impl<
 
         debug!(
             channel_id = %self.unique_id,
+            link_protocol = self.link_protocol,
             "Completed handshake with peer: {}", peer_info
         );
 
