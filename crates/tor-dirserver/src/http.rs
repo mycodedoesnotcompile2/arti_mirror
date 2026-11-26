@@ -202,6 +202,10 @@ impl HttpServer {
                                 }
                                 // Convert Request::<Incoming> to Request::<()>.
                                 let requ = requ.map(|_| ());
+                                tracing::debug!(
+                                    uri = %requ.uri(),
+                                    "Incoming directory GET request"
+                                );
 
                                 // Convert the Box<[u8]> to something hyper accepts.
                                 backend
