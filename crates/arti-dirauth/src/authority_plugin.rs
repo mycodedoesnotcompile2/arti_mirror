@@ -41,6 +41,10 @@ Latest version:
 "
 )]
 struct CliArgs {
+    /// Log level, defaults to DEBUG
+    #[arg(long, default_value = "debug")]
+    log_level: tracing_subscriber::filter::LevelFilter,
+
     /// Operation verb and its arguments
     #[command(subcommand)]
     op: CliOperation,
@@ -146,7 +150,27 @@ pub fn plugin_main() {
             .context("invalid arguments")
             .map_err(CliError::InvalidInputs)?;
 
-        // TODO DIRAUTH set up logging
+        {
+            use tracing_subscriber::{
+                self as ts,
+                layer::{Layer as _, SubscriberExt as _},
+                util::SubscriberInitExt as _,
+            };
+
+            ts::registry()
+                .with(
+                    ts::fmt::layer()
+                        .compact()
+                        .with_ansi(false)
+                        .with_target(false)
+                        .with_writer(std::io::stderr)
+                        .with_timer(ts::fmt::time::SystemTime)
+                        .with_filter(args.log_level),
+                )
+                .try_init()
+                .context("set up logging")
+                .map_err(CliError::OperationalError)?;
+        }
 
         plugin_impl(args)
     })() {
