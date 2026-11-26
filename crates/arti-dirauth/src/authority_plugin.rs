@@ -41,6 +41,10 @@ Latest version:
 "
 )]
 struct CliArgs {
+    /// Log level, defaults to DEBUG
+    #[arg(long, default_value = "debug")]
+    log_level: tracing_subscriber::filter::LevelFilter,
+
     /// Operation verb and its arguments
     #[command(subcommand)]
     op: CliOperation,
@@ -82,6 +86,14 @@ enum CliOperation {
     // Our help output has a link to the rendered version in gitlab
     // (`after_help` attribute on `CliArgs`)
     DumpSpec {},
+
+    /// Test a log message at each log level
+    //
+    // There is no automatically run test for this.  Doing it in `#[test]` is complicated.
+    // It would involve forking and re-invoking, because the tracing logging is a global.
+    // We'd also need to somehow capture ourselves what *actually* goes to stderr,
+    // bypassing #[test]'s stderr capturing arrangements.
+    TestLogging {},
 }
 
 /// Top-level error - program exits with this, or `Ok(())`
@@ -136,17 +148,59 @@ fn plugin_impl(args: CliArgs) -> Result<(), CliError> {
             print!("{}", include_str!("../authority-plugin.md"));
             Ok(())
         }
+
+        CliOperation::TestLogging {} => {
+            macro_rules! l { { $level:ident } => {
+                tracing::$level!("log message, level {}", stringify!($level));
+            } }
+            l!(trace);
+            l!(debug);
+            l!(info);
+            l!(warn);
+            l!(error);
+            Ok(())
+        }
     }
 }
 
 /// Entrypoint for the Arti-in-C-Tor consensus method plugin
 pub fn plugin_main() {
     match (|| {
+        // Ideally the language would provide a way to do this, but it's unstable and in flux.
+        //  https://doc.rust-lang.org/nightly/unstable-book/compiler-flags/on-broken-pipe.html
+        //  https://github.com/rust-lang/rust/issues/97889#issuecomment-3982126714
+        //
+        // Testing this would be very complicated, but it's pretty trivial.
+        #[cfg(unix)]
+        unsafe {
+            libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+        }
+
         let args = <CliArgs as clap::Parser>::try_parse()
             .context("invalid arguments")
             .map_err(CliError::InvalidInputs)?;
 
-        // TODO DIRAUTH set up logging
+        {
+            use tracing_subscriber::{
+                self as ts,
+                layer::{Layer as _, SubscriberExt as _},
+                util::SubscriberInitExt as _,
+            };
+
+            ts::registry()
+                .with(
+                    ts::fmt::layer()
+                        .compact()
+                        .with_ansi(false)
+                        .with_target(false)
+                        .with_writer(std::io::stderr)
+                        .with_timer(ts::fmt::time::SystemTime)
+                        .with_filter(args.log_level),
+                )
+                .try_init()
+                .context("set up logging")
+                .map_err(CliError::OperationalError)?;
+        }
 
         plugin_impl(args)
     })() {
