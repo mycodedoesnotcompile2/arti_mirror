@@ -1526,9 +1526,7 @@ mod test {
             )
             .unwrap();
 
-        engine
-            .load_consensus(&pool, &mut data, time)
-            .unwrap();
+        engine.load_consensus(&pool, &mut data, time).unwrap();
 
         // El-cheapo assert_eq due to lack of PartialEq for tor-netdoc poc.
         match data {
@@ -1789,9 +1787,7 @@ mod test {
             .unwrap()
             .unwrap();
         assert_eq!(state, State::LoadConsensus);
-        engine
-            .load_consensus(&pool, &mut data, now)
-            .unwrap();
+        engine.load_consensus(&pool, &mut data, now).unwrap();
         assert!(matches!(data, ConsensusBoundData::Verified { .. }));
     }
 

@@ -306,9 +306,9 @@ mod test {
     #![allow(clippy::string_slice)] // See arti#2571
     //! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
 
-    use tor_basic_utils::test_rng::testing_rng;
-    use crate::testdata2;
     use super::*;
+    use crate::testdata2;
+    use tor_basic_utils::test_rng::testing_rng;
 
     /// Tests whether the timeout computation lies within the proper interval.
     ///
