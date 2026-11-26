@@ -17,6 +17,7 @@
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    convert::Infallible,
     fmt::Debug,
     hash::Hash,
     marker::PhantomData,
@@ -33,7 +34,7 @@ use rusqlite::Transaction;
 use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncReadCompatExt;
-use tor_checkable::TimeBound;
+use tor_checkable::{TimeBound, TimeRangeBound};
 use tor_dirclient::{
     Error as DirClientError, RequestError, RequestFailedError,
     request::{
@@ -62,8 +63,8 @@ use crate::{
         Sha1, Sha256, Timestamp,
     },
     types::{
-        FlavoredConsensusUnverified, FlavoredDescriptor, FlavoredDescriptorMd,
-        FlavoredDescriptorPlain,
+        FlavoredConsensusBody, FlavoredConsensusUnverified, FlavoredDescriptor,
+        FlavoredDescriptorMd, FlavoredDescriptorPlain,
     },
 };
 
@@ -314,13 +315,11 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // a few database queries, as well as the current time of course.
         let state = match data {
             // ConsensusBoundData::None means that we currently have no
-            // consensus in memory.  This may be the case because we just
-            // started up or because we just downloaded, validated, and inserted
-            // a consensus into the database and reset ConsensusBoundData to
-            // None afterwards.
+            // consensus in memory.  This is the case if we have just started
+            // this run of the finite state machine.
             ConsensusBoundData::None => {
                 // Check whether there is a valid consensus in the database at all.
-                match self.recent_consensus(tx, now)? {
+                match self.fresh_consensus(tx, now)? {
                     // Some consensus means we can load it.
                     Some(_) => State::LoadConsensus,
 
@@ -354,10 +353,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             ConsensusBoundData::Unverified { .. } => State::FetchConsensus,
 
             // ConsensusBoundData::Verified means that we have successfully
-            // loaded a recent valid consensus from the database using
-            // State::LoadConsensus.  Depending on this, we download the missing
-            // network documents (descriptors) from a directory authority, if
-            // any.
+            // loaded a recent valid consensus from the database.
             ConsensusBoundData::Verified {
                 consensus,
                 ttl,
@@ -442,7 +438,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
             State::LoadConsensus => self.load_consensus(pool, data, now, rng),
             State::FetchConsensus => Ok(self.fetch_consensus(data, endpoint, now).await?),
             State::AuthCerts => self.auth_certs(pool, data, endpoint, now).await,
-            State::StoreConsensus => self.store_consensus(pool, data, now),
+            State::StoreConsensus => self.store_consensus(pool, data, now, rng),
             State::Descriptors => self.descriptors(pool, data, endpoint, now).await,
             State::Hibernate => self.hibernate(data, now).await,
         }
@@ -468,7 +464,7 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // In this case, it is probably better to return a bug, as external
         // applications arbitrarily modifying the database while we are running
         // leaves too much room for wrong/weird behavior.
-        let consensus = db::read_tx(pool, |tx| self.recent_consensus(tx, now))??
+        let consensus = db::read_tx(pool, |tx| self.fresh_consensus(tx, now))??
             .ok_or_else(|| internal!("database externally modified?"))?;
         let ttl = consensus.ttl(rng);
         let futile = Box::new(FutileDescriptors::default());
@@ -635,16 +631,15 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
     }
 
     /// Verifies a consensus and inserts it into the database.
-    fn store_consensus(
+    ///
+    /// It also utilizes the consensus it just inserted.
+    fn store_consensus<R: Rng>(
         &self,
         pool: &Pool<SqliteConnectionManager>,
         data: &mut ConsensusBoundData<T>,
         now: Timestamp,
+        rng: &mut R,
     ) -> Result<(), OperationError> {
-        // It is fine to replace data with ConsensusBoundData::None because in
-        // both cases, the following state of this will always be LoadConsensus
-        // or FetchConsensus, both of them no longer requiring the previous data.
-        //
         // Yes, we want to explicitly discard this in the case of a recoverable
         // error in order to retry again by fetching a new consensus from a
         // different authority.
@@ -657,17 +652,25 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         // diffs.  However, this is a CPU intensive task and needs further
         // coordination with the orport developers.  See arti#2706
 
-        db::rw_tx(pool, |tx| {
+        let meta = db::rw_tx(pool, |tx| {
             let certs_already = self.certs_already(tx, now)?;
             let (verified, sigs) = self.verify_consensus(unverified, &certs_already, now)?;
-            ConsensusMeta::<T>::insert(
+            let meta = ConsensusMeta::<T>::insert(
                 tx,
                 self.encodings.iter().copied(),
                 (&verified, &sigs),
                 &raw,
             )?;
-            Ok::<_, OperationError>(())
-        })?
+            Ok::<_, OperationError>(meta)
+        })??;
+
+        *data = ConsensusBoundData::Verified {
+            consensus: meta,
+            ttl: meta.ttl(rng),
+            futile: Box::new(FutileDescriptors::default()),
+        };
+
+        Ok(())
     }
 
     /// Downloads, verifies, and inserts the descriptors associated with the
@@ -899,11 +902,15 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
         Ok((resp, parsed))
     }
 
-    /// Queries and validates the most recent consensus from the database.
+    /// Queries and validates the most recent and still fresh consensus from the
+    /// database.
     ///
-    /// Effectively a wrapper around [`StaticEngine::verify_consensus()`] with
-    /// the data obtained from the database.
-    fn recent_consensus(
+    /// This is a bit stricter in terms of timeliness than one might expect.
+    /// It only returns a consensus if and only if `now` lies exactly inside
+    /// valid-after and fresh-until.
+    ///
+    // TODO 2881: Explain why this matters.
+    fn fresh_consensus(
         &self,
         tx: &Transaction<'_>,
         now: Timestamp,
@@ -925,8 +932,21 @@ impl<T: FlavoredConsensusUnverified> StaticEngine<T> {
 
         let certs_already = self.certs_already(tx, now)?;
 
-        match self.verify_consensus(unverified, &certs_already, now) {
-            Ok(_) => Ok(Some(meta)),
+        match unverified.verify(self.authorities.v3idents(), &certs_already) {
+            Ok(verified) => {
+                // Only if now is exactly between valid-after and fresh-until.
+                let meta = TimeRangeBound::build_intersect(move |times| {
+                    let body = verified.unwrap_with(times);
+                    let lifetime = body.lifetime();
+                    TimeRangeBound::new((), lifetime.valid_after.0..=lifetime.fresh_until.0)
+                        .unwrap_with(times);
+                    Ok::<_, Infallible>(meta)
+                })
+                .expect("infallible should not fail")
+                .if_valid_at(&now.into())
+                .ok();
+                Ok(meta)
+            }
             Err(e) => {
                 // TODO DIRMIRROR: Perhaps we should remove it?
                 debug!("ignoring invalid consensus in database: {meta:?} {e}");
@@ -1764,6 +1784,10 @@ mod test {
                 DELETE FROM consensus_descriptor_member;
                 DELETE FROM consensus_authority_voter;
                 DELETE FROM consensus;
+
+                -- Otherwise we will not transition into State::Descriptors
+                -- because we have all descriptors.
+                DELETE FROM descriptor;
                 "
             ))
             .unwrap();
@@ -1773,10 +1797,22 @@ mod test {
             .unwrap()
             .unwrap();
         assert_eq!(state, State::StoreConsensus);
-        engine.store_consensus(&pool, &mut data, now).unwrap();
-        assert!(matches!(&data, ConsensusBoundData::None));
+        engine
+            .store_consensus(&pool, &mut data, now, &mut testing_rng())
+            .unwrap();
+        assert!(matches!(&data, ConsensusBoundData::Verified { .. }));
 
-        // Verify that it got inserted.
+        // Verify that it loaded.
+        let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state, State::Descriptors);
+
+        // If we now discard ConsensusBoundData and load again, it should
+        // still yield the same result.  This may happen if we suddenly restart
+        // the entire process.
+        let data_prev = data;
+        let mut data = ConsensusBoundData::None;
         let state = db::read_tx(&pool, |tx| engine.determine_state(tx, &data, now))
             .unwrap()
             .unwrap();
@@ -1784,7 +1820,23 @@ mod test {
         engine
             .load_consensus(&pool, &mut data, now, &mut testing_rng())
             .unwrap();
-        assert!(matches!(data, ConsensusBoundData::Verified { .. }));
+        // Ensure that the loaded consensus after a full reset is equal to the
+        // previous one.  Not necessarily guaranteed but it happens to be the
+        // case in our test because we assume that the database has not been
+        // touched in the meantime.
+        match (data, data_prev) {
+            (
+                ConsensusBoundData::Verified {
+                    consensus: meta1, ..
+                },
+                ConsensusBoundData::Verified {
+                    consensus: meta2, ..
+                },
+            ) => {
+                assert_eq!(meta1, meta2);
+            }
+            _ => panic!("meta1 != meta2 and/or not verified?"),
+        }
     }
 
     /// Agnostic test for the descriptor state.
