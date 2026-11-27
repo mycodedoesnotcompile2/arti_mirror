@@ -38,6 +38,9 @@ tracing = "0.1.44"
 visibility = { version = "0.1.1", optional = true }
 void = "1"
 
+[target.'cfg(target_os = "openbsd")'.dependencies]
+libc = "0.2.191"
+
 [dev-dependencies]
 rand = "0.10.3"
 safelog = { path = "../safelog", version = "0.10.1" }
