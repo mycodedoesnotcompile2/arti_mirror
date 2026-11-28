@@ -512,15 +512,13 @@ impl<R: Runtime, F: ForwardHandler + ControlHandler, B: BackwardHandler + Contro
 
     /// Helper for [`run`](Self::run).
     pub(crate) async fn run_inner(&mut self) -> StdResult<(), ReactorError> {
-        self.metrics.circuit_opened();
+        // This guard can be dropped if the task panics or if this future is cancelled,
+        // in which case the close reason will be recorded as "Unknown".
+        let guard = self.metrics.circuit_opened();
 
         let result = self.run_reactors().await;
 
-        // TODO(relay): Use a DropGuard design here to always call this even if
-        // run_reactors() above panics. I think circuit_opened() would need to send back
-        // that such guard and we would only need to set the returned result into it and
-        // then once dropped, we get our metrics all taken care of.
-        self.metrics.circuit_closed(&result);
+        guard.circuit_closed(&result);
 
         result
     }
