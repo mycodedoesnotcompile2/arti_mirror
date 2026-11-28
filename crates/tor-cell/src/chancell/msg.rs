@@ -802,10 +802,8 @@ pub struct PaddingNegotiate {
     /// Whether to start or stop padding
     command: PaddingNegotiateCmd,
     /// Suggested lower-bound value for inter-packet timeout in msec.
-    // TODO(nickm) is that right?
     ito_low_ms: u16,
     /// Suggested upper-bound value for inter-packet timeout in msec.
-    // TODO(nickm) is that right?
     ito_high_ms: u16,
 }
 impl PaddingNegotiate {
@@ -839,6 +837,21 @@ impl PaddingNegotiate {
             ito_low_ms: 0,
             ito_high_ms: 0,
         }
+    }
+
+    /// Return the command of this message.
+    pub fn command(&self) -> PaddingNegotiateCmd {
+        self.command
+    }
+
+    /// Return the lower-bound value of the inter-packet timeout.
+    pub fn ito_low_ms(&self) -> u16 {
+        self.ito_low_ms
+    }
+
+    /// Return the upper-bound value of the inter-packet timeout.
+    pub fn ito_high_ms(&self) -> u16 {
+        self.ito_high_ms
     }
 
     /// Construct from the three fields: command, low_ms, high_ms, as a tuple

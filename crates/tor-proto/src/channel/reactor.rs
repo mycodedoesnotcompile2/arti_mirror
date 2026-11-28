@@ -621,8 +621,17 @@ impl<R: Runtime> Reactor<R> {
 
             CreatedFast(_) | Created2(_) => self.deliver_created(circid, msg),
 
+            // Same guard as CREATE*, only the relay side of a channel handles this. With
+            // a create handler, it implies we are a relay.
+            #[cfg(feature = "relay")]
+            PaddingNegotiate(msg) if self.create_request_handler.is_some() => {
+                self.handle_padding_negotiate(&msg)
+            }
+
             // These are always ignored.
             Padding(_) | Vpadding(_) => Ok(()),
+
+            // Unexpected or unhandled cell.
             _ => Err(Error::ChanProto(format!("Unexpected cell: {msg:?}"))),
         }
     }
@@ -673,6 +682,29 @@ impl<R: Runtime> Reactor<R> {
             )),
             CircEnt::DestroySent(hc) => hc.receive_cell(),
         }
+    }
+
+    /// Handle a [`PaddingNegotiate`] cell in `msg` sent by a client.
+    #[cfg(feature = "relay")]
+    fn handle_padding_negotiate(&mut self, msg: &PaddingNegotiate) -> Result<()> {
+        match msg.command() {
+            tor_cell::chancell::msg::PaddingNegotiateCmd::START => {
+                // TODO(relay): Use the consensus values instead of the spec defaults.
+                let parameters = padding::Parameters::default_padding()
+                    .raised_to_requested(msg.ito_low_ms(), msg.ito_high_ms());
+                self.padding_timer.as_mut().reconfigure(&parameters)?;
+                self.padding_timer.as_mut().enable();
+            }
+            tor_cell::chancell::msg::PaddingNegotiateCmd::STOP => {
+                self.padding_timer.as_mut().disable();
+            }
+            cmd => {
+                return Err(Error::ChanProto(format!(
+                    "Unknown PADDING_NEGOTIATE command: {cmd}"
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Handle a CREATE* cell `msg`.

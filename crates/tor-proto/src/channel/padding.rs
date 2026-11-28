@@ -185,6 +185,27 @@ impl Parameters {
             high: 0.into(),
         }
     }
+
+    /// Return the modified parameters by using the max between the requested parameters
+    /// and ours. And then clamp them to `nf_ito_low` and `nf_ito_high` consensus
+    /// parameters.
+    ///
+    /// Both values are capped at the max value defined by the spec (60 secs). This is
+    /// also what C-tor does.
+    #[cfg(feature = "relay")]
+    pub(crate) fn raised_to_requested(&self, low_ms: u16, high_ms: u16) -> Self {
+        /// Highest requested timeout that we honor, in milliseconds, for both low and high.
+        const MAX_REQUESTED_MS: u32 = 60_000;
+
+        let requested_low = u32::from(low_ms).min(MAX_REQUESTED_MS);
+        let requested_high = u32::from(high_ms).min(MAX_REQUESTED_MS);
+        let low = self.low.as_millis().max(requested_low);
+        let high = self.high.as_millis().max(requested_high).max(low);
+        Parameters {
+            low: low.into(),
+            high: high.into(),
+        }
+    }
 }
 
 /// Timing parameters, "compiled" into a form which can be sampled more efficiently
