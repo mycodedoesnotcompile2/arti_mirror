@@ -49,6 +49,7 @@ members = [
     "crates/tor-cert",
     "crates/tor-key-forge",
     "crates/tor-hscrypto",
+    "crates/tor-hsdir",
     "crates/tor-socksproto",
     "crates/tor-linkspec",
     "crates/tor-cell",
