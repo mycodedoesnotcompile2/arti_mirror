@@ -1,5 +1,7 @@
 //! Metrics for circuits.
 
+use std::sync::Arc;
+
 use metrics::Counter;
 use tor_error::HasKind as _;
 
@@ -105,25 +107,16 @@ impl CircuitMetrics {
     }
 
     /// Count a circuit that opened.
-    pub(crate) fn circuit_opened(&self) {
+    ///
+    /// Returns a guard that, when dropped, will count that the circuit closed.
+    /// You can provide the reason for the closure to [`CircuitCloseGuard::circuit_closed()`].
+    //
+    // This awkwardly requires `Arc<Self>` because how we use it in `Reactor::run_inner()` won't let
+    // us just borrow `Self`, since borrowing `Self` means that `Reactor` cannot call any of its
+    // methods that take `&mut Reactor`.
+    pub(crate) fn circuit_opened(self: &Arc<Self>) -> CircuitCloseGuard {
         self.circuit_opened.increment(1);
-    }
-
-    /// Count a circuit that closed using the error type to report the closed reason.
-    pub(crate) fn circuit_closed(&self, result: &Result<(), ReactorError>) {
-        match result {
-            Ok(()) | Err(ReactorError::Shutdown) => self.circuit_closed_no_error.increment(1),
-            Err(ReactorError::Err(e)) => {
-                // Notice here that we lookup the metrics' registry with counter!() macro
-                // instead of keeping a local copy per-error kind. This is a bit more
-                // expensive as there is a lookup but it allows us to not keep in sync
-                // the ErrorKind with the equivalent amount of counters on our side.
-                //
-                // The variant name is used as it is a standard CamelCase that has proper
-                // semantic and maps nicely to ErrorKind name in the code.
-                closed_counter(e.kind().into()).increment(1);
-            }
-        }
+        CircuitCloseGuard::new(Arc::clone(self))
     }
 
     /// Count the bytes of a cell read in the forward direction.
@@ -165,4 +158,53 @@ fn closed_counter(reason: &'static str) -> Counter {
         "arti_circuits_closed_total",
         "reason" => reason,
     )
+}
+
+/// A guard returned by [`CircuitMetrics::circuit_opened()`] which ensures that
+/// we always increase the "circuit closed" counter
+/// (except if used with `std::mem::forget()`).
+//
+// It would be much less code if we removed this and just used `DropGuard` at the callsite
+// (once it's available in our MSRV).
+// This might be worthwhile, depending on how the rest of `CircuitMetrics` evolves.
+pub(crate) struct CircuitCloseGuard(Option<Arc<CircuitMetrics>>);
+
+impl CircuitCloseGuard {
+    /// Create a new [`CircuitCloseGuard`].
+    fn new(metrics: Arc<CircuitMetrics>) -> Self {
+        Self(Some(metrics))
+    }
+
+    /// Record that the circuit has closed.
+    ///
+    /// This allows you to pass in the `result` that will be recorded,
+    /// as opposed to the `Drop` impl which will use "Unknown".
+    pub(crate) fn circuit_closed(mut self, result: &Result<(), ReactorError>) {
+        let metrics = self
+            .0
+            .take()
+            .expect("we always construct this guard with Some value");
+
+        match result {
+            Ok(()) | Err(ReactorError::Shutdown) => metrics.circuit_closed_no_error.increment(1),
+            Err(ReactorError::Err(e)) => {
+                // Notice here that we lookup the metrics' registry with counter!() macro
+                // instead of keeping a local copy per-error kind. This is a bit more
+                // expensive as there is a lookup but it allows us to not keep in sync
+                // the ErrorKind with the equivalent amount of counters on our side.
+                //
+                // The variant name is used as it is a standard CamelCase that has proper
+                // semantic and maps nicely to ErrorKind name in the code.
+                closed_counter(e.kind().into()).increment(1);
+            }
+        }
+    }
+}
+
+impl std::ops::Drop for CircuitCloseGuard {
+    fn drop(&mut self) {
+        if let Some(_metrics) = self.0.take() {
+            closed_counter("Unknown").increment(1);
+        }
+    }
 }
