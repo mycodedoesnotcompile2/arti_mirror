@@ -1,7 +1,9 @@
 //! Configuration (private module)
 
+#[cfg(not(target_os = "openbsd"))]
 use std::sync::LazyLock;
 
+#[cfg(not(target_os = "openbsd"))]
 use sysinfo::{MemoryRefreshKind, System};
 use tracing::warn;
 
@@ -297,8 +299,9 @@ fn compute_max_from_total_system_mem(mem: Result<usize, MemQueryError>) -> Qty {
 /// This is generally the amount of system RAM,
 /// but we may also take into account other OS-specific limits such as cgroups.
 ///
-/// Returns `None` if we were unable to get the total available memory.
+/// Returns `Err(MemQueryError::Unavailable)` if the total available memory cannot be determined.
 /// But see internal comments for details.
+#[cfg(not(target_os = "openbsd"))]
 fn total_available_memory() -> Result<usize, MemQueryError> {
     // The sysinfo crate says we should use only one `System` per application.
     // But we're a library, so it's probably best to just make this global and reuse it.
@@ -352,6 +355,32 @@ fn total_available_memory() -> Result<usize, MemQueryError> {
     let mem = std::cmp::min(mem, to_usize_saturating(cgroups.total_memory));
 
     Ok(mem)
+}
+
+// TODO: remove this OpenBSD specific implementation once sysinfo supports it.
+// https://github.com/GuillaumeGomez/sysinfo/issues/1318
+#[cfg(target_os = "openbsd")]
+fn total_available_memory() -> Result<usize, MemQueryError> {
+    let mut mem: u64 = 0;
+    let mut len = std::mem::size_of::<u64>();
+    let mut mib = [libc::CTL_HW, libc::HW_PHYSMEM64];
+
+    let ret = unsafe {
+        libc::sysctl(
+            mib.as_mut_ptr(),
+            mib.len() as libc::c_uint,
+            &mut mem as *mut u64 as *mut libc::c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+
+    if ret != 0 || len != std::mem::size_of::<u64>() {
+        return Err(MemQueryError::Unavailable);
+    }
+
+    Ok(to_usize_saturating(mem))
 }
 
 /// An error when we are unable to obtain the system's total available memory.
